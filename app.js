@@ -217,22 +217,79 @@ PAGES.dashboard=()=>{
   </div>`;
 };
 
-/* ============ DASHBOARD pesquisador ============ */
-PAGES['dashboard-pesq']=()=>head('Meu painel','Olá João — acompanhe suas metas e ganhos')+`
+/* ============ DASHBOARD pesquisador ============
+   Antes era uma tela 100% estática (nome "João" fixo, números fictícios).
+   Agora usa dados reais do próprio pesquisador logado: collection_events
+   (coletas dele), payments (o que já foi aprovado pra receber) e as cotas
+   de verdade da pesquisa em que ele está atuando (via a mesma RPC
+   survey_quota_counts usada em "Coletar (app)"). */
+function isSameLocalDay(ts,ref){
+  const a=new Date(ts);
+  return a.getFullYear()===ref.getFullYear()&&a.getMonth()===ref.getMonth()&&a.getDate()===ref.getDate();
+}
+let DASH_QUOTA_SURVEY_ID=null,DASH_QUOTA_COUNTS={},DASH_QUOTA_LOADED=false,DASH_QUOTA_LOADING=false;
+async function loadDashQuotasIfNeeded(){
+  const s=acollectMySurveys()[0];
+  if(!s){DASH_QUOTA_SURVEY_ID=null;DASH_QUOTA_LOADED=true;return;}
+  if(DASH_QUOTA_SURVEY_ID!==s.id){DASH_QUOTA_SURVEY_ID=s.id;DASH_QUOTA_LOADED=false;}
+  if(DASH_QUOTA_LOADED||DASH_QUOTA_LOADING)return;
+  DASH_QUOTA_LOADING=true;
+  DASH_QUOTA_COUNTS=await loadQuotaCounts(s.id);
+  DASH_QUOTA_LOADED=true;DASH_QUOTA_LOADING=false;
+  const onKey=document.querySelector('.nav-item.on');
+  if(onKey&&onKey.dataset.key==='dashboard-pesq')go('dashboard-pesq');
+}
+PAGES['dashboard-pesq']=()=>{
+  if(!SURVEYS_LOADED)loadSurveysIfNeeded();
+  if(!COLLECT_EVENTS_LOADED)loadCollectEventsIfNeeded();
+  if(!PAYMENTS_LOADED)loadPaymentsIfNeeded();
+  const primeiroNome=(CURRENT_PROFILE&&CURRENT_PROFILE.name)?CURRENT_PROFILE.name.trim().split(' ')[0]:'';
+  const subtitulo=primeiroNome?('Olá '+primeiroNome+' — acompanhe suas metas e ganhos'):'Acompanhe suas metas e ganhos';
+  if(!SURVEYS_LOADED||!COLLECT_EVENTS_LOADED||!PAYMENTS_LOADED){
+    return head('Meu painel',subtitulo)+'<div class="empty">Carregando seus dados…</div>';
+  }
+  loadDashQuotasIfNeeded();
+  const myId=CURRENT_PROFILE&&CURRENT_PROFILE.id;
+  const mine=COLLECT_EVENTS.filter(e=>e.researcherId===myId);
+  const now=new Date();
+  const ontem=new Date(now.getFullYear(),now.getMonth(),now.getDate()-1);
+  const hojeCount=mine.filter(e=>isSameLocalDay(e.ts,now)).length;
+  const ontemCount=mine.filter(e=>isSameLocalDay(e.ts,ontem)).length;
+  const mesCount=mine.filter(e=>{const d=new Date(e.ts);return d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth();}).length;
+  const rejeitadas=mine.filter(e=>e.status==='rejected').length;
+  const aprovPct=mine.length?Math.round(((mine.length-rejeitadas)/mine.length)*100):100;
+  const myPayments=PAYMENTS.filter(p=>p.researcherId===myId);
+  const aReceber=myPayments.filter(p=>p.status==='aprovado').reduce((sum,p)=>{
+    const s=SURVEYS.find(x=>x.id===p.surveyId);return sum+p.valid*(s?+s.price:0);
+  },0);
+  const surveysMine=acollectMySurveys();
+  const quotaSurvey=surveysMine[0];
+  const quotaList=quotaSurvey?surveyQuotas(quotaSurvey):[];
+  const quotaColors=['#dc2626','#d97706','#059669','#2563eb','#7c3aed','#0891b2'];
+  let quotasHtml;
+  if(!quotaSurvey){
+    quotasHtml='<div class="empty" style="padding:10px 0">Você não está atribuído a nenhuma pesquisa em campo no momento.</div>';
+  }else if(!DASH_QUOTA_LOADED){
+    quotasHtml='<div class="empty" style="padding:10px 0">Carregando cotas…</div>';
+  }else if(!quotaList.length){
+    quotasHtml='<div class="empty" style="padding:10px 0">Esta pesquisa não tem cotas configuradas — pode coletar livremente.</div>';
+  }else{
+    quotasHtml=quotaList.map((q,i)=>quota(q.label,DASH_QUOTA_COUNTS[q.label]||0,q.target,quotaColors[i%quotaColors.length])).join('');
+  }
+  return head('Meu painel',subtitulo)+`
   <div class="grid g4" style="margin-bottom:18px">
-    ${stat('Coletas hoje','14','meta diária: 20','✓','#2563eb')}
-    ${stat('Coletas no mês','312','+18 ontem','◷','#059669')}
-    ${stat('A receber','R$ 1.560','312 form. × R$ 5,00','$','#ea580c')}
-    ${stat('Aprovação','96%','12 rejeitadas de 324','✓','#7c3aed')}
+    ${stat('Coletas hoje',String(hojeCount),'entrevistas enviadas hoje','✓','#2563eb')}
+    ${stat('Coletas no mês',String(mesCount),'+'+ontemCount+' ontem','◷','#059669')}
+    ${stat('A receber',brl(aReceber),'aprovado, aguardando repasse','$','#ea580c')}
+    ${stat('Aprovação',mine.length?(aprovPct+'%'):'—',mine.length?(rejeitadas+' rejeitada(s) de '+mine.length):'nenhuma coleta ainda','✓','#7c3aed')}
   </div>
   <div class="card mb">
     <div class="card-t">Suas cotas pendentes hoje</div>
-    <div class="card-d">Foque nos perfis que ainda faltam para bater a meta</div>
-    ${quota('Mulheres 45+',2,6,'#dc2626')}
-    ${quota('Homens 45+',3,6,'#d97706')}
-    ${quota('Mulheres 25–44',5,8,'#059669')}
+    <div class="card-d">${quotaSurvey?('Pesquisa: '+esc(quotaSurvey.name)+(surveysMine.length>1?' · você também está em mais '+(surveysMine.length-1)+' pesquisa(s) em campo':''))+' — foque nos perfis que ainda faltam para bater a meta':'Foque nos perfis que ainda faltam para bater a meta'}</div>
+    ${quotasHtml}
   </div>
   <button class="btn btn-accent" style="font-size:15px;padding:14px 22px" onclick="go('app-collect')">▶ Abrir app de coleta</button>`;
+};
 
 /* ============ ÁREA DO CLIENTE ============
    Quando quem está logado é de verdade um cliente (login real via Supabase
@@ -590,7 +647,7 @@ async function loadSurveysIfNeeded(){
   refreshClientSurveyLinks();
   const onKey=document.querySelector('.nav-item.on');
   const k=onKey&&onKey.dataset.key;
-  if(k==='surveys'||k==='surveys-done'||k==='dashboard'||k==='survey-team'||k==='client-progress'||k==='client-results'||k==='reports')go(k);
+  if(k==='surveys'||k==='surveys-done'||k==='dashboard'||k==='dashboard-pesq'||k==='survey-team'||k==='client-progress'||k==='client-results'||k==='reports')go(k);
 }
 function surveySample(s){
   const N=+s.pop||0,e=+s.err,Z=+s.conf,p=(+s.prop||50)/100;
@@ -1865,7 +1922,7 @@ async function loadCollectEventsIfNeeded(){
   COLLECT_EVENTS_LOADING=false;
   const onKey=document.querySelector('.nav-item.on');
   const k=onKey&&onKey.dataset.key;
-  if(k==='collect'||k==='app-collect'||k==='my-earnings'||k==='dashboard')go(k);
+  if(k==='collect'||k==='app-collect'||k==='my-earnings'||k==='dashboard'||k==='dashboard-pesq')go(k);
 }
 function eventsForSurveyIdx(idx){
   const s=SURVEYS[idx];if(!s)return[];
@@ -3770,7 +3827,7 @@ async function loadPaymentsIfNeeded(){
   PAYMENTS_LOADING=false;
   const onKey=document.querySelector('.nav-item.on');
   const k=onKey&&onKey.dataset.key;
-  if(k==='finance'||k==='my-earnings')go(k);
+  if(k==='finance'||k==='my-earnings'||k==='dashboard-pesq')go(k);
 }
 /* define só o status do pagamento (pendente/aprovado/auditoria) — válidos e
    rejeitados não são mais editáveis aqui: vêm de verdade da Coleta de campo

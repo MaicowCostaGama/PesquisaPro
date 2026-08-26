@@ -169,6 +169,8 @@ function quota(label,done,total,color){
 
 /* ============ DASHBOARD (admin/coord/gerente) ============ */
 PAGES.dashboard=()=>{
+  if(!USERS_LOADED)loadUsersIfNeeded();
+  if(!SURVEYS_LOADED)loadSurveysIfNeeded();
   const emCampo=SURVEYS.filter(s=>s.status==='campo').length;
   const emEdicao=SURVEYS.filter(s=>s.status==='rascunho').length;
   const finalizadas=SURVEYS.filter(s=>s.status==='encerrada').length;
@@ -369,24 +371,141 @@ function blankSurveyData(){
     formStarted:false,questions:[],quotas:{},quotaOff:{},remote:{}};
 }
 
-/* store de pesquisas (seed com objetos completos para permitir edição) */
-let SURVEYS=[
-  {name:'Pesquisa Eleitoral MG · 2026',
-    tipo:'Eleitoral / intenção de voto',dataIni:'2026-07-01',dataFim:'2026-07-20',
-    abrangencia:'estadual',estados:['MG'],cidades:{MG:['Belo Horizonte','Uberlândia','Contagem','Juiz de Fora','Betim']},
-    pop:16200000,err:'0.02',conf:'1.96',prop:50,price:5,priceRemote:8,clientPrice:12,
-    formStarted:true,quotas:{},collected:2847,status:'campo',created:'há 18 dias',team:['João Pereira','Fernanda Couto','Maria Souza'],coord:'Carla Menezes',
-    questions:[
-      {id:1,text:'Qual seu gênero?',type:'single',opts:['Masculino','Feminino','Outro / prefiro não dizer']},
-      {id:2,text:'Qual sua faixa etária?',type:'single',opts:['16–24','25–34','35–44','45–59','60+']},
-    ]},
-  {name:'Avaliação de gestão · Capital',pop:500000,err:'0.04',conf:'1.96',prop:50,price:5,priceRemote:8,clientPrice:12,
-    formStarted:true,quotas:{},collected:0,status:'rascunho',created:'rascunho',team:[],coord:'',
-    questions:[{id:1,text:'Como avalia a gestão atual?',type:'scale',opts:[]}]},
-  {name:'Satisfação de serviços · Zona da Mata',pop:300000,err:'0.03',conf:'1.96',prop:50,price:5,priceRemote:8,clientPrice:12,
-    formStarted:true,quotas:{},collected:1100,status:'encerrada',created:'encerrada',team:['Lucas Andrade'],coord:'Rafael Dias',
-    questions:[{id:1,text:'Você utilizou o serviço?',type:'single',opts:['Sim','Não']}]},
-];
+/* store de pesquisas — carregado do Supabase (ver bloco "PESQUISAS — carregamento
+   e gravação no Supabase" logo abaixo). Cada item ganha um campo extra `id` (o
+   UUID da linha em surveys), usado para localizar a linha certa ao salvar. */
+let SURVEYS=[];
+let SURVEYS_LOADED=false;
+let SURVEYS_LOADING=false;
+
+function fmtRelativo(iso){
+  if(!iso)return 'agora';
+  const then=new Date(iso).getTime();
+  if(isNaN(then))return 'agora';
+  const diffMs=Date.now()-then;
+  if(diffMs<60000)return 'agora';
+  const mins=Math.floor(diffMs/60000);
+  if(mins<60)return 'há '+mins+' min';
+  const hours=Math.floor(mins/60);
+  if(hours<24)return 'há '+hours+'h';
+  const days=Math.floor(hours/24);
+  return 'há '+days+' dia'+(days===1?'':'s');
+}
+
+/* transforma a linha de `surveys` (+ perguntas/opções/clientes vinculados já
+   carregados junto) na mesma forma de objeto que o assistente (WIZ) e as
+   telas de pesquisa sempre usaram — assim o resto do código não muda. */
+function surveyRowToSnapshot(row,questionRows,clientCompanyNames){
+  const quotas={},quotaOff={},remote={};
+  const questions=(questionRows||[]).map((q,qi)=>{
+    const localId=qi+1;
+    const opts=(q.survey_question_options||[]).slice().sort((a,b)=>a.position-b.position);
+    if(opts.length){
+      if(opts.every(o=>o.quota_enabled===false))quotaOff[localId]=true;
+      opts.forEach((o,oi)=>{
+        if(o.quota_pct!=null){quotas[localId]=quotas[localId]||{};quotas[localId][oi]=o.quota_pct;}
+        if(o.is_remote)remote[oi]=true;
+      });
+    }
+    return {id:localId,text:q.text||'',type:q.type||'single',opts:opts.map(o=>o.label||''),isRegion:!!q.is_region};
+  });
+  return {
+    id:row.id,
+    name:row.name,tipo:row.tipo||'',dataIni:row.data_ini||'',dataFim:row.data_fim||'',
+    abrangencia:row.abrangencia||'estadual',estados:row.estados||[],cidades:row.cidades||{},
+    pop:row.populacao||0,
+    err:row.margem_erro!=null?String(row.margem_erro):'0.03',
+    conf:row.nivel_confianca!=null?String(row.nivel_confianca):'1.96',
+    prop:row.proporcao!=null?row.proporcao:50,
+    price:row.price||0,priceRemote:row.price_remote||0,clientPrice:row.client_price||0,
+    clientes:clientCompanyNames||[],
+    formStarted:!!row.form_started,questions,quotas,quotaOff,remote,
+    collected:row.collected||0,status:row.status||'rascunho',
+    created:fmtRelativo(row.created_at),
+    team:[],coord:'',isNew:false,
+  };
+}
+function snapshotToSurveyRow(d){
+  return {
+    name:d.name||'Pesquisa sem nome',tipo:d.tipo||null,data_ini:d.dataIni||null,data_fim:d.dataFim||null,
+    abrangencia:d.abrangencia||null,estados:d.estados||[],cidades:d.cidades||{},
+    populacao:+d.pop||0,margem_erro:d.err?+d.err:null,nivel_confianca:d.conf?+d.conf:null,
+    proporcao:+d.prop||50,price:+d.price||0,price_remote:+d.priceRemote||0,client_price:+d.clientPrice||0,
+    form_started:!!d.formStarted,status:d.status||'rascunho',
+  };
+}
+/* apaga e recria as perguntas/opções da pesquisa a partir do que está em `d`
+   (mesma lógica de "substituir tudo" usada em syncPesqCidades, para não ter
+   que calcular um diff pergunta a pergunta) */
+async function syncSurveyQuestionsAndOptions(surveyId,d){
+  await sb.from('survey_questions').delete().eq('survey_id',surveyId);
+  const questions=d.questions||[];
+  for(let i=0;i<questions.length;i++){
+    const q=questions[i];
+    const {data:qRow,error:qErr}=await sb.from('survey_questions').insert({
+      survey_id:surveyId,position:i,text:q.text||'',type:q.type||'single',is_region:!!q.isRegion,
+    }).select().single();
+    if(qErr)throw new Error('Não foi possível salvar as perguntas: '+qErr.message);
+    if(Q_HAS_OPTS(q.type)&&q.opts&&q.opts.length){
+      const off=!!(d.quotaOff&&d.quotaOff[q.id]);
+      const localQuotas=(d.quotas&&d.quotas[q.id])||{};
+      const optRows=q.opts.map((label,oi)=>({
+        question_id:qRow.id,position:oi,label:label||'',
+        is_remote:q.isRegion?!!(d.remote&&d.remote[oi]):false,
+        quota_pct:off?null:(localQuotas[oi]!=null?localQuotas[oi]:null),
+        quota_enabled:!off,
+      }));
+      const {error:oErr}=await sb.from('survey_question_options').insert(optRows);
+      if(oErr)throw new Error('Não foi possível salvar as opções: '+oErr.message);
+    }
+  }
+}
+/* apaga e recria os vínculos com clientes (a lista `d.clientes` guarda nomes
+   de empresa — resolvidos aqui para o id real do perfil do cliente) */
+async function syncSurveyClients(surveyId,companyNames){
+  await sb.from('survey_clients').delete().eq('survey_id',surveyId);
+  const ids=(companyNames||[]).map(name=>{
+    const c=clienteUsers().find(x=>x.company===name);
+    return c&&c.id;
+  }).filter(Boolean);
+  if(ids.length){
+    const {error}=await sb.from('survey_clients').insert(ids.map(id=>({survey_id:surveyId,client_id:id})));
+    if(error)throw new Error('Não foi possível vincular os clientes: '+error.message);
+  }
+}
+async function reloadSurveySnapshot(surveyId){
+  const {data,error}=await sb.from('surveys')
+    .select('*, survey_questions(*, survey_question_options(*)), survey_clients(client_id)')
+    .eq('id',surveyId).single();
+  if(error||!data)throw new Error(error?error.message:'Pesquisa não encontrada depois de salvar.');
+  const qRows=(data.survey_questions||[]).slice().sort((a,b)=>a.position-b.position);
+  const clientIds=(data.survey_clients||[]).map(sc=>sc.client_id);
+  const companyNames=clientIds.map(id=>{const c=USERS.find(u=>u.id===id);return c?(c.company||c.name):null;}).filter(Boolean);
+  return surveyRowToSnapshot(data,qRows,companyNames);
+}
+async function loadSurveysIfNeeded(){
+  if(SURVEYS_LOADED||SURVEYS_LOADING)return;
+  SURVEYS_LOADING=true;
+  try{
+    const {data,error}=await sb.from('surveys')
+      .select('*, survey_questions(*, survey_question_options(*)), survey_clients(client_id)')
+      .order('created_at',{ascending:false});
+    if(!error){
+      SURVEYS=(data||[]).map(row=>{
+        const qRows=(row.survey_questions||[]).slice().sort((a,b)=>a.position-b.position);
+        const clientIds=(row.survey_clients||[]).map(sc=>sc.client_id);
+        const companyNames=clientIds.map(id=>{const c=USERS.find(u=>u.id===id);return c?(c.company||c.name):null;}).filter(Boolean);
+        return surveyRowToSnapshot(row,qRows,companyNames);
+      });
+      SURVEYS_LOADED=true;
+    }else console.error('Erro ao carregar pesquisas:',error);
+  }catch(ex){console.error('Erro de conexão ao carregar pesquisas:',ex);}
+  SURVEYS_LOADING=false;
+  refreshClientSurveyLinks();
+  const onKey=document.querySelector('.nav-item.on');
+  const k=onKey&&onKey.dataset.key;
+  if(k==='surveys'||k==='surveys-done'||k==='dashboard')go(k);
+}
 function surveySample(s){
   const N=+s.pop||0,e=+s.err,Z=+s.conf,p=(+s.prop||50)/100;
   return Math.ceil(Math.ceil((N*Z*Z*p*(1-p))/(e*e*(N-1)+Z*Z*p*(1-p)))*1.1);
@@ -910,10 +1029,17 @@ function wizToggleCliente(company){
   else WIZ.data.clientes.push(company);
   wizClientsRerender();
 }
-function wizToggleClientAccess(company){
+async function wizToggleClientAccess(company){
   const c=clienteUsers().find(x=>x.company===company);
   if(!c)return;
-  c.resultsReleased=!c.resultsReleased;
+  const next=!c.resultsReleased;
+  try{
+    if(c.id){
+      const {error}=await sb.from('profiles').update({results_released:next}).eq('id',c.id);
+      if(error)throw new Error(error.message);
+    }
+  }catch(ex){alert('Não foi possível salvar: '+ex.message);return;}
+  c.resultsReleased=next;
   wizClientsRerender();
 }
 
@@ -1062,47 +1188,51 @@ function wizPrice(){
       el.style.color=remote?'var(--accent)':'var(--ink3)';}
   });
 }
-function wizCreate(){
+async function wizCreate(){
   try{ wizSave(); }catch(err){}
   const d=WIZ.data;
-  const nadj=wizSampleAdj();
-  const oldName=(WIZ.editIndex!=null&&SURVEYS[WIZ.editIndex])?SURVEYS[WIZ.editIndex].name:null;
-  const snapshot={
-    name:d.name||'Pesquisa sem nome',
-    tipo:d.tipo||'Eleitoral / intenção de voto',dataIni:d.dataIni||'',dataFim:d.dataFim||'',
-    abrangencia:d.abrangencia||'estadual',
-    estados:JSON.parse(JSON.stringify(d.estados||[])),
-    cidades:JSON.parse(JSON.stringify(d.cidades||{})),
-    pop:+d.pop||0,err:d.err,conf:d.conf,prop:+d.prop||50,
-    price:+d.price||0,priceRemote:+d.priceRemote||0,clientPrice:+d.clientPrice||0,
-    clientes:JSON.parse(JSON.stringify(d.clientes||[])),
-    formStarted:d.formStarted,
-    questions:JSON.parse(JSON.stringify(d.questions||[])),
-    quotas:JSON.parse(JSON.stringify(d.quotas||{})),
-    quotaOff:JSON.parse(JSON.stringify(d.quotaOff||{})),
-    remote:JSON.parse(JSON.stringify(d.remote||{})),
-  };
-  if(WIZ.editIndex!=null){
-    const existing=SURVEYS[WIZ.editIndex];
-    Object.assign(existing,snapshot);
-    alert('Alterações salvas.');
-  }else{
-    SURVEYS.unshift(Object.assign(snapshot,{
-      collected:0,status:'rascunho',created:'agora',isNew:true,team:[],coord:''}));
-    alert('Pesquisa criada! Agora atribua a equipe em Minhas pesquisas.');
+  const isNew=WIZ.editIndex==null;
+  const row=snapshotToSurveyRow(d);
+  const busyBtn=document.querySelector('#wizBody .btn-fill');
+  if(busyBtn)busyBtn.disabled=true;
+  try{
+    let surveyId;
+    if(isNew){
+      const {data:inserted,error}=await sb.from('surveys').insert(row).select().single();
+      if(error)throw new Error(error.message);
+      surveyId=inserted.id;
+    }else{
+      surveyId=SURVEYS[WIZ.editIndex].id;
+      const {error}=await sb.from('surveys').update(row).eq('id',surveyId);
+      if(error)throw new Error(error.message);
+    }
+    await syncSurveyQuestionsAndOptions(surveyId,d);
+    await syncSurveyClients(surveyId,d.clientes||[]);
+    const snapshot=await reloadSurveySnapshot(surveyId);
+    if(isNew){
+      snapshot.isNew=true;
+      SURVEYS.unshift(snapshot);
+    }else{
+      snapshot.team=SURVEYS[WIZ.editIndex].team;snapshot.coord=SURVEYS[WIZ.editIndex].coord;
+      SURVEYS[WIZ.editIndex]=snapshot;
+    }
+    refreshClientSurveyLinks();
+    alert(isNew?'Pesquisa criada! Agora atribua a equipe em Minhas pesquisas.':'Alterações salvas.');
+  }catch(ex){
+    if(busyBtn)busyBtn.disabled=false;
+    alert('Não foi possível salvar a pesquisa: '+ex.message);
+    return;
   }
-  syncClientLinks(oldName,snapshot.name,snapshot.clientes);
   WIZ.editIndex=null;
   go('surveys');
 }
-/* mantém o campo surveys de cada cliente (em USERS) em sincronia com o que foi marcado na etapa Cliente do assistente */
-function syncClientLinks(oldName,newName,selectedCompanies){
+/* mantém o campo `surveys` de cada cliente (em USERS) em sincronia com o que
+   está de fato vinculado no banco (survey_clients, via SURVEYS[].clientes) —
+   é o que a área do cliente usa para achar "a pesquisa dele". */
+function refreshClientSurveyLinks(){
+  if(!USERS_LOADED||!SURVEYS_LOADED)return;
   clienteUsers().forEach(c=>{
-    c.surveys=c.surveys||[];
-    if(oldName)c.surveys=c.surveys.filter(s=>s!==oldName);
-    const wants=(selectedCompanies||[]).includes(c.company);
-    if(wants){ if(!c.surveys.includes(newName))c.surveys.push(newName); }
-    else{ c.surveys=c.surveys.filter(s=>s!==newName); }
+    c.surveys=SURVEYS.filter(s=>(s.clientes||[]).includes(c.company)).map(s=>s.name);
   });
 }
 
@@ -1168,6 +1298,10 @@ function surveyRow(s,idx,opts){
 }
 
 PAGES.surveys=()=>{
+  if(!SURVEYS_LOADED){
+    loadSurveysIfNeeded();
+    return head('Minhas pesquisas','Pesquisas em desenvolvimento (rascunho e em campo).')+'<div class="empty">Carregando pesquisas do banco de dados…</div>';
+  }
   const inDev=SURVEYS.map((s,idx)=>({s,idx})).filter(x=>x.s.status!=='encerrada');
   const rows=inDev.map(x=>surveyRow(x.s,x.idx)).join('')
     ||'<tr><td colspan="7" class="empty">Nenhuma pesquisa em desenvolvimento. Clique em “+ Nova pesquisa”.</td></tr>';
@@ -1187,6 +1321,10 @@ PAGES.surveys=()=>{
 };
 
 PAGES['surveys-done']=()=>{
+  if(!SURVEYS_LOADED){
+    loadSurveysIfNeeded();
+    return head('Pesquisas concluídas','Pesquisas encerradas — acesse os relatórios ou reabra se precisar.')+'<div class="empty">Carregando pesquisas do banco de dados…</div>';
+  }
   const done=SURVEYS.map((s,idx)=>({s,idx})).filter(x=>x.s.status==='encerrada');
   const rows=done.map(x=>surveyRow(x.s,x.idx,{done:true})).join('')
     ||'<tr><td colspan="7" class="empty">Nenhuma pesquisa concluída ainda.</td></tr>';
@@ -1205,34 +1343,54 @@ PAGES['surveys-done']=()=>{
   <div class="callout" style="margin-top:16px"><b>Reabrir</b> devolve a pesquisa para "em desenvolvimento". <b>Duplicar</b> cria uma cópia como novo rascunho, sem copiar equipe nem vínculo com clientes.</div>`;
 };
 
-function surveyFinish(idx){
-  if(!confirm('Concluir a pesquisa "'+SURVEYS[idx].name+'"? Ela vai para a aba Concluídas.'))return;
-  SURVEYS[idx].status='encerrada';SURVEYS[idx].isNew=false;go('surveys');
+async function surveyFinish(idx){
+  const s=SURVEYS[idx];
+  if(!confirm('Concluir a pesquisa "'+s.name+'"? Ela vai para a aba Concluídas.'))return;
+  try{
+    const {error}=await sb.from('surveys').update({status:'encerrada'}).eq('id',s.id);
+    if(error)throw new Error(error.message);
+  }catch(ex){alert('Não foi possível concluir: '+ex.message);return;}
+  s.status='encerrada';s.isNew=false;go('surveys');
 }
-function surveyReopen(idx){
-  SURVEYS[idx].status=SURVEYS[idx].collected>0?'campo':'rascunho';
-  go('surveys-done');
+async function surveyReopen(idx){
+  const s=SURVEYS[idx];
+  const newStatus=s.collected>0?'campo':'rascunho';
+  try{
+    const {error}=await sb.from('surveys').update({status:newStatus}).eq('id',s.id);
+    if(error)throw new Error(error.message);
+  }catch(ex){alert('Não foi possível reabrir: '+ex.message);return;}
+  s.status=newStatus;go('surveys-done');
 }
 
 function newSurvey(){WIZ.editIndex=null;WIZ.step=1;WIZ.data=blankSurveyData();WIZ_QID=1;go('new-survey');}
-function surveyDuplicate(idx){
+async function surveyDuplicate(idx){
   const s=SURVEYS[idx];
-  const copy=JSON.parse(JSON.stringify(s));
-  copy.name=(s.name||'Pesquisa sem nome')+' (cópia)';
-  copy.collected=0;
-  copy.status='rascunho';
-  copy.created='agora';
-  copy.isNew=true;
-  copy.team=[];
-  copy.coord='';
-  copy.clientes=[]; // vínculo com clientes e liberação de acesso não são copiados — decisão própria de cada pesquisa
-  SURVEYS.unshift(copy);
-  alert('Pesquisa duplicada como "'+copy.name+'". Revise os dados e a equipe antes de colocar em campo.');
+  const row=snapshotToSurveyRow({...s,name:(s.name||'Pesquisa sem nome')+' (cópia)',status:'rascunho'});
+  try{
+    const {data:inserted,error}=await sb.from('surveys').insert(row).select().single();
+    if(error)throw new Error(error.message);
+    // formulário/cotas/preço são copiados; equipe e vínculo com clientes não —
+    // decisão própria de cada pesquisa (mesmo comportamento de antes)
+    await syncSurveyQuestionsAndOptions(inserted.id,s);
+    const copy=await reloadSurveySnapshot(inserted.id);
+    copy.isNew=true;copy.team=[];copy.coord='';
+    SURVEYS.unshift(copy);
+    alert('Pesquisa duplicada como "'+copy.name+'". Revise os dados e a equipe antes de colocar em campo.');
+  }catch(ex){alert('Não foi possível duplicar: '+ex.message);return;}
   go('surveys');
 }
-function surveyDelete(idx){
-  if(!confirm('Excluir a pesquisa "'+SURVEYS[idx].name+'"? Esta ação não pode ser desfeita.'))return;
-  SURVEYS.splice(idx,1);go('surveys');
+async function surveyDelete(idx){
+  const s=SURVEYS[idx];
+  if(!confirm('Excluir a pesquisa "'+s.name+'"? Esta ação não pode ser desfeita.'))return;
+  try{
+    if(s.id){
+      const {error}=await sb.from('surveys').delete().eq('id',s.id);
+      if(error)throw new Error(error.message);
+    }
+  }catch(ex){alert('Não foi possível excluir: '+ex.message);return;}
+  SURVEYS.splice(idx,1);
+  refreshClientSurveyLinks();
+  go('surveys');
 }
 function surveyEdit(idx){
   const s=SURVEYS[idx];
@@ -2037,8 +2195,10 @@ async function loadUsersIfNeeded(){
     else console.error('Erro ao carregar usuários:',error);
   }catch(ex){console.error('Erro de conexão ao carregar usuários:',ex);}
   USERS_LOADING=false;
-  const onUsersPage=document.querySelector(".nav-item.on[data-key='users']");
-  if(onUsersPage)go('users');
+  refreshClientSurveyLinks();
+  const onKey=document.querySelector('.nav-item.on');
+  const k=onKey&&onKey.dataset.key;
+  if(k==='users'||k==='dashboard')go(k);
 }
 async function syncPesqCidades(profileId,cidades){
   await sb.from('profile_cidades_atuacao').delete().eq('profile_id',profileId);
@@ -2522,7 +2682,18 @@ function userPesqApproveList(i){
   if(!approvePesqCommon(i))return;
   go('users');
 }
-function userClienteToggleAccess(i){USERS[i].resultsReleased=!USERS[i].resultsReleased;USER_VIEW=i;USER_ARMED=true;go('users');}
+async function userClienteToggleAccess(i){
+  const u=USERS[i];
+  const next=!u.resultsReleased;
+  try{
+    if(u.id){
+      const {error}=await sb.from('profiles').update({results_released:next}).eq('id',u.id);
+      if(error)throw new Error(error.message);
+    }
+  }catch(ex){alert('Não foi possível salvar: '+ex.message);return;}
+  u.resultsReleased=next;
+  USER_VIEW=i;USER_ARMED=true;go('users');
+}
 function userClienteSendForm(i){
   const c=USERS[i];
   clientWhatsAppMsg(c.phone,'Olá '+(c.contact||c.name)+'! Segue o formulário da pesquisa para sua aprovação: https://pesquisapro.com.br/aprovar/'+(i+1)+'x. Por favor, revise as perguntas e responda com seu aceite.');

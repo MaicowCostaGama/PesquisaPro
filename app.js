@@ -146,6 +146,23 @@ function go(key){
   if(window._beforeRender)window._beforeRender(key);
   document.getElementById('main').innerHTML=PAGES[key]?PAGES[key]():'<div class="empty">Em construção</div>';
   if(window._afterRender)window._afterRender(key);
+  closeSidebar(); // no celular, o menu (gaveta) fecha sozinho ao navegar; no computador não faz diferença nenhuma
+}
+/* menu lateral no celular: no computador o menu fica sempre visível
+   (dividindo a tela com o conteúdo); abaixo de 860px de largura ele vira uma
+   gaveta que abre por cima da tela, para não sobrar quase nenhum espaço útil
+   para o conteúdo — ver o CSS em "APP NO CELULAR" no final do style.css. */
+function toggleSidebar(){
+  const sb=document.getElementById('sidebar'),bd=document.getElementById('sidebarBackdrop');
+  if(!sb)return;
+  const open=!sb.classList.contains('open');
+  sb.classList.toggle('open',open);
+  if(bd)bd.classList.toggle('show',open);
+}
+function closeSidebar(){
+  const sb=document.getElementById('sidebar'),bd=document.getElementById('sidebarBackdrop');
+  if(sb)sb.classList.remove('open');
+  if(bd)bd.classList.remove('show');
 }
 
 /* PAGES object is populated in the next script block */
@@ -217,13 +234,25 @@ PAGES['dashboard-pesq']=()=>head('Meu painel','Olá João — acompanhe suas met
   </div>
   <button class="btn btn-accent" style="font-size:15px;padding:14px 22px" onclick="go('app-collect')">▶ Abrir app de coleta</button>`;
 
-/* ============ ÁREA DO CLIENTE ============ */
-function clientSelf(){return clienteUsers()[CLIENT_SELF_IDX];}
+/* ============ ÁREA DO CLIENTE ============
+   Quando quem está logado é de verdade um cliente (login real via Supabase
+   Auth), usamos o próprio CURRENT_PROFILE — nunca o array de demonstração
+   USERS (que só é carregado para sessões de staff) nem um índice fixo. A
+   pesquisa do cliente é achada pelo id real dele em survey_clients
+   (SURVEYS[].clientIds), não por casamento de nome. */
+function clientSelf(){
+  if(CURRENT_PROFILE&&CURRENT_PROFILE.role==='cliente')return profileRowToUser(CURRENT_PROFILE);
+  return clienteUsers()[CLIENT_SELF_IDX]; // fallback só usado fora de uma sessão real de cliente
+}
 function clientSelfSurvey(){
   const c=clientSelf();if(!c)return null;
+  if(CURRENT_PROFILE&&CURRENT_PROFILE.role==='cliente'){
+    return SURVEYS.find(s=>(s.clientIds||[]).includes(CURRENT_PROFILE.id))||null;
+  }
   return SURVEYS.find(s=>s.name===(c.surveys||[])[0])||null;
 }
 PAGES['client-progress']=()=>{
+  if(!SURVEYS_LOADED)loadSurveysIfNeeded();
   const c=clientSelf(),s=clientSelfSurvey();
   if(!c||!s){
     return head('Minha pesquisa','Acompanhe o andamento da coleta')+`<div class="card"><div class="empty">Nenhuma pesquisa vinculada à sua conta no momento.</div></div>`;
@@ -287,12 +316,25 @@ PAGES['client-progress']=()=>{
 
 const STATUS_LABEL={campo:'Em campo',rascunho:'Rascunho',encerrada:'Concluída'};
 
+/* perguntas de uma pesquisa que podem gerar uma distribuição real de
+   respostas: precisam ter o id real do banco (dbId) e não podem ser
+   "resposta aberta" (texto livre não tem como virar gráfico/contagem) */
+function reportsQuestionsForSurvey(s){
+  return (s.questions||[]).filter(q=>q.dbId&&q.type!=='open');
+}
+let CR_QUESTION_DBID=null;
 PAGES['client-results']=()=>{
+  if(!SURVEYS_LOADED)loadSurveysIfNeeded();
   const c=clientSelf(),s=clientSelfSurvey();
   if(!c||!s){
     return head('Resultados','Resultados da sua pesquisa')+`<div class="card"><div class="empty">Nenhuma pesquisa vinculada à sua conta no momento.</div></div>`;
   }
   if(!c.resultsReleased){
+    /* obs.: a contagem "coletado até agora" aqui usa s.collected (o total
+       gravado na própria pesquisa) e não a Coleta de campo (collection_events)
+       — o cliente não tem (e não deve ter) permissão para ler coletas
+       individuais no banco, só o resumo por pergunta liberado via RPC depois
+       que os resultados são publicados. */
     const sample=surveySample(s);
     const pct=sample?Math.min(100,Math.round(s.collected/sample*100)):0;
     return head('Resultados',s.name)+`
@@ -305,38 +347,67 @@ PAGES['client-results']=()=>{
       <button class="btn btn-out" style="margin-top:20px" onclick="go('client-progress')">← Ver andamento da coleta</button>
     </div>`;
   }
-  return head('Resultados',s.name,'<button class="btn btn-out" onclick="alert(\'Protótipo: exportar PDF do relatório\')">Exportar PDF</button>')+`
-  <div class="grid g3" style="margin-bottom:16px">
-    ${stat('Base amostral',s.collected.toLocaleString('pt-BR'),'entrevistas válidas','✓','#2563eb')}
-    ${stat('Margem de erro',s.err?('± '+Math.round(+s.err*100)+'%'):'± 2%','95% de confiança','∑','#7c3aed')}
-    ${stat('Líder na intenção de voto','Candidato C','35% dos votos válidos','◫','#059669')}
+  const qs=reportsQuestionsForSurvey(s);
+  if(!qs.length){
+    return head('Resultados',s.name)+`<div class="card"><div class="empty">Esta pesquisa ainda não tem perguntas de múltipla escolha, escala ou número configuradas para gerar resultados.</div></div>`;
+  }
+  if(CR_QUESTION_DBID==null||!qs.some(q=>q.dbId===CR_QUESTION_DBID))CR_QUESTION_DBID=qs[0].dbId;
+  return head('Resultados',s.name)+`
+  <div class="card mb">
+    <label class="lbl">Pergunta</label>
+    <select class="inp" id="cr-question" onchange="clientResultsPickQuestion(this.value)">
+      ${qs.map(q=>`<option value="${q.dbId}" ${q.dbId===CR_QUESTION_DBID?'selected':''}>${esc(q.text||'(pergunta sem texto)')}</option>`).join('')}
+    </select>
   </div>
-  <div class="grid g2">
-    <div class="card">
-      <div class="card-t">Intenção de voto — resultado geral</div>
-      <div class="card-d">Base: ${s.collected.toLocaleString('pt-BR')} entrevistas válidas</div>
-      <div style="position:relative;height:260px"><canvas id="clientResultsChart" role="img" aria-label="Gráfico de intenção de voto"></canvas></div>
-    </div>
-    <div class="card">
-      <div class="card-t">Tabela de resultados</div>
-      <div class="card-d">Percentual sobre o total de entrevistados</div>
-      <table><thead><tr><th></th><th>% dos votos</th></tr></thead>
-        <tbody>
-          <tr><td><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:#2563eb;margin-right:6px"></span>Candidato A</td><td><b>29%</b></td></tr>
-          <tr><td><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:#ea580c;margin-right:6px"></span>Candidato B</td><td><b>24%</b></td></tr>
-          <tr><td><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:#059669;margin-right:6px"></span>Candidato C</td><td><b>35%</b></td></tr>
-          <tr><td><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:#64748b;margin-right:6px"></span>Branco/Nulo/NS</td><td><b>12%</b></td></tr>
-        </tbody></table>
-      <div class="callout mb" style="margin-top:14px">Relatório completo, com cruzamento por região, idade e demais variáveis, disponível para exportação em PDF.</div>
-    </div>
-  </div>`;
+  <div id="cr-output"><div class="empty" style="padding:20px 0">Carregando…</div></div>
+  <div class="callout mb" style="margin-top:16px">Os resultados mostram a distribuição real de respostas de cada pergunta, calculada a partir das entrevistas válidas (excluindo coletas de calibração e reprovadas). Cruzamento entre duas ou mais perguntas ao mesmo tempo (ex.: voto × idade) ainda não está disponível — cada pergunta é mostrada separadamente.</div>`;
 };
-function drawClientResults(){
-  const c=document.getElementById('clientResultsChart');if(!c)return;
-  new Chart(c,{type:'doughnut',data:{
-    labels:['Candidato A','Candidato B','Candidato C','Branco/Nulo/NS'],
-    datasets:[{data:[29,24,35,12],backgroundColor:['#2563eb','#ea580c','#059669','#64748b'],borderWidth:0}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:12,font:{size:11}}}}}});
+function clientResultsPickQuestion(id){CR_QUESTION_DBID=id;clientResultsLoadAndRender();}
+let _clientResultsChart;
+async function clientResultsLoadAndRender(){
+  const out=document.getElementById('cr-output');
+  if(!out)return;
+  const s=clientSelfSurvey();
+  if(!s||!CR_QUESTION_DBID){out.innerHTML='';return;}
+  out.innerHTML='<div class="empty" style="padding:20px 0">Carregando…</div>';
+  let rows;
+  try{
+    const {data,error}=await sb.rpc('survey_answer_distribution',{p_survey_id:s.id,p_question_id:CR_QUESTION_DBID});
+    if(error)throw new Error(error.message);
+    rows=data||[];
+  }catch(ex){
+    out.innerHTML='<div class="callout">Não foi possível carregar os resultados agora ('+esc(ex.message)+').</div>';
+    return;
+  }
+  renderDistributionOutput(out,rows,'cr-canvas',c=>{_clientResultsChart=c;},_clientResultsChart);
+}
+/* desenha o gráfico + tabela de uma distribuição de respostas (usado tanto
+   em Resultados do cliente quanto em Relatórios do staff) — recebe as linhas
+   {value_label, cnt} já filtradas (válidas, sem calibração) pela RPC
+   survey_answer_distribution. */
+function renderDistributionOutput(out,rows,canvasId,setChart,prevChart){
+  const total=rows.reduce((sum,r)=>sum+(+r.cnt||0),0);
+  if(prevChart){try{prevChart.destroy();}catch(e){}}
+  if(!total){
+    out.innerHTML='<div class="card"><div class="empty">Ainda não há respostas válidas registradas para esta pergunta.</div></div>';
+    return;
+  }
+  const colors=['#2563eb','#ea580c','#059669','#7c3aed','#d97706','#dc2626','#0891b2','#64748b'];
+  const tbl='<table><thead><tr><th></th><th>Respostas</th><th>%</th></tr></thead><tbody>'+
+    rows.map((r,i)=>{const pct=Math.round((+r.cnt/total)*100);return `<tr><td><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${colors[i%colors.length]};margin-right:6px"></span>${esc(r.value_label||'(sem resposta)')}</td><td>${r.cnt}</td><td><b>${pct}%</b></td></tr>`;}).join('')+
+    '</tbody></table>';
+  out.innerHTML=`<div class="grid g2">
+    <div class="card"><div class="card-t">Gráfico</div><div class="card-d">Base: ${total.toLocaleString('pt-BR')} entrevistas válidas</div>
+      <div style="position:relative;height:270px"><canvas id="${canvasId}" role="img" aria-label="Gráfico de distribuição de respostas"></canvas></div></div>
+    <div class="card"><div class="card-t">Tabela</div><div class="card-d">Percentual sobre o total de respostas válidas</div>${tbl}</div>
+  </div>`;
+  const cv=document.getElementById(canvasId);
+  if(cv){
+    setChart(new Chart(cv,{type:'bar',data:{labels:rows.map(r=>r.value_label||'(sem resposta)'),
+      datasets:[{data:rows.map(r=>+r.cnt),backgroundColor:rows.map((r,i)=>colors[i%colors.length]),borderRadius:5}]},
+      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+        scales:{y:{beginAtZero:true,grid:{color:'#e2e8f0'}},x:{grid:{display:false}}}}}));
+  }
 }
 
 /* ============ SURVEYS / construtor ============ */
@@ -408,7 +479,7 @@ function surveyRowToSnapshot(row,questionRows,clientCompanyNames,teamNames){
         if(o.is_remote)remote[oi]=true;
       });
     }
-    return {id:localId,text:q.text||'',type:q.type||'single',opts:opts.map(o=>o.label||''),isRegion:!!q.is_region};
+    return {id:localId,dbId:q.id,text:q.text||'',type:q.type||'single',opts:opts.map(o=>o.label||''),isRegion:!!q.is_region};
   });
   return {
     id:row.id,
@@ -420,6 +491,7 @@ function surveyRowToSnapshot(row,questionRows,clientCompanyNames,teamNames){
     prop:row.proporcao!=null?row.proporcao:50,
     price:row.price||0,priceRemote:row.price_remote||0,clientPrice:row.client_price||0,
     clientes:clientCompanyNames||[],
+    clientIds:(row.survey_clients||[]).map(sc=>sc.client_id), /* ids reais dos clientes vinculados — usado para o cliente logado achar sua própria pesquisa sem depender de nome/USERS carregado */
     formStarted:!!row.form_started,questions,quotas,quotaOff,remote,
     collected:row.collected||0,status:row.status||'rascunho',
     created:fmtRelativo(row.created_at),
@@ -518,7 +590,7 @@ async function loadSurveysIfNeeded(){
   refreshClientSurveyLinks();
   const onKey=document.querySelector('.nav-item.on');
   const k=onKey&&onKey.dataset.key;
-  if(k==='surveys'||k==='surveys-done'||k==='dashboard'||k==='survey-team')go(k);
+  if(k==='surveys'||k==='surveys-done'||k==='dashboard'||k==='survey-team'||k==='client-progress'||k==='client-results'||k==='reports')go(k);
 }
 function surveySample(s){
   const N=+s.pop||0,e=+s.err,Z=+s.conf,p=(+s.prop||50)/100;
@@ -1428,7 +1500,31 @@ function surveyEdit(idx){
   go('new-survey');
 }
 
-/* ---- equipe / atribuição ---- */
+/* ---- equipe / atribuição ----
+   O admin/coordenador precisa achar rápido quem pode trabalhar nesta
+   pesquisa — por isso a lista é ordenada com quem atua nas cidades (ou pelo
+   menos no estado) da pesquisa primeiro, com uma busca por nome/cidade em
+   cima. Continua permitindo marcar qualquer pesquisador cadastrado, mesmo
+   fora da área (para cobrir cotas remotas ou exceções), só não prioriza. */
+function surveyCityTargets(s){
+  const cities=new Set(),states=new Set();
+  Object.keys(s.cidades||{}).forEach(uf=>{
+    states.add(uf);
+    (s.cidades[uf]||[]).forEach(c=>cities.add(c+'/'+uf));
+  });
+  (s.estados||[]).forEach(uf=>states.add(uf));
+  return {cities,states};
+}
+/* {match:true/false, label} — match=true quando o pesquisador atua numa das
+   cidades específicas da pesquisa, ou (se a pesquisa não restringiu cidade
+   nenhuma dentro do estado) pelo menos no mesmo estado. */
+function pesqAreaMatch(u,targets){
+  const cid=u.cidadesAtuacao||[];
+  if(!cid.length)return {match:false,label:u.cidade||'cidade não informada'};
+  if(targets.cities.size&&cid.some(c=>targets.cities.has(c)))return {match:true,label:cid.join(', ')};
+  if(!targets.cities.size&&targets.states.size&&cid.some(c=>targets.states.has(c.split('/')[1])))return {match:true,label:cid.join(', ')};
+  return {match:false,label:cid.join(', ')};
+}
 let TEAM_IDX=null;
 PAGES['survey-team']=()=>{
   const s=SURVEYS[TEAM_IDX];if(!s)return '<div class="empty">Pesquisa não encontrada.</div>';
@@ -1437,16 +1533,22 @@ PAGES['survey-team']=()=>{
     return head('Atribuir equipe — '+s.name,'Carregando pesquisadores cadastrados…')+'<div class="empty">Carregando pesquisadores do banco de dados…</div>';
   }
   const team=s.team||[];
-  const pesqs=pesqUsers();
-  const rows=pesqs.length?pesqs.map(u=>{
+  const targets=surveyCityTargets(s);
+  const pesqs=pesqUsers().map(u=>({u,area:pesqAreaMatch(u,targets)}))
+    .sort((a,b)=>(b.area.match-a.area.match)||a.u.name.localeCompare(b.u.name));
+  const areaNote=targets.cities.size
+    ?'cidades da pesquisa: '+[...targets.cities].join(', ')
+    :(targets.states.size?'estado(s) da pesquisa: '+[...targets.states].join(', '):'esta pesquisa não tem estado/cidade definidos');
+  const rows=pesqs.length?pesqs.map(({u,area})=>{
     const on=team.includes(u.name);
     const pend=u.status!=='ativo';
-    const regional=(u.cidadesAtuacao&&u.cidadesAtuacao.length)?u.cidadesAtuacao.join(', '):(u.cidade||'—');
-    return `<label class="pick" style="${pend?'opacity:.7':''}">
+    const searchKey=esc((u.name+' '+area.label).toLowerCase());
+    return `<label class="pick t-pesq-row" data-search="${searchKey}" style="${pend?'opacity:.7':''}">
       <input type="checkbox" class="t-pesq" value="${esc(u.name)}" ${on?'checked':''} ${pend?'disabled':''}>
       <div class="avatar" style="width:30px;height:30px;font-size:11px">${esc(u.name).split(' ').map(n=>n[0]).join('')}</div>
       <div style="flex:1"><div style="font-weight:600;font-size:13px">${esc(u.name)}</div>
-        <div style="font-size:11px;color:var(--ink3)">${esc(regional)}</div></div>
+        <div style="font-size:11px;color:var(--ink3)">${esc(area.label)}</div></div>
+      ${area.match?'<span class="pill pill-green">● atua na área</span>':''}
       ${pend?'<span class="pill pill-amber">● aguardando aprovação</span>':''}</label>`;
   }).join(''):'<div class="empty">Nenhum pesquisador cadastrado ainda. Cadastre em Usuários → Pesquisadores.</div>';
   return head('Atribuir equipe — '+s.name,'Escolha pesquisadores cadastrados ou envie link de cadastro para novos',
@@ -1454,8 +1556,10 @@ PAGES['survey-team']=()=>{
   <div class="grid g2" style="align-items:start">
     <div class="card">
       <div class="card-t">Pesquisadores cadastrados</div>
-      <div class="card-d">Marque quem vai trabalhar nesta pesquisa</div>
-      <div class="picklist" style="grid-template-columns:1fr">${rows}</div>
+      <div class="card-d">Marque quem vai trabalhar nesta pesquisa — quem já atua na área aparece primeiro (${esc(areaNote)})</div>
+      ${pesqs.length?`<input class="inp" placeholder="Buscar por nome ou cidade…" id="team-search" oninput="teamFilterRows(this.value)" style="margin-bottom:10px">`:''}
+      <div class="picklist" id="team-picklist" style="grid-template-columns:1fr">${rows}</div>
+      <div class="empty" id="team-no-match" style="display:none">Nenhum pesquisador encontrado para essa busca.</div>
     </div>
     <div>
       <div class="card mb">
@@ -1482,6 +1586,20 @@ PAGES['survey-team']=()=>{
   </div>`;
 };
 function surveyTeam(idx){TEAM_IDX=idx;go('survey-team');}
+/* filtra a lista de pesquisadores por nome/cidade sem re-renderizar (senão
+   perderia o que já estava marcado enquanto a pessoa digita) */
+function teamFilterRows(q){
+  const qq=(q||'').trim().toLowerCase();
+  const rows=[...document.querySelectorAll('#team-picklist .t-pesq-row')];
+  let visible=0;
+  rows.forEach(row=>{
+    const show=!qq||(row.dataset.search||'').includes(qq);
+    row.style.display=show?'':'none';
+    if(show)visible++;
+  });
+  const noMatch=document.getElementById('team-no-match');
+  if(noMatch)noMatch.style.display=visible?'none':'';
+}
 async function teamSave(){
   const s=SURVEYS[TEAM_IDX];if(!s)return;
   const names=[...document.querySelectorAll('.t-pesq:checked')].map(c=>c.value);
@@ -2016,35 +2134,31 @@ async function auditToggleCalibration(id){
   renderAudit(SURVEYS.findIndex(s=>s.id===e.surveyId));
 }
 
-/* ============ APP COLLECT (mobile) ============ */
-PAGES['app-collect']=()=>head('Coletar (app)','Versão de campo · georreferenciamento obrigatório · envio direto ao servidor')+`
-  <div style="display:flex;gap:30px;flex-wrap:wrap;align-items:flex-start">
-    <div class="phone">
-      <div class="phone-screen">
-        <div class="phone-status"><span>9:41</span><span id="acollectSurveyLabel">Pesquisa ▾</span><span>◖ 87%</span></div>
-        <div class="phone-body">
-          <div id="geoStatus" class="offline-banner">🛰️ Verificando localização…</div>
-          <div id="acollectSurveyPicker"></div>
-          <div id="acollectQuotas"><div class="empty" style="padding:10px 0">Carregando cotas…</div></div>
-          <div id="acollectMsg"></div>
-          <button id="startCollectBtn" class="btn-primary" style="height:40px;margin-top:12px;font-size:14px" disabled onclick="acollectStart()">▶ Iniciar coleta</button>
-          <div id="geoHint" style="font-size:10.5px;color:var(--ink3);text-align:center;margin-top:6px">Ative a localização para liberar a coleta</div>
-        </div>
-        <div class="phone-tabbar">
-          <div class="phone-tab on"><span class="pt-ico">▶</span>Coletar</div>
-          <div class="phone-tab"><span class="pt-ico">↻</span>Sincronizar</div>
-          <div class="phone-tab"><span class="pt-ico">$</span>Ganhos</div>
-          <div class="phone-tab"><span class="pt-ico">☺</span>Perfil</div>
-        </div>
-      </div>
+/* ============ APP COLLECT (mobile) ============
+   Esta é a tela que o pesquisador usa de verdade, no celular dele, em
+   campo — por isso é um cartão normal, em largura cheia, sem a moldura
+   decorativa de "celular dentro da tela" que existia antes (fazia sentido
+   só como mockup visto num computador; no celular de verdade virava um
+   celular-dentro-de-celular minúsculo e ilegível). */
+PAGES['app-collect']=()=>head('Coletar (app)','Georreferenciamento obrigatório · envio direto ao servidor')+`
+  <div class="collect-app-grid">
+    <div class="card collect-app-main">
+      <div id="acollectSurveyLabelWrap" class="card-t" style="margin-bottom:10px">Pesquisa: <span id="acollectSurveyLabel">—</span></div>
+      <div id="geoStatus" class="offline-banner">🛰️ Verificando localização…</div>
+      <div id="acollectSurveyPicker"></div>
+      <div id="acollectQuotas"><div class="empty" style="padding:10px 0">Carregando cotas…</div></div>
+      <div id="acollectForm"></div>
+      <div id="acollectMsg"></div>
+      <button id="startCollectBtn" class="btn-primary" style="height:44px;margin-top:12px;font-size:14px" disabled onclick="acollectStart()">▶ Iniciar coleta</button>
+      <div id="geoHint" style="font-size:11px;color:var(--ink3);text-align:center;margin-top:6px">Ative a localização para liberar a coleta</div>
     </div>
-    <div style="flex:1;min-width:280px">
+    <div>
       <div class="card mb">
         <div class="card-t">📍 Georreferenciamento obrigatório</div>
         <div class="card-d">O app pede permissão de localização assim que abre. Sem o GPS ativo, o botão "Iniciar coleta" fica bloqueado.</div>
         <ul class="checklist" style="margin-top:2px">
           <li><span class="ck">✓</span>Localização é exigida antes de iniciar qualquer entrevista, para qualquer cota</li>
-          <li><span class="ck">✓</span>Coordenadas, horário e cota ficam gravados de verdade no banco assim que a coleta é enviada</li>
+          <li><span class="ck">✓</span>Coordenadas, horário, cota e as respostas de verdade ficam gravadas no banco assim que a coleta é enviada — é isso que alimenta Relatórios e Resultados</li>
           <li><span class="ck">✓</span>O pesquisador só enxerga e escolhe as cotas desta pesquisa que ainda faltam</li>
           <li><span class="ck">✓</span>Entrevista muito rápida (menos de 1 min entre iniciar e enviar) é sinalizada para a auditoria</li>
         </ul>
@@ -2086,7 +2200,7 @@ function surveyQuotas(s){
       if(pct==null)return;
       const oi=+oiStr;
       const label=(q.opts&&q.opts[oi])||('Opção '+(oi+1));
-      out.push({label,pct,target:Math.max(1,Math.round(sample*pct/100))});
+      out.push({label,pct,target:Math.max(1,Math.round(sample*pct/100)),questionDbId:q.dbId,questionType:q.type});
     });
   });
   return out;
@@ -2095,7 +2209,9 @@ function surveyQuotas(s){
 let ACOLLECT_SURVEY_ID=null,ACOLLECT_QUOTA_COUNTS={},ACOLLECT_QUOTA_LIST=[];
 let ACOLLECT_SELECTED_QUOTA=null,ACOLLECT_IN_PROGRESS=false,ACOLLECT_SUBMITTING=false,ACOLLECT_STARTED_AT=null;
 let ACOLLECT_TICK=null;
+let ACOLLECT_ANSWERS={}; /* {questionDbId: {value, locked}} — respostas de verdade da entrevista em andamento */
 const ACOLLECT_MIN_SECONDS=60; /* entrevista concluída mais rápido que isso é sinalizada na auditoria */
+const ACOLLECT_SCALE_MAX={scale:5,scale10:10,nps:10}; /* nps vai de 0 a 10 (11 pontos) */
 
 async function initGeoCollect(){
   requestGeo();
@@ -2192,6 +2308,79 @@ function acollectSelectQuotaIdx(qi){
   ACOLLECT_SELECTED_QUOTA=q.label;
   renderAcollectQuotas();
 }
+
+/* ---- questionário de verdade: uma vez iniciada a entrevista, o pesquisador
+   responde as perguntas reais desta pesquisa (a pergunta correspondente à
+   cota escolhida já vem pré-preenchida e travada, para não haver contradição
+   entre a cota escolhida e a resposta) ---- */
+function acollectSetAnswer(qDbId,value,rerenderForm){
+  ACOLLECT_ANSWERS[qDbId]={...(ACOLLECT_ANSWERS[qDbId]||{}),value};
+  /* botões de escala precisam de um novo render para mostrar qual ficou
+     marcado; campos de texto/número/data NÃO são re-renderizados aqui para
+     não perder o foco/cursor a cada tecla digitada — o próprio campo já
+     mostra o que foi digitado sozinho */
+  if(rerenderForm)renderAcollectForm();
+  renderAcollectActionState();
+}
+function acollectToggleMultiAnswer(qDbId,label){
+  const cur=(ACOLLECT_ANSWERS[qDbId]&&Array.isArray(ACOLLECT_ANSWERS[qDbId].value))?ACOLLECT_ANSWERS[qDbId].value.slice():[];
+  const i=cur.indexOf(label);
+  if(i>=0)cur.splice(i,1);else cur.push(label);
+  ACOLLECT_ANSWERS[qDbId]={value:cur};
+  renderAcollectActionState();
+}
+/* perguntas ainda sem resposta (todas exceto "resposta aberta", que é
+   opcional) — usado para travar o botão "Concluir e enviar" */
+function acollectMissingRequired(){
+  const s=SURVEYS.find(x=>x.id===ACOLLECT_SURVEY_ID);
+  if(!s)return[];
+  return (s.questions||[]).filter(q=>q.type!=='open').filter(q=>{
+    if(!q.dbId)return false; // pergunta sem id real (não deveria acontecer) — não trava o envio por ela
+    const a=ACOLLECT_ANSWERS[q.dbId];
+    if(!a)return true;
+    if(Array.isArray(a.value))return a.value.length===0;
+    return a.value===''||a.value==null;
+  });
+}
+function renderAcollectForm(){
+  const el=document.getElementById('acollectForm');
+  if(!el)return;
+  if(!ACOLLECT_IN_PROGRESS){el.innerHTML='';return;}
+  const s=SURVEYS.find(x=>x.id===ACOLLECT_SURVEY_ID);
+  if(!s){el.innerHTML='';return;}
+  const qs=(s.questions||[]).filter(q=>q.dbId);
+  el.innerHTML='<div style="font-weight:700;font-size:13px;margin:12px 0 4px">Questionário</div>'+
+    qs.map(q=>{
+      const a=ACOLLECT_ANSWERS[q.dbId];
+      const locked=a&&a.locked;
+      let body='';
+      if(q.type==='single'){
+        body=(q.opts||[]).map(opt=>`<label style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:12px;${locked?'opacity:.7':''}">
+          <input type="radio" name="acq-${q.dbId}" ${a&&a.value===opt?'checked':''} ${locked?'disabled':''} onchange="acollectSetAnswer('${q.dbId}','${esc(opt).replace(/'/g,"\\'")}')"> ${esc(opt)}</label>`).join('');
+      }else if(q.type==='multi'){
+        body=(q.opts||[]).map(opt=>{
+          const checked=a&&Array.isArray(a.value)&&a.value.includes(opt);
+          return `<label style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:12px">
+          <input type="checkbox" ${checked?'checked':''} onchange="acollectToggleMultiAnswer('${q.dbId}','${esc(opt).replace(/'/g,"\\'")}')"> ${esc(opt)}</label>`;
+        }).join('');
+      }else if(q.type==='scale'||q.type==='scale10'||q.type==='nps'){
+        const max=ACOLLECT_SCALE_MAX[q.type]||5;
+        const min=q.type==='nps'?0:1;
+        const opts=[];for(let n=min;n<=max;n++)opts.push(n);
+        body=`<div style="display:flex;flex-wrap:wrap;gap:5px">${opts.map(n=>`<button type="button" class="btn-ghost" style="padding:5px 9px;font-size:11.5px;${a&&a.value===n?'background:var(--accent);color:#fff':''}" onclick="acollectSetAnswer('${q.dbId}',${n},true)">${n}</button>`).join('')}</div>`;
+      }else if(q.type==='number'){
+        body=`<input class="inp" type="number" style="height:32px" value="${a&&a.value!=null?a.value:''}" oninput="acollectSetAnswer('${q.dbId}',this.value===''?'':+this.value)">`;
+      }else if(q.type==='date'){
+        body=`<input class="inp" type="date" style="height:32px" value="${a&&a.value?a.value:''}" onchange="acollectSetAnswer('${q.dbId}',this.value)">`;
+      }else{ // open
+        body=`<textarea class="inp" rows="2" style="font-size:12px" oninput="acollectSetAnswer('${q.dbId}',this.value)">${esc(a&&a.value?a.value:'')}</textarea>`;
+      }
+      return `<div class="q-card" style="padding:9px 10px;margin-bottom:7px">
+        <div style="font-size:12px;font-weight:600;margin-bottom:5px">${esc(q.text||'(pergunta sem texto)')}${locked?' <span style="color:var(--teal);font-weight:400">· definida pela cota escolhida</span>':''}</div>
+        ${body}
+      </div>`;
+    }).join('');
+}
 function acollectElapsedLabel(){
   if(!ACOLLECT_STARTED_AT)return'';
   const s=Math.max(0,Math.round((Date.now()-ACOLLECT_STARTED_AT)/1000));
@@ -2220,8 +2409,11 @@ function renderAcollectActionState(){
       actionsEl.id='acollectActions';
       btn.parentNode.insertBefore(actionsEl,btn);
     }
+    const missing=acollectMissingRequired().length;
+    const submitBlocked=ACOLLECT_SUBMITTING||missing>0;
     actionsEl.innerHTML=`<div class="online-banner" style="margin-bottom:8px">▶ Entrevista em andamento — ${acollectElapsedLabel()}</div>
-      <button class="btn-primary" style="height:40px;font-size:14px;width:100%" ${ACOLLECT_SUBMITTING?'disabled':''} onclick="acollectSubmit()">${ACOLLECT_SUBMITTING?'Enviando…':'✓ Concluir e enviar'}</button>
+      ${missing>0?`<div style="font-size:11.5px;color:var(--ink3);margin-bottom:6px">Faltam responder ${missing} pergunta${missing>1?'s':''}</div>`:''}
+      <button class="btn-primary" style="height:40px;font-size:14px;width:100%;${submitBlocked?'opacity:.5':''}" ${submitBlocked?'disabled':''} onclick="acollectSubmit()">${ACOLLECT_SUBMITTING?'Enviando…':'✓ Concluir e enviar'}</button>
       <button class="btn-ghost" style="width:100%;margin-top:6px" ${ACOLLECT_SUBMITTING?'disabled':''} onclick="acollectCancel()">Cancelar</button>`;
     if(hint)hint.textContent='';
     acollectStartTicking();
@@ -2240,13 +2432,22 @@ function acollectStart(){
   if(ACOLLECT_SELECTED_QUOTA===null||ACOLLECT_SELECTED_QUOTA===undefined)return;
   ACOLLECT_IN_PROGRESS=true;
   ACOLLECT_STARTED_AT=Date.now();
+  ACOLLECT_ANSWERS={};
+  const quotaEntry=ACOLLECT_QUOTA_LIST.find(q=>q.label===ACOLLECT_SELECTED_QUOTA);
+  if(quotaEntry&&quotaEntry.questionDbId){
+    ACOLLECT_ANSWERS[quotaEntry.questionDbId]={value:ACOLLECT_SELECTED_QUOTA,locked:true};
+  }
+  renderAcollectForm();
   renderAcollectActionState();
 }
 function acollectCancel(){
   ACOLLECT_IN_PROGRESS=false;
   ACOLLECT_STARTED_AT=null;
   ACOLLECT_SUBMITTING=false;
+  ACOLLECT_ANSWERS={};
   if(ACOLLECT_TICK){clearInterval(ACOLLECT_TICK);ACOLLECT_TICK=null;}
+  const formEl=document.getElementById('acollectForm');
+  if(formEl)formEl.innerHTML='';
   renderAcollectQuotas();
 }
 async function loadCollectEventsForced(){
@@ -2255,22 +2456,47 @@ async function loadCollectEventsForced(){
     if(!error){COLLECT_EVENTS=(data||[]).map(collectionEventRowToEntry);COLLECT_EVENTS_LOADED=true;}
   }catch(ex){ /* mantém os dados já carregados se a nova busca falhar */ }
 }
-/* envia a entrevista de verdade: geolocalização + horário + cota escolhida
-   viram uma linha real em collection_events. Sinaliza automaticamente se a
-   entrevista foi concluída rápido demais para ter sido aplicada de verdade
-   (menos de ACOLLECT_MIN_SECONDS entre "Iniciar" e "Concluir e enviar") —
-   fica visível para o staff na aba Auditoria. */
+/* monta as linhas de collection_answers a partir de ACOLLECT_ANSWERS —
+   múltipla escolha vira uma linha por opção marcada; escala/número usam
+   value_number; o resto (única escolha/data/aberta) usa value_text.
+   Perguntas abertas sem resposta simplesmente não geram linha (são opcionais). */
+function acollectBuildAnswerRows(eventId){
+  const s=SURVEYS.find(x=>x.id===ACOLLECT_SURVEY_ID);
+  if(!s)return[];
+  const rows=[];
+  (s.questions||[]).filter(q=>q.dbId).forEach(q=>{
+    const a=ACOLLECT_ANSWERS[q.dbId];
+    if(!a||a.value===''||a.value==null||(Array.isArray(a.value)&&a.value.length===0))return;
+    if(q.type==='multi'){
+      a.value.forEach(label=>rows.push({collection_event_id:eventId,question_id:q.dbId,value_text:label}));
+    }else if(q.type==='scale'||q.type==='scale10'||q.type==='nps'||q.type==='number'){
+      rows.push({collection_event_id:eventId,question_id:q.dbId,value_number:a.value});
+    }else{ // single, date, open
+      rows.push({collection_event_id:eventId,question_id:q.dbId,value_text:String(a.value)});
+    }
+  });
+  return rows;
+}
+/* envia a entrevista de verdade: geolocalização + horário + cota escolhida +
+   as respostas reais do questionário viram linhas reais em collection_events
+   e collection_answers. Sinaliza automaticamente se a entrevista foi
+   concluída rápido demais para ter sido aplicada de verdade (menos de
+   ACOLLECT_MIN_SECONDS entre "Iniciar" e "Concluir e enviar") — fica visível
+   para o staff na aba Auditoria. */
 async function acollectSubmit(){
   if(!ACOLLECT_IN_PROGRESS||ACOLLECT_SUBMITTING)return;
   if(GEO.status!=='granted'){alert('A localização foi perdida — aguarde reconectar antes de enviar.');return;}
+  const missing=acollectMissingRequired();
+  if(missing.length){alert('Faltam responder '+missing.length+' pergunta(s) antes de enviar.');return;}
   ACOLLECT_SUBMITTING=true;
   renderAcollectActionState();
   const elapsedMs=Date.now()-ACOLLECT_STARTED_AT;
   const flags=[];
   if(elapsedMs<ACOLLECT_MIN_SECONDS*1000)flags.push('Tempo de aplicação muito curto');
   const quotaLabel=ACOLLECT_SELECTED_QUOTA||null;
+  let eventId=null;
   try{
-    const {error}=await sb.from('collection_events').insert({
+    const {data,error}=await sb.from('collection_events').insert({
       survey_id:ACOLLECT_SURVEY_ID,
       researcher_id:CURRENT_PROFILE.id,
       quota_label:quotaLabel,
@@ -2280,16 +2506,31 @@ async function acollectSubmit(){
       flags,
       status:'valid',
       is_calibration:false,
-    });
+    }).select().single();
     if(error)throw new Error(error.message);
+    eventId=data.id;
   }catch(ex){
     ACOLLECT_SUBMITTING=false;
     renderAcollectActionState();
     alert('Não foi possível enviar a coleta agora ('+ex.message+'). A entrevista continua em andamento — tente enviar de novo quando tiver internet.');
     return;
   }
-  ACOLLECT_IN_PROGRESS=false;ACOLLECT_SUBMITTING=false;ACOLLECT_STARTED_AT=null;ACOLLECT_SELECTED_QUOTA=null;
+  try{
+    const answerRows=acollectBuildAnswerRows(eventId);
+    if(answerRows.length){
+      const {error:ansError}=await sb.from('collection_answers').insert(answerRows);
+      if(ansError)throw new Error(ansError.message);
+    }
+  }catch(ex){
+    // a entrevista (collection_events) já foi gravada — não dá para desfazer
+    // (o pesquisador não tem permissão para apagar coletas), então avisamos
+    // claramente em vez de tentar reverter.
+    alert('A coleta foi enviada, mas houve um problema ao salvar as respostas do questionário ('+ex.message+'). Avise o coordenador.');
+  }
+  ACOLLECT_IN_PROGRESS=false;ACOLLECT_SUBMITTING=false;ACOLLECT_STARTED_AT=null;ACOLLECT_SELECTED_QUOTA=null;ACOLLECT_ANSWERS={};
   if(ACOLLECT_TICK){clearInterval(ACOLLECT_TICK);ACOLLECT_TICK=null;}
+  const formEl=document.getElementById('acollectForm');
+  if(formEl)formEl.innerHTML='';
   PAYMENTS_LOADED=false; // financeiro recalculado no banco (gatilho) — recarrega na próxima visita
   await loadCollectEventsForced();
   ACOLLECT_QUOTA_COUNTS=await loadQuotaCounts(ACOLLECT_SURVEY_ID);
@@ -2359,28 +2600,57 @@ function renderGeoLog(){
 }
 
 /* ============ REPORTS ============ */
-PAGES.reports=()=>head('Relatórios','Tabulação, cruzamento de variáveis e gráficos personalizados',
-  '<button class="btn btn-out" onclick="alert(\'Protótipo: exportar PDF / PPTX / Excel\')">Exportar</button><button class="btn btn-fill" onclick="alert(\'Protótipo: salvar relatório\')">+ Novo cruzamento</button>')+`
+let RP_SURVEY_ID=null,RP_QUESTION_DBID=null;
+function reportsAvailableSurveys(){
+  return SURVEYS.filter(s=>reportsQuestionsForSurvey(s).length>0);
+}
+PAGES.reports=()=>{
+  if(!SURVEYS_LOADED)loadSurveysIfNeeded();
+  if(!COLLECT_EVENTS_LOADED)loadCollectEventsIfNeeded();
+  const surveys=reportsAvailableSurveys();
+  if(!surveys.length){
+    return head('Relatórios','Distribuição real das respostas, pergunta a pergunta')+
+      `<div class="card"><div class="empty">Nenhuma pesquisa com perguntas configuradas ainda.</div></div>`;
+  }
+  if(RP_SURVEY_ID==null||!surveys.some(s=>s.id===RP_SURVEY_ID))RP_SURVEY_ID=surveys[0].id;
+  const survey=surveys.find(s=>s.id===RP_SURVEY_ID);
+  const qs=reportsQuestionsForSurvey(survey);
+  if(RP_QUESTION_DBID==null||!qs.some(q=>q.dbId===RP_QUESTION_DBID))RP_QUESTION_DBID=qs[0].dbId;
+  return head('Relatórios','Distribuição real das respostas, pergunta a pergunta')+`
   <div class="card mb">
-    <div class="card-t">Montar cruzamento</div>
-    <div class="card-d">Escolha até três variáveis para gerar a tabulação e o gráfico</div>
-    <div class="field-row" style="grid-template-columns:1fr 1fr 1fr 1fr">
-      <div><label class="lbl">Variável (linha)</label>
-        <select class="inp" id="rp-x" onchange="renderReport()">
-          <option>Intenção de voto</option><option>Avaliação da gestão</option><option>Rejeição</option></select></div>
-      <div><label class="lbl">Cruzar com (coluna)</label>
-        <select class="inp" id="rp-y" onchange="renderReport()">
-          <option>Faixa etária</option><option>Sexo</option><option>Macrorregião</option><option>Escolaridade</option></select></div>
-      <div><label class="lbl">3ª variável (segmentar) <span style="color:var(--ink3);font-weight:400">opcional</span></label>
-        <select class="inp" id="rp-z" onchange="renderReport()">
-          <option value="">— nenhuma —</option><option>Sexo</option><option>Macrorregião</option><option>Escolaridade</option></select></div>
-      <div><label class="lbl">Tipo de gráfico</label>
-        <select class="inp" id="rp-type" onchange="renderReport()">
-          <option value="bar">Barras agrupadas</option><option value="bar-stack">Barras empilhadas</option><option value="line">Linhas</option><option value="pie">Pizza</option></select></div>
+    <div class="field-row" style="grid-template-columns:1fr 1fr">
+      <div><label class="lbl">Pesquisa</label>
+        <select class="inp" id="rp-survey" onchange="reportsPickSurvey(this.value)">
+          ${surveys.map(s=>`<option value="${s.id}" ${s.id===RP_SURVEY_ID?'selected':''}>${esc(s.name)}</option>`).join('')}
+        </select></div>
+      <div><label class="lbl">Pergunta</label>
+        <select class="inp" id="rp-question" onchange="reportsPickQuestion(this.value)">
+          ${qs.map(q=>`<option value="${q.dbId}" ${q.dbId===RP_QUESTION_DBID?'selected':''}>${esc(q.text||'(pergunta sem texto)')}</option>`).join('')}
+        </select></div>
     </div>
   </div>
-  <div id="rp-output"></div>
-  <div class="callout" style="margin-top:16px"><b>Cruzamento de até 3 variáveis:</b> as duas primeiras formam a tabela (linha × coluna) e a 3ª segmenta o resultado, gerando um gráfico e uma tabela para cada categoria dela (ex.: Voto × Idade, separado por Sexo).</div>`;
+  <div id="rp-output"><div class="empty" style="padding:20px 0">Carregando…</div></div>
+  <div class="callout" style="margin-top:16px"><b>Distribuição real por pergunta:</b> o gráfico e a tabela mostram, para a pergunta escolhida, quantas e qual % das entrevistas válidas responderam cada opção (coletas reprovadas e de calibração não entram na conta). Perguntas de resposta aberta (texto livre) não aparecem aqui. Cruzamento entre duas ou mais perguntas ao mesmo tempo (ex.: voto × idade × sexo) ainda não está disponível — é a próxima etapa planejada.</div>`;
+};
+function reportsPickSurvey(id){RP_SURVEY_ID=id;RP_QUESTION_DBID=null;go('reports');}
+function reportsPickQuestion(id){RP_QUESTION_DBID=id;reportsLoadAndRender();}
+let _reportChart;
+async function reportsLoadAndRender(){
+  const out=document.getElementById('rp-output');
+  if(!out)return;
+  if(!RP_SURVEY_ID||!RP_QUESTION_DBID){out.innerHTML='';return;}
+  out.innerHTML='<div class="empty" style="padding:20px 0">Carregando…</div>';
+  let rows;
+  try{
+    const {data,error}=await sb.rpc('survey_answer_distribution',{p_survey_id:RP_SURVEY_ID,p_question_id:RP_QUESTION_DBID});
+    if(error)throw new Error(error.message);
+    rows=data||[];
+  }catch(ex){
+    out.innerHTML='<div class="callout">Não foi possível carregar a distribuição agora ('+esc(ex.message)+').</div>';
+    return;
+  }
+  renderDistributionOutput(out,rows,'rp-canvas',c=>{_reportChart=c;},_reportChart);
+}
 
 /* ============ USERS (todos os perfis: pesquisador, cliente, adm, vendedor, indicador) ============ */
 let USERS=[
@@ -3889,11 +4159,11 @@ window._afterRender=function(key){
   }
   if(key==='dashboard')drawDash();
   if(key==='app-collect')initGeoCollect();
-  if(key==='client-results')drawClientResults();
+  if(key==='client-results')clientResultsLoadAndRender();
   if(key==='my-earnings')renderMyRejected();
   if(key==='sample'){calcSample();}
   if(key==='quotas'){quotaSeg(document.querySelector('#quotaSeg button'),'sexo');}
-  if(key==='reports'){renderReport();}
+  if(key==='reports'){reportsLoadAndRender();}
   if(key==='permissions'){drawPerms();}
   if(key==='finance'){
     drawFin();
@@ -3958,92 +4228,6 @@ function quotaSeg(btn,which){
     regiao:[['Central',640,890,'#2563eb'],['Zona da Mata',410,560,'#059669'],['Triângulo',528,610,'#ea580c'],['Norte',430,640,'#7c3aed'],['Vale do Rio Doce',390,500,'#d97706'],['Demais',449,1000,'#dc2626']]
   };
   document.getElementById('quotaBody').innerHTML=sets[which].map(r=>quota(r[0],r[1],r[2],r[3])).join('');
-}
-
-/* reports */
-let _reportChart;
-let _reportCharts=[];
-const RP_SEGMENTS={
-  'Sexo':['Masculino','Feminino'],
-  'Macrorregião':['Central','Triângulo','Norte'],
-  'Escolaridade':['Fundamental','Médio','Superior'],
-};
-function rpColCats(y){
-  return ({'Faixa etária':['16–24','25–44','45–59','60+'],'Sexo':['Masculino','Feminino'],
-    'Macrorregião':['Central','Triângulo','Norte','Sul'],'Escolaridade':['Fundamental','Médio','Superior']})[y]||['A','B','C','D'];
-}
-function rpSeries(x){
-  return ({
-    'Intenção de voto':[
-      {label:'Candidato A',color:'#2563eb'},{label:'Candidato B',color:'#ea580c'},
-      {label:'Candidato C',color:'#059669'},{label:'Branco/Nulo/NS',color:'#64748b'}],
-    'Avaliação da gestão':[
-      {label:'Ótima',color:'#059669'},{label:'Boa',color:'#2563eb'},
-      {label:'Regular',color:'#d97706'},{label:'Ruim/Péssima',color:'#dc2626'}],
-    'Rejeição':[{label:'Rejeita',color:'#dc2626'},{label:'Não rejeita',color:'#059669'},{label:'Indiferente',color:'#64748b'}],
-  })[x]||[{label:'A',color:'#2563eb'},{label:'B',color:'#ea580c'}];
-}
-// gera dados pseudo-aleatórios estáveis a partir de uma semente textual
-function rpData(seed,nSeries,nCats){
-  let h=0;for(let i=0;i<seed.length;i++)h=(h*31+seed.charCodeAt(i))&0xffffffff;
-  const rnd=()=>{h=(h*1103515245+12345)&0x7fffffff;return h/0x7fffffff;};
-  const cols=[];
-  for(let c=0;c<nCats;c++){
-    const raw=[];let tot=0;
-    for(let s=0;s<nSeries;s++){const v=10+Math.floor(rnd()*40);raw.push(v);tot+=v;}
-    cols.push(raw.map(v=>Math.round(v/tot*100)));
-  }
-  // transpor para [serie][cat]
-  const out=[];for(let s=0;s<nSeries;s++){out.push(cols.map(col=>col[s]));}
-  return out;
-}
-function renderReport(){
-  const x=document.getElementById('rp-x').value;
-  const y=document.getElementById('rp-y').value;
-  const z=document.getElementById('rp-z').value;
-  const type=document.getElementById('rp-type').value;
-  _reportCharts.forEach(ch=>{try{ch.destroy();}catch(e){}});_reportCharts=[];
-  const cats=rpColCats(y);
-  const baseSeries=rpSeries(x);
-  const segments=z?(RP_SEGMENTS[z]||['(todos)']):[null];
-  const out=document.getElementById('rp-output');
-  const title=z?`${x} × ${y}, segmentado por ${z}`:`${x} × ${y}`;
-  let html=`<div class="card mb"><div class="card-t">${title}</div>
-    <div class="card-d">Base: 2.847 entrevistas válidas · margem ± 2,3%${z?' · '+segments.length+' segmentos':''}</div></div>`;
-  segments.forEach((seg,si)=>{
-    const series=baseSeries.map(s=>({...s,data:[]}));
-    const d=rpData(x+'|'+y+'|'+(seg||'')+'|'+si,baseSeries.length,cats.length);
-    series.forEach((s,i)=>s.data=d[i]);
-    const cid='rep-canvas-'+si;
-    const segTitle=seg?`<span class="pill pill-blue" style="margin-left:8px">${z}: ${seg}</span>`:'';
-    let tbl='<table><thead><tr><th></th>'+cats.map(c=>`<th>${c}</th>`).join('')+'</tr></thead><tbody>';
-    series.forEach(s=>{tbl+=`<tr><td><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${s.color};margin-right:6px"></span>${s.label}</td>`+s.data.map(v=>`<td>${v}%</td>`).join('')+'</tr>';});
-    tbl+='</tbody></table>';
-    html+=`<div class="grid g2" style="margin-bottom:16px"><div class="card"><div class="card-t" style="font-size:13px">Gráfico ${segTitle}</div>
-      <div style="position:relative;height:280px"><canvas id="${cid}" role="img" aria-label="Gráfico de cruzamento"></canvas></div></div>
-      <div class="card"><div class="card-t" style="font-size:13px">Tabela ${segTitle}</div>
-      <div style="margin-top:6px">${tbl}</div></div></div>`;
-    // guardar para desenhar após inserir no DOM
-    series._cid=cid;series._type=type;series._cats=cats;
-    segments[si]={series,cid,type,cats};
-  });
-  out.innerHTML=html;
-  // desenhar os gráficos
-  segments.forEach(seg=>{
-    if(!seg||!seg.cid)return;
-    const cv=document.getElementById(seg.cid);if(!cv)return;
-    const t=seg.type,series=seg.series,cats=seg.cats;
-    const cfg=(t==='pie')?{
-      type:'pie',data:{labels:series.map(s=>s.label),datasets:[{data:series.map(s=>s.data[1]||s.data[0]),backgroundColor:series.map(s=>s.color)}]},
-      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right'}}}
-    }:{
-      type:t==='line'?'line':'bar',
-      data:{labels:cats,datasets:series.map(s=>({label:s.label,data:s.data,backgroundColor:s.color,borderColor:s.color,borderRadius:5,fill:false,tension:.3,borderWidth:2,stack:t==='bar-stack'?'s':undefined}))},
-      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:12,font:{size:11}}}},
-        scales:{x:{stacked:t==='bar-stack',grid:{display:false}},y:{stacked:t==='bar-stack',beginAtZero:true,grid:{color:'#e2e8f0'},ticks:{callback:v=>v+'%'}}}}
-    };
-    _reportCharts.push(new Chart(cv,cfg));
-  });
 }
 
 /* permissions matrix — uma coluna por perfil (PERM_ROLES), cada linha é {name, [role]:0|1} */

@@ -38,6 +38,7 @@
 <!-- ===================== APP ===================== -->
 <div id="app">
   <div class="topbar">
+    <button class="btn-ghost menu-toggle" id="menuToggle" onclick="toggleSidebar()" aria-label="Abrir menu">☰</button>
     <a href="index.html"><img src="assets/logo-wide.png" alt="PesquisaPro" class="brand-logo brand-logo-topbar"></a>
     <div class="tb-spacer"></div>
     <button class="btn-ghost" onclick="alert('Protótipo: troca de pesquisa/campanha')">Trocar pesquisa ▾</button>
@@ -49,6 +50,7 @@
   </div>
 
   <div class="sidebar" id="sidebar"></div>
+  <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="closeSidebar()"></div>
 
   <div class="main" id="main"></div>
 </div>

@@ -22,26 +22,16 @@
 
     <div class="field">
       <label>E-mail</label>
-      <input type="text" value="admin@pesquisapro.com.br" id="li-email">
+      <input type="text" placeholder="seu@email.com" id="li-email">
     </div>
     <div class="field">
       <label>Senha</label>
-      <input type="password" value="••••••••" id="li-pass">
+      <input type="password" placeholder="Sua senha" id="li-pass">
     </div>
+    <div id="li-error" class="login-error" style="display:none;color:var(--red,#dc2626);font-size:12.5px;margin:-6px 0 10px"></div>
 
-    <div class="role-pick">
-      <div class="rp-label">Entrar como (demonstração)</div>
-      <div class="role-grid" id="roleGrid">
-        <button class="role-opt on" data-role="admin"><div class="ro-t">Admin Master</div><div class="ro-d">Acesso total</div></button>
-        <button class="role-opt" data-role="coord"><div class="ro-t">Coordenador</div><div class="ro-d">Gestão de campo</div></button>
-        <button class="role-opt" data-role="gerente"><div class="ro-t">Gerente</div><div class="ro-d">Relatórios e metas</div></button>
-        <button class="role-opt" data-role="pesq"><div class="ro-t">Pesquisador</div><div class="ro-d">Coleta no app</div></button>
-        <button class="role-opt" data-role="cliente"><div class="ro-t">Cliente</div><div class="ro-d">Acompanhar pesquisa</div></button>
-      </div>
-    </div>
-
-    <button class="btn-primary" onclick="doLogin()">Entrar</button>
-    <p class="login-foot">Protótipo de demonstração · dados fictícios</p>
+    <button class="btn-primary" id="li-btn" onclick="doLogin()">Entrar</button>
+    <p class="login-foot">Acesso restrito · fale com o administrador para criar sua conta</p>
   </div>
 </div>
 
@@ -71,6 +61,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <!-- Dados de referência (estados e municípios do Brasil) -->
 <script src="br-localidades.js"></script>
+<!-- Conexão com o banco de dados (Supabase) -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-client.js"></script>
 <!-- Código principal do protótipo -->
 <script src="app.js"></script>
 </body>

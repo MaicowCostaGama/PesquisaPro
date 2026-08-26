@@ -35,28 +35,92 @@ const NAV_META={
   'client-results':{ico:'◫',label:'Resultados',group:'Minha pesquisa'},
 };
 
-function doLogin(){
-  const r=ROLES[selectedRole];
+/* ============ AUTENTICAÇÃO (Supabase) ============
+   selectedRole continua existindo (várias partes do app já usam essa
+   variável), só que agora ela é preenchida com o "role" de verdade
+   vindo da tabela "profiles" do banco, depois de um login real. */
+let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
+
+const ROLE_NAV={
+  admin:['dashboard','new-survey','surveys','surveys-done','sample','collect','reports','users','permissions','finance','contracts','contract-template','company'],
+  coord:['dashboard','surveys','surveys-done','collect','reports','finance'],
+  gerente:['dashboard','sample','reports','finance'],
+  pesq:['dashboard-pesq','app-collect','my-earnings','my-contract'],
+  cliente:['client-progress','client-results'],
+  admpro:['dashboard','new-survey','surveys','surveys-done','sample','collect','reports','users','permissions','finance','contracts','contract-template','company'],
+  vendedor:['dashboard'],
+  indicador:['dashboard'],
+};
+
+function initialsOf(name){
+  return (name||'').split(' ').filter(Boolean).slice(0,2).map(p=>p[0].toUpperCase()).join('')||'?';
+}
+
+async function doLogin(){
+  const email=(document.getElementById('li-email').value||'').trim();
+  const pass=document.getElementById('li-pass').value||'';
+  const errEl=document.getElementById('li-error');
+  const btn=document.getElementById('li-btn');
+  errEl.style.display='none';
+  if(!email||!pass){errEl.textContent='Preencha e-mail e senha.';errEl.style.display='block';return;}
+  btn.disabled=true;btn.textContent='Entrando…';
+  try{
+    const {data,error}=await sb.auth.signInWithPassword({email,password:pass});
+    if(error||!data.user){
+      errEl.textContent='E-mail ou senha incorretos.';
+      errEl.style.display='block';
+      return;
+    }
+    await afterLogin(data.user);
+  }catch(ex){
+    errEl.textContent='Não foi possível conectar ao servidor. Tente novamente em instantes.';
+    errEl.style.display='block';
+  }finally{
+    btn.disabled=false;btn.textContent='Entrar';
+  }
+}
+
+async function afterLogin(user){
+  const {data:profile,error}=await sb.from('profiles').select('*').eq('id',user.id).single();
+  if(error||!profile){
+    const errEl=document.getElementById('li-error');
+    errEl.textContent='Login feito, mas não encontramos seu perfil no sistema. Fale com o administrador.';
+    errEl.style.display='block';
+    await sb.auth.signOut();
+    return;
+  }
+  CURRENT_PROFILE=profile;
+  selectedRole=profile.role;
   document.getElementById('login').style.display='none';
   document.getElementById('app').classList.add('show');
-  document.getElementById('tbAvatar').textContent=r.initials;
-  document.getElementById('tbName').textContent=r.name;
-  document.getElementById('tbRole').textContent=r.role;
+  document.getElementById('tbAvatar').textContent=initialsOf(profile.name);
+  document.getElementById('tbName').textContent=profile.name;
+  document.getElementById('tbRole').textContent=ROLE_LABEL[profile.role]||profile.role;
   buildSidebar();
-  go(r.nav[0]);
+  const nav=ROLE_NAV[profile.role]||['dashboard'];
+  go(nav[0]);
 }
-function logout(){
+
+async function logout(){
+  await sb.auth.signOut();
+  CURRENT_PROFILE=null;
   document.getElementById('app').classList.remove('show');
   document.getElementById('login').style.display='flex';
+  document.getElementById('li-pass').value='';
 }
-document.getElementById('roleGrid').addEventListener('click',e=>{
-  const b=e.target.closest('.role-opt'); if(!b)return;
-  document.querySelectorAll('.role-opt').forEach(x=>x.classList.remove('on'));
-  b.classList.add('on'); selectedRole=b.dataset.role;
-});
+
+/* se já existir uma sessão válida (usuário não fechou o navegador), entra direto */
+(async function checkExistingSession(){
+  try{
+    const {data}=await sb.auth.getSession();
+    if(data&&data.session&&data.session.user){
+      await afterLogin(data.session.user);
+    }
+  }catch(ex){ /* sem sessão anterior ou sem conexão — fica na tela de login normalmente */ }
+})();
 
 function buildSidebar(){
-  const allow=ROLES[selectedRole].nav;
+  const allow=ROLE_NAV[selectedRole]||(ROLES[selectedRole]&&ROLES[selectedRole].nav)||[];
   const groups={};
   Object.keys(NAV_META).forEach(k=>{
     const m=NAV_META[k];
@@ -2901,7 +2965,7 @@ PAGES['my-earnings']=()=>head('Meus ganhos','Acompanhe seus pagamentos por formu
   </div>`;
 function renderMyRejected(){
   const el=document.getElementById('myRejected');if(!el)return;
-  const me=ROLES.pesq.name;
+  const me=(CURRENT_PROFILE&&CURRENT_PROFILE.name)||ROLES.pesq.name;
   const rej=COLLECT_EVENTS.filter(e=>e.name===me&&e.status==='rejected').sort((a,b)=>(b.rejectedAt||0)-(a.rejectedAt||0));
   if(!rej.length){el.innerHTML='<div class="empty">Nenhuma coleta reprovada até agora.</div>';return;}
   el.innerHTML=rej.map(e=>{

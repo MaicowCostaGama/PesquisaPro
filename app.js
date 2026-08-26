@@ -1911,6 +1911,22 @@ function stopCollectLive(){
 }
 
 const COLLECT_MAP_MAX_POINTS=120; /* cada coleta fica registrada no mapa (não só a mais recente); limite só por desempenho/legibilidade */
+/* dois estilos de fundo: "rua" (mapa vetorial moderno, sem key) e "satélite" (imagem de satélite) */
+const COLLECT_MAP_LAYERS={
+  street:{url:'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',opts:{maxZoom:19,subdomains:'abcd',attribution:'© OpenStreetMap, © CARTO'}},
+  sat:{url:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',opts:{maxZoom:19,attribution:'© Esri, Maxar, Earthstar Geographics'}}
+};
+let _collectMapKind='street',_collectMapTileLayer=null;
+function setCollectMapLayer(kind){
+  if(!_collectMap||!COLLECT_MAP_LAYERS[kind])return;
+  _collectMapKind=kind;
+  if(_collectMapTileLayer){try{_collectMap.removeLayer(_collectMapTileLayer);}catch(e){}}
+  const cfg=COLLECT_MAP_LAYERS[kind];
+  _collectMapTileLayer=L.tileLayer(cfg.url,cfg.opts).addTo(_collectMap);
+  _collectMapTileLayer.bringToBack();
+  const wrap=document.getElementById('collectMapLayerToggle');
+  if(wrap)wrap.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.layer===kind));
+}
 function renderCollectMap(idx){
   const mapEl=document.getElementById('collectMap');
   if(!mapEl)return;
@@ -1920,9 +1936,22 @@ function renderCollectMap(idx){
   }
   if(!_collectMap||_collectMap._container!==mapEl){
     if(_collectMap){try{_collectMap.remove();}catch(e){}}
+    _collectMapTileLayer=null;
     _collectMap=L.map(mapEl,{scrollWheelZoom:false}).setView([-18.5,-44.9],6);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18,attribution:'© OpenStreetMap'}).addTo(_collectMap);
+    setCollectMapLayer(_collectMapKind);
     _collectMarkerLayer=L.layerGroup().addTo(_collectMap);
+    const LayerToggle=L.Control.extend({
+      options:{position:'topright'},
+      onAdd:function(){
+        const div=L.DomUtil.create('div','map-layer-toggle');
+        div.id='collectMapLayerToggle';
+        div.innerHTML=`<button data-layer="street" class="${_collectMapKind==='street'?'on':''}">Mapa</button><button data-layer="sat" class="${_collectMapKind==='sat'?'on':''}">Satélite</button>`;
+        L.DomEvent.disableClickPropagation(div);
+        div.querySelectorAll('button').forEach(b=>{b.onclick=()=>setCollectMapLayer(b.dataset.layer);});
+        return div;
+      }
+    });
+    new LayerToggle().addTo(_collectMap);
   }
   _collectMarkerLayer.clearLayers();
   const s=SURVEYS[idx];if(!s)return;
@@ -1950,7 +1979,7 @@ function renderCollectMap(idx){
   const note=document.getElementById('collectMapNote');
   if(note)note.textContent=shown<total?`Mostrando as ${shown} coletas mais recentes de ${total}. Cada ponto é uma coleta — clique para ver detalhes.`:'Cada ponto no mapa é uma coleta registrada — clique para ver detalhes.';
   const pts=events.map(e=>[e.lat,e.lng]);
-  if(pts.length){try{_collectMap.fitBounds(pts,{padding:[50,50],maxZoom:9});}catch(e){}}
+  if(pts.length){try{_collectMap.fitBounds(pts,{padding:[50,50],maxZoom:16});}catch(e){}}
 }
 function buildMapPopup(e,isLatest){
   const statusExtra=e.status==='rejected'

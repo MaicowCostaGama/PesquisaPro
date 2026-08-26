@@ -509,3 +509,14 @@
     .page-head h1{font-size:19px}
     .g2,.field-row{grid-template-columns:1fr}
   }
+
+  /* ---------- MAPA AO VIVO (coleta de campo) ----------
+     controle "Mapa / Satélite" flutuante sobre o mapa Leaflet, no estilo
+     de apps de mapa modernos (pill com fundo branco e opção ativa em cor) */
+  .map-layer-toggle{display:flex;background:#fff;border-radius:10px;box-shadow:0 2px 10px rgba(15,23,42,.2);
+    overflow:hidden;font-family:var(--sans)}
+  .map-layer-toggle button{border:none;background:transparent;padding:7px 14px;font-size:12.5px;font-weight:600;
+    color:var(--ink3);cursor:pointer;transition:background .15s,color .15s;line-height:1.2}
+  .map-layer-toggle button+button{border-left:1px solid var(--line)}
+  .map-layer-toggle button.on{background:var(--teal);color:#fff}
+  .map-layer-toggle button:not(.on):hover{background:var(--bg)}

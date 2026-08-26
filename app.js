@@ -395,7 +395,7 @@ function fmtRelativo(iso){
 /* transforma a linha de `surveys` (+ perguntas/opções/clientes vinculados já
    carregados junto) na mesma forma de objeto que o assistente (WIZ) e as
    telas de pesquisa sempre usaram — assim o resto do código não muda. */
-function surveyRowToSnapshot(row,questionRows,clientCompanyNames){
+function surveyRowToSnapshot(row,questionRows,clientCompanyNames,teamNames){
   const quotas={},quotaOff={},remote={};
   const questions=(questionRows||[]).map((q,qi)=>{
     const localId=qi+1;
@@ -422,7 +422,7 @@ function surveyRowToSnapshot(row,questionRows,clientCompanyNames){
     formStarted:!!row.form_started,questions,quotas,quotaOff,remote,
     collected:row.collected||0,status:row.status||'rascunho',
     created:fmtRelativo(row.created_at),
-    team:[],coord:'',isNew:false,
+    team:teamNames||[],coord:'',isNew:false,
   };
 }
 function snapshotToSurveyRow(d){
@@ -473,29 +473,42 @@ async function syncSurveyClients(surveyId,companyNames){
     if(error)throw new Error('Não foi possível vincular os clientes: '+error.message);
   }
 }
+/* apaga e recria a equipe atribuída à pesquisa (os nomes vêm marcados na
+   tela "Atribuir equipe" — resolvidos aqui para o id real do pesquisador) */
+async function syncSurveyTeam(surveyId,researcherNames){
+  await sb.from('survey_team').delete().eq('survey_id',surveyId);
+  const ids=(researcherNames||[]).map(name=>{
+    const u=pesqUsers().find(x=>x.name===name);
+    return u&&u.id;
+  }).filter(Boolean);
+  if(ids.length){
+    const {error}=await sb.from('survey_team').insert(ids.map(id=>({survey_id:surveyId,researcher_id:id})));
+    if(error)throw new Error('Não foi possível salvar a equipe: '+error.message);
+  }
+}
+const SURVEY_JOIN_SELECT='*, survey_questions(*, survey_question_options(*)), survey_clients(client_id), survey_team(researcher_id)';
+function idsToClientCompanies(ids){return ids.map(id=>{const c=USERS.find(u=>u.id===id);return c?(c.company||c.name):null;}).filter(Boolean);}
+function idsToResearcherNames(ids){return ids.map(id=>{const u=USERS.find(x=>x.id===id);return u?u.name:null;}).filter(Boolean);}
 async function reloadSurveySnapshot(surveyId){
-  const {data,error}=await sb.from('surveys')
-    .select('*, survey_questions(*, survey_question_options(*)), survey_clients(client_id)')
-    .eq('id',surveyId).single();
+  const {data,error}=await sb.from('surveys').select(SURVEY_JOIN_SELECT).eq('id',surveyId).single();
   if(error||!data)throw new Error(error?error.message:'Pesquisa não encontrada depois de salvar.');
   const qRows=(data.survey_questions||[]).slice().sort((a,b)=>a.position-b.position);
-  const clientIds=(data.survey_clients||[]).map(sc=>sc.client_id);
-  const companyNames=clientIds.map(id=>{const c=USERS.find(u=>u.id===id);return c?(c.company||c.name):null;}).filter(Boolean);
-  return surveyRowToSnapshot(data,qRows,companyNames);
+  const companyNames=idsToClientCompanies((data.survey_clients||[]).map(sc=>sc.client_id));
+  const teamNames=idsToResearcherNames((data.survey_team||[]).map(t=>t.researcher_id));
+  return surveyRowToSnapshot(data,qRows,companyNames,teamNames);
 }
 async function loadSurveysIfNeeded(){
   if(SURVEYS_LOADED||SURVEYS_LOADING)return;
   SURVEYS_LOADING=true;
+  await loadUsersIfNeeded(); // precisa dos nomes reais para resolver clientes/equipe vinculados
   try{
-    const {data,error}=await sb.from('surveys')
-      .select('*, survey_questions(*, survey_question_options(*)), survey_clients(client_id)')
-      .order('created_at',{ascending:false});
+    const {data,error}=await sb.from('surveys').select(SURVEY_JOIN_SELECT).order('created_at',{ascending:false});
     if(!error){
       SURVEYS=(data||[]).map(row=>{
         const qRows=(row.survey_questions||[]).slice().sort((a,b)=>a.position-b.position);
-        const clientIds=(row.survey_clients||[]).map(sc=>sc.client_id);
-        const companyNames=clientIds.map(id=>{const c=USERS.find(u=>u.id===id);return c?(c.company||c.name):null;}).filter(Boolean);
-        return surveyRowToSnapshot(row,qRows,companyNames);
+        const companyNames=idsToClientCompanies((row.survey_clients||[]).map(sc=>sc.client_id));
+        const teamNames=idsToResearcherNames((row.survey_team||[]).map(t=>t.researcher_id));
+        return surveyRowToSnapshot(row,qRows,companyNames,teamNames);
       });
       SURVEYS_LOADED=true;
     }else console.error('Erro ao carregar pesquisas:',error);
@@ -504,7 +517,7 @@ async function loadSurveysIfNeeded(){
   refreshClientSurveyLinks();
   const onKey=document.querySelector('.nav-item.on');
   const k=onKey&&onKey.dataset.key;
-  if(k==='surveys'||k==='surveys-done'||k==='dashboard')go(k);
+  if(k==='surveys'||k==='surveys-done'||k==='dashboard'||k==='survey-team')go(k);
 }
 function surveySample(s){
   const N=+s.pop||0,e=+s.err,Z=+s.conf,p=(+s.prop||50)/100;
@@ -1408,26 +1421,26 @@ function surveyEdit(idx){
 }
 
 /* ---- equipe / atribuição ---- */
-const ALL_RESEARCHERS=[
-  ['João Pereira','Triângulo','ativo'],['Fernanda Couto','Triângulo','ativo'],
-  ['Maria Souza','Jequitinhonha','ativo'],['Lucas Andrade','Vale do Mucuri','ativo'],
-  ['Renata Lima','Noroeste','ativo'],['Paulo Cruz','Norte','ativo'],
-  ['Ana Botelho','—','pendente'],
-];
 let TEAM_IDX=null;
 PAGES['survey-team']=()=>{
   const s=SURVEYS[TEAM_IDX];if(!s)return '<div class="empty">Pesquisa não encontrada.</div>';
+  if(!USERS_LOADED){
+    loadUsersIfNeeded();
+    return head('Atribuir equipe — '+s.name,'Carregando pesquisadores cadastrados…')+'<div class="empty">Carregando pesquisadores do banco de dados…</div>';
+  }
   const team=s.team||[];
-  const rows=ALL_RESEARCHERS.map(r=>{
-    const on=team.includes(r[0]);
-    const pend=r[2]==='pendente';
+  const pesqs=pesqUsers();
+  const rows=pesqs.length?pesqs.map(u=>{
+    const on=team.includes(u.name);
+    const pend=u.status!=='ativo';
+    const regional=(u.cidadesAtuacao&&u.cidadesAtuacao.length)?u.cidadesAtuacao.join(', '):(u.cidade||'—');
     return `<label class="pick" style="${pend?'opacity:.7':''}">
-      <input type="checkbox" class="t-pesq" value="${r[0]}" ${on?'checked':''} ${pend?'disabled':''}>
-      <div class="avatar" style="width:30px;height:30px;font-size:11px">${r[0].split(' ').map(n=>n[0]).join('')}</div>
-      <div style="flex:1"><div style="font-weight:600;font-size:13px">${r[0]}</div>
-        <div style="font-size:11px;color:var(--ink3)">${r[1]}</div></div>
+      <input type="checkbox" class="t-pesq" value="${esc(u.name)}" ${on?'checked':''} ${pend?'disabled':''}>
+      <div class="avatar" style="width:30px;height:30px;font-size:11px">${esc(u.name).split(' ').map(n=>n[0]).join('')}</div>
+      <div style="flex:1"><div style="font-weight:600;font-size:13px">${esc(u.name)}</div>
+        <div style="font-size:11px;color:var(--ink3)">${esc(regional)}</div></div>
       ${pend?'<span class="pill pill-amber">● aguardando aprovação</span>':''}</label>`;
-  }).join('');
+  }).join(''):'<div class="empty">Nenhum pesquisador cadastrado ainda. Cadastre em Usuários → Pesquisadores.</div>';
   return head('Atribuir equipe — '+s.name,'Escolha pesquisadores cadastrados ou envie link de cadastro para novos',
     '<button class="btn btn-out" onclick="go(\'surveys\')">← Voltar</button><button class="btn btn-fill" onclick="teamSave()">Salvar equipe</button>')+`
   <div class="grid g2" style="align-items:start">
@@ -1461,10 +1474,14 @@ PAGES['survey-team']=()=>{
   </div>`;
 };
 function surveyTeam(idx){TEAM_IDX=idx;go('survey-team');}
-function teamSave(){
+async function teamSave(){
   const s=SURVEYS[TEAM_IDX];if(!s)return;
-  s.team=[...document.querySelectorAll('.t-pesq:checked')].map(c=>c.value);
-  alert('Equipe salva: '+(s.team.length?s.team.join(', '):'nenhum pesquisador'));
+  const names=[...document.querySelectorAll('.t-pesq:checked')].map(c=>c.value);
+  try{
+    if(s.id)await syncSurveyTeam(s.id,names);
+  }catch(ex){alert('Não foi possível salvar a equipe: '+ex.message);return;}
+  s.team=names;
+  alert('Equipe salva: '+(names.length?names.join(', '):'nenhum pesquisador'));
   go('surveys');
 }
 
@@ -2148,6 +2165,7 @@ const USER_TAB_ROLES={pesq:['pesq'],cliente:['cliente'],admpro:['admpro'],vended
 let USER_TAB='pesq';
 function usersInTab(tab){const roles=USER_TAB_ROLES[tab]||[];return USERS.map((u,i)=>({u,i})).filter(x=>roles.includes(x.u.role));}
 function clienteUsers(){return USERS.filter(u=>u.role==='cliente');}
+function pesqUsers(){return USERS.filter(u=>u.role==='pesq');}
 let USER_EDIT=null; // index sendo editado, ou 'new', ou null (lista)
 let USER_NEW_ROLE='pesq'; // perfil pré-selecionado ao clicar em "+ Novo" numa aba
 
@@ -2186,19 +2204,29 @@ function userToProfileRow(rec,role){
   else{row.cpf=rec.cpf||null;row.cidade=rec.cidade||null;} // admpro, vendedor, indicador
   return row;
 }
-async function loadUsersIfNeeded(){
-  if(USERS_LOADED||USERS_LOADING)return;
-  USERS_LOADING=true;
-  try{
-    const {data,error}=await sb.from('profiles').select('*, profile_cidades_atuacao(cidade)').order('created_at',{ascending:false});
-    if(!error){USERS=(data||[]).map(profileRowToUser);USERS_LOADED=true;}
-    else console.error('Erro ao carregar usuários:',error);
-  }catch(ex){console.error('Erro de conexão ao carregar usuários:',ex);}
-  USERS_LOADING=false;
-  refreshClientSurveyLinks();
-  const onKey=document.querySelector('.nav-item.on');
-  const k=onKey&&onKey.dataset.key;
-  if(k==='users'||k==='dashboard')go(k);
+let _usersLoadPromise=null;
+/* `await`-ável de qualquer lugar: se já tem um carregamento em andamento
+   (ex.: chamado ao mesmo tempo pelo Painel e pela tela de Pesquisas), quem
+   chamar depois espera o mesmo carregamento terminar em vez de disparar
+   outro ou seguir em frente com USERS ainda vazio. */
+function loadUsersIfNeeded(){
+  if(USERS_LOADED)return Promise.resolve();
+  if(_usersLoadPromise)return _usersLoadPromise;
+  _usersLoadPromise=(async()=>{
+    USERS_LOADING=true;
+    try{
+      const {data,error}=await sb.from('profiles').select('*, profile_cidades_atuacao(cidade)').order('created_at',{ascending:false});
+      if(!error){USERS=(data||[]).map(profileRowToUser);USERS_LOADED=true;}
+      else console.error('Erro ao carregar usuários:',error);
+    }catch(ex){console.error('Erro de conexão ao carregar usuários:',ex);}
+    USERS_LOADING=false;
+    _usersLoadPromise=null;
+    refreshClientSurveyLinks();
+    const onKey=document.querySelector('.nav-item.on');
+    const k=onKey&&onKey.dataset.key;
+    if(k==='users'||k==='dashboard'||k==='survey-team')go(k);
+  })();
+  return _usersLoadPromise;
 }
 async function syncPesqCidades(profileId,cidades){
   await sb.from('profile_cidades_atuacao').delete().eq('profile_id',profileId);

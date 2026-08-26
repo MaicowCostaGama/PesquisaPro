@@ -3165,25 +3165,70 @@ PAGES.permissions=()=>head('Perfis e permissões','Defina o que cada perfil pode
   </div>`;
 
 /* ============ FINANCE ============ */
-/* ============ FINANCEIRO (separado por pesquisa) ============ */
-const FIN_ROWS={
-  0:[ /* Pesquisa Eleitoral MG · 2026 */
-    {name:'João Pereira',valid:312,rejected:12,pix:'•••.456.789-•• (CPF)',status:'aprovado'},
-    {name:'Fernanda Couto',valid:188,rejected:4,pix:'•••@email.com',status:'aprovado'},
-    {name:'Maria Souza',valid:71,rejected:9,pix:null,status:'pendente'},
-  ],
-  2:[ /* Satisfação de serviços · Zona da Mata */
-    {name:'Lucas Andrade',valid:62,rejected:2,pix:'•••.123.000-•• (CPF)',status:'auditoria'},
-  ],
-};
+/* ============ FINANCEIRO — carregamento e gravação no Supabase ============
+   Ainda não existe coleta automática de entrevistas (isso é a próxima etapa,
+   "Coleta de campo" com GPS/fotos), então por enquanto os valores válidos/
+   rejeitados de cada pesquisador são lançados manualmente pelo administrador
+   aqui — mas já ficam salvos de verdade na tabela `payments`, uma linha por
+   pesquisador+pesquisa. Todo pesquisador atribuído à equipe da pesquisa (ver
+   "Atribuir equipe") aparece na lista mesmo sem nenhum lançamento ainda,
+   com 0 entrevistas — só vira uma linha de verdade no banco quando o
+   administrador lança o primeiro valor. */
+let PAYMENTS=[]; // {id, surveyId, researcherId, name, pixKey, valid, rejected, status}
+let PAYMENTS_LOADED=false,PAYMENTS_LOADING=false;
 const FIN_STATUS={
-  aprovado:{pill:'<span class="pill pill-green">● Aprovado</span>',action:'Pagar'},
-  pendente:{pill:'<span class="pill pill-amber">● Dados bancários pendentes</span>',action:'Solicitar'},
-  auditoria:{pill:'<span class="pill pill-blue">● Em auditoria</span>',action:'Revisar'},
+  aprovado:{pill:'<span class="pill pill-green">● Aprovado</span>'},
+  pendente:{pill:'<span class="pill pill-amber">● Dados bancários pendentes</span>'},
+  auditoria:{pill:'<span class="pill pill-blue">● Em auditoria</span>'},
 };
 let FIN_IDX=null,FIN_ARMED=false;
 const brl=v=>'R$ '+(+v||0).toLocaleString('pt-BR',{minimumFractionDigits:2});
-function finRows(idx){return FIN_ROWS[idx]||[];}
+function maskPix(v){
+  if(!v)return null;
+  return v.length<=4?'•••'+v:'•••'+v.slice(-4);
+}
+function paymentRowToEntry(row){
+  const u=USERS.find(x=>x.id===row.researcher_id);
+  return {id:row.id,surveyId:row.survey_id,researcherId:row.researcher_id,
+    name:u?u.name:'(pesquisador removido)',pixKey:u?u.pixKey:'',
+    valid:row.valid_count||0,rejected:row.rejected_count||0,status:row.status||'pendente'};
+}
+async function loadPaymentsIfNeeded(){
+  if(PAYMENTS_LOADED||PAYMENTS_LOADING)return;
+  PAYMENTS_LOADING=true;
+  await loadUsersIfNeeded();
+  try{
+    const {data,error}=await sb.from('payments').select('*');
+    if(!error){PAYMENTS=(data||[]).map(paymentRowToEntry);PAYMENTS_LOADED=true;}
+    else console.error('Erro ao carregar financeiro:',error);
+  }catch(ex){console.error('Erro de conexão ao carregar financeiro:',ex);}
+  PAYMENTS_LOADING=false;
+  const onKey=document.querySelector('.nav-item.on');
+  const k=onKey&&onKey.dataset.key;
+  if(k==='finance'||k==='my-earnings')go(k);
+}
+/* lança (cria ou atualiza) o valor de um pesquisador numa pesquisa */
+async function saveFinPayment(surveyId,researcherId,valid,rejected,status){
+  const existing=PAYMENTS.find(p=>p.surveyId===surveyId&&p.researcherId===researcherId);
+  if(existing){
+    const {error}=await sb.from('payments').update({valid_count:valid,rejected_count:rejected,status}).eq('id',existing.id);
+    if(error)throw new Error(error.message);
+    existing.valid=valid;existing.rejected=rejected;existing.status=status;
+  }else{
+    const {data:inserted,error}=await sb.from('payments').insert({survey_id:surveyId,researcher_id:researcherId,valid_count:valid,rejected_count:rejected,status}).select().single();
+    if(error)throw new Error(error.message);
+    PAYMENTS.push(paymentRowToEntry(inserted));
+  }
+}
+function finRows(idx){
+  const s=SURVEYS[idx];if(!s)return [];
+  const real=PAYMENTS.filter(p=>p.surveyId===s.id);
+  const covered=new Set(real.map(p=>p.researcherId));
+  const virtual=(s.team||[]).map(name=>pesqUsers().find(u=>u.name===name)).filter(Boolean)
+    .filter(u=>!covered.has(u.id))
+    .map(u=>({surveyId:s.id,researcherId:u.id,name:u.name,pixKey:u.pixKey||'',valid:0,rejected:0,status:'pendente',virtual:true}));
+  return [...real,...virtual];
+}
 function finTotals(idx){
   const s=SURVEYS[idx];const rows=finRows(idx);const price=s?+s.price:5;
   const valid=rows.reduce((a,r)=>a+r.valid,0);
@@ -3193,6 +3238,11 @@ function finTotals(idx){
   return{valid,rejected,valor,pendingValor,count:rows.length};
 }
 PAGES.finance=()=>{
+  if(!SURVEYS_LOADED||!PAYMENTS_LOADED){
+    if(!SURVEYS_LOADED)loadSurveysIfNeeded();
+    if(!PAYMENTS_LOADED)loadPaymentsIfNeeded();
+    return head('Financeiro','Pagamentos separados por pesquisa · calculado por entrevista válida coletada')+'<div class="empty">Carregando dados financeiros…</div>';
+  }
   if(FIN_IDX!=null)return financeDetail(FIN_IDX);
   return financeList();
 };
@@ -3231,11 +3281,12 @@ function financeDetail(idx){
   const t=finTotals(idx);
   const price=+s.price,priceRemote=+s.priceRemote;
   const body=rows.length?rows.map(r=>{
-    const st=FIN_STATUS[r.status]||FIN_STATUS.aprovado;
+    const st=FIN_STATUS[r.status]||FIN_STATUS.pendente;
     const valor=r.valid*price;
-    return `<tr><td>${esc(r.name)}</td><td>${r.valid}</td><td>${r.rejected}</td><td><b>${brl(valor)}</b></td><td>${r.pix||'<span style="color:var(--ink3)">—</span>'}</td><td>${st.pill}</td>
-      <td><button class="btn-ghost" onclick="alert('Protótipo: ${st.action==='Pagar'?'pagar via PIX':st.action.toLowerCase()} — ${esc(r.name)}')">${st.action}</button></td></tr>`;
-  }).join(''):'<tr><td colspan="7" class="empty">Nenhum pesquisador com entrevistas válidas nesta pesquisa ainda.</td></tr>';
+    const pixShown=maskPix(r.pixKey);
+    return `<tr><td>${esc(r.name)}</td><td>${r.valid}</td><td>${r.rejected}</td><td><b>${brl(valor)}</b></td><td>${pixShown||'<span style="color:var(--ink3)">—</span>'}</td><td>${st.pill}</td>
+      <td><button class="btn-ghost" onclick="finEditPayment(${idx},'${r.researcherId}')">Lançar / editar</button></td></tr>`;
+  }).join(''):'<tr><td colspan="7" class="empty">Nenhum pesquisador atribuído a esta pesquisa ainda — atribua a equipe em Minhas pesquisas.</td></tr>';
   return head('Financeiro — '+s.name,'Pagamento por entrevista válida coletada nesta pesquisa',
     '<button class="btn btn-out" onclick="financeBack()">← Financeiro</button>'+
     (rows.length?'<button class="btn btn-out" onclick="alert(\'Protótipo: exportar remessa bancária / PIX em lote desta pesquisa\')">Exportar remessa</button><button class="btn btn-fill" onclick="alert(\'Protótipo: processar pagamentos aprovados desta pesquisa\')">Processar pagamentos</button>':''))+`
@@ -3265,22 +3316,57 @@ function financeDetail(idx){
     </div>
   </div>`;
 }
+/* lança/edita entrevistas válidas, rejeitadas e status de um pesquisador
+   nesta pesquisa — ainda não há coleta automática (isso é a etapa "Coleta de
+   campo"), então por enquanto é o administrador quem informa esses números
+   direto aqui, e eles já ficam salvos de verdade na tabela `payments`. */
+async function finEditPayment(idx,researcherId){
+  const s=SURVEYS[idx];if(!s)return;
+  const current=finRows(idx).find(r=>r.researcherId===researcherId);
+  if(!current)return;
+  const validStr=prompt('Entrevistas válidas de '+current.name+':',String(current.valid));
+  if(validStr==null)return;
+  const rejectedStr=prompt('Entrevistas rejeitadas:',String(current.rejected));
+  if(rejectedStr==null)return;
+  const statusStr=(prompt('Status — digite: pendente, aprovado ou auditoria',current.status)||'').trim().toLowerCase();
+  const status=['pendente','aprovado','auditoria'].includes(statusStr)?statusStr:current.status;
+  const valid=Math.max(0,parseInt(validStr,10)||0);
+  const rejected=Math.max(0,parseInt(rejectedStr,10)||0);
+  try{
+    await saveFinPayment(s.id,researcherId,valid,rejected,status);
+  }catch(ex){alert('Não foi possível salvar: '+ex.message);return;}
+  go('finance');
+}
 
 /* ============ MY EARNINGS (pesquisador) ============ */
-PAGES['my-earnings']=()=>head('Meus ganhos','Acompanhe seus pagamentos por formulário coletado')+`
+PAGES['my-earnings']=()=>{
+  if(!SURVEYS_LOADED||!PAYMENTS_LOADED){
+    if(!SURVEYS_LOADED)loadSurveysIfNeeded();
+    if(!PAYMENTS_LOADED)loadPaymentsIfNeeded();
+    return head('Meus ganhos','Acompanhe seus pagamentos por formulário coletado')+'<div class="empty">Carregando seus dados financeiros…</div>';
+  }
+  const myId=CURRENT_PROFILE&&CURRENT_PROFILE.id;
+  const mine=PAYMENTS.filter(p=>p.researcherId===myId);
+  const rowsData=mine.map(p=>{
+    const s=SURVEYS.find(x=>x.id===p.surveyId);
+    const price=s?+s.price:0;
+    return {survey:s?s.name:'(pesquisa removida)',valid:p.valid,valor:p.valid*price,status:p.status};
+  });
+  const aReceber=rowsData.filter(r=>r.status==='aprovado').reduce((a,r)=>a+r.valor,0);
+  const pendente=rowsData.filter(r=>r.status==='pendente').reduce((a,r)=>a+r.valor,0);
+  const auditoria=rowsData.filter(r=>r.status==='auditoria').reduce((a,r)=>a+r.valor,0);
+  const histRows=rowsData.length?rowsData.map(r=>`<tr><td>${esc(r.survey)}</td><td>${r.valid}</td><td>${brl(r.valor)}</td><td>${(FIN_STATUS[r.status]||FIN_STATUS.pendente).pill}</td></tr>`).join('')
+    :'<tr><td colspan="4" class="empty">Nenhum lançamento ainda — assim que você for atribuído a uma pesquisa e o administrador lançar suas entrevistas, aparece aqui.</td></tr>';
+  return head('Meus ganhos','Acompanhe seus pagamentos por formulário coletado')+`
   <div class="grid g3" style="margin-bottom:16px">
-    ${stat('A receber','R$ 1.560','312 form. × R$ 5,00','$','#2563eb')}
-    ${stat('Já recebido','R$ 980','depósito em 01/06','✓','#059669')}
-    ${stat('Em auditoria','R$ 60','12 form. em revisão','◷','#d97706')}
+    ${stat('A receber',brl(aReceber),'aprovado, aguardando repasse','$','#2563eb')}
+    ${stat('Pendente',brl(pendente),'dados bancários / lançamento','◷','#d97706')}
+    ${stat('Em auditoria',brl(auditoria),'em revisão','◷','#7c3aed')}
   </div>
   <div class="card mb">
     <div class="card-t">Histórico de pagamentos</div>
-    <table style="margin-top:6px"><thead><tr><th>Período</th><th>Válidos</th><th>Valor</th><th>Status</th></tr></thead>
-    <tbody>
-      <tr><td>16–22 jun</td><td>118</td><td>R$ 590,00</td><td><span class="pill pill-amber">● A processar</span></td></tr>
-      <tr><td>09–15 jun</td><td>194</td><td>R$ 970,00</td><td><span class="pill pill-blue">● Aprovado</span></td></tr>
-      <tr><td>01–08 jun</td><td>196</td><td>R$ 980,00</td><td><span class="pill pill-green">● Pago</span></td></tr>
-    </tbody></table>
+    <table style="margin-top:6px"><thead><tr><th>Pesquisa</th><th>Válidos</th><th>Valor</th><th>Status</th></tr></thead>
+    <tbody>${histRows}</tbody></table>
   </div>
   <div class="card mb">
     <div class="card-t" style="font-size:13px">Coletas reprovadas</div>
@@ -3290,9 +3376,21 @@ PAGES['my-earnings']=()=>head('Meus ganhos','Acompanhe seus pagamentos por formu
   <div class="card">
     <div class="card-t" style="font-size:13px">Meus dados de pagamento</div>
     <div class="card-d">Necessários para receber. Armazenados com segurança.</div>
-    <div class="field-row mb"><div><label class="lbl">Chave PIX</label><input class="inp" value="123.456.789-00 (CPF)"></div><div><label class="lbl">Banco</label><input class="inp" value="Banco do Brasil"></div></div>
-    <button class="btn btn-fill" onclick="alert('Protótipo: salvar dados bancários')">Salvar dados</button>
+    <div class="field-row mb"><div><label class="lbl">Chave PIX</label><input class="inp" id="me-pix-key" value="${esc((CURRENT_PROFILE&&CURRENT_PROFILE.pix_key)||'')}"></div><div><label class="lbl">Banco</label><input class="inp" id="me-pix-bank" value="${esc((CURRENT_PROFILE&&CURRENT_PROFILE.pix_bank)||'')}"></div></div>
+    <button class="btn btn-fill" onclick="saveMyPixData()">Salvar dados</button>
   </div>`;
+};
+async function saveMyPixData(){
+  if(!CURRENT_PROFILE)return;
+  const pixKey=(document.getElementById('me-pix-key').value||'').trim();
+  const pixBank=(document.getElementById('me-pix-bank').value||'').trim();
+  try{
+    const {error}=await sb.from('profiles').update({pix_key:pixKey,pix_bank:pixBank}).eq('id',CURRENT_PROFILE.id);
+    if(error)throw new Error(error.message);
+    CURRENT_PROFILE.pix_key=pixKey;CURRENT_PROFILE.pix_bank=pixBank;
+  }catch(ex){alert('Não foi possível salvar: '+ex.message);return;}
+  alert('Dados de pagamento salvos.');
+}
 function renderMyRejected(){
   const el=document.getElementById('myRejected');if(!el)return;
   const me=(CURRENT_PROFILE&&CURRENT_PROFILE.name)||ROLES.pesq.name;

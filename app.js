@@ -1992,6 +1992,71 @@ function usersInTab(tab){const roles=USER_TAB_ROLES[tab]||[];return USERS.map((u
 function clienteUsers(){return USERS.filter(u=>u.role==='cliente');}
 let USER_EDIT=null; // index sendo editado, ou 'new', ou null (lista)
 let USER_NEW_ROLE='pesq'; // perfil pré-selecionado ao clicar em "+ Novo" numa aba
+
+/* ============ USUÁRIOS — carregamento e gravação no Supabase ============
+   USERS continua sendo o array em memória que todo o resto da tela usa
+   (userList/userView/userForm etc. não mudam) — só a origem dos dados e o
+   destino da gravação passam a ser o banco de verdade, através das funções
+   abaixo. Cada usuário carregado ganha um campo extra `id` (o UUID da linha
+   em profiles/auth.users), usado para localizar a linha certa ao salvar. */
+let USERS_LOADED=false;
+let USERS_LOADING=false;
+
+function staffRoleOf(role){return ['admin','coord','gerente'].includes(role);}
+function lightRoleOf(role){return ['admpro','vendedor','indicador'].includes(role);}
+
+function profileRowToUser(row){
+  const base={id:row.id,name:row.name,email:row.email||'',phone:row.phone||'',role:row.role,status:row.status};
+  if(staffRoleOf(row.role))return {...base,cpf:row.cpf||'',birth:row.birth||'',addr:row.cidade||'',doc:row.doc_url||''};
+  if(row.role==='cliente')return {...base,company:row.name,cpfCnpj:row.cpf_cnpz||row.cpf_cnpj||'',pfpj:row.pf_pj||'pj',birth:row.birth||'',
+    contact:row.contact_person||'',cidade:row.cidade||'',rua:row.rua||'',numero:row.numero||'',cep:row.cep||'',
+    surveys:[],resultsReleased:!!row.results_released};
+  if(row.role==='pesq')return {...base,cpf:row.cpf||'',birth:row.birth||'',cidade:row.cidade||'',rua:row.rua||'',numero:row.numero||'',cep:row.cep||'',
+    docFoto:row.doc_foto_url||'',docComprovante:row.doc_comprovante_url||'',
+    cidadesAtuacao:(row.profile_cidades_atuacao||[]).map(c=>c.cidade),
+    pixKey:row.pix_key||'',pixDoc:row.pix_doc||'',pixBank:row.pix_bank||'',pixAg:row.pix_ag||'',pixAcc:row.pix_acc||''};
+  return {...base,cpf:row.cpf||'',cidade:row.cidade||''}; // admpro, vendedor, indicador
+}
+function userToProfileRow(rec,role){
+  const row={role,status:rec.status||'ativo',name:rec.name,email:rec.email||null,phone:rec.phone||null};
+  if(staffRoleOf(role)){row.cpf=rec.cpf||null;row.birth=rec.birth||null;row.cidade=rec.addr||null;row.doc_url=rec.doc||null;}
+  else if(role==='cliente'){row.cpf_cnpj=rec.cpfCnpj||null;row.pf_pj=rec.pfpj||'pj';row.birth=rec.birth||null;row.contact_person=rec.contact||null;
+    row.cidade=rec.cidade||null;row.rua=rec.rua||null;row.numero=rec.numero||null;row.cep=rec.cep||null;row.results_released=!!rec.resultsReleased;}
+  else if(role==='pesq'){row.cpf=rec.cpf||null;row.birth=rec.birth||null;row.cidade=rec.cidade||null;row.rua=rec.rua||null;row.numero=rec.numero||null;row.cep=rec.cep||null;
+    row.doc_foto_url=rec.docFoto||null;row.doc_comprovante_url=rec.docComprovante||null;
+    row.pix_key=rec.pixKey||null;row.pix_doc=rec.pixDoc||null;row.pix_bank=rec.pixBank||null;row.pix_ag=rec.pixAg||null;row.pix_acc=rec.pixAcc||null;}
+  else{row.cpf=rec.cpf||null;row.cidade=rec.cidade||null;} // admpro, vendedor, indicador
+  return row;
+}
+async function loadUsersIfNeeded(){
+  if(USERS_LOADED||USERS_LOADING)return;
+  USERS_LOADING=true;
+  try{
+    const {data,error}=await sb.from('profiles').select('*, profile_cidades_atuacao(cidade)').order('created_at',{ascending:false});
+    if(!error){USERS=(data||[]).map(profileRowToUser);USERS_LOADED=true;}
+    else console.error('Erro ao carregar usuários:',error);
+  }catch(ex){console.error('Erro de conexão ao carregar usuários:',ex);}
+  USERS_LOADING=false;
+  const onUsersPage=document.querySelector(".nav-item.on[data-key='users']");
+  if(onUsersPage)go('users');
+}
+async function syncPesqCidades(profileId,cidades){
+  await sb.from('profile_cidades_atuacao').delete().eq('profile_id',profileId);
+  if(cidades&&cidades.length){
+    await sb.from('profile_cidades_atuacao').insert(cidades.map(c=>({profile_id:profileId,cidade:c})));
+  }
+}
+async function createLoginAndProfile(email,password,role,rec){
+  const tmp=tempAuthClient();
+  const {data,error}=await tmp.auth.signUp({email,password});
+  if(error)throw new Error('Não foi possível criar o login: '+error.message);
+  if(!data||!data.user)throw new Error('Não foi possível criar o login.');
+  const row=userToProfileRow(rec,role);
+  row.id=data.user.id;
+  const {data:inserted,error:insErr}=await sb.from('profiles').insert(row).select().single();
+  if(insErr)throw new Error('Login criado, mas não foi possível salvar o perfil: '+insErr.message);
+  return inserted;
+}
 let SIGNUPS=[
   {name:'Ana Botelho',cpf:'444.444.444-44',birth:'1990-07-15',email:'ana.botelho@email.com',phone:'(31) 94444-5555',cidade:'Sete Lagoas/MG',rua:'',numero:'',cep:'',cidadesAtuacao:['Sete Lagoas/MG'],role:'pesq',docFoto:'CNH_ana.jpg',docComprovante:'comprovante_ana.pdf',status:'novo',sent:'há 2h',pixKey:'ana.botelho@email.com',pixDoc:'444.444.444-44',pixBank:'Nubank',pixAg:'0001',pixAcc:'112233-4'},
   {name:'Pedro Nunes',cpf:'555.555.555-55',birth:'1998-02-28',email:'pedro.nunes@email.com',phone:'(35) 93333-6666',cidade:'Poços de Caldas/MG',rua:'',numero:'',cep:'',cidadesAtuacao:['Poços de Caldas/MG'],role:'pesq',docFoto:'',docComprovante:'',status:'novo',sent:'há 5h',pixKey:'',pixDoc:'',pixBank:'',pixAg:'',pixAcc:''},
@@ -2008,6 +2073,10 @@ PAGES.users=()=>{
   if(selectedRole!=='admin'){
     return head('Usuários','Gestão de usuários')+`
       <div class="callout warn">Apenas usuários com perfil <b>Administrador</b> podem cadastrar e gerenciar usuários. Você está conectado como <b>${ROLE_LABEL[selectedRole]}</b>.</div>`;
+  }
+  if(!USERS_LOADED){
+    loadUsersIfNeeded();
+    return head('Usuários','Gestão de usuários')+'<div class="empty">Carregando usuários do banco de dados…</div>';
   }
   if(USER_VIEW!=null)return userView();
   if(USER_EDIT!=null)return userForm();
@@ -2462,8 +2531,13 @@ function userClienteSendReport(i){
   const c=USERS[i];
   clientWhatsAppMsg(c.phone,'Olá '+(c.contact||c.name)+'! O relatório com os resultados da sua pesquisa está disponível: https://pesquisapro.com.br/relatorio/'+(i+1)+'x');
 }
-function userDelete(idx){
-  if(!confirm('Excluir o usuário "'+USERS[idx].name+'"?'))return;
+async function userDelete(idx){
+  const u=USERS[idx];
+  if(!confirm('Excluir o cadastro de "'+u.name+'"? Isso remove o perfil do sistema (o login de acesso, se existir, precisa ser removido separadamente pelo suporte técnico).'))return;
+  if(u.id){
+    const {error}=await sb.from('profiles').delete().eq('id',u.id);
+    if(error){alert('Não foi possível excluir: '+error.message);return;}
+  }
   USERS.splice(idx,1);USER_VIEW=null;USER_EDIT=null;go('users');
 }
 function userForm(){
@@ -2493,6 +2567,7 @@ function userFormStaff(isNew){
         <div><label class="lbl">Celular *</label><input class="inp" id="u-phone" value="${esc(u.phone)}" placeholder="(00) 00000-0000"></div>
       </div>
       <div class="mb"><label class="lbl">Endereço *</label><input class="inp" id="u-addr" value="${esc(u.addr)}" placeholder="Rua, nº, bairro, cidade/UF"></div>
+      ${isNew?`<div class="mb"><label class="lbl">Senha provisória *</label><input class="inp" id="u-password" type="text" placeholder="Defina uma senha (mín. 6 caracteres) — repasse para a pessoa"></div>`:''}
     </div>
     <div>
       <div class="card mb">
@@ -2536,6 +2611,7 @@ function userFormLight(isNew,role){
       <div><label class="lbl">E-mail *</label><input class="inp" id="u-email" type="email" value="${esc(u.email)}"></div>
       <div><label class="lbl">Cidade</label><input class="inp" id="u-cidade" value="${esc(u.cidade||'')}" placeholder="Cidade/UF"></div>
     </div>
+    ${isNew?`<div class="mb"><label class="lbl">Senha provisória *</label><input class="inp" id="u-password" type="text" placeholder="Defina uma senha (mín. 6 caracteres) — repasse para a pessoa"></div>`:''}
     <div class="mb" style="max-width:220px"><label class="lbl">Status</label><select class="inp" id="u-status">
       <option value="ativo" ${u.status==='ativo'?'selected':''}>Ativo</option>
       <option value="pendente" ${u.status==='pendente'?'selected':''}>Pendente</option></select></div>
@@ -2577,6 +2653,7 @@ function userFormCliente(isNew){
       <div><label class="lbl">Rua</label><input class="inp" id="c-rua" value="${esc(u.rua||'')}"></div>
       <div><label class="lbl">Número</label><input class="inp" id="c-numero" value="${esc(u.numero||'')}"></div>
     </div>
+    ${isNew?`<div class="mb"><label class="lbl">Senha provisória *</label><input class="inp" id="c-password" type="text" placeholder="Defina uma senha (mín. 6 caracteres) — repasse para o cliente"></div>`:''}
     <div class="mb" style="max-width:220px"><label class="lbl">Status</label><select class="inp" id="c-status">${statusOpt}</select></div>
   </div>
   <div style="display:flex;gap:8px;margin-top:16px">
@@ -2614,6 +2691,7 @@ function userFormPesq(isNew){
         <div><label class="lbl">Rua *</label><input class="inp" id="u-rua" value="${esc(u.rua)}"></div>
         <div><label class="lbl">Número *</label><input class="inp" id="u-numero" value="${esc(u.numero)}"></div>
       </div>
+      ${isNew?`<div class="mb"><label class="lbl">Senha provisória *</label><input class="inp" id="u-password" type="text" placeholder="Defina uma senha (mín. 6 caracteres) — repasse para o pesquisador"></div>`:''}
       <div class="mb"><label class="lbl">Chave PIX *</label><input class="inp" id="u-pix-key" value="${esc(u.pixKey||'')}" placeholder="CPF, e-mail, telefone ou aleatória"></div>
       <div class="field-row mb">
         <div><label class="lbl">CPF/CNPJ do titular</label><input class="inp" id="u-pix-doc" value="${esc(u.pixDoc||'')}" placeholder="000.000.000-00"></div>
@@ -2746,58 +2824,97 @@ function userSave(){
   if(['admin','coord','gerente'].includes(role))return userSaveStaff(isNew);
   return userSaveLight(isNew,role);
 }
-function userSaveStaff(isNew){
+function userSaveSetBusy(busy){
+  const btns=document.querySelectorAll('.btn-fill');
+  btns.forEach(b=>{if(b.textContent.includes('adastr')||b.textContent.includes('Salvar')){b.disabled=busy;}});
+}
+async function userSaveStaff(isNew){
   const g=id=>{const e=document.getElementById(id);return e?e.value.trim():'';};
   const name=g('u-name'),cpf=g('u-cpf'),birth=g('u-birth'),email=g('u-email'),phone=g('u-phone'),addr=g('u-addr');
+  const password=isNew?g('u-password'):'';
   const missing=[];
   if(!name)missing.push('Nome');if(!cpf)missing.push('CPF');if(!birth)missing.push('Data de nascimento');
   if(!email)missing.push('E-mail');if(!phone)missing.push('Celular');if(!addr)missing.push('Endereço');
   const existingDoc=isNew?'':(USERS[USER_EDIT]?USERS[USER_EDIT].doc:'');
   const doc=_docDraft||existingDoc;
   if(!doc)missing.push('Documento (anexo)');
+  if(isNew&&(!password||password.length<6))missing.push('Senha provisória (mínimo 6 caracteres)');
   if(missing.length){alert('Preencha os campos obrigatórios:\n• '+missing.join('\n• '));return;}
-  const rec={name,cpf,birth,email,phone,addr,role:g('u-role'),status:g('u-status')||'ativo',doc};
-  if(isNew)USERS.unshift(rec);
-  else Object.assign(USERS[USER_EDIT],rec);
+  const role=g('u-role'),rec={name,cpf,birth,email,phone,addr,role,status:g('u-status')||'ativo',doc};
+  userSaveSetBusy(true);
+  try{
+    if(isNew){
+      const inserted=await createLoginAndProfile(email,password,role,rec);
+      USERS.unshift(profileRowToUser(inserted));
+    }else{
+      const {error}=await sb.from('profiles').update(userToProfileRow(rec,role)).eq('id',USERS[USER_EDIT].id);
+      if(error)throw new Error(error.message);
+      Object.assign(USERS[USER_EDIT],rec);
+    }
+  }catch(ex){userSaveSetBusy(false);alert('Não foi possível salvar: '+ex.message);return;}
   _docDraft=null;USER_EDIT=null;
   alert(isNew?'Usuário cadastrado.':'Alterações salvas.');
   go('users');
 }
-function userSaveLight(isNew,role){
+async function userSaveLight(isNew,role){
   const g=id=>{const e=document.getElementById(id);return e?e.value.trim():'';};
   const name=g('u-name'),cpf=g('u-cpf'),phone=g('u-phone'),email=g('u-email');
+  const password=isNew?g('u-password'):'';
   const missing=[];
   if(!name)missing.push('Nome completo');if(!cpf)missing.push('CPF');
   if(!phone)missing.push('Celular');if(!email)missing.push('E-mail');
+  if(isNew&&(!password||password.length<6))missing.push('Senha provisória (mínimo 6 caracteres)');
   if(missing.length){alert('Preencha os campos obrigatórios:\n• '+missing.join('\n• '));return;}
   const rec={name,cpf,phone,email,cidade:g('u-cidade'),role,status:g('u-status')||'ativo'};
-  if(isNew)USERS.unshift(rec);
-  else Object.assign(USERS[USER_EDIT],rec);
+  userSaveSetBusy(true);
+  try{
+    if(isNew){
+      const inserted=await createLoginAndProfile(email,password,role,rec);
+      USERS.unshift(profileRowToUser(inserted));
+    }else{
+      const {error}=await sb.from('profiles').update(userToProfileRow(rec,role)).eq('id',USERS[USER_EDIT].id);
+      if(error)throw new Error(error.message);
+      Object.assign(USERS[USER_EDIT],rec);
+    }
+  }catch(ex){userSaveSetBusy(false);alert('Não foi possível salvar: '+ex.message);return;}
   USER_EDIT=null;
   alert(isNew?'Usuário cadastrado.':'Alterações salvas.');
   go('users');
 }
-function userSaveCliente(isNew){
+async function userSaveCliente(isNew){
   const g=id=>{const e=document.getElementById(id);return e?e.value.trim():'';};
   const pfpj=g('c-pfpj')||'pj';
   const name=g('c-name'),cpfCnpj=g('c-cpfcnpj'),email=g('c-email'),phone=g('c-phone'),cidade=g('c-cidade');
   const birth=pfpj==='pf'?g('c-birth'):'';
+  const password=isNew?g('c-password'):'';
   const missing=[];
   if(!name)missing.push('Nome completo / Razão social');if(!cpfCnpj)missing.push('CPF ou CNPJ');
   if(pfpj==='pf'&&!birth)missing.push('Data de nascimento');
   if(!email)missing.push('E-mail');if(!phone)missing.push('Celular');if(!cidade)missing.push('Cidade');
+  if(isNew&&(!password||password.length<6))missing.push('Senha provisória (mínimo 6 caracteres)');
   if(missing.length){alert('Preencha os campos obrigatórios:\n• '+missing.join('\n• '));return;}
   const rec={name,company:name,cpfCnpj,pfpj,birth,contact:g('c-contact'),email,phone,cidade,rua:g('c-rua'),numero:g('c-numero'),cep:g('c-cep'),role:'cliente',status:g('c-status')||'prospecto'};
-  if(isNew){rec.surveys=[];rec.resultsReleased=false;USERS.unshift(rec);}
-  else Object.assign(USERS[USER_EDIT],rec);
+  userSaveSetBusy(true);
+  try{
+    if(isNew){
+      rec.surveys=[];rec.resultsReleased=false;
+      const inserted=await createLoginAndProfile(email,password,'cliente',rec);
+      USERS.unshift(profileRowToUser(inserted));
+    }else{
+      const {error}=await sb.from('profiles').update(userToProfileRow(rec,'cliente')).eq('id',USERS[USER_EDIT].id);
+      if(error)throw new Error(error.message);
+      Object.assign(USERS[USER_EDIT],rec);
+    }
+  }catch(ex){userSaveSetBusy(false);alert('Não foi possível salvar: '+ex.message);return;}
   USER_EDIT=null;
   alert(isNew?'Cliente cadastrado.':'Alterações salvas.');
   go('users');
 }
-function userSavePesq(isNew){
+async function userSavePesq(isNew){
   const g=id=>{const e=document.getElementById(id);return e?e.value.trim():'';};
   const name=g('u-name'),cpf=g('u-cpf'),birth=g('u-birth'),email=g('u-email'),phone=g('u-phone');
   const cidade=g('u-cidade'),cep=g('u-cep'),rua=g('u-rua'),numero=g('u-numero'),pixKey=g('u-pix-key');
+  const password=isNew?g('u-password'):'';
   const missing=[];
   if(!name)missing.push('Nome completo');if(!cpf)missing.push('CPF');if(!birth)missing.push('Data de nascimento');
   if(!email)missing.push('E-mail');if(!phone)missing.push('Celular');
@@ -2810,12 +2927,26 @@ function userSavePesq(isNew){
   const docComprovante=_docCompDraft||existingComp;
   if(!docFoto)missing.push('Documento com foto');
   if(!docComprovante)missing.push('Comprovante de residência');
+  if(isNew&&(!password||password.length<6))missing.push('Senha provisória (mínimo 6 caracteres)');
   if(missing.length){alert('Preencha os campos obrigatórios:\n• '+missing.join('\n• '));return;}
+  const cidadesAtuacao=_pesqCidadesDraft.slice();
   const rec={name,cpf,birth,email,phone,cidade,rua,numero,cep,role:'pesq',status:g('u-status')||'ativo',
-    docFoto,docComprovante,cidadesAtuacao:_pesqCidadesDraft.slice(),
+    docFoto,docComprovante,cidadesAtuacao,
     pixKey,pixDoc:g('u-pix-doc'),pixBank:g('u-pix-bank'),pixAg:g('u-pix-ag'),pixAcc:g('u-pix-acc')};
-  if(isNew)USERS.unshift(rec);
-  else Object.assign(USERS[USER_EDIT],rec);
+  userSaveSetBusy(true);
+  try{
+    if(isNew){
+      const inserted=await createLoginAndProfile(email,password,'pesq',rec);
+      await syncPesqCidades(inserted.id,cidadesAtuacao);
+      const user=profileRowToUser(inserted);user.cidadesAtuacao=cidadesAtuacao;
+      USERS.unshift(user);
+    }else{
+      const {error}=await sb.from('profiles').update(userToProfileRow(rec,'pesq')).eq('id',USERS[USER_EDIT].id);
+      if(error)throw new Error(error.message);
+      await syncPesqCidades(USERS[USER_EDIT].id,cidadesAtuacao);
+      Object.assign(USERS[USER_EDIT],rec);
+    }
+  }catch(ex){userSaveSetBusy(false);alert('Não foi possível salvar: '+ex.message);return;}
   _docFotoDraft=null;_docCompDraft=null;_pesqCidadesDraft=[];USER_EDIT=null;
   alert(isNew?'Pesquisador cadastrado.':'Alterações salvas.');
   go('users');

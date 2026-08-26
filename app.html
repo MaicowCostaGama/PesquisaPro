@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PesquisaPro — Protótipo</title>
+<link rel="icon" type="image/png" sizes="64x64" href="assets/favicon-64.png">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
+<link rel="apple-touch-icon" href="assets/icon-512.png">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<!-- ===================== LOGIN ===================== -->
+<div id="login">
+  <div class="login-card">
+    <a href="index.html" class="lp-back-home">← Voltar ao site</a>
+    <div class="logo">
+      <img src="assets/logo-wide.png" alt="PesquisaPro" class="brand-logo brand-logo-login">
+    </div>
+    <p class="login-sub">Plataforma de pesquisa de opinião, coleta de campo e gestão de pagamentos.</p>
+
+    <div class="field">
+      <label>E-mail</label>
+      <input type="text" value="admin@pesquisapro.com.br" id="li-email">
+    </div>
+    <div class="field">
+      <label>Senha</label>
+      <input type="password" value="••••••••" id="li-pass">
+    </div>
+
+    <div class="role-pick">
+      <div class="rp-label">Entrar como (demonstração)</div>
+      <div class="role-grid" id="roleGrid">
+        <button class="role-opt on" data-role="admin"><div class="ro-t">Admin Master</div><div class="ro-d">Acesso total</div></button>
+        <button class="role-opt" data-role="coord"><div class="ro-t">Coordenador</div><div class="ro-d">Gestão de campo</div></button>
+        <button class="role-opt" data-role="gerente"><div class="ro-t">Gerente</div><div class="ro-d">Relatórios e metas</div></button>
+        <button class="role-opt" data-role="pesq"><div class="ro-t">Pesquisador</div><div class="ro-d">Coleta no app</div></button>
+        <button class="role-opt" data-role="cliente"><div class="ro-t">Cliente</div><div class="ro-d">Acompanhar pesquisa</div></button>
+      </div>
+    </div>
+
+    <button class="btn-primary" onclick="doLogin()">Entrar</button>
+    <p class="login-foot">Protótipo de demonstração · dados fictícios</p>
+  </div>
+</div>
+
+<!-- ===================== APP ===================== -->
+<div id="app">
+  <div class="topbar">
+    <a href="index.html"><img src="assets/logo-wide.png" alt="PesquisaPro" class="brand-logo brand-logo-topbar"></a>
+    <div class="tb-spacer"></div>
+    <button class="btn-ghost" onclick="alert('Protótipo: troca de pesquisa/campanha')">Trocar pesquisa ▾</button>
+    <div class="tb-user">
+      <div class="avatar" id="tbAvatar">AM</div>
+      <div><div class="un" id="tbName">Admin Master</div><div class="ur" id="tbRole">Administrador</div></div>
+    </div>
+    <button class="btn-ghost" onclick="logout()">Sair</button>
+  </div>
+
+  <div class="sidebar" id="sidebar"></div>
+
+  <div class="main" id="main"></div>
+</div>
+
+<div class="demo-note">Protótipo navegável · <b>clique nos menus</b> para explorar · dados fictícios</div>
+
+<!-- Bibliotecas externas (gráficos, QR Code e mapa) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<!-- Dados de referência (estados e municípios do Brasil) -->
+<script src="br-localidades.js"></script>
+<!-- Código principal do protótipo -->
+<script src="app.js"></script>
+</body>
+</html>

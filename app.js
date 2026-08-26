@@ -1375,7 +1375,8 @@ function surveyRow(s,idx,opts){
       <button class="btn-ghost" onclick="surveyDuplicate(${idx})">Duplicar</button>
       <button class="btn-ghost" onclick="surveyReopen(${idx})">Reabrir</button>
       <button class="btn-ghost" style="color:var(--red)" onclick="surveyDelete(${idx})">Excluir</button>`
-    :`<button class="btn-ghost" onclick="surveyTeam(${idx})">Equipe</button>
+    :`${s.status==='rascunho'?`<button class="btn-ghost" style="color:var(--teal)" onclick="surveyStart(${idx})">▶ Iniciar coleta</button>`:''}
+      <button class="btn-ghost" onclick="surveyTeam(${idx})">Equipe</button>
       <button class="btn-ghost" onclick="surveyEdit(${idx})">Editar</button>
       <button class="btn-ghost" onclick="surveyDuplicate(${idx})">Duplicar</button>
       <button class="btn-ghost" onclick="surveyFinish(${idx})">Concluir</button>
@@ -1436,6 +1437,15 @@ PAGES['surveys-done']=()=>{
   <div class="callout" style="margin-top:16px"><b>Reabrir</b> devolve a pesquisa para "em desenvolvimento". <b>Duplicar</b> cria uma cópia como novo rascunho, sem copiar equipe nem vínculo com clientes.</div>`;
 };
 
+async function surveyStart(idx){
+  const s=SURVEYS[idx];
+  if(!confirm('Colocar "'+s.name+'" em campo? Os pesquisadores atribuídos já vão poder começar a coletar.'))return;
+  try{
+    const {error}=await sb.from('surveys').update({status:'campo'}).eq('id',s.id);
+    if(error)throw new Error(error.message);
+  }catch(ex){alert('Não foi possível iniciar a coleta: '+ex.message);return;}
+  s.status='campo';go('surveys');
+}
 async function surveyFinish(idx){
   const s=SURVEYS[idx];
   if(!confirm('Concluir a pesquisa "'+s.name+'"? Ela vai para a aba Concluídas.'))return;

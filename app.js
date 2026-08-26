@@ -171,11 +171,12 @@ function quota(label,done,total,color){
 PAGES.dashboard=()=>{
   if(!USERS_LOADED)loadUsersIfNeeded();
   if(!SURVEYS_LOADED)loadSurveysIfNeeded();
+  if(!COLLECT_EVENTS_LOADED)loadCollectEventsIfNeeded();
   const emCampo=SURVEYS.filter(s=>s.status==='campo').length;
   const emEdicao=SURVEYS.filter(s=>s.status==='rascunho').length;
   const finalizadas=SURVEYS.filter(s=>s.status==='encerrada').length;
   const pesqAtivos=USERS.filter(u=>u.role==='pesq'&&u.status==='ativo').length;
-  const entrevistas=SURVEYS.reduce((sum,s)=>sum+(s.collected||0),0);
+  const entrevistas=SURVEYS.reduce((sum,s)=>sum+surveyCollectedCount(s),0);
   const clientesAtendidos=USERS.filter(u=>u.role==='cliente'&&u.status==='ativo').length;
   const cadastrosAprovar=SIGNUPS.length;
   const contratosPendentes=CONTRACTS.filter(c=>!c.signed).length;
@@ -522,6 +523,13 @@ async function loadSurveysIfNeeded(){
 function surveySample(s){
   const N=+s.pop||0,e=+s.err,Z=+s.conf,p=(+s.prop||50)/100;
   return Math.ceil(Math.ceil((N*Z*Z*p*(1-p))/(e*e*(N-1)+Z*Z*p*(1-p)))*1.1);
+}
+/* total de entrevistas válidas desta pesquisa — assim que a Coleta de campo
+   estiver carregada (collection_events reais), usa a contagem de verdade;
+   antes disso cai no valor gravado na própria pesquisa (histórico/seed). */
+function surveyCollectedCount(s){
+  if(COLLECT_EVENTS_LOADED)return COLLECT_EVENTS.filter(e=>e.surveyId===s.id&&e.status==='valid').length;
+  return s.collected||0;
 }
 const STATUS_PILL={
   campo:'<span class="pill pill-green">● Em campo</span>',
@@ -1555,6 +1563,8 @@ const RESEARCHER_INFO={
   'Paulo Cruz':{regional:'Norte',link:'…/c/pc-5m1q',meta:320,done:210,sync:'offline',phone:'5538999990006'},
 };
 PAGES.collect=()=>{
+  if(!SURVEYS_LOADED)loadSurveysIfNeeded();
+  if(!COLLECT_EVENTS_LOADED)loadCollectEventsIfNeeded();
   if(COLLECT_IDX==null)return collectList();
   return collectDetail(COLLECT_IDX);
 };
@@ -1562,13 +1572,14 @@ function collectList(){
   const active=SURVEYS.map((s,i)=>({s,i})).filter(x=>x.s.status==='campo'||x.s.status==='rascunho');
   const rows=active.map(({s,i})=>{
     const sample=surveySample(s);
-    const pct=sample?Math.round(s.collected/sample*100):0;
+    const collected=surveyCollectedCount(s);
+    const pct=sample?Math.round(collected/sample*100):0;
     const team=(s.team||[]).length;
     return `<tr style="cursor:pointer" onclick="collectOpen(${i})">
       <td><b>${s.name}</b><div style="font-size:11px;color:var(--ink3)">${s.created}</div></td>
       <td>${STATUS_PILL[s.status]}</td>
       <td>${team?team+(team===1?' pesquisador':' pesquisadores'):'<span style="color:var(--ink3)">sem equipe</span>'}</td>
-      <td>${s.collected.toLocaleString('pt-BR')} / ${sample.toLocaleString('pt-BR')} (${pct}%)</td>
+      <td>${collected.toLocaleString('pt-BR')} / ${sample.toLocaleString('pt-BR')} (${pct}%)</td>
       <td><span class="pill pill-blue">Abrir →</span></td></tr>`;
   }).join('')||'<tr><td colspan="5" class="empty">Nenhuma pesquisa em andamento.</td></tr>';
   return head('Coleta e campo','Selecione uma pesquisa em andamento para ver os pesquisadores vinculados')+`
@@ -1601,11 +1612,12 @@ function collectDetail(idx){
       </td></tr>`;
   }).join(''):'<tr><td colspan="6" class="empty">Nenhum pesquisador vinculado. Atribua a equipe em Minhas pesquisas.</td></tr>';
   const sample=surveySample(s);
+  const collected=surveyCollectedCount(s);
   return head('Coleta e campo — '+s.name,'Pesquisadores vinculados a esta pesquisa',
     '<button class="btn btn-out" onclick="collectBack()">← Pesquisas</button><button class="btn btn-fill" onclick="alert(\'Protótipo: exportar dados brutos (CSV/SPSS)\')">Exportar dados</button>')+`
   <div class="grid g3" style="margin-bottom:16px">
     ${stat('Pesquisadores',String(team.length),'vinculados','☺','#2563eb')}
-    ${stat('Coletado',s.collected.toLocaleString('pt-BR'),'de '+sample.toLocaleString('pt-BR'),'✓','#059669')}
+    ${stat('Coletado',collected.toLocaleString('pt-BR'),'de '+sample.toLocaleString('pt-BR'),'✓','#059669')}
     ${stat('Status',s.status==='campo'?'Em campo':'Rascunho','','◷','#d97706')}
   </div>
 
@@ -1681,64 +1693,90 @@ function collectTab(btn,which){
   if(which==='auditoria'){renderAudit(COLLECT_IDX);}
 }
 
-/* ===== Coleta ao vivo: mapa, feed e auditoria (simulado, sem back-end) ===== */
-const REGION_COORDS={
-  'Triângulo':[-18.9186,-48.2772],
-  'Jequitinhonha':[-18.2401,-43.6002],
-  'Vale do Mucuri':[-17.8593,-41.5053],
-  'Noroeste':[-16.3567,-46.9057],
-  'Norte':[-16.7285,-43.8578],
-};
+/* ===== Coleta de campo: mapa, feed e auditoria (dados reais, tabela collection_events) ===== */
 const COLLECT_COLORS=['#2563eb','#059669','#ea580c','#7c3aed','#dc2626','#d97706'];
-const QUOTA_NAMES=['Homens 16–24','Mulheres 16–24','Homens 25–44','Mulheres 25–44','Homens 45+','Mulheres 45+'];
 let COLLECT_EVENTS=[];
+let COLLECT_EVENTS_LOADED=false,COLLECT_EVENTS_LOADING=false;
 let COLLECT_LIVE_TIMER=null;
-let _collectMap=null,_collectMarkerLayer=null,_ceSeq=1;
+let _collectMap=null,_collectMarkerLayer=null;
 
-function makeCollectEvent(idx,name,ts){
-  const info=RESEARCHER_INFO[name]||{regional:'Central'};
-  const base=REGION_COORDS[info.regional]||[-18.5122,-44.5550];
-  const lat=base[0]+(Math.random()-0.5)*0.07;
-  const lng=base[1]+(Math.random()-0.5)*0.07;
-  const acc=6+Math.round(Math.random()*22);
-  const synced=Math.random()>0.35;
-  const flags=[];
-  if(Math.random()<0.08)flags.push('Fora da área designada');
-  if(Math.random()<0.06)flags.push('Tempo de aplicação muito curto');
-  if(Math.random()<0.05)flags.push('Possível duplicidade de dispositivo');
-  return{id:_ceSeq++,idx,name,cota:QUOTA_NAMES[Math.floor(Math.random()*QUOTA_NAMES.length)],lat,lng,acc,ts,synced,flags,
-    status:'valid',rejectReason:null,rejectedAt:null,calibration:false};
+/* traduz uma linha de collection_events (banco) para o formato usado nas
+   telas (mesmo "shape" de antes, quando os dados eram simulados) */
+function collectionEventRowToEntry(row){
+  const u=USERS.find(x=>x.id===row.researcher_id);
+  return{
+    id:row.id,
+    surveyId:row.survey_id,
+    researcherId:row.researcher_id,
+    name:u?u.name:'(pesquisador removido)',
+    cota:row.quota_label||'',
+    lat:row.lat,lng:row.lng,acc:row.accuracy_m,
+    ts:row.occurred_at?new Date(row.occurred_at).getTime():Date.now(),
+    synced:row.synced!==false,
+    flags:row.flags||[],
+    status:row.status||'valid',
+    rejectReason:row.reject_reason||null,
+    rejectedAt:row.rejected_at?new Date(row.rejected_at).getTime():null,
+    calibration:!!row.is_calibration,
+  };
 }
-
+/* carrega as coletas — o próprio RLS decide o que cada papel enxerga: staff
+   (admin/coord/gerente) vê as coletas de todo mundo, pesquisador só vê as
+   próprias (por isso essa mesma função serve tanto para o mapa/auditoria do
+   admin quanto para o histórico do pesquisador em "Coletar (app)"/"Meus
+   ganhos"). */
+async function loadCollectEventsIfNeeded(){
+  if(COLLECT_EVENTS_LOADED||COLLECT_EVENTS_LOADING)return;
+  COLLECT_EVENTS_LOADING=true;
+  await loadUsersIfNeeded();
+  try{
+    const {data,error}=await sb.from('collection_events').select('*').order('occurred_at',{ascending:false});
+    if(!error){COLLECT_EVENTS=(data||[]).map(collectionEventRowToEntry);COLLECT_EVENTS_LOADED=true;}
+    else console.error('Erro ao carregar coletas:',error);
+  }catch(ex){console.error('Erro de conexão ao carregar coletas:',ex);}
+  COLLECT_EVENTS_LOADING=false;
+  const onKey=document.querySelector('.nav-item.on');
+  const k=onKey&&onKey.dataset.key;
+  if(k==='collect'||k==='app-collect'||k==='my-earnings'||k==='dashboard')go(k);
+}
+function eventsForSurveyIdx(idx){
+  const s=SURVEYS[idx];if(!s)return[];
+  return COLLECT_EVENTS.filter(e=>e.surveyId===s.id);
+}
+/* re-busca as coletas desta pesquisa direto do banco e atualiza só os
+   painéis (feed/mapa/auditoria) sem recarregar a tela inteira — usado tanto
+   pelo "ao vivo" da tela do admin/coord quanto depois de o pesquisador
+   enviar uma coleta nova pelo app */
+async function pollCollectEvents(idx){
+  try{
+    const {data,error}=await sb.from('collection_events').select('*').order('occurred_at',{ascending:false});
+    if(error)return;
+    COLLECT_EVENTS=(data||[]).map(collectionEventRowToEntry);
+    COLLECT_EVENTS_LOADED=true;
+  }catch(ex){return;}
+  if(COLLECT_IDX!==idx)return; // usuário já saiu dessa pesquisa enquanto a busca rodava
+  renderLiveFeed(idx);
+  const mapaTab=document.getElementById('collectTabMapa');
+  if(mapaTab&&mapaTab.style.display!=='none')renderCollectMap(idx);
+  const audTab=document.getElementById('collectTabAuditoria');
+  if(audTab&&audTab.style.display!=='none')renderAudit(idx);
+}
 function initCollectLive(idx){
   stopCollectLive();
   const s=SURVEYS[idx];if(!s)return;
-  const team=s.team||[];
-  if(!team.length)return;
-  if(!COLLECT_EVENTS.some(e=>e.idx===idx)){
-    const seed=[];
-    team.forEach(name=>{
-      const n=2+Math.floor(Math.random()*3);
-      for(let i=0;i<n;i++)seed.push(makeCollectEvent(idx,name,Date.now()-Math.floor(Math.random()*1000*60*60)));
-    });
-    seed.sort((a,b)=>b.ts-a.ts);
-    COLLECT_EVENTS.push(...seed);
-  }
-  renderLiveFeed(idx);
-  renderAudit(idx);
-  if(document.getElementById('collectTabMapa')&&document.getElementById('collectTabMapa').style.display!=='none'){
-    renderCollectMap(idx);
-  }
-  COLLECT_LIVE_TIMER=setInterval(()=>{
-    const cur=SURVEYS[idx];if(!cur||!cur.team||!cur.team.length)return;
-    const name=cur.team[Math.floor(Math.random()*cur.team.length)];
-    COLLECT_EVENTS.unshift(makeCollectEvent(idx,name,Date.now()));
+  (async()=>{
+    if(!COLLECT_EVENTS_LOADED)await loadCollectEventsIfNeeded();
+    if(COLLECT_IDX!==idx)return;
     renderLiveFeed(idx);
-    const mapaTab=document.getElementById('collectTabMapa');
-    if(mapaTab&&mapaTab.style.display!=='none')renderCollectMap(idx);
-    const audTab=document.getElementById('collectTabAuditoria');
-    if(audTab&&audTab.style.display!=='none')renderAudit(idx);
-  },4000);
+    renderAudit(idx);
+    if(document.getElementById('collectTabMapa')&&document.getElementById('collectTabMapa').style.display!=='none'){
+      renderCollectMap(idx);
+    }
+  })();
+  /* "ao vivo" de verdade: busca de novo a cada 20s enquanto esta pesquisa
+     estiver aberta (sem inventar coleta nenhuma — só reflete o que os
+     pesquisadores realmente enviaram pelo app deles) */
+  COLLECT_LIVE_TIMER=setInterval(()=>pollCollectEvents(idx),20000);
 }
 function stopCollectLive(){
   if(COLLECT_LIVE_TIMER){clearInterval(COLLECT_LIVE_TIMER);COLLECT_LIVE_TIMER=null;}
@@ -1762,9 +1800,10 @@ function renderCollectMap(idx){
   const s=SURVEYS[idx];if(!s)return;
   const team=s.team||[];
   const colorFor=name=>COLLECT_COLORS[team.indexOf(name)%COLLECT_COLORS.length]||'#2563eb';
-  const events=COLLECT_EVENTS.filter(e=>e.idx===idx).slice(0,COLLECT_MAP_MAX_POINTS);
+  const allEvents=eventsForSurveyIdx(idx);
+  const events=allEvents.slice(0,COLLECT_MAP_MAX_POINTS);
   const shown=events.length;
-  const total=COLLECT_EVENTS.filter(e=>e.idx===idx).length;
+  const total=allEvents.length;
   const latestTsByName={},latestIdByName={};
   events.forEach(e=>{
     if(!(e.name in latestTsByName)||e.ts>latestTsByName[e.name]){latestTsByName[e.name]=e.ts;latestIdByName[e.name]=e.id;}
@@ -1796,7 +1835,7 @@ function buildMapPopup(e,isLatest){
     ${new Date(e.ts).toLocaleString('pt-BR')} · ±${Math.round(e.acc)}m<br>
     ${e.synced?'<span class="pill pill-green">Sincronizado</span>':'<span class="pill pill-amber">Pendente</span>'}
     ${statusExtra}
-    <div style="margin-top:8px"><button class="btn-ghost" style="font-size:11px;padding:4px 8px;width:100%" onclick="goToAuditFromMap(${e.id})">🔎 Ver na auditoria</button></div>
+    <div style="margin-top:8px"><button class="btn-ghost" style="font-size:11px;padding:4px 8px;width:100%" onclick="goToAuditFromMap('${e.id}')">🔎 Ver na auditoria</button></div>
   </div>`;
 }
 let AUDIT_HIGHLIGHT_ID=null;
@@ -1809,7 +1848,7 @@ function goToAuditFromMap(id){
 
 function renderLiveFeed(idx){
   const el=document.getElementById('liveFeed');if(!el)return;
-  const events=COLLECT_EVENTS.filter(e=>e.idx===idx).slice(0,8);
+  const events=eventsForSurveyIdx(idx).slice(0,8);
   el.innerHTML=events.map(e=>`
     <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:12.5px">
       <div class="avatar" style="width:26px;height:26px;font-size:10.5px;flex-shrink:0">${e.name.split(' ').map(n=>n[0]).join('').slice(0,2)}</div>
@@ -1845,7 +1884,7 @@ function fmtDist(m){
 }
 function renderAudit(idx){
   const el=document.getElementById('auditBody');if(!el)return;
-  const all=COLLECT_EVENTS.filter(e=>e.idx===idx);
+  const all=eventsForSurveyIdx(idx);
   const byName={};
   all.forEach(e=>{(byName[e.name]=byName[e.name]||[]).push(e);});
   Object.values(byName).forEach(arr=>arr.sort((a,b)=>a.ts-b.ts));
@@ -1884,8 +1923,8 @@ function renderAudit(idx){
       (rejected?`<div style="margin-top:5px"><span class="pill pill-red" title="${esc(e.rejectReason||'')}">✕ Reprovada</span><div style="font-size:10.5px;color:var(--ink3);margin-top:2px;max-width:170px">${esc(e.rejectReason||'')}</div></div>`:'')+
       (e.calibration?'<div style="margin-top:5px"><span class="pill pill-blue">◎ Calibração</span></div>':'');
     const actionsCell=`<div style="display:flex;flex-direction:column;gap:4px;white-space:nowrap">
-      <button class="btn-ghost" style="font-size:11px;padding:3px 8px" onclick="auditReject(${e.id})">${rejected?'↺ Reaprovar':'✕ Reprovar'}</button>
-      <button class="btn-ghost" style="font-size:11px;padding:3px 8px" onclick="auditToggleCalibration(${e.id})">${e.calibration?'↺ Nos resultados':'◎ Calibração'}</button>
+      <button class="btn-ghost" style="font-size:11px;padding:3px 8px" onclick="auditReject('${e.id}')">${rejected?'↺ Reaprovar':'✕ Reprovar'}</button>
+      <button class="btn-ghost" style="font-size:11px;padding:3px 8px" onclick="auditToggleCalibration('${e.id}')">${e.calibration?'↺ Nos resultados':'◎ Calibração'}</button>
     </div>`;
     return `<tr data-eid="${e.id}"${rejected?' style="background:var(--red-l)"':''}>
       <td>${e.name}</td>
@@ -1916,7 +1955,7 @@ function renderAuditFlagged(idx){
   const wrap=document.getElementById('auditFlaggedWrap');
   const el=document.getElementById('auditFlagged');
   if(!wrap||!el)return;
-  const flagged=COLLECT_EVENTS.filter(e=>e.idx===idx&&(e.status==='rejected'||e.calibration))
+  const flagged=eventsForSurveyIdx(idx).filter(e=>e.status==='rejected'||e.calibration)
     .sort((a,b)=>(b.rejectedAt||b.ts)-(a.rejectedAt||a.ts));
   if(!flagged.length){wrap.style.display='none';el.innerHTML='';return;}
   wrap.style.display='block';
@@ -1924,8 +1963,8 @@ function renderAuditFlagged(idx){
     const badges=(e.status==='rejected'?'<span class="pill pill-red" style="margin-right:4px">✕ Reprovada</span>':'')+
       (e.calibration?'<span class="pill pill-blue">◎ Calibração</span>':'');
     const reasonTxt=e.status==='rejected'?`<div style="font-size:11.5px;color:var(--ink3);margin-top:2px">Motivo: ${esc(e.rejectReason||'—')}</div>`:'';
-    const btns=(e.status==='rejected'?`<button class="btn-ghost" style="font-size:11.5px;padding:4px 9px" onclick="auditReject(${e.id})">↺ Desfazer reprovação</button>`:'')+
-      (e.calibration?`<button class="btn-ghost" style="font-size:11.5px;padding:4px 9px" onclick="auditToggleCalibration(${e.id})">↺ Remover calibração</button>`:'');
+    const btns=(e.status==='rejected'?`<button class="btn-ghost" style="font-size:11.5px;padding:4px 9px" onclick="auditReject('${e.id}')">↺ Desfazer reprovação</button>`:'')+
+      (e.calibration?`<button class="btn-ghost" style="font-size:11.5px;padding:4px 9px" onclick="auditToggleCalibration('${e.id}')">↺ Remover calibração</button>`:'');
     return `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--line);flex-wrap:wrap">
       <div>
         <b style="font-size:13px">${esc(e.name)}</b> <span style="color:var(--ink3);font-size:12px">· ${esc(e.cota)} · ${new Date(e.ts).toLocaleString('pt-BR')}</span>
@@ -1936,55 +1975,59 @@ function renderAuditFlagged(idx){
     </div>`;
   }).join('');
 }
-/* ---- ações de auditoria: reprovar coleta (não conta p/ pagamento) e marcar como calibração (fora do cálculo de resultados) ---- */
-function finAdjust(idx,name,validDelta,rejectedDelta){
-  const rows=FIN_ROWS[idx];if(!rows)return;
-  const r=rows.find(x=>x.name===name);if(!r)return;
-  r.valid=Math.max(0,r.valid+validDelta);
-  r.rejected=Math.max(0,r.rejected+rejectedDelta);
-}
-function auditReject(id){
+/* ---- ações de auditoria: reprovar coleta (não conta p/ pagamento) e marcar
+   como calibração (fora do cálculo de resultados, mas conta p/ pagamento) ----
+   Depois de reprovar/reaprovar, o próprio banco recalcula o financeiro
+   sozinho (gatilho em collection_events → payments — veja schema.sql), então
+   aqui só é preciso gravar a coleta e invalidar o cache local do Financeiro
+   para a próxima vez que essa tela for aberta. */
+async function auditReject(id){
   const e=COLLECT_EVENTS.find(x=>x.id===id);if(!e)return;
+  const idx=SURVEYS.findIndex(s=>s.id===e.surveyId);
   if(e.status==='rejected'){
+    try{
+      const {error}=await sb.from('collection_events').update({status:'valid',reject_reason:null,rejected_at:null}).eq('id',id);
+      if(error)throw new Error(error.message);
+    }catch(ex){alert('Não foi possível desfazer a reprovação: '+ex.message);return;}
     e.status='valid';e.rejectReason=null;e.rejectedAt=null;
-    finAdjust(e.idx,e.name,+1,-1);
   }else{
     const motivo=prompt('Motivo da reprovação desta coleta (o pesquisador vai ver este motivo no perfil dele):','');
     if(motivo==null)return;
     const trimmed=motivo.trim();
     if(!trimmed){alert('Informe o motivo da reprovação.');return;}
-    e.status='rejected';e.rejectReason=trimmed;e.rejectedAt=Date.now();
-    finAdjust(e.idx,e.name,-1,+1);
+    const rejectedAtIso=new Date().toISOString();
+    try{
+      const {error}=await sb.from('collection_events').update({status:'rejected',reject_reason:trimmed,rejected_at:rejectedAtIso}).eq('id',id);
+      if(error)throw new Error(error.message);
+    }catch(ex){alert('Não foi possível reprovar: '+ex.message);return;}
+    e.status='rejected';e.rejectReason=trimmed;e.rejectedAt=new Date(rejectedAtIso).getTime();
   }
-  renderAudit(e.idx);
+  PAYMENTS_LOADED=false; // financeiro recalculado no banco — recarrega na próxima visita
+  renderAudit(idx);
 }
-function auditToggleCalibration(id){
+async function auditToggleCalibration(id){
   const e=COLLECT_EVENTS.find(x=>x.id===id);if(!e)return;
-  e.calibration=!e.calibration;
-  renderAudit(e.idx);
+  const next=!e.calibration;
+  try{
+    const {error}=await sb.from('collection_events').update({is_calibration:next}).eq('id',id);
+    if(error)throw new Error(error.message);
+  }catch(ex){alert('Não foi possível atualizar: '+ex.message);return;}
+  e.calibration=next;
+  renderAudit(SURVEYS.findIndex(s=>s.id===e.surveyId));
 }
 
 /* ============ APP COLLECT (mobile) ============ */
-PAGES['app-collect']=()=>head('Coletar (app)','Versão de campo · georreferenciamento obrigatório · funciona offline e sincroniza quando houver internet')+`
+PAGES['app-collect']=()=>head('Coletar (app)','Versão de campo · georreferenciamento obrigatório · envio direto ao servidor')+`
   <div style="display:flex;gap:30px;flex-wrap:wrap;align-items:flex-start">
     <div class="phone">
       <div class="phone-screen">
-        <div class="phone-status"><span>9:41</span><span>Pesquisa MG ▾</span><span>◖ 87%</span></div>
+        <div class="phone-status"><span>9:41</span><span id="acollectSurveyLabel">Pesquisa ▾</span><span>◖ 87%</span></div>
         <div class="phone-body">
           <div id="geoStatus" class="offline-banner">🛰️ Verificando localização…</div>
-          <div id="syncBanner" class="offline-banner" style="background:var(--bg);color:var(--ink3)">⏳ 0 coletas a sincronizar</div>
-          <div style="font-weight:700;font-size:13px;margin-bottom:4px">Cotas de hoje</div>
-          <div style="font-size:11px;color:var(--ink3);margin-bottom:10px">Toque numa cota disponível para iniciar</div>
-          <div class="q-card" style="padding:10px;margin-bottom:8px;border-color:var(--accent)">
-            <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:600"><span>Mulheres 45+</span><span style="color:var(--accent)">2/6</span></div>
-            <div class="bar" style="margin-top:6px"><span style="width:33%;background:var(--accent)"></span></div></div>
-          <div class="q-card" style="padding:10px;margin-bottom:8px">
-            <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:600"><span>Homens 25–44</span><span style="color:var(--teal)">8/8 ✓</span></div>
-            <div class="bar" style="margin-top:6px"><span style="width:100%;background:var(--teal)"></span></div></div>
-          <div class="q-card" style="padding:10px">
-            <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:600"><span>Homens 45+</span><span>3/6</span></div>
-            <div class="bar" style="margin-top:6px"><span style="width:50%"></span></div></div>
-          <button id="startCollectBtn" class="btn-primary" style="height:40px;margin-top:12px;font-size:14px" disabled onclick="startCollectionGeo()">▶ Iniciar coleta</button>
+          <div id="acollectSurveyPicker"></div>
+          <div id="acollectQuotas"><div class="empty" style="padding:10px 0">Carregando cotas…</div></div>
+          <div id="acollectMsg"></div>
+          <button id="startCollectBtn" class="btn-primary" style="height:40px;margin-top:12px;font-size:14px" disabled onclick="acollectStart()">▶ Iniciar coleta</button>
           <div id="geoHint" style="font-size:10.5px;color:var(--ink3);text-align:center;margin-top:6px">Ative a localização para liberar a coleta</div>
         </div>
         <div class="phone-tabbar">
@@ -2001,35 +2044,262 @@ PAGES['app-collect']=()=>head('Coletar (app)','Versão de campo · georreferenci
         <div class="card-d">O app pede permissão de localização assim que abre. Sem o GPS ativo, o botão "Iniciar coleta" fica bloqueado.</div>
         <ul class="checklist" style="margin-top:2px">
           <li><span class="ck">✓</span>Localização é exigida antes de iniciar qualquer entrevista, para qualquer cota</li>
-          <li><span class="ck">✓</span>Coordenadas + horário são gravados junto de <b>toda</b> coleta, mesmo com o celular offline</li>
-          <li><span class="ck">✓</span>GPS funciona sem internet — só o envio da entrevista ao servidor depende de sinal</li>
-          <li><span class="ck">✓</span>Se a localização cair no meio do uso, o app tenta obter de novo e bloqueia novas coletas até normalizar</li>
+          <li><span class="ck">✓</span>Coordenadas, horário e cota ficam gravados de verdade no banco assim que a coleta é enviada</li>
+          <li><span class="ck">✓</span>O pesquisador só enxerga e escolhe as cotas desta pesquisa que ainda faltam</li>
+          <li><span class="ck">✓</span>Entrevista muito rápida (menos de 1 min entre iniciar e enviar) é sinalizada para a auditoria</li>
         </ul>
+        <div style="font-size:11px;color:var(--ink3);margin-top:8px">Ainda não implementado: funcionamento 100% offline com fila de sincronização — por enquanto é preciso ter internet no momento de enviar a coleta (o GPS em si funciona sem internet).</div>
       </div>
       <div class="card mb">
         <div class="card-t" style="font-size:13px">Últimas coletas registradas</div>
-        <div class="card-d">Coordenadas gravadas no aparelho, aguardando ou já sincronizadas</div>
+        <div class="card-d">Suas entrevistas enviadas, com o status de cada uma</div>
         <div id="geoLog"></div>
       </div>
-      <div class="callout">Instalável como app no celular (PWA ou app nativo). Ao abrir pela primeira vez, o navegador pede permissão de localização — é preciso permitir para poder coletar.</div>
+      <div class="callout">Versão web da coleta. O empacotamento como aplicativo instalável (Android/iOS, via Capacitor) é uma etapa futura do roteiro.</div>
     </div>
   </div>`;
 
 /* ===== Georreferenciamento obrigatório na coleta ===== */
 let GEO={status:'idle',lat:null,lng:null,acc:null,ts:null,watchId:null};
-let GEO_LOG=null;
+const GEO_STATUS_UI={
+  idle:{cls:'offline-banner',html:'🛰️ Verificando localização…',hint:'Ative a localização para liberar a coleta'},
+  requesting:{cls:'offline-banner',html:'🛰️ Obtendo localização — mantenha o GPS ligado…',hint:'Ative a localização para liberar a coleta'},
+  granted:()=>({cls:'online-banner',html:'📍 Localização ativa · precisão ±'+Math.round(GEO.acc||0)+'m · atualizado '+geoAgo(GEO.ts),hint:'Localização ativa — pode coletar'}),
+  denied:{cls:'offline-banner',html:'⛔ Permissão de localização negada — ative-a nas configurações do navegador. <button class="btn-ghost" style="padding:3px 9px;font-size:10.5px;margin-left:4px" onclick="requestGeo()">Tentar de novo</button>',hint:'Coleta bloqueada até a localização ser permitida'},
+  unavailable:{cls:'offline-banner',html:'⚠ Não foi possível obter a localização — verifique se o GPS está ligado. <button class="btn-ghost" style="padding:3px 9px;font-size:10.5px;margin-left:4px" onclick="requestGeo()">Tentar de novo</button>',hint:'Coleta bloqueada até a localização ser encontrada'},
+  unsupported:{cls:'offline-banner',html:'⚠ Este navegador não permite geolocalização — a coleta não pode ser iniciada aqui.',hint:'Abra pelo navegador do celular para coletar'},
+};
+function geoStatusUi(){const u=GEO_STATUS_UI[GEO.status]||GEO_STATUS_UI.idle;return typeof u==='function'?u():u;}
 
-function initGeoCollect(){
-  if(!GEO_LOG){
-    const now=Date.now();
-    GEO_LOG=[
-      {lat:-19.9227,lng:-43.9451,acc:12,ts:now-1000*60*42,synced:true},
-      {lat:-19.9209,lng:-43.9438,acc:9,ts:now-1000*60*17,synced:false},
-      {lat:-19.9231,lng:-43.9462,acc:14,ts:now-1000*60*4,synced:false},
-    ];
-  }
-  renderGeoLog();
+/* cotas reais desta pesquisa: uma "cota" é cada opção com % de cota
+   definido numa pergunta que não está com as cotas desligadas — o alvo é
+   esse % aplicado sobre o tamanho de amostra calculado da pesquisa (mesmo
+   número mostrado em "Amostra" e usado no financeiro/relatórios) */
+function surveyQuotas(s){
+  const sample=surveySample(s);
+  const out=[];
+  (s.questions||[]).forEach(q=>{
+    if(s.quotaOff&&s.quotaOff[q.id])return;
+    const qQuotas=(s.quotas&&s.quotas[q.id])||{};
+    Object.keys(qQuotas).forEach(oiStr=>{
+      const pct=qQuotas[oiStr];
+      if(pct==null)return;
+      const oi=+oiStr;
+      const label=(q.opts&&q.opts[oi])||('Opção '+(oi+1));
+      out.push({label,pct,target:Math.max(1,Math.round(sample*pct/100))});
+    });
+  });
+  return out;
+}
+
+let ACOLLECT_SURVEY_ID=null,ACOLLECT_QUOTA_COUNTS={},ACOLLECT_QUOTA_LIST=[];
+let ACOLLECT_SELECTED_QUOTA=null,ACOLLECT_IN_PROGRESS=false,ACOLLECT_SUBMITTING=false,ACOLLECT_STARTED_AT=null;
+let ACOLLECT_TICK=null;
+const ACOLLECT_MIN_SECONDS=60; /* entrevista concluída mais rápido que isso é sinalizada na auditoria */
+
+async function initGeoCollect(){
   requestGeo();
+  if(!SURVEYS_LOADED)await loadSurveysIfNeeded();
+  if(!COLLECT_EVENTS_LOADED)await loadCollectEventsIfNeeded();
+  renderAcollectSurveyPicker();
+  await acollectLoadQuotasForCurrent();
+  renderGeoLog();
+}
+
+/* pesquisas em campo onde este pesquisador está mesmo na equipe — o filtro
+   por nome é o que garante isso no ambiente de teste offline (que não
+   aplica RLS de verdade); em produção o RLS já restringe isso sozinho */
+function acollectMySurveys(){
+  if(!CURRENT_PROFILE)return[];
+  return SURVEYS.filter(s=>s.status==='campo'&&(s.team||[]).includes(CURRENT_PROFILE.name));
+}
+function renderAcollectSurveyPicker(){
+  const wrap=document.getElementById('acollectSurveyPicker');
+  const lbl=document.getElementById('acollectSurveyLabel');
+  if(!wrap)return;
+  const mine=acollectMySurveys();
+  if(!mine.length){
+    wrap.innerHTML='<div class="empty" style="padding:10px 0">Você não está atribuído a nenhuma pesquisa em campo no momento.</div>';
+    ACOLLECT_SURVEY_ID=null;
+    const quotasEl=document.getElementById('acollectQuotas');if(quotasEl)quotasEl.innerHTML='';
+    if(lbl)lbl.textContent='—';
+    renderAcollectActionState();
+    return;
+  }
+  if(ACOLLECT_SURVEY_ID==null||!mine.some(s=>s.id===ACOLLECT_SURVEY_ID))ACOLLECT_SURVEY_ID=mine[0].id;
+  const current=mine.find(s=>s.id===ACOLLECT_SURVEY_ID);
+  if(lbl)lbl.textContent=(current?current.name:'Pesquisa')+' ▾';
+  wrap.innerHTML=mine.length<2?'':`<div class="mb"><label class="lbl">Pesquisa</label>
+    <select class="inp" id="acollectSurveySel" onchange="acollectPickSurvey(this.value)">
+      ${mine.map(s=>`<option value="${s.id}" ${s.id===ACOLLECT_SURVEY_ID?'selected':''}>${esc(s.name)}</option>`).join('')}
+    </select></div>`;
+}
+async function acollectPickSurvey(id){
+  if(ACOLLECT_IN_PROGRESS){alert('Termine ou cancele a entrevista em andamento antes de trocar de pesquisa.');renderAcollectSurveyPicker();return;}
+  ACOLLECT_SURVEY_ID=id;
+  ACOLLECT_SELECTED_QUOTA=null;
+  renderAcollectSurveyPicker();
+  await acollectLoadQuotasForCurrent();
+}
+async function loadQuotaCounts(surveyId){
+  try{
+    const {data,error}=await sb.rpc('survey_quota_counts',{p_survey_id:surveyId});
+    if(error){console.error('Erro ao carregar progresso das cotas:',error);return{};}
+    const map={};
+    (data||[]).forEach(r=>{map[r.quota_label]=r.valid_count||0;});
+    return map;
+  }catch(ex){console.error('Erro de conexão ao carregar progresso das cotas:',ex);return{};}
+}
+async function acollectLoadQuotasForCurrent(){
+  const el=document.getElementById('acollectQuotas');
+  if(!el)return;
+  if(!ACOLLECT_SURVEY_ID){el.innerHTML='';renderAcollectActionState();return;}
+  el.innerHTML='<div class="empty" style="padding:10px 0">Carregando cotas…</div>';
+  ACOLLECT_QUOTA_COUNTS=await loadQuotaCounts(ACOLLECT_SURVEY_ID);
+  renderAcollectQuotas();
+}
+function renderAcollectQuotas(){
+  const el=document.getElementById('acollectQuotas');
+  if(!el)return;
+  const s=SURVEYS.find(x=>x.id===ACOLLECT_SURVEY_ID);
+  if(!s){el.innerHTML='';ACOLLECT_QUOTA_LIST=[];renderAcollectActionState();return;}
+  ACOLLECT_QUOTA_LIST=surveyQuotas(s);
+  if(!ACOLLECT_QUOTA_LIST.length){
+    el.innerHTML='<div class="card-d" style="margin:6px 0 10px">Esta pesquisa não tem cotas configuradas — pode coletar livremente.</div>';
+    if(!ACOLLECT_IN_PROGRESS)ACOLLECT_SELECTED_QUOTA='';
+    renderAcollectActionState();
+    return;
+  }
+  el.innerHTML='<div style="font-weight:700;font-size:13px;margin-bottom:4px">Cotas de hoje</div>'+
+    '<div style="font-size:11px;color:var(--ink3);margin-bottom:10px">Toque numa cota disponível para escolher</div>'+
+    ACOLLECT_QUOTA_LIST.map((q,qi)=>{
+      const done=ACOLLECT_QUOTA_COUNTS[q.label]||0;
+      const full=done>=q.target;
+      const selected=ACOLLECT_SELECTED_QUOTA===q.label;
+      const pct=Math.min(100,Math.round(done/q.target*100));
+      const color=full?'var(--teal)':'var(--accent)';
+      const clickable=!full&&!ACOLLECT_IN_PROGRESS;
+      return `<div class="q-card" style="padding:10px;margin-bottom:8px;cursor:${clickable?'pointer':'default'};${selected?'border-color:var(--accent)':''}${full?';opacity:.65':''}" ${clickable?`onclick="acollectSelectQuotaIdx(${qi})"`:''}>
+        <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:600"><span>${esc(q.label)}</span><span style="color:${color}">${done}/${q.target}${full?' ✓':''}</span></div>
+        <div class="bar" style="margin-top:6px"><span style="width:${pct}%;background:${color}"></span></div>
+      </div>`;
+    }).join('');
+  renderAcollectActionState();
+}
+function acollectSelectQuotaIdx(qi){
+  if(ACOLLECT_IN_PROGRESS)return;
+  const q=ACOLLECT_QUOTA_LIST[qi];if(!q)return;
+  ACOLLECT_SELECTED_QUOTA=q.label;
+  renderAcollectQuotas();
+}
+function acollectElapsedLabel(){
+  if(!ACOLLECT_STARTED_AT)return'';
+  const s=Math.max(0,Math.round((Date.now()-ACOLLECT_STARTED_AT)/1000));
+  return s<60?s+'s':Math.floor(s/60)+'min '+String(s%60).padStart(2,'0')+'s';
+}
+function acollectStartTicking(){
+  if(ACOLLECT_TICK)return;
+  ACOLLECT_TICK=setInterval(()=>{
+    const banner=document.querySelector('#acollectActions .online-banner');
+    if(!banner||!ACOLLECT_IN_PROGRESS){clearInterval(ACOLLECT_TICK);ACOLLECT_TICK=null;return;}
+    banner.textContent='▶ Entrevista em andamento — '+acollectElapsedLabel();
+  },1000);
+}
+function renderAcollectActionState(){
+  const btn=document.getElementById('startCollectBtn');
+  const hint=document.getElementById('geoHint');
+  if(!btn)return;
+  const geoOk=GEO.status==='granted';
+  const hasSurvey=!!ACOLLECT_SURVEY_ID;
+  const hasQuota=ACOLLECT_SELECTED_QUOTA!==null&&ACOLLECT_SELECTED_QUOTA!==undefined;
+  let actionsEl=document.getElementById('acollectActions');
+  if(ACOLLECT_IN_PROGRESS){
+    btn.style.display='none';
+    if(!actionsEl){
+      actionsEl=document.createElement('div');
+      actionsEl.id='acollectActions';
+      btn.parentNode.insertBefore(actionsEl,btn);
+    }
+    actionsEl.innerHTML=`<div class="online-banner" style="margin-bottom:8px">▶ Entrevista em andamento — ${acollectElapsedLabel()}</div>
+      <button class="btn-primary" style="height:40px;font-size:14px;width:100%" ${ACOLLECT_SUBMITTING?'disabled':''} onclick="acollectSubmit()">${ACOLLECT_SUBMITTING?'Enviando…':'✓ Concluir e enviar'}</button>
+      <button class="btn-ghost" style="width:100%;margin-top:6px" ${ACOLLECT_SUBMITTING?'disabled':''} onclick="acollectCancel()">Cancelar</button>`;
+    if(hint)hint.textContent='';
+    acollectStartTicking();
+    return;
+  }
+  if(actionsEl)actionsEl.innerHTML='';
+  btn.style.display='';
+  const active=geoOk&&hasSurvey&&hasQuota;
+  btn.disabled=!active;
+  btn.style.opacity=active?'1':'.5';
+  btn.style.cursor=active?'pointer':'not-allowed';
+  if(hint)hint.textContent=!geoOk?geoStatusUi().hint:!hasSurvey?'Nenhuma pesquisa em campo atribuída a você':!hasQuota?'Escolha uma cota para liberar a coleta':'Localização ativa — pode coletar';
+}
+function acollectStart(){
+  if(GEO.status!=='granted'||!ACOLLECT_SURVEY_ID)return;
+  if(ACOLLECT_SELECTED_QUOTA===null||ACOLLECT_SELECTED_QUOTA===undefined)return;
+  ACOLLECT_IN_PROGRESS=true;
+  ACOLLECT_STARTED_AT=Date.now();
+  renderAcollectActionState();
+}
+function acollectCancel(){
+  ACOLLECT_IN_PROGRESS=false;
+  ACOLLECT_STARTED_AT=null;
+  ACOLLECT_SUBMITTING=false;
+  if(ACOLLECT_TICK){clearInterval(ACOLLECT_TICK);ACOLLECT_TICK=null;}
+  renderAcollectQuotas();
+}
+async function loadCollectEventsForced(){
+  try{
+    const {data,error}=await sb.from('collection_events').select('*').order('occurred_at',{ascending:false});
+    if(!error){COLLECT_EVENTS=(data||[]).map(collectionEventRowToEntry);COLLECT_EVENTS_LOADED=true;}
+  }catch(ex){ /* mantém os dados já carregados se a nova busca falhar */ }
+}
+/* envia a entrevista de verdade: geolocalização + horário + cota escolhida
+   viram uma linha real em collection_events. Sinaliza automaticamente se a
+   entrevista foi concluída rápido demais para ter sido aplicada de verdade
+   (menos de ACOLLECT_MIN_SECONDS entre "Iniciar" e "Concluir e enviar") —
+   fica visível para o staff na aba Auditoria. */
+async function acollectSubmit(){
+  if(!ACOLLECT_IN_PROGRESS||ACOLLECT_SUBMITTING)return;
+  if(GEO.status!=='granted'){alert('A localização foi perdida — aguarde reconectar antes de enviar.');return;}
+  ACOLLECT_SUBMITTING=true;
+  renderAcollectActionState();
+  const elapsedMs=Date.now()-ACOLLECT_STARTED_AT;
+  const flags=[];
+  if(elapsedMs<ACOLLECT_MIN_SECONDS*1000)flags.push('Tempo de aplicação muito curto');
+  const quotaLabel=ACOLLECT_SELECTED_QUOTA||null;
+  try{
+    const {error}=await sb.from('collection_events').insert({
+      survey_id:ACOLLECT_SURVEY_ID,
+      researcher_id:CURRENT_PROFILE.id,
+      quota_label:quotaLabel,
+      lat:GEO.lat,lng:GEO.lng,accuracy_m:GEO.acc,
+      occurred_at:new Date().toISOString(),
+      synced:true,
+      flags,
+      status:'valid',
+      is_calibration:false,
+    });
+    if(error)throw new Error(error.message);
+  }catch(ex){
+    ACOLLECT_SUBMITTING=false;
+    renderAcollectActionState();
+    alert('Não foi possível enviar a coleta agora ('+ex.message+'). A entrevista continua em andamento — tente enviar de novo quando tiver internet.');
+    return;
+  }
+  ACOLLECT_IN_PROGRESS=false;ACOLLECT_SUBMITTING=false;ACOLLECT_STARTED_AT=null;ACOLLECT_SELECTED_QUOTA=null;
+  if(ACOLLECT_TICK){clearInterval(ACOLLECT_TICK);ACOLLECT_TICK=null;}
+  PAYMENTS_LOADED=false; // financeiro recalculado no banco (gatilho) — recarrega na próxima visita
+  await loadCollectEventsForced();
+  ACOLLECT_QUOTA_COUNTS=await loadQuotaCounts(ACOLLECT_SURVEY_ID);
+  renderAcollectQuotas();
+  renderGeoLog();
+  const msg=document.getElementById('acollectMsg');
+  if(msg){
+    msg.innerHTML='<div class="online-banner">✓ Coleta enviada com sucesso</div>';
+    setTimeout(()=>{if(msg)msg.innerHTML='';},4000);
+  }
 }
 
 function requestGeo(){
@@ -2055,22 +2325,10 @@ function requestGeo(){
 function renderGeoStatus(){
   const box=document.getElementById('geoStatus');
   if(!box)return;
-  const btn=document.getElementById('startCollectBtn');
-  const hint=document.getElementById('geoHint');
-  const MAP={
-    idle:{cls:'offline-banner',html:'🛰️ Verificando localização…',hint:'Ative a localização para liberar a coleta'},
-    requesting:{cls:'offline-banner',html:'🛰️ Obtendo localização — mantenha o GPS ligado…',hint:'Ative a localização para liberar a coleta'},
-    granted:{cls:'online-banner',html:'📍 Localização ativa · precisão ±'+Math.round(GEO.acc||0)+'m · atualizado '+geoAgo(GEO.ts),hint:'Localização ativa — pode coletar'},
-    denied:{cls:'offline-banner',html:'⛔ Permissão de localização negada — ative-a nas configurações do navegador. <button class="btn-ghost" style="padding:3px 9px;font-size:10.5px;margin-left:4px" onclick="requestGeo()">Tentar de novo</button>',hint:'Coleta bloqueada até a localização ser permitida'},
-    unavailable:{cls:'offline-banner',html:'⚠ Não foi possível obter a localização — verifique se o GPS está ligado. <button class="btn-ghost" style="padding:3px 9px;font-size:10.5px;margin-left:4px" onclick="requestGeo()">Tentar de novo</button>',hint:'Coleta bloqueada até a localização ser encontrada'},
-    unsupported:{cls:'offline-banner',html:'⚠ Este navegador não permite geolocalização — a coleta não pode ser iniciada aqui.',hint:'Abra pelo navegador do celular para coletar'},
-  };
-  const s=MAP[GEO.status]||MAP.idle;
+  const s=geoStatusUi();
   box.className=s.cls;
   box.innerHTML=s.html;
-  const active=GEO.status==='granted';
-  if(btn){btn.disabled=!active;btn.style.opacity=active?'1':'.5';btn.style.cursor=active?'pointer':'not-allowed';}
-  if(hint)hint.textContent=s.hint;
+  renderAcollectActionState();
 }
 
 function geoAgo(ts){
@@ -2081,26 +2339,23 @@ function geoAgo(ts){
   return'há '+Math.round(s/60)+'min';
 }
 
-function startCollectionGeo(){
-  if(GEO.status!=='granted'){renderGeoStatus();return;}
-  GEO_LOG.unshift({lat:GEO.lat,lng:GEO.lng,acc:GEO.acc,ts:Date.now(),synced:false});
-  renderGeoLog();
-  alert('Protótipo: questionário iniciado com localização registrada ('+GEO.lat.toFixed(5)+', '+GEO.lng.toFixed(5)+').\nMesmo se o celular estiver offline, isso fica salvo no aparelho e sincroniza quando houver internet.');
-}
-
+/* histórico de coletas do próprio pesquisador — vem do mesmo COLLECT_EVENTS
+   carregado para a auditoria (o RLS já garante que um pesquisador só recebe
+   as próprias linhas) */
 function renderGeoLog(){
   const el=document.getElementById('geoLog');
-  const banner=document.getElementById('syncBanner');
-  if(!GEO_LOG)return;
-  const pending=GEO_LOG.filter(g=>!g.synced).length;
-  if(banner)banner.innerHTML=(pending?'⏳ ':'✓ ')+pending+' coleta'+(pending===1?'':'s')+' aguardando sincronização'+(pending?' (georreferenciadas, prontas para enviar)':'');
   if(!el)return;
-  el.innerHTML=GEO_LOG.slice(0,5).map(g=>`
-    <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--line);font-size:11.5px">
+  const myId=CURRENT_PROFILE&&CURRENT_PROFILE.id;
+  const mine=COLLECT_EVENTS.filter(e=>e.researcherId===myId).sort((a,b)=>b.ts-a.ts).slice(0,6);
+  el.innerHTML=mine.length?mine.map(g=>{
+    const s=SURVEYS.find(x=>x.id===g.surveyId);
+    const statusBadge=g.status==='rejected'?' <span class="pill pill-red">✕ Reprovada</span>':g.calibration?' <span class="pill pill-blue">◎ Calibração</span>':'';
+    return `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--line);font-size:11.5px">
       <span style="width:16px;text-align:center;flex-shrink:0">${g.synced?'✓':'⏳'}</span>
-      <span style="flex:1;color:var(--ink2)">${g.lat.toFixed(5)}, ${g.lng.toFixed(5)} <span style="color:var(--ink3)">±${Math.round(g.acc)}m</span></span>
+      <span style="flex:1;color:var(--ink2)">${esc(g.cota||'(sem cota)')}${s?' · <span style="color:var(--ink3)">'+esc(s.name)+'</span>':''}${statusBadge}</span>
       <span style="color:var(--ink3);white-space:nowrap;flex-shrink:0">${geoAgo(g.ts)}</span>
-    </div>`).join('')||'<div class="empty" style="padding:14px 0">Nenhuma coleta registrada ainda.</div>';
+    </div>`;
+  }).join(''):'<div class="empty" style="padding:14px 0">Nenhuma coleta registrada ainda.</div>';
 }
 
 /* ============ REPORTS ============ */
@@ -3166,14 +3421,15 @@ PAGES.permissions=()=>head('Perfis e permissões','Defina o que cada perfil pode
 
 /* ============ FINANCE ============ */
 /* ============ FINANCEIRO — carregamento e gravação no Supabase ============
-   Ainda não existe coleta automática de entrevistas (isso é a próxima etapa,
-   "Coleta de campo" com GPS/fotos), então por enquanto os valores válidos/
-   rejeitados de cada pesquisador são lançados manualmente pelo administrador
-   aqui — mas já ficam salvos de verdade na tabela `payments`, uma linha por
-   pesquisador+pesquisa. Todo pesquisador atribuído à equipe da pesquisa (ver
-   "Atribuir equipe") aparece na lista mesmo sem nenhum lançamento ainda,
-   com 0 entrevistas — só vira uma linha de verdade no banco quando o
-   administrador lança o primeiro valor. */
+   Válidos/rejeitados de cada pesquisador em cada pesquisa vêm de verdade da
+   Coleta de campo agora: um gatilho no banco (veja schema.sql) recalcula
+   esses números automaticamente toda vez que uma coleta é enviada pelo app
+   do pesquisador ou reprovada/reaprovada na auditoria — por isso eles
+   aparecem aqui como somente leitura. O que o staff ainda decide manualmente
+   é só o status do pagamento em si (pendente/aprovado/em auditoria), em
+   "Definir status". Todo pesquisador atribuído à equipe da pesquisa aparece
+   na lista mesmo sem nenhuma coleta ainda, com 0 entrevistas — só vira uma
+   linha de verdade no banco quando a primeira coleta dele é enviada. */
 let PAYMENTS=[]; // {id, surveyId, researcherId, name, pixKey, valid, rejected, status}
 let PAYMENTS_LOADED=false,PAYMENTS_LOADING=false;
 const FIN_STATUS={
@@ -3207,15 +3463,17 @@ async function loadPaymentsIfNeeded(){
   const k=onKey&&onKey.dataset.key;
   if(k==='finance'||k==='my-earnings')go(k);
 }
-/* lança (cria ou atualiza) o valor de um pesquisador numa pesquisa */
-async function saveFinPayment(surveyId,researcherId,valid,rejected,status){
+/* define só o status do pagamento (pendente/aprovado/auditoria) — válidos e
+   rejeitados não são mais editáveis aqui: vêm de verdade da Coleta de campo
+   e são recalculados sozinhos por um gatilho no banco (schema.sql) */
+async function saveFinStatus(surveyId,researcherId,status){
   const existing=PAYMENTS.find(p=>p.surveyId===surveyId&&p.researcherId===researcherId);
   if(existing){
-    const {error}=await sb.from('payments').update({valid_count:valid,rejected_count:rejected,status}).eq('id',existing.id);
+    const {error}=await sb.from('payments').update({status}).eq('id',existing.id);
     if(error)throw new Error(error.message);
-    existing.valid=valid;existing.rejected=rejected;existing.status=status;
+    existing.status=status;
   }else{
-    const {data:inserted,error}=await sb.from('payments').insert({survey_id:surveyId,researcher_id:researcherId,valid_count:valid,rejected_count:rejected,status}).select().single();
+    const {data:inserted,error}=await sb.from('payments').insert({survey_id:surveyId,researcher_id:researcherId,valid_count:0,rejected_count:0,status}).select().single();
     if(error)throw new Error(error.message);
     PAYMENTS.push(paymentRowToEntry(inserted));
   }
@@ -3285,7 +3543,7 @@ function financeDetail(idx){
     const valor=r.valid*price;
     const pixShown=maskPix(r.pixKey);
     return `<tr><td>${esc(r.name)}</td><td>${r.valid}</td><td>${r.rejected}</td><td><b>${brl(valor)}</b></td><td>${pixShown||'<span style="color:var(--ink3)">—</span>'}</td><td>${st.pill}</td>
-      <td><button class="btn-ghost" onclick="finEditPayment(${idx},'${r.researcherId}')">Lançar / editar</button></td></tr>`;
+      <td><button class="btn-ghost" onclick="finEditPayment(${idx},'${r.researcherId}')">Definir status</button></td></tr>`;
   }).join(''):'<tr><td colspan="7" class="empty">Nenhum pesquisador atribuído a esta pesquisa ainda — atribua a equipe em Minhas pesquisas.</td></tr>';
   return head('Financeiro — '+s.name,'Pagamento por entrevista válida coletada nesta pesquisa',
     '<button class="btn btn-out" onclick="financeBack()">← Financeiro</button>'+
@@ -3298,7 +3556,7 @@ function financeDetail(idx){
   </div>
   <div class="card mb">
     <div class="card-t">Pagamentos por pesquisador</div>
-    <div class="card-d">Calculado por entrevista válida coletada nesta pesquisa. Dados bancários armazenados de forma segura (LGPD).</div>
+    <div class="card-d">Válidos e rejeitados vêm de verdade das coletas de campo (contados automaticamente). Dados bancários armazenados de forma segura (LGPD).</div>
     <table><thead><tr><th>Pesquisador</th><th>Válidos</th><th>Rejeitados</th><th>Valor</th><th>Chave PIX</th><th>Status</th><th></th></tr></thead>
     <tbody>${body}</tbody></table>
   </div>
@@ -3316,33 +3574,29 @@ function financeDetail(idx){
     </div>
   </div>`;
 }
-/* lança/edita entrevistas válidas, rejeitadas e status de um pesquisador
-   nesta pesquisa — ainda não há coleta automática (isso é a etapa "Coleta de
-   campo"), então por enquanto é o administrador quem informa esses números
-   direto aqui, e eles já ficam salvos de verdade na tabela `payments`. */
+/* define o status do pagamento de um pesquisador nesta pesquisa — válidos e
+   rejeitados não são mais perguntados aqui: vêm de verdade da Coleta de
+   campo (contados automaticamente pelo banco a partir das entrevistas
+   enviadas pelo app e da auditoria) */
 async function finEditPayment(idx,researcherId){
   const s=SURVEYS[idx];if(!s)return;
   const current=finRows(idx).find(r=>r.researcherId===researcherId);
   if(!current)return;
-  const validStr=prompt('Entrevistas válidas de '+current.name+':',String(current.valid));
-  if(validStr==null)return;
-  const rejectedStr=prompt('Entrevistas rejeitadas:',String(current.rejected));
-  if(rejectedStr==null)return;
-  const statusStr=(prompt('Status — digite: pendente, aprovado ou auditoria',current.status)||'').trim().toLowerCase();
+  const statusStr=(prompt('Status do pagamento de '+current.name+' — digite: pendente, aprovado ou auditoria\n(Válidos: '+current.valid+' · Rejeitados: '+current.rejected+' — calculados automaticamente pela Coleta de campo.)',current.status)||'').trim().toLowerCase();
+  if(!statusStr)return;
   const status=['pendente','aprovado','auditoria'].includes(statusStr)?statusStr:current.status;
-  const valid=Math.max(0,parseInt(validStr,10)||0);
-  const rejected=Math.max(0,parseInt(rejectedStr,10)||0);
   try{
-    await saveFinPayment(s.id,researcherId,valid,rejected,status);
+    await saveFinStatus(s.id,researcherId,status);
   }catch(ex){alert('Não foi possível salvar: '+ex.message);return;}
   go('finance');
 }
 
 /* ============ MY EARNINGS (pesquisador) ============ */
 PAGES['my-earnings']=()=>{
-  if(!SURVEYS_LOADED||!PAYMENTS_LOADED){
+  if(!SURVEYS_LOADED||!PAYMENTS_LOADED||!COLLECT_EVENTS_LOADED){
     if(!SURVEYS_LOADED)loadSurveysIfNeeded();
     if(!PAYMENTS_LOADED)loadPaymentsIfNeeded();
+    if(!COLLECT_EVENTS_LOADED)loadCollectEventsIfNeeded();
     return head('Meus ganhos','Acompanhe seus pagamentos por formulário coletado')+'<div class="empty">Carregando seus dados financeiros…</div>';
   }
   const myId=CURRENT_PROFILE&&CURRENT_PROFILE.id;
@@ -3356,7 +3610,7 @@ PAGES['my-earnings']=()=>{
   const pendente=rowsData.filter(r=>r.status==='pendente').reduce((a,r)=>a+r.valor,0);
   const auditoria=rowsData.filter(r=>r.status==='auditoria').reduce((a,r)=>a+r.valor,0);
   const histRows=rowsData.length?rowsData.map(r=>`<tr><td>${esc(r.survey)}</td><td>${r.valid}</td><td>${brl(r.valor)}</td><td>${(FIN_STATUS[r.status]||FIN_STATUS.pendente).pill}</td></tr>`).join('')
-    :'<tr><td colspan="4" class="empty">Nenhum lançamento ainda — assim que você for atribuído a uma pesquisa e o administrador lançar suas entrevistas, aparece aqui.</td></tr>';
+    :'<tr><td colspan="4" class="empty">Nenhuma coleta ainda — assim que você enviar sua primeira entrevista em "Coletar (app)", aparece aqui.</td></tr>';
   return head('Meus ganhos','Acompanhe seus pagamentos por formulário coletado')+`
   <div class="grid g3" style="margin-bottom:16px">
     ${stat('A receber',brl(aReceber),'aprovado, aguardando repasse','$','#2563eb')}
@@ -3393,11 +3647,11 @@ async function saveMyPixData(){
 }
 function renderMyRejected(){
   const el=document.getElementById('myRejected');if(!el)return;
-  const me=(CURRENT_PROFILE&&CURRENT_PROFILE.name)||ROLES.pesq.name;
-  const rej=COLLECT_EVENTS.filter(e=>e.name===me&&e.status==='rejected').sort((a,b)=>(b.rejectedAt||0)-(a.rejectedAt||0));
+  const myId=CURRENT_PROFILE&&CURRENT_PROFILE.id;
+  const rej=COLLECT_EVENTS.filter(e=>e.researcherId===myId&&e.status==='rejected').sort((a,b)=>(b.rejectedAt||0)-(a.rejectedAt||0));
   if(!rej.length){el.innerHTML='<div class="empty">Nenhuma coleta reprovada até agora.</div>';return;}
   el.innerHTML=rej.map(e=>{
-    const s=SURVEYS[e.idx];
+    const s=SURVEYS.find(x=>x.id===e.surveyId);
     return `<div style="padding:10px 0;border-bottom:1px solid var(--line)">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
         <b style="font-size:13px">${esc(s?s.name:'Pesquisa')}</b>

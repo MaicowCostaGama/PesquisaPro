@@ -2602,8 +2602,14 @@ function renderAcollectActionState(){
    efetivamente trava a coleta quando a cota já bateu a meta. */
 async function acollectStart(){
   if(GEO.status!=='granted'||!ACOLLECT_SURVEY_ID)return;
-  if(ACOLLECT_SELECTED_QUOTA===null||ACOLLECT_SELECTED_QUOTA===undefined||ACOLLECT_SELECTED_QUOTA==='')return;
-  const quotaEntry=ACOLLECT_QUOTA_LIST.find(q=>q.label===ACOLLECT_SELECTED_QUOTA);
+  // quando a pesquisa não tem cotas configuradas, ACOLLECT_SELECTED_QUOTA é
+  // '' de propósito (coleta livre) — só exigir uma cota escolhida quando
+  // existe alguma cota pra escolher. Sem essa checagem, o clique em
+  // "Iniciar coleta" não fazia nada para pesquisas sem cota, mesmo com o
+  // botão habilitado.
+  const temCotas=!!ACOLLECT_QUOTA_LIST.length;
+  if(temCotas&&(ACOLLECT_SELECTED_QUOTA===null||ACOLLECT_SELECTED_QUOTA===undefined||ACOLLECT_SELECTED_QUOTA===''))return;
+  const quotaEntry=temCotas?ACOLLECT_QUOTA_LIST.find(q=>q.label===ACOLLECT_SELECTED_QUOTA):null;
   if(quotaEntry){
     const btn=document.getElementById('startCollectBtn');
     if(btn){btn.disabled=true;btn.textContent='Verificando cota…';}

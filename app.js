@@ -189,26 +189,31 @@ PAGES.dashboard=()=>{
   if(!USERS_LOADED)loadUsersIfNeeded();
   if(!SURVEYS_LOADED)loadSurveysIfNeeded();
   if(!COLLECT_EVENTS_LOADED)loadCollectEventsIfNeeded();
+  if(!ALL_CONTRACTS_LOADED)loadAllContractsIfNeeded();
+  if(!COMPANY_SIGNATURE_LOADED)loadCompanySignatureIfNeeded();
   const emCampo=SURVEYS.filter(s=>s.status==='campo').length;
   const emEdicao=SURVEYS.filter(s=>s.status==='rascunho').length;
   const finalizadas=SURVEYS.filter(s=>s.status==='encerrada').length;
-  const pesqAtivos=USERS.filter(u=>u.role==='pesq'&&u.status==='ativo').length;
+  const pesqAtivosList=USERS.filter(u=>u.role==='pesq'&&u.status==='ativo');
   const entrevistas=SURVEYS.reduce((sum,s)=>sum+surveyCollectedCount(s),0);
   const clientesAtendidos=USERS.filter(u=>u.role==='cliente'&&u.status==='ativo').length;
   const cadastrosAprovar=SIGNUPS.length;
-  const contratosPendentes=CONTRACTS.filter(c=>!c.signed).length;
+  const signedIds=new Set(ALL_CONTRACTS.map(c=>c.researcher_id));
+  const contratosPendentes=pesqAtivosList.filter(u=>!signedIds.has(u.id)).length;
+  const isAdmin=selectedRole==='admin'||selectedRole==='admpro';
   return head('Painel geral','Visão consolidada da pesquisa eleitoral · Minas Gerais 2026')+`
+  ${(isAdmin&&COMPANY_SIGNATURE_LOADED&&!COMPANY_SIGNATURE)?'<div class="callout mb">✎ O contrato-quadro dos pesquisadores ainda não foi assinado do lado do PesquisaPro (CONTRATANTE) — assine para que o contrato valha para os pesquisadores. <button class="btn-ghost" style="margin-left:6px" onclick="go(\'contracts\')">Assinar agora →</button></div>':''}
   <div class="grid g4" style="margin-bottom:18px">
     ${stat('Pesquisas em campo',String(emCampo),'coletando dados agora','▤','#2563eb')}
     ${stat('Pesquisas em edição',String(emEdicao),'ainda não publicadas','✎','#d97706')}
     ${stat('Pesquisas finalizadas',String(finalizadas),'coleta encerrada','✓','#059669')}
-    ${stat('Pesquisadores ativos',String(pesqAtivos),'cadastrados no sistema','☺','#7c3aed')}
+    ${stat('Pesquisadores ativos',String(pesqAtivosList.length),'cadastrados no sistema','☺','#7c3aed')}
   </div>
   <div class="grid g4" style="margin-bottom:18px">
     ${stat('Entrevistas realizadas',entrevistas.toLocaleString('pt-BR'),'coletadas através do aplicativo','◫','#0891b2')}
     ${stat('Clientes atendidos',String(clientesAtendidos),'com pesquisa em andamento','◆','#059669')}
     ${stat('Cadastros a aprovar',String(cadastrosAprovar),'pesquisadores aguardando aprovação','◷','#d97706')}
-    ${stat('Contratos pendentes',String(contratosPendentes),'aguardando assinatura','✒','#dc2626')}
+    ${stat('Contratos pendentes',String(contratosPendentes),'pesquisadores sem assinar','✒','#dc2626')}
   </div>
   <div class="card">
     <div class="card-t">Coletas por dia</div>
@@ -243,6 +248,7 @@ PAGES['dashboard-pesq']=()=>{
   if(!SURVEYS_LOADED)loadSurveysIfNeeded();
   if(!COLLECT_EVENTS_LOADED)loadCollectEventsIfNeeded();
   if(!PAYMENTS_LOADED)loadPaymentsIfNeeded();
+  if(!MY_CONTRACT_LOADED)loadMyContractIfNeeded();
   const primeiroNome=(CURRENT_PROFILE&&CURRENT_PROFILE.name)?CURRENT_PROFILE.name.trim().split(' ')[0]:'';
   const subtitulo=primeiroNome?('Olá '+primeiroNome+' — acompanhe suas metas e ganhos'):'Acompanhe suas metas e ganhos';
   if(!SURVEYS_LOADED||!COLLECT_EVENTS_LOADED||!PAYMENTS_LOADED){
@@ -277,6 +283,7 @@ PAGES['dashboard-pesq']=()=>{
     quotasHtml=quotaList.map((q,i)=>quota(q.label,DASH_QUOTA_COUNTS[q.label]||0,q.target,quotaColors[i%quotaColors.length])).join('');
   }
   return head('Meu painel',subtitulo)+`
+  ${(MY_CONTRACT_LOADED&&!MY_CONTRACT)?'<div class="callout mb">✎ Você ainda não assinou seu contrato de prestação de serviços — assine para poder coletar. <button class="btn-ghost" style="margin-left:6px" onclick="go(\'my-contract\')">Assinar agora →</button></div>':''}
   <div class="grid g4" style="margin-bottom:18px">
     ${stat('Coletas hoje',String(hojeCount),'entrevistas enviadas hoje','✓','#2563eb')}
     ${stat('Coletas no mês',String(mesCount),'+'+ontemCount+' ontem','◷','#059669')}
@@ -2235,8 +2242,28 @@ async function auditToggleCalibration(id){
    campo — por isso é um cartão normal, em largura cheia, sem a moldura
    decorativa de "celular dentro da tela" que existia antes (fazia sentido
    só como mockup visto num computador; no celular de verdade virava um
-   celular-dentro-de-celular minúsculo e ilegível). */
-PAGES['app-collect']=()=>head('Coletar (app)','Georreferenciamento obrigatório · envio direto ao servidor')+`
+   celular-dentro-de-celular minúsculo e ilegível).
+
+   Antes de mostrar essa tela, exige-se que o pesquisador já tenha assinado
+   eletronicamente o contrato-quadro (ver bloco "CONTRATO-QUADRO DO
+   PESQUISADOR" logo abaixo) — sem isso, mostra uma tela de bloqueio com
+   link para "Meu contrato" em vez do formulário de coleta. */
+PAGES['app-collect']=()=>{
+  if(!CURRENT_PROFILE)return head('Coletar (app)','Georreferenciamento obrigatório · envio direto ao servidor')+'<div class="empty">Faça login para coletar.</div>';
+  if(!MY_CONTRACT_LOADED){
+    loadMyContractIfNeeded();
+    return head('Coletar (app)','Georreferenciamento obrigatório · envio direto ao servidor')+'<div class="empty">Verificando seu contrato…</div>';
+  }
+  if(!MY_CONTRACT){
+    return head('Coletar (app)','Georreferenciamento obrigatório · envio direto ao servidor')+`
+    <div class="card" style="text-align:center;padding:48px 24px">
+      <div style="width:56px;height:56px;border-radius:16px;background:var(--amber-l);color:var(--amber);font-size:26px;display:flex;align-items:center;justify-content:center;margin:0 auto 16px">✎</div>
+      <div style="font-weight:800;font-size:18px">Assine seu contrato para começar a coletar</div>
+      <p style="color:var(--ink3);font-size:13.5px;margin-top:8px;max-width:420px;margin-left:auto;margin-right:auto;line-height:1.6">Antes de iniciar qualquer coleta, você precisa ler e assinar eletronicamente o contrato de prestação de serviços. É rápido, é assinado uma única vez e vale para todas as suas pesquisas.</p>
+      <button class="btn btn-accent" style="margin-top:20px" onclick="go('my-contract')">Ler e assinar contrato →</button>
+    </div>`;
+  }
+  return head('Coletar (app)','Georreferenciamento obrigatório · envio direto ao servidor')+`
   <div class="collect-app-grid">
     <div class="card collect-app-main">
       <div id="acollectSurveyLabelWrap" class="card-t" style="margin-bottom:10px">Pesquisa: <span id="acollectSurveyLabel">—</span></div>
@@ -2268,6 +2295,7 @@ PAGES['app-collect']=()=>head('Coletar (app)','Georreferenciamento obrigatório 
       <div class="callout">Versão web da coleta. O empacotamento como aplicativo instalável (Android/iOS, via Capacitor) é uma etapa futura do roteiro.</div>
     </div>
   </div>`;
+};
 
 /* ===== Georreferenciamento obrigatório na coleta ===== */
 let GEO={status:'idle',lat:null,lng:null,acc:null,ts:null,watchId:null};
@@ -2845,7 +2873,7 @@ function loadUsersIfNeeded(){
     refreshClientSurveyLinks();
     const onKey=document.querySelector('.nav-item.on');
     const k=onKey&&onKey.dataset.key;
-    if(k==='users'||k==='dashboard'||k==='survey-team')go(k);
+    if(k==='users'||k==='dashboard'||k==='survey-team'||k==='contracts')go(k);
   })();
   return _usersLoadPromise;
 }
@@ -4029,48 +4057,133 @@ function renderMyRejected(){
   }).join('');
 }
 
-/* ============ CONTRACTS ============ */
-const CONTRACTS=[
-  {name:'João Pereira',model:'Pesquisador PF',value:'R$ 5,00',sent:'02/06',signed:true,signedAt:'03/06/2026 14:22'},
-  {name:'Fernanda Couto',model:'Pesquisador PF',value:'R$ 5,00',sent:'02/06',signed:true,signedAt:'04/06/2026 09:10'},
-  {name:'Maria Souza',model:'Pesquisador PF',value:'R$ 5,00',sent:'20/06',signed:false},
-  {name:'Lucas Andrade',model:'Pesquisador PF',value:'R$ 5,00',sent:'21/06',signed:false},
-  {name:'Renata Lima',model:'Pesquisador PF',value:'R$ 5,00',sent:'21/06',signed:false},
-  {name:'Paulo Cruz',model:'Pesquisador PF',value:'R$ 5,00',sent:'22/06',signed:false},
-];
+/* ============ CONTRATOS ============
+   Antes era uma lista 100% fictícia (pesquisadores e datas inventados).
+   Agora mostra o status real de assinatura de cada pesquisador ativo
+   (tabela researcher_contracts) e é onde um ADMINISTRADOR assina
+   eletronicamente pelo lado da CONTRATANTE (tabela
+   company_contract_signatures) — uma única vez por versão do contrato,
+   não uma vez por pesquisador. O texto do contrato em si e a assinatura do
+   lado do pesquisador estão no bloco "CONTRATO-QUADRO DO PESQUISADOR". */
+let ALL_CONTRACTS=[],ALL_CONTRACTS_LOADED=false,ALL_CONTRACTS_LOADING=false;
+async function loadAllContractsIfNeeded(){
+  if(ALL_CONTRACTS_LOADED||ALL_CONTRACTS_LOADING)return;
+  ALL_CONTRACTS_LOADING=true;
+  try{
+    const {data,error}=await sb.from('researcher_contracts').select('*').eq('contract_version',CONTRACT_VERSION);
+    if(!error){ALL_CONTRACTS=data||[];ALL_CONTRACTS_LOADED=true;}
+    else console.error('Erro ao carregar assinaturas dos pesquisadores:',error);
+  }catch(ex){console.error('Erro de conexão ao carregar assinaturas:',ex);}
+  ALL_CONTRACTS_LOADING=false;
+  const onKey=document.querySelector('.nav-item.on');
+  const k=onKey&&onKey.dataset.key;
+  if(k==='contracts'||k==='dashboard')go(k);
+}
 PAGES.contracts=()=>{
-  const assinados=CONTRACTS.filter(c=>c.signed).length;
-  const pendentes=CONTRACTS.filter(c=>!c.signed).length;
-  const rows=CONTRACTS.map(c=>`
-      <tr><td>${esc(c.name)}</td><td>${esc(c.model)}</td><td>${esc(c.value)}</td><td>${esc(c.sent)}</td>
-        <td>${c.signed?'<span class="pill pill-green">● Assinado</span>':'<span class="pill pill-amber">● Aguardando assinatura</span>'}</td>
-        <td>${c.signed?'<button class="btn-ghost" onclick="alert(\'Protótipo: visualizar PDF assinado\')">Ver</button>':'<button class="btn-ghost" onclick="alert(\'Protótipo: reenviar link de assinatura\')">Reenviar</button>'}</td></tr>`).join('');
-  return head('Contratos','Geração e assinatura eletrônica dos contratos de prestação de serviço',
-  '<button class="btn btn-out" onclick="go(\'contract-template\')">Modelos</button><button class="btn btn-fill" onclick="alert(\'Protótipo: gerar contratos em lote\')">Gerar em lote</button>')+`
+  if(!USERS_LOADED)loadUsersIfNeeded();
+  if(!ALL_CONTRACTS_LOADED)loadAllContractsIfNeeded();
+  if(!COMPANY_SIGNATURE_LOADED)loadCompanySignatureIfNeeded();
+  if(!USERS_LOADED||!ALL_CONTRACTS_LOADED||!COMPANY_SIGNATURE_LOADED){
+    return head('Contratos','Assinatura eletrônica do contrato de prestação de serviços')+'<div class="empty">Carregando…</div>';
+  }
+  const pesqs=USERS.filter(u=>u.role==='pesq'&&u.status==='ativo');
+  const signedMap={};
+  ALL_CONTRACTS.forEach(c=>{signedMap[c.researcher_id]=c;});
+  const assinados=pesqs.filter(u=>signedMap[u.id]).length;
+  const pendentes=pesqs.length-assinados;
+  const rows=pesqs.length?pesqs.map(u=>{
+    const c=signedMap[u.id];
+    return `<tr><td>${esc(u.name)}</td><td>${esc(u.cidade||'—')}</td>
+      <td>${c?'<span class="pill pill-green">● Assinado</span>':'<span class="pill pill-amber">● Aguardando assinatura</span>'}</td>
+      <td>${c?esc(new Date(c.accepted_at).toLocaleString('pt-BR')):'—'}</td></tr>`;
+  }).join(''):'<tr><td colspan="4" class="empty">Nenhum pesquisador ativo cadastrado ainda.</td></tr>';
+  const isAdmin=selectedRole==='admin'||selectedRole==='admpro';
+  const nome=CURRENT_PROFILE?CURRENT_PROFILE.name:'';
+  const companyPanel=COMPANY_SIGNATURE?`
+    <div class="card">
+      <div class="card-t">Assinatura da CONTRATANTE (PesquisaPro)</div>
+      ${companySignPadHtml()}
+    </div>`:(isAdmin?`
+    <div class="card">
+      <div class="card-t">Assinatura eletrônica da CONTRATANTE</div>
+      <div class="card-d">Assine uma única vez em nome do PesquisaPro — vale para a versão atual do contrato (${esc(CONTRACT_VERSION)}) e para todos os pesquisadores que assinarem a partir de agora.</div>
+      ${companySignPadHtml()}
+      <div class="field-row mb" style="margin-top:10px">
+        <div><label class="lbl">Seu nome (quem assina)</label><input class="inp" id="company-signer-name" value="${esc(nome)}"></div>
+        <div><label class="lbl">Cargo/função representando a empresa</label><input class="inp" id="company-signer-role" placeholder="ex.: Sócio-administrador"></div>
+      </div>
+      <label style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px;color:var(--ink2);cursor:pointer;margin-bottom:14px">
+        <input type="checkbox" id="companyAgree" style="margin-top:3px">
+        <span>Confirmo que estou autorizado(a) a assinar este contrato em nome da CONTRATANTE, e que esta assinatura vale para todos os pesquisadores que aceitarem este contrato a partir de agora.</span>
+      </label>
+      <div id="companySignMsg"></div>
+      <button class="btn btn-accent" id="companySignBtn" onclick="signCompanyContract()">✎ Assinar pela CONTRATANTE</button>
+    </div>`:`
+    <div class="card">
+      <div class="card-t">Assinatura da CONTRATANTE (PesquisaPro)</div>
+      ${companySignPadHtml()}
+      <div class="card-d" style="margin-top:6px">Apenas um administrador pode assinar pela empresa.</div>
+    </div>`);
+  return head('Contratos','Assinatura eletrônica do contrato de prestação de serviços')+`
   <div class="grid g4" style="margin-bottom:16px">
-    ${stat('Contratos ativos',String(assinados),'assinados eletronicamente','✎','#2563eb')}
-    ${stat('Aguardando assinatura',String(pendentes),'enviados aos pesquisadores','◷','#d97706')}
-    ${stat('Modelos','3','pesquisador / coord / gerente','❒','#7c3aed')}
-    ${stat('Vencendo em 30d','5','renovação necessária','◷','#dc2626')}
+    ${stat('Pesquisadores ativos',String(pesqs.length),'com cadastro aprovado','☺','#2563eb')}
+    ${stat('Já assinaram',String(assinados),'lado do pesquisador','✎','#059669')}
+    ${stat('Aguardando assinatura',String(pendentes),'pesquisadores ativos','◷','#d97706')}
+    ${stat('CONTRATANTE',COMPANY_SIGNATURE?'Assinado':'Pendente','lado do PesquisaPro',COMPANY_SIGNATURE?'✓':'◷',COMPANY_SIGNATURE?'#059669':'#dc2626')}
   </div>
-  <div class="card">
-    <div class="card-t">Contratos</div>
-    <table style="margin-top:6px"><thead><tr><th>Pesquisador</th><th>Modelo</th><th>Valor/form.</th><th>Enviado</th><th>Status</th><th></th></tr></thead>
-    <tbody>${rows}
-    </tbody></table>
+  ${companyPanel}
+  <div class="card mb" style="margin-top:16px">
+    <div class="card-t">Pesquisadores</div>
+    <div class="card-d">Status de assinatura do contrato-quadro (versão ${esc(CONTRACT_VERSION)}) por pesquisador ativo.</div>
+    <table style="margin-top:6px"><thead><tr><th>Pesquisador</th><th>Cidade</th><th>Status</th><th>Assinado em</th></tr></thead>
+    <tbody>${rows}</tbody></table>
   </div>
   <div class="sec-title">Pré-visualização do contrato</div>
-  <div class="contract-doc">
-    <div style="text-align:center;font-weight:700;font-size:14px;color:var(--ink)">CONTRATO DE PRESTAÇÃO DE SERVIÇOS DE PESQUISA DE CAMPO</div>
-    <h3>Contratante</h3>
-    Instituto de Pesquisa [Sua Empresa] Ltda · CNPJ 00.000.000/0001-00 · Belo Horizonte/MG.
-    <h3>Contratado</h3>
-    João Pereira · CPF 123.456.789-00 · função: Pesquisador de campo.
-    <h3>Objeto e remuneração</h3>
-    Aplicação de questionários da Pesquisa Eleitoral MG 2026, remunerada em <b>R$ 5,00 por formulário válido</b>, mediante critérios de auditoria de qualidade definidos pela Contratante.
-    <div class="sign-pad signed">✓ Assinado eletronicamente · João Pereira · 03/06/2026 14:22 · IP/hash registrados</div>
-  </div>`;
+  <div class="contract-doc">${contractHtml('[nome do pesquisador]','[CPF]','')}</div>`;
 };
+async function signCompanyContract(){
+  if(!CURRENT_PROFILE)return;
+  const isAdmin=selectedRole==='admin'||selectedRole==='admpro';
+  if(!isAdmin){alert('Apenas um administrador pode assinar pela CONTRATANTE.');return;}
+  const msgEl=document.getElementById('companySignMsg');
+  const agree=document.getElementById('companyAgree');
+  if(!agree||!agree.checked){
+    if(msgEl)msgEl.innerHTML='<div class="callout" style="margin:10px 0 0;border-color:var(--red)">Marque a caixa de confirmação acima antes de assinar.</div>';
+    return;
+  }
+  const nome=(document.getElementById('company-signer-name').value||'').trim();
+  const cargo=(document.getElementById('company-signer-role').value||'').trim();
+  if(!nome||!cargo){
+    if(msgEl)msgEl.innerHTML='<div class="callout" style="margin:10px 0 0;border-color:var(--red)">Preencha seu nome e o cargo/função antes de assinar.</div>';
+    return;
+  }
+  if(!confirm('Confirma a assinatura eletrônica deste contrato em nome da CONTRATANTE, como '+nome+' ('+cargo+')?\n\nEsta ação vale para todos os pesquisadores que assinarem esta versão do contrato, registra data, hora e (quando disponível) o IP do dispositivo, e não pode ser desfeita.'))return;
+  const btn=document.getElementById('companySignBtn');
+  if(btn){btn.disabled=true;btn.textContent='Assinando…';}
+  const text=contractPlainText('[nome do pesquisador]','[CPF]','');
+  let hash='';
+  try{hash=await sha256Hex(text);}catch(ex){hash='';}
+  const ip=await fetchClientIp();
+  try{
+    const {data:inserted,error}=await sb.from('company_contract_signatures').insert({
+      contract_version:CONTRACT_VERSION,
+      signed_by:CURRENT_PROFILE.id,
+      signer_name:nome,
+      signer_role:cargo,
+      content_hash:hash||'indisponível neste navegador',
+      ip_address:ip,
+      user_agent:(navigator&&navigator.userAgent)||null,
+    }).select().single();
+    if(error)throw new Error(error.message);
+    COMPANY_SIGNATURE=companySignatureRowToEntry(inserted);
+    COMPANY_SIGNATURE_LOADED=true;
+  }catch(ex){
+    alert('Não foi possível registrar a assinatura agora: '+ex.message);
+    if(btn){btn.disabled=false;btn.textContent='✎ Assinar pela CONTRATANTE';}
+    return;
+  }
+  go('contracts');
+}
 
 /* ============ CONTRACT TEMPLATE EDITOR ============ */
 PAGES['contract-template']=()=>head('Modelos de contrato','Use seu próprio modelo. Os campos entre {chaves} são preenchidos automaticamente para cada pessoa.',
@@ -4191,15 +4304,233 @@ function renderTplPreview(){
 }
 
 
-PAGES['my-contract']=()=>head('Meu contrato','Seu contrato de prestação de serviços')+`
-  <div class="contract-doc" style="margin-bottom:16px">
-    <div style="text-align:center;font-weight:700;font-size:14px;color:var(--ink)">CONTRATO DE PRESTAÇÃO DE SERVIÇOS DE PESQUISA DE CAMPO</div>
-    <h3>Contratante</h3>Instituto de Pesquisa [Sua Empresa] Ltda · CNPJ 00.000.000/0001-00.
-    <h3>Contratado</h3>João Pereira · CPF 123.456.789-00.
-    <h3>Remuneração</h3>R$ 5,00 por formulário válido, conforme auditoria de qualidade.
-    <div class="sign-pad signed">✓ Assinado eletronicamente · 03/06/2026 14:22</div>
-  </div>
-  <button class="btn btn-out" onclick="alert('Protótipo: baixar PDF do contrato')">⬇ Baixar PDF</button>`;
+/* ============ CONTRATO-QUADRO DO PESQUISADOR (assinatura eletrônica) ============
+   Contrato único, assinado uma única vez pelo pesquisador, que passa a
+   valer automaticamente para todas as pesquisas que ele aceitar depois —
+   por isso "contrato-quadro". Enquanto não houver uma linha assinada com a
+   versão vigente (CONTRACT_VERSION) na tabela researcher_contracts, a tela
+   "Coletar (app)" fica bloqueada (ver PAGES['app-collect'] acima).
+
+   ATENÇÃO — antes de publicar de verdade: os dados de EMPRESA_CONTRATO
+   abaixo estão com valores de exemplo entre colchetes. Troque pela razão
+   social, CNPJ, endereço e responsável legal reais do PesquisaPro. Este
+   texto foi redigido com cuidado para deixar claras a ausência de vínculo
+   empregatício e as condições de pagamento, mas — como qualquer contrato —
+   vale a pena passar por um advogado antes do uso definitivo.
+
+   Se este texto mudar no futuro (novas cláusulas, valores, etc.), basta
+   subir CONTRACT_VERSION (ex.: 'v2-2027') — todo pesquisador passa a
+   precisar assinar a nova versão antes de conseguir coletar de novo; a
+   assinatura da versão antiga continua guardada, intacta, para histórico.
+*/
+const CONTRACT_VERSION='v1-2026';
+const EMPRESA_CONTRATO={
+  razao:'[RAZÃO SOCIAL DA CONTRATANTE LTDA.]',
+  cnpj:'[00.000.000/0001-00]',
+  endereco:'[endereço completo da sede]',
+  representante:'[nome do responsável legal pela CONTRATANTE]',
+};
+function contractClauses(nome,cpf,cidade){
+  const c=EMPRESA_CONTRATO;
+  return [
+    {t:'Das partes',p:`De um lado, ${c.razao}, inscrita no CNPJ sob o nº ${c.cnpj}, com sede em ${c.endereco}, doravante denominada CONTRATANTE, neste ato representada por ${c.representante}; e de outro lado ${nome||'[nome do pesquisador]'}, portador(a) do CPF nº ${cpf||'[CPF não informado]'}, pessoa física, autônomo(a), doravante denominado(a) CONTRATADO(A), têm entre si justo e contratado o presente Contrato de Prestação de Serviços Autônomos de Coleta de Dados de Pesquisa ("Contrato"), que se regerá pelas cláusulas seguintes.`},
+    {t:'1ª. Do objeto',p:'O presente Contrato tem por objeto a prestação, pelo(a) CONTRATADO(A), de serviços autônomos e eventuais de aplicação de questionários e coleta de dados em campo (entrevistas presenciais georreferenciadas, e eventualmente remotas), para pesquisas de opinião, mercado ou similares realizadas pela CONTRATANTE ou por seus clientes, por meio da plataforma eletrônica PesquisaPro (aplicativo/site).'},
+    {t:'2ª. Da adesão por pesquisa e do caráter de contrato-quadro',p:'Este Contrato é firmado uma única vez e vigora, sem necessidade de nova assinatura, para todas as pesquisas que a CONTRATANTE vier a disponibilizar ao(à) CONTRATADO(A) na plataforma. Cada pesquisa específica é oferecida ao(à) CONTRATADO(A) como um convite individual, do qual constam, no mínimo: (i) a cidade ou região de atuação; (ii) o valor pago por formulário/entrevista válida (coleta presencial e, quando houver, coleta remota); e (iii) o período estimado de coleta. O(A) CONTRATADO(A) tem plena liberdade para aceitar ou recusar cada convite, sem qualquer penalidade, e a aceitação eletrônica de um convite específico dentro do aplicativo constitui a ordem de serviço daquela pesquisa, regida pelas condições gerais deste Contrato.'},
+    {t:'3ª. Da natureza autônoma e da ausência de vínculo empregatício',p:'As partes reconhecem e declaram, para todos os fins de direito, que a relação ora estabelecida é de natureza exclusivamente civil e autônoma, não gerando, em nenhuma hipótese, vínculo empregatício entre as partes, nos termos do art. 442-B da Consolidação das Leis do Trabalho (CLT), com redação dada pela Lei nº 13.467/2017, tampouco vínculo de qualquer outra natureza. Não há relação de subordinação jurídica, hierárquica ou disciplinar entre as partes: o(a) CONTRATADO(A) organiza livremente sua rotina, define seus próprios horários de trabalho dentro do período de coleta de cada pesquisa, utiliza equipamento e meio de locomoção próprios, e pode, a qualquer tempo, recusar convites, aceitar convites de outras pesquisas — inclusive de concorrentes da CONTRATANTE — e prestar serviços a terceiros, não havendo exclusividade nem pessoalidade obrigatória. A remuneração é feita exclusivamente por produção aprovada (formulário/entrevista válida), nunca por jornada, o que reforça o caráter autônomo da prestação. Em razão dessa natureza, não são devidos pela CONTRATANTE ao(à) CONTRATADO(A) 13º salário, férias, aviso prévio, FGTS, adicionais ou qualquer outra verba de natureza trabalhista, sendo de responsabilidade exclusiva do(a) CONTRATADO(A) o recolhimento dos tributos e contribuições incidentes sobre os valores recebidos, inclusive perante o INSS na qualidade de contribuinte individual/autônomo, e perante a Receita Federal, quando aplicável.'},
+    {t:'4ª. Da remuneração e das condições de pagamento',p:'O(A) CONTRATADO(A) receberá, por cada entrevista/formulário considerado válido e aprovado, o valor informado no convite da respectiva pesquisa no momento em que este for aceito, podendo esse valor variar entre pesquisas e entre coleta presencial e coleta remota. O pagamento correspondente a cada pesquisa é devido somente após o encerramento da coleta daquela pesquisa e a conclusão da auditoria de qualidade das entrevistas nela realizadas, sendo calculado exclusivamente sobre os formulários aprovados (não reprovados), conforme demonstrativo disponibilizado ao(à) CONTRATADO(A) na tela "Meus ganhos" do aplicativo. Os valores serão pagos via PIX, na chave informada pelo(a) próprio(a) CONTRATADO(A) em seu cadastro na plataforma, sendo de sua exclusiva responsabilidade mantê-la correta e atualizada. Formulários ainda pendentes de auditoria na data de encerramento de uma pesquisa serão pagos assim que a respectiva auditoria for concluída.'},
+    {t:'5ª. Dos critérios de validação e reprovação das coletas',p:'Considera-se válida a entrevista que atender, cumulativamente, aos seguintes critérios, verificados eletronicamente pela plataforma e/ou por auditoria da equipe da CONTRATANTE: (i) georreferenciamento obrigatório, com coordenadas de GPS registradas dentro da área geográfica definida para a pesquisa e para a cota respondida, observadas as regras de proximidade e de distância mínima entre coletas de um mesmo pesquisador estabelecidas pela CONTRATANTE para coibir fraudes; (ii) tempo mínimo de aplicação do questionário, sendo entrevistas concluídas abaixo do tempo mínimo estipulado sinalizadas para auditoria e passíveis de reprovação; (iii) ausência de duplicidade de entrevistado e/ou de dispositivo utilizado; e (iv) ausência de indícios de fraude, inconsistência ou preenchimento de má-fé. A CONTRATANTE, por seus administradores e coordenadores, poderá reprovar, de forma justificada e com o motivo registrado no aplicativo, qualquer entrevista que não atenda a esses critérios, hipótese em que ela não será remunerada. A reprovação de entrevistas não gera, por si só, qualquer outra penalidade contratual ao(à) CONTRATADO(A), ressalvada a hipótese de fraude comprovada, que autoriza a rescisão imediata deste Contrato, sem prejuízo das demais medidas cabíveis.'},
+    {t:'6ª. Das obrigações do(a) CONTRATADO(A)',p:'Sem que isso implique subordinação, o(a) CONTRATADO(A) se compromete a: (i) aplicar os questionários com honestidade, zelo e fidelidade às respostas efetivamente obtidas dos entrevistados; (ii) manter ativa a localização (GPS) do dispositivo durante toda a aplicação; (iii) manter atualizados seus dados cadastrais e de pagamento na plataforma; (iv) preservar o sigilo do conteúdo dos questionários e da metodologia das pesquisas perante terceiros; e (v) tratar os entrevistados e seus dados pessoais com respeito e em conformidade com a legislação aplicável.'},
+    {t:'7ª. Das obrigações da CONTRATANTE',p:'A CONTRATANTE se compromete a: (i) disponibilizar ao(à) CONTRATADO(A), pela plataforma, informações claras sobre cada convite de pesquisa antes de sua aceitação, incluindo valor por formulário, área geográfica e cotas; (ii) disponibilizar, na tela "Meus ganhos", o resultado da auditoria de cada entrevista enviada; e (iii) efetuar o pagamento dos formulários aprovados na forma e no prazo previstos na Cláusula 4ª.'},
+    {t:'8ª. Da proteção de dados pessoais (LGPD)',p:'As partes se comprometem a tratar os dados pessoais a que tiverem acesso em razão deste Contrato — inclusive os dados pessoais dos entrevistados coletados durante as pesquisas e os dados pessoais do(a) próprio(a) CONTRATADO(A) — em conformidade com a Lei nº 13.709/2018 (Lei Geral de Proteção de Dados Pessoais), utilizando-os exclusivamente para as finalidades de execução das pesquisas e da relação contratual ora firmada, vedados o uso, a cópia, a divulgação ou o compartilhamento para qualquer outra finalidade.'},
+    {t:'9ª. Da confidencialidade e da propriedade dos dados coletados',p:'Todos os dados, respostas e informações coletados durante a execução das pesquisas são de propriedade exclusiva da CONTRATANTE e/ou de seus clientes, não podendo o(a) CONTRATADO(A) deles se utilizar, copiá-los, divulgá-los ou reproduzi-los, no todo ou em parte, para qualquer finalidade diversa da execução deste Contrato, mesmo após o seu término.'},
+    {t:'10ª. Da vigência e da rescisão',p:'Este Contrato vigora por prazo indeterminado a partir da data de sua assinatura eletrônica, podendo ser rescindido, a qualquer tempo e sem necessidade de justificativa, por qualquer das partes, mediante simples comunicação — inclusive por e-mail ou pela própria plataforma —, sem multa ou aviso prévio, dada a natureza autônoma e não exclusiva da prestação de serviços. A rescisão não afeta o direito do(a) CONTRATADO(A) ao pagamento das entrevistas já aprovadas até a data da rescisão, tampouco desobriga as partes das cláusulas de confidencialidade e proteção de dados, que permanecem vigentes após o término do Contrato.'},
+    {t:'11ª. Da assinatura eletrônica',p:'As partes reconhecem, desde já, a validade jurídica e a força probatória da assinatura eletrônica utilizada para a celebração deste Contrato, nos termos do art. 10, §2º, da Medida Provisória nº 2.200-2, de 24 de agosto de 2001, e do art. 107 do Código Civil (Lei nº 10.406/2002), que consagra a liberdade das formas de manifestação de vontade. A aceitação eletrônica deste Contrato pelo(a) CONTRATADO(A), realizada dentro da plataforma mediante identificação (nome e CPF cadastrados), declaração expressa de concordância e registro de data, hora, endereço IP (quando disponível) e do resumo criptográfico (hash) do texto exato então apresentado, é havida pelas partes como manifestação de vontade válida, inequívoca e suficiente para todos os efeitos deste Contrato, dispensando-se a assinatura manuscrita ou por certificado digital ICP-Brasil.'},
+    {t:'12ª. Do foro',p:`Fica eleito o foro da comarca de ${cidade||'domicílio da CONTRATANTE'}, com renúncia expressa a qualquer outro, por mais privilegiado que seja, para dirimir quaisquer dúvidas ou controvérsias oriundas deste Contrato.`},
+  ];
+}
+const CONTRACT_TITLE='CONTRATO DE PRESTAÇÃO DE SERVIÇOS AUTÔNOMOS DE COLETA DE DADOS DE PESQUISA';
+function contractHtml(nome,cpf,cidade){
+  return '<div style="text-align:center;font-weight:700;font-size:14px;color:var(--ink)">'+esc(CONTRACT_TITLE)+'</div>'+
+    contractClauses(nome,cpf,cidade).map(c=>`<h3>${esc(c.t)}</h3><p style="margin:0 0 10px;text-align:justify">${esc(c.p)}</p>`).join('');
+}
+function contractPlainText(nome,cpf,cidade){
+  return CONTRACT_TITLE+'\n\n'+contractClauses(nome,cpf,cidade).map(c=>c.t.toUpperCase()+'\n'+c.p).join('\n\n');
+}
+/* resumo criptográfico (SHA-256) do texto exato assinado — evidência de
+   integridade: se o texto do contrato mudar depois, o hash não bate mais
+   com o registrado na assinatura antiga. Best effort: navegadores muito
+   antigos ou contexto sem HTTPS podem não ter crypto.subtle — nesse caso
+   a assinatura ainda é gravada (o que garante o direito ao pagamento é o
+   registro do aceite em si, não o hash), só sem esse reforço extra. */
+async function sha256Hex(text){
+  const enc=new TextEncoder().encode(text);
+  const buf=await crypto.subtle.digest('SHA-256',enc);
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+/* IP de quem está assinando — evidência adicional de praxe em assinatura
+   eletrônica simples. Também best effort: serviço externo indisponível (ou
+   sem internet) não deve impedir a assinatura, só fica sem esse dado. */
+async function fetchClientIp(){
+  try{
+    const ctrl=new AbortController();
+    const timer=setTimeout(()=>ctrl.abort(),3000);
+    const res=await fetch('https://api.ipify.org?format=json',{signal:ctrl.signal});
+    clearTimeout(timer);
+    if(!res.ok)return null;
+    const data=await res.json();
+    return data.ip||null;
+  }catch(ex){return null;}
+}
+
+/* assinatura eletrônica da CONTRATANTE (PesquisaPro): diferente da do
+   pesquisador (uma por pessoa), esta é uma única linha por versão do
+   contrato — um administrador assina uma vez (tela "Contratos") e isso
+   passa a valer para todos os pesquisadores que assinarem depois. Todo
+   usuário logado pode consultar esse status (é isso que permite a tela
+   "Meu contrato" do pesquisador mostrar os dois lados assinados). */
+let COMPANY_SIGNATURE=null,COMPANY_SIGNATURE_LOADED=false,COMPANY_SIGNATURE_LOADING=false;
+function companySignatureRowToEntry(row){
+  return {id:row.id,version:row.contract_version,name:row.signer_name,role:row.signer_role,
+    hash:row.content_hash,ip:row.ip_address,ts:row.signed_at?new Date(row.signed_at).getTime():Date.now()};
+}
+async function loadCompanySignatureIfNeeded(){
+  if(COMPANY_SIGNATURE_LOADED||COMPANY_SIGNATURE_LOADING)return;
+  COMPANY_SIGNATURE_LOADING=true;
+  try{
+    const {data,error}=await sb.from('company_contract_signatures').select('*').eq('contract_version',CONTRACT_VERSION);
+    if(!error){COMPANY_SIGNATURE=(data&&data[0])?companySignatureRowToEntry(data[0]):null;COMPANY_SIGNATURE_LOADED=true;}
+    else console.error('Erro ao carregar assinatura da contratante:',error);
+  }catch(ex){console.error('Erro de conexão ao carregar assinatura da contratante:',ex);}
+  COMPANY_SIGNATURE_LOADING=false;
+  const onKey=document.querySelector('.nav-item.on');
+  const k=onKey&&onKey.dataset.key;
+  if(k==='contracts'||k==='my-contract'||k==='dashboard-pesq'||k==='dashboard')go(k);
+}
+/* bloco de assinatura da CONTRATANTE, usado tanto em "Meu contrato" (lado
+   do pesquisador) quanto em "Contratos" (lado do admin) — assim os dois
+   lugares mostram sempre o mesmo status, sem duplicar lógica. */
+function companySignPadHtml(){
+  if(!COMPANY_SIGNATURE_LOADED)return '<div class="sign-pad">Verificando assinatura da CONTRATANTE…</div>';
+  if(!COMPANY_SIGNATURE)return '<div class="sign-pad">⏳ Aguardando assinatura eletrônica da CONTRATANTE (PesquisaPro)</div>';
+  const c=COMPANY_SIGNATURE;
+  return `<div class="sign-pad signed">✓ Assinado eletronicamente pela CONTRATANTE por ${esc(c.name)} (${esc(c.role)}) em ${esc(new Date(c.ts).toLocaleString('pt-BR'))} · hash ${esc((c.hash||'—').slice(0,16))}…</div>`;
+}
+let MY_CONTRACT=null,MY_CONTRACT_LOADED=false,MY_CONTRACT_LOADING=false;
+function contractRowToEntry(row){
+  return {id:row.id,version:row.contract_version,fullName:row.full_name,cpf:row.cpf,
+    hash:row.content_hash,ip:row.ip_address,ts:row.accepted_at?new Date(row.accepted_at).getTime():Date.now()};
+}
+async function loadMyContractIfNeeded(){
+  if(MY_CONTRACT_LOADED||MY_CONTRACT_LOADING)return;
+  if(!CURRENT_PROFILE){MY_CONTRACT_LOADED=true;return;}
+  MY_CONTRACT_LOADING=true;
+  try{
+    const {data,error}=await sb.from('researcher_contracts').select('*')
+      .eq('researcher_id',CURRENT_PROFILE.id).eq('contract_version',CONTRACT_VERSION);
+    if(!error){MY_CONTRACT=(data&&data[0])?contractRowToEntry(data[0]):null;MY_CONTRACT_LOADED=true;}
+    else console.error('Erro ao carregar contrato:',error);
+  }catch(ex){console.error('Erro de conexão ao carregar contrato:',ex);}
+  MY_CONTRACT_LOADING=false;
+  const onKey=document.querySelector('.nav-item.on');
+  const k=onKey&&onKey.dataset.key;
+  if(k==='app-collect'||k==='my-contract'||k==='dashboard-pesq')go(k);
+}
+PAGES['my-contract']=()=>{
+  if(!CURRENT_PROFILE)return head('Meu contrato','Seu contrato de prestação de serviços')+'<div class="empty">Faça login para ver seu contrato.</div>';
+  if(!MY_CONTRACT_LOADED)loadMyContractIfNeeded();
+  if(!COMPANY_SIGNATURE_LOADED)loadCompanySignatureIfNeeded();
+  if(!MY_CONTRACT_LOADED||!COMPANY_SIGNATURE_LOADED){
+    return head('Meu contrato','Seu contrato de prestação de serviços')+'<div class="empty">Carregando seu contrato…</div>';
+  }
+  const nome=CURRENT_PROFILE.name||'';
+  const cpf=CURRENT_PROFILE.cpf||'';
+  const cidade=(CURRENT_PROFILE.cidade||'').split('/')[0];
+  const docHtml=contractHtml(nome,cpf,cidade);
+  if(MY_CONTRACT){
+    return head('Meu contrato','Contrato de prestação de serviços — assinado eletronicamente')+`
+    <div class="contract-doc mb">${docHtml}
+      <h3>Assinaturas</h3>
+      ${companySignPadHtml()}
+      <div class="sign-pad signed">✓ Assinado eletronicamente por ${esc(MY_CONTRACT.fullName)}${MY_CONTRACT.cpf?(' · CPF '+esc(MY_CONTRACT.cpf)):''} em ${esc(new Date(MY_CONTRACT.ts).toLocaleString('pt-BR'))}${MY_CONTRACT.ip?(' · IP '+esc(MY_CONTRACT.ip)):' · IP não disponível'} · hash ${esc((MY_CONTRACT.hash||'—').slice(0,16))}…</div>
+    </div>
+    <button class="btn btn-out" onclick="window.print()">🖨️ Imprimir / salvar em PDF</button>
+    <button class="btn-ghost" onclick="downloadContractCopy()">⬇ Baixar cópia (.txt)</button>`;
+  }
+  return head('Meu contrato','Leia com atenção — este contrato vale para todas as suas pesquisas')+`
+  <div class="callout mb">📄 Este é um contrato único: ao assinar, ele passa a valer automaticamente para todas as pesquisas que você aceitar na plataforma — não é preciso assinar de novo a cada pesquisa. <b>Enquanto não assinar, a tela "Coletar (app)" fica bloqueada.</b></div>
+  <div class="contract-doc mb">${docHtml}<h3>Assinaturas</h3>${companySignPadHtml()}</div>
+  <div class="card">
+    <div class="card-t">Assinatura eletrônica</div>
+    <div class="card-d">Seus dados abaixo são os mesmos do seu cadastro na plataforma.</div>
+    <div class="field-row mb">
+      <div><label class="lbl">Nome completo</label><input class="inp" value="${esc(nome)}" disabled style="background:var(--bg);color:var(--ink3)"></div>
+      <div><label class="lbl">CPF</label><input class="inp" value="${esc(cpf||'não informado no seu cadastro')}" disabled style="background:var(--bg);color:var(--ink3)"></div>
+    </div>
+    <label style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px;color:var(--ink2);cursor:pointer;margin-bottom:14px">
+      <input type="checkbox" id="contractAgree" style="margin-top:3px">
+      <span>Li e concordo integralmente com os termos acima, em especial quanto à <b>ausência de vínculo empregatício</b> (Cláusula 3ª) e às <b>condições de pagamento</b> (Cláusulas 4ª e 5ª), e reconheço a validade desta assinatura eletrônica (Cláusula 11ª).</span>
+    </label>
+    <div id="contractSignMsg"></div>
+    <button class="btn btn-accent" id="contractSignBtn" style="font-size:15px;padding:12px 22px" onclick="signContract()"${cpf?'':' disabled'}>✎ Assinar eletronicamente</button>
+    ${cpf?'':'<div style="font-size:11.5px;color:var(--red);margin-top:6px">Seu cadastro está sem CPF — peça a um administrador para completá-lo antes de assinar.</div>'}
+  </div>`;
+};
+async function signContract(){
+  if(!CURRENT_PROFILE)return;
+  const msgEl=document.getElementById('contractSignMsg');
+  const agree=document.getElementById('contractAgree');
+  if(!agree||!agree.checked){
+    if(msgEl)msgEl.innerHTML='<div class="callout" style="margin:10px 0 0;border-color:var(--red)">Marque a caixa de concordância acima antes de assinar.</div>';
+    return;
+  }
+  const nome=CURRENT_PROFILE.name||'';
+  const cpf=CURRENT_PROFILE.cpf||'';
+  if(!cpf){alert('Seu cadastro está sem CPF — peça a um administrador para completá-lo antes de assinar.');return;}
+  const cidade=(CURRENT_PROFILE.cidade||'').split('/')[0];
+  if(!confirm('Confirma a assinatura eletrônica deste contrato como '+nome+', CPF '+cpf+'?\n\nEsta ação registra data, hora e (quando disponível) o endereço IP do dispositivo, e não pode ser desfeita.'))return;
+  const btn=document.getElementById('contractSignBtn');
+  if(btn){btn.disabled=true;btn.textContent='Assinando…';}
+  const text=contractPlainText(nome,cpf,cidade);
+  let hash='';
+  try{hash=await sha256Hex(text);}catch(ex){hash='';}
+  const ip=await fetchClientIp();
+  try{
+    const {data:inserted,error}=await sb.from('researcher_contracts').insert({
+      researcher_id:CURRENT_PROFILE.id,
+      contract_version:CONTRACT_VERSION,
+      full_name:nome,
+      cpf,
+      content_hash:hash||'indisponível neste navegador',
+      ip_address:ip,
+      user_agent:(navigator&&navigator.userAgent)||null,
+    }).select().single();
+    if(error)throw new Error(error.message);
+    MY_CONTRACT=contractRowToEntry(inserted);
+    MY_CONTRACT_LOADED=true;
+  }catch(ex){
+    alert('Não foi possível registrar sua assinatura agora: '+ex.message);
+    if(btn){btn.disabled=false;btn.textContent='✎ Assinar eletronicamente';}
+    return;
+  }
+  go('my-contract');
+}
+function downloadContractCopy(){
+  if(!MY_CONTRACT||!CURRENT_PROFILE)return;
+  const cidade=(CURRENT_PROFILE.cidade||'').split('/')[0];
+  const text=contractPlainText(MY_CONTRACT.fullName,MY_CONTRACT.cpf,cidade)+
+    '\n\n----------------------------------------\nASSINATURA ELETRÔNICA\n'+
+    'Assinado por: '+MY_CONTRACT.fullName+' (CPF '+(MY_CONTRACT.cpf||'—')+')\n'+
+    'Data/hora: '+new Date(MY_CONTRACT.ts).toLocaleString('pt-BR')+'\n'+
+    'Endereço IP: '+(MY_CONTRACT.ip||'não disponível')+'\n'+
+    'Hash SHA-256 do documento: '+(MY_CONTRACT.hash||'—')+'\n'+
+    'Versão do contrato: '+MY_CONTRACT.version+'\n';
+  const blob=new Blob([text],{type:'text/plain;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download='contrato-pesquisapro-'+(MY_CONTRACT.fullName||'pesquisador').replace(/\s+/g,'_')+'.txt';
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url),2000);
+}
 
 /* ============ COMPANY ============ */
 PAGES.company=()=>head('Dados da empresa','Informações usadas em contratos e relatórios oficiais',
@@ -4254,7 +4585,7 @@ window._afterRender=function(key){
     wizRender();
   }
   if(key==='dashboard')drawDash();
-  if(key==='app-collect')initGeoCollect();
+  if(key==='app-collect'&&MY_CONTRACT)initGeoCollect(); /* só inicia GPS/coleta se o contrato já estiver assinado — ver PAGES['app-collect'] */
   if(key==='client-results')clientResultsLoadAndRender();
   if(key==='my-earnings')renderMyRejected();
   if(key==='sample'){calcSample();}

@@ -586,12 +586,23 @@ async function syncSurveyQuestionsAndOptions(surveyId,d){
     if(Q_HAS_OPTS(q.type)&&q.opts&&q.opts.length){
       const off=!!(d.quotaOff&&d.quotaOff[q.id]);
       const localQuotas=(d.quotas&&d.quotas[q.id])||{};
-      const optRows=q.opts.map((label,oi)=>({
-        question_id:qRow.id,position:oi,label:label||'',
-        is_remote:q.isRegion?!!(d.remote&&d.remote[oi]):false,
-        quota_pct:off?null:(localQuotas[oi]!=null?localQuotas[oi]:null),
-        quota_enabled:!off,
-      }));
+      // localQuotas é indexado pela posição entre as opções PREENCHIDAS
+      // (mesmo critério usado na tela de cotas), não pela posição bruta em
+      // q.opts — que pode ter opções em branco no meio. Também cai para a
+      // divisão igual como padrão em vez de null, para o caso de a cota
+      // nunca ter sido tocada manualmente pelo admin.
+      const filledIdx=[];q.opts.forEach((label,oi)=>{if(label&&label.trim())filledIdx.push(oi);});
+      const def=filledIdx.length?Math.round(100/filledIdx.length):null;
+      const optRows=q.opts.map((label,oi)=>{
+        const fi=filledIdx.indexOf(oi);
+        const pct=off||fi===-1?null:(localQuotas[fi]!=null?localQuotas[fi]:def);
+        return{
+          question_id:qRow.id,position:oi,label:label||'',
+          is_remote:q.isRegion?!!(d.remote&&d.remote[oi]):false,
+          quota_pct:pct,
+          quota_enabled:!off,
+        };
+      });
       const {error:oErr}=await sb.from('survey_question_options').insert(optRows);
       if(oErr)throw new Error('Não foi possível salvar as opções: '+oErr.message);
     }
@@ -1219,6 +1230,18 @@ function renderQuotas(){
   if(qs.length===0){area.innerHTML='<div class="empty">Adicione perguntas de escolha única ou múltipla (com opções) no passo Formulário para poder definir cotas nelas.</div>';return;}
   WIZ.data.quotas=WIZ.data.quotas||{};
   WIZ.data.quotaOff=WIZ.data.quotaOff||{};
+  // garante que o valor exibido (mesmo quando é só o padrão calculado,
+  // ex.: divisão igual entre as opções) seja gravado no modelo — sem isso,
+  // uma cota que o admin nunca editou manualmente (mas que aparece 100%
+  // preenchida na tela) seria salva como null no banco.
+  qs.forEach(q=>{
+    if(WIZ.data.quotaOff[q.id])return;
+    const opts=q.opts.filter(o=>o&&o.trim());
+    if(!opts.length)return;
+    const def=Math.round(100/opts.length);
+    WIZ.data.quotas[q.id]=WIZ.data.quotas[q.id]||{};
+    opts.forEach((o,i)=>{ if(WIZ.data.quotas[q.id][i]==null)WIZ.data.quotas[q.id][i]=def; });
+  });
   const activeN=qs.filter(q=>!WIZ.data.quotaOff[q.id]).length;
   const headerNote=`<div class="card-d" style="margin:-4px 0 12px">${activeN} de ${qs.length} perguntas com cota ativa. As desativadas não entram nas obrigações dos pesquisadores.</div>`;
   area.innerHTML=headerNote+qs.map(q=>{

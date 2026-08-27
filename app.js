@@ -2344,6 +2344,26 @@ async function initGeoCollect(){
   renderAcollectSurveyPicker();
   await acollectLoadQuotasForCurrent();
   renderGeoLog();
+  startAcollectQuotaLive();
+}
+/* mantém as cotas atualizadas sozinhas enquanto o pesquisador está na tela
+   "Coletar (app)" — sem isso, se outro pesquisador (ou ele mesmo, noutro
+   aparelho) preenchesse uma cota enquanto esta tela ficasse parada aberta,
+   os números ficariam desatualizados e ele poderia achar que ainda dava
+   para escolher uma cota que já bateu a meta. */
+let ACOLLECT_QUOTA_TIMER=null;
+function startAcollectQuotaLive(){
+  stopAcollectQuotaLive();
+  ACOLLECT_QUOTA_TIMER=setInterval(async()=>{
+    if(!ACOLLECT_SURVEY_ID)return;
+    const onKey=document.querySelector('.nav-item.on');
+    if(!onKey||onKey.dataset.key!=='app-collect')return; // já saiu da tela — para de bater no banco à toa
+    ACOLLECT_QUOTA_COUNTS=await loadQuotaCounts(ACOLLECT_SURVEY_ID);
+    renderAcollectQuotas();
+  },20000);
+}
+function stopAcollectQuotaLive(){
+  if(ACOLLECT_QUOTA_TIMER){clearInterval(ACOLLECT_QUOTA_TIMER);ACOLLECT_QUOTA_TIMER=null;}
 }
 
 /* pesquisas em campo onde este pesquisador está mesmo na equipe — o filtro
@@ -2410,8 +2430,9 @@ function renderAcollectQuotas(){
     renderAcollectActionState();
     return;
   }
-  el.innerHTML='<div style="font-weight:700;font-size:13px;margin-bottom:4px">Cotas de hoje</div>'+
-    '<div style="font-size:11px;color:var(--ink3);margin-bottom:10px">Toque numa cota disponível para escolher</div>'+
+  el.innerHTML='<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><div style="font-weight:700;font-size:13px">Cotas de hoje</div>'+
+    '<span class="pill pill-green" style="margin-left:auto"><span style="width:6px;height:6px;border-radius:50%;background:currentColor;display:inline-block;animation:fade 1.4s ease-in-out infinite alternate"></span> Ao vivo</span></div>'+
+    '<div style="font-size:11px;color:var(--ink3);margin-bottom:10px">Toque numa cota disponível para escolher · cotas já preenchidas ficam bloqueadas automaticamente</div>'+
     ACOLLECT_QUOTA_LIST.map((q,qi)=>{
       const done=ACOLLECT_QUOTA_COUNTS[q.label]||0;
       const full=done>=q.target;
@@ -2551,13 +2572,31 @@ function renderAcollectActionState(){
   btn.style.cursor=active?'pointer':'not-allowed';
   if(hint)hint.textContent=!geoOk?geoStatusUi().hint:!hasSurvey?'Nenhuma pesquisa em campo atribuída a você':!hasQuota?'Escolha uma cota para liberar a coleta':'Localização ativa — pode coletar';
 }
-function acollectStart(){
+/* antes de começar a entrevista de verdade, revalida a cota escolhida
+   direto no banco — o card pode ter ficado desatualizado (mesmo com a
+   atualização automática a cada 20s) se outro pesquisador preencheu a
+   cota bem nesse intervalo. É essa checagem, não só a cor do card, que
+   efetivamente trava a coleta quando a cota já bateu a meta. */
+async function acollectStart(){
   if(GEO.status!=='granted'||!ACOLLECT_SURVEY_ID)return;
-  if(ACOLLECT_SELECTED_QUOTA===null||ACOLLECT_SELECTED_QUOTA===undefined)return;
+  if(ACOLLECT_SELECTED_QUOTA===null||ACOLLECT_SELECTED_QUOTA===undefined||ACOLLECT_SELECTED_QUOTA==='')return;
+  const quotaEntry=ACOLLECT_QUOTA_LIST.find(q=>q.label===ACOLLECT_SELECTED_QUOTA);
+  if(quotaEntry){
+    const btn=document.getElementById('startCollectBtn');
+    if(btn){btn.disabled=true;btn.textContent='Verificando cota…';}
+    ACOLLECT_QUOTA_COUNTS=await loadQuotaCounts(ACOLLECT_SURVEY_ID);
+    const doneNow=ACOLLECT_QUOTA_COUNTS[quotaEntry.label]||0;
+    if(doneNow>=quotaEntry.target){
+      ACOLLECT_SELECTED_QUOTA=null;
+      renderAcollectQuotas();
+      alert('Essa cota acabou de bater a meta (preenchida agora há pouco). Escolha outra cota disponível.');
+      return;
+    }
+    renderAcollectQuotas();
+  }
   ACOLLECT_IN_PROGRESS=true;
   ACOLLECT_STARTED_AT=Date.now();
   ACOLLECT_ANSWERS={};
-  const quotaEntry=ACOLLECT_QUOTA_LIST.find(q=>q.label===ACOLLECT_SELECTED_QUOTA);
   if(quotaEntry&&quotaEntry.questionDbId){
     ACOLLECT_ANSWERS[quotaEntry.questionDbId]={value:ACOLLECT_SELECTED_QUOTA,locked:true};
   }
@@ -4575,6 +4614,7 @@ window._beforeRender=function(key){
 
 window._afterRender=function(key){
   if(key!=='collect'){stopCollectLive();}
+  if(key!=='app-collect'){stopAcollectQuotaLive();}
   if(key==='collect'){
     if(COLLECT_IDX!=null){initCollectLive(COLLECT_IDX);}else{stopCollectLive();}
   }

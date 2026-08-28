@@ -2448,7 +2448,15 @@ function renderAcollectQuotas(){
   if(!s){el.innerHTML='';ACOLLECT_QUOTA_LIST=[];renderAcollectActionState();return;}
   ACOLLECT_QUOTA_LIST=surveyQuotas(s);
   if(!ACOLLECT_QUOTA_LIST.length){
-    el.innerHTML='<div class="card-d" style="margin:6px 0 10px">Esta pesquisa não tem cotas configuradas — pode coletar livremente.</div>';
+    // diagnóstico: existe pergunta marcada como cota ativa, com opções, mas
+    // sem nenhum percentual salvo? isso é diferente de "não tem cota
+    // nenhuma" — avisa explicitamente em vez de mostrar a mensagem genérica,
+    // pra deixar claro que é preciso reabrir e salvar a pesquisa de novo.
+    const temPerguntaSemPct=(s.questions||[]).some(q=>
+      q.opts&&q.opts.length&&(!s.quotaOff||!s.quotaOff[q.id])&&!(s.quotas&&s.quotas[q.id]&&Object.keys(s.quotas[q.id]).length));
+    el.innerHTML=temPerguntaSemPct
+      ?'<div class="card-d" style="margin:6px 0 10px;color:var(--red,#dc2626)">Esta pesquisa tem uma pergunta marcada como cota ativa, mas sem percentual salvo no banco — reabra "Editar pesquisa" para esta pesquisa e clique em "Salvar alterações" de novo (não precisa mudar nada) para corrigir.</div>'
+      :'<div class="card-d" style="margin:6px 0 10px">Esta pesquisa não tem cotas configuradas — pode coletar livremente.</div>';
     if(!ACOLLECT_IN_PROGRESS)ACOLLECT_SELECTED_QUOTA='';
     renderAcollectActionState();
     return;

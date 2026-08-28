@@ -1,0 +1,6 @@
+{
+  "projectRef": "soejywbqjgqsrluhbyit",
+  "url": "https://soejywbqjgqsrluhbyit.supabase.co",
+  "publishableKey": "sb_publishable_-OZqiZaw-SfAqNY4SppQKw_USrZiOqa",
+  "_nota": "Só a chave publicável (equivalente à antiga 'anon key') fica aqui — ela é segura para aparecer no código do navegador. A chave secreta (sb_secret_...) nunca deve ser colocada neste arquivo nem em nenhum arquivo enviado ao site."
+}

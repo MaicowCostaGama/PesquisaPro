@@ -1627,6 +1627,7 @@ function pesqAreaMatch(u,targets){
   return {match:false,label:cid.join(', ')};
 }
 let TEAM_IDX=null;
+let TEAM_SHOW_OUT_OF_AREA=false; /* liga/desliga por pesquisa — reseta a cada entrada na tela */
 PAGES['survey-team']=()=>{
   const s=SURVEYS[TEAM_IDX];if(!s)return '<div class="empty">Pesquisa não encontrada.</div>';
   if(!USERS_LOADED){
@@ -1635,21 +1636,31 @@ PAGES['survey-team']=()=>{
   }
   const team=s.team||[];
   const targets=surveyCityTargets(s);
+  const hasTarget=!!(targets.cities.size||targets.states.size);
   const pesqs=pesqUsers().map(u=>({u,area:pesqAreaMatch(u,targets)}))
     .sort((a,b)=>(b.area.match-a.area.match)||a.u.name.localeCompare(b.u.name));
   const areaNote=targets.cities.size
     ?'cidades da pesquisa: '+[...targets.cities].join(', ')
     :(targets.states.size?'estado(s) da pesquisa: '+[...targets.states].join(', '):'esta pesquisa não tem estado/cidade definidos');
+  const foraCount=pesqs.filter(({u,area})=>!area.match).length;
   const rows=pesqs.length?pesqs.map(({u,area})=>{
     const on=team.includes(u.name);
     const pend=u.status!=='ativo';
+    // só pode convidar (marcar) quem tem no cadastro a cidade/estado da
+    // amostra da pesquisa — quem já estava na equipe antes continua
+    // podendo ser removido normalmente, mesmo que hoje não bata mais com
+    // a área (por isso o "&&!on" abaixo: nunca bloqueia tirar alguém).
+    const foraDaArea=hasTarget&&!area.match;
+    const naoSelecionavel=foraDaArea&&!on; // fora da área e nunca esteve na equipe: não pode ser marcado
+    const hidden=naoSelecionavel&&!TEAM_SHOW_OUT_OF_AREA;
     const searchKey=esc((u.name+' '+area.label).toLowerCase());
-    return `<label class="pick t-pesq-row" data-search="${searchKey}" style="${pend?'opacity:.7':''}">
-      <input type="checkbox" class="t-pesq" value="${esc(u.name)}" ${on?'checked':''} ${pend?'disabled':''}>
+    return `<label class="pick t-pesq-row" data-search="${searchKey}" data-fora="${naoSelecionavel?'1':'0'}" style="${(pend||foraDaArea)?'opacity:.7':''}${hidden?';display:none':''}">
+      <input type="checkbox" class="t-pesq" value="${esc(u.name)}" ${on?'checked':''} ${(pend||naoSelecionavel)?'disabled':''}>
       <div class="avatar" style="width:30px;height:30px;font-size:11px">${esc(u.name).split(' ').map(n=>n[0]).join('')}</div>
       <div style="flex:1"><div style="font-weight:600;font-size:13px">${esc(u.name)}</div>
         <div style="font-size:11px;color:var(--ink3)">${esc(area.label)}</div></div>
       ${area.match?'<span class="pill pill-green">● atua na área</span>':''}
+      ${foraDaArea?`<span class="pill pill-gray">fora da área${on?' · já na equipe':''}</span>`:''}
       ${pend?'<span class="pill pill-amber">● aguardando aprovação</span>':''}</label>`;
   }).join(''):'<div class="empty">Nenhum pesquisador cadastrado ainda. Cadastre em Usuários → Pesquisadores.</div>';
   return head('Atribuir equipe — '+s.name,'Escolha pesquisadores cadastrados ou envie link de cadastro para novos',
@@ -1657,7 +1668,8 @@ PAGES['survey-team']=()=>{
   <div class="grid g2" style="align-items:start">
     <div class="card">
       <div class="card-t">Pesquisadores cadastrados</div>
-      <div class="card-d">Marque quem vai trabalhar nesta pesquisa — quem já atua na área aparece primeiro (${esc(areaNote)})</div>
+      <div class="card-d">${hasTarget?`Só é possível convidar quem tem, no cadastro, disponibilidade para ${esc(areaNote)} — pesquisadores de outras áreas ficam de fora da lista.`:`Marque quem vai trabalhar nesta pesquisa (${esc(areaNote)}, então não há restrição de área).`}</div>
+      ${hasTarget&&foraCount?`<label class="pick" style="padding:6px 2px;margin-bottom:6px;cursor:pointer"><input type="checkbox" id="team-show-fora" ${TEAM_SHOW_OUT_OF_AREA?'checked':''} onchange="teamToggleShowFora(this.checked)"><span style="font-size:12px;color:var(--ink3)">Mostrar também os ${foraCount} pesquisador${foraCount>1?'es':''} fora da área (não poderão ser marcados — exceção só pelo cadastro dele)</span></label>`:''}
       ${pesqs.length?`<input class="inp" placeholder="Buscar por nome ou cidade…" id="team-search" oninput="teamFilterRows(this.value)" style="margin-bottom:10px">`:''}
       <div class="picklist" id="team-picklist" style="grid-template-columns:1fr">${rows}</div>
       <div class="empty" id="team-no-match" style="display:none">Nenhum pesquisador encontrado para essa busca.</div>
@@ -1686,15 +1698,27 @@ PAGES['survey-team']=()=>{
     </div>
   </div>`;
 };
-function surveyTeam(idx){TEAM_IDX=idx;go('survey-team');}
+function surveyTeam(idx){TEAM_IDX=idx;TEAM_SHOW_OUT_OF_AREA=false;go('survey-team');}
+/* liga/desliga a visibilidade de quem está fora da área, sem perder o que
+   já foi marcado na tela (por isso mexe direto no DOM em vez de re-renderizar
+   a página inteira) — quem está fora da área nunca fica marcável por aqui,
+   só visível ou escondido. */
+function teamToggleShowFora(checked){
+  TEAM_SHOW_OUT_OF_AREA=checked;
+  const qq=(document.getElementById('team-search')?.value||'').trim().toLowerCase();
+  teamFilterRows(qq);
+}
 /* filtra a lista de pesquisadores por nome/cidade sem re-renderizar (senão
-   perderia o que já estava marcado enquanto a pessoa digita) */
+   perderia o que já estava marcado enquanto a pessoa digita) — respeita
+   também o estado do toggle "mostrar fora da área". */
 function teamFilterRows(q){
   const qq=(q||'').trim().toLowerCase();
   const rows=[...document.querySelectorAll('#team-picklist .t-pesq-row')];
   let visible=0;
   rows.forEach(row=>{
-    const show=!qq||(row.dataset.search||'').includes(qq);
+    const matchesSearch=!qq||(row.dataset.search||'').includes(qq);
+    const isFora=row.dataset.fora==='1';
+    const show=matchesSearch&&(!isFora||TEAM_SHOW_OUT_OF_AREA);
     row.style.display=show?'':'none';
     if(show)visible++;
   });

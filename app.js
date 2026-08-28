@@ -138,6 +138,10 @@ function buildSidebar(){
     });
     html+='</div>';
   });
+  // link para sair fica sempre dentro do menu (gaveta) — no celular os
+  // botões do topo (inclusive o "Sair" ao lado do avatar) somem por falta de
+  // espaço, então sem isso não havia como sair do sistema pelo celular.
+  html+=`<div class="nav-group nav-group-exit"><button class="nav-item nav-logout" onclick="logout()"><span class="ico">⏻</span>Sair do sistema</button></div>`;
   document.getElementById('sidebar').innerHTML=html;
 }
 

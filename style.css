@@ -520,3 +520,11 @@
   .map-layer-toggle button+button{border-left:1px solid var(--line)}
   .map-layer-toggle button.on{background:var(--teal);color:#fff}
   .map-layer-toggle button:not(.on):hover{background:var(--bg)}
+
+  /* ---------- SAIR DO SISTEMA (menu lateral) ----------
+     fica sempre por último no menu — inclusive na gaveta do celular, onde
+     os botões do topo (avatar/nome e o "Sair" ao lado dele) somem por
+     falta de espaço; sem isso não sobrava nenhum jeito de sair pelo celular. */
+  .nav-group-exit{margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
+  .nav-logout{color:var(--red,#dc2626)}
+  .nav-logout:hover{background:rgba(220,38,38,.08)}

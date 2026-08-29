@@ -3079,9 +3079,11 @@ function loadUsersIfNeeded(){
   return _usersLoadPromise;
 }
 async function syncPesqCidades(profileId,cidades){
-  await sb.from('profile_cidades_atuacao').delete().eq('profile_id',profileId);
+  const {error:delErr}=await sb.from('profile_cidades_atuacao').delete().eq('profile_id',profileId);
+  if(delErr)throw new Error('Não foi possível salvar as cidades de atuação: '+delErr.message);
   if(cidades&&cidades.length){
-    await sb.from('profile_cidades_atuacao').insert(cidades.map(c=>({profile_id:profileId,cidade:c})));
+    const {error:insErr}=await sb.from('profile_cidades_atuacao').insert(cidades.map(c=>({profile_id:profileId,cidade:c})));
+    if(insErr)throw new Error('Não foi possível salvar as cidades de atuação: '+insErr.message);
   }
 }
 async function createLoginAndProfile(email,password,role,rec){

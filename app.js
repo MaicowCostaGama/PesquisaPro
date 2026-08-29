@@ -253,6 +253,7 @@ PAGES['dashboard-pesq']=()=>{
   if(!COLLECT_EVENTS_LOADED)loadCollectEventsIfNeeded();
   if(!PAYMENTS_LOADED)loadPaymentsIfNeeded();
   if(!MY_CONTRACT_LOADED)loadMyContractIfNeeded();
+  if(!MY_INVITES_LOADED)loadMyInvitesIfNeeded();
   const primeiroNome=(CURRENT_PROFILE&&CURRENT_PROFILE.name)?CURRENT_PROFILE.name.trim().split(' ')[0]:'';
   const subtitulo=primeiroNome?('Olá '+primeiroNome+' — acompanhe suas metas e ganhos'):'Acompanhe suas metas e ganhos';
   if(!SURVEYS_LOADED||!COLLECT_EVENTS_LOADED||!PAYMENTS_LOADED){
@@ -286,7 +287,23 @@ PAGES['dashboard-pesq']=()=>{
   }else{
     quotasHtml=quotaList.map((q,i)=>quota(q.label,DASH_QUOTA_COUNTS[q.label]||0,q.target,quotaColors[i%quotaColors.length])).join('');
   }
+  const invitesHtml=(MY_INVITES_LOADED&&MY_INVITES.length)?`<div class="card mb">
+    <div class="card-t">Convite${MY_INVITES.length>1?'s':''} para pesquisa${MY_INVITES.length>1?'s':''}</div>
+    <div class="card-d">Você foi convidado(a) pelo administrador — aceite para entrar na equipe e liberar a coleta.</div>
+    ${MY_INVITES.map(inv=>{
+      const sv=SURVEYS.find(x=>x.id===inv.survey_id);
+      const busy=MY_INVITE_RESPONDING===inv.id;
+      return `<div class="approve-row">
+        <div class="avatar" style="width:30px;height:30px;font-size:11px">${(sv?sv.name:'?').slice(0,2).toUpperCase()}</div>
+        <div style="flex:1"><div style="font-weight:600;font-size:13px">${esc(sv?sv.name:'Pesquisa')}</div>
+          <div style="font-size:11px;color:var(--ink3)">${sv?esc(sv.tipo||''):'carregando…'}</div></div>
+        <button class="btn-ghost" style="color:var(--teal)" ${busy?'disabled':''} onclick="respondMyInvite('${inv.id}',true)">${busy?'Enviando…':'Aceitar'}</button>
+        <button class="btn-ghost" style="color:var(--red)" ${busy?'disabled':''} onclick="respondMyInvite('${inv.id}',false)">Recusar</button>
+      </div>`;
+    }).join('')}
+  </div>`:'';
   return head('Meu painel',subtitulo)+`
+  ${invitesHtml}
   ${(MY_CONTRACT_LOADED&&!MY_CONTRACT)?'<div class="callout mb">✎ Você ainda não assinou seu contrato de prestação de serviços — assine para poder coletar. <button class="btn-ghost" style="margin-left:6px" onclick="go(\'my-contract\')">Assinar agora →</button></div>':''}
   <div class="grid g4" style="margin-bottom:18px">
     ${stat('Coletas hoje',String(hojeCount),'entrevistas enviadas hoje','✓','#2563eb')}
@@ -1626,6 +1643,60 @@ function pesqAreaMatch(u,targets){
   if(!targets.cities.size&&targets.states.size&&cid.some(c=>targets.states.has(c.split('/')[1])))return {match:true,label:cid.join(', ')};
   return {match:false,label:cid.join(', ')};
 }
+/* ---- convite de pesquisador por WhatsApp (aceitar entra na equipe sozinho,
+   via a função respond_survey_invite no banco — ver schema.sql) ---- */
+function whatsappDigits(phone){
+  let d=(phone||'').replace(/\D/g,'');
+  if(!d)return '';
+  if(d.length<=11)d='55'+d; // sem DDI: assume Brasil
+  return d;
+}
+let TEAM_INVITES=[],TEAM_INVITES_LOADED=false,TEAM_INVITES_LOADING=false;
+async function loadTeamInvitesIfNeeded(){
+  const s=SURVEYS[TEAM_IDX];
+  if(!s||TEAM_INVITES_LOADED||TEAM_INVITES_LOADING)return;
+  TEAM_INVITES_LOADING=true;
+  try{
+    const {data,error}=await sb.from('survey_invites').select('*').eq('survey_id',s.id);
+    if(!error)TEAM_INVITES=data||[];
+    TEAM_INVITES_LOADED=true;
+  }catch(ex){ /* sem convites carregados, a tela ainda funciona normalmente */ }
+  TEAM_INVITES_LOADING=false;
+  // "Atribuir equipe" não é um item do menu lateral (é aberta por um botão
+  // dentro de "Pesquisas"), então não dá pra usar o mesmo truque de checar
+  // ".nav-item.on" que as outras telas usam pra saber se ainda estão na
+  // tela certa antes de re-renderizar — em vez disso, confere se o próprio
+  // conteúdo desta página ainda está no ar.
+  if(document.getElementById('team-picklist'))go('survey-team');
+}
+/* cria o convite (ou reabre um que foi recusado) e abre o WhatsApp com a
+   mensagem já pronta — o pesquisador só entra na equipe se ele aceitar
+   dentro do app, nunca só por ter recebido a mensagem. */
+async function inviteResearcherWhatsapp(researcherId){
+  const s=SURVEYS[TEAM_IDX];if(!s)return;
+  const u=USERS.find(x=>x.id===researcherId);if(!u)return;
+  const digits=whatsappDigits(u.phone);
+  if(!digits){alert('Este pesquisador não tem celular cadastrado — peça para ele atualizar o cadastro antes de convidar por WhatsApp.');return;}
+  try{
+    const {data:existing,error:selErr}=await sb.from('survey_invites').select('*').eq('survey_id',s.id).eq('researcher_id',researcherId);
+    if(selErr)throw new Error(selErr.message);
+    const row=(existing||[])[0];
+    if(row&&row.status==='aceito'){alert('Esse pesquisador já aceitou o convite desta pesquisa.');return;}
+    if(row){
+      const {error:updErr}=await sb.from('survey_invites').update({status:'pendente',invited_by:CURRENT_PROFILE.id,invited_at:new Date().toISOString(),responded_at:null}).eq('id',row.id);
+      if(updErr)throw new Error(updErr.message);
+      row.status='pendente';
+    }else{
+      const {data:inserted,error:insErr}=await sb.from('survey_invites').insert({survey_id:s.id,researcher_id:researcherId,invited_by:CURRENT_PROFILE.id,status:'pendente'}).select().single();
+      if(insErr)throw new Error(insErr.message);
+      TEAM_INVITES.push(inserted);
+    }
+  }catch(ex){alert('Não foi possível criar o convite: '+ex.message);return;}
+  const msg='Olá, '+u.name.split(' ')[0]+'! Você foi convidado(a) para a pesquisa "'+s.name+'" no PesquisaPro. '+
+    'Entre no app (pesquisa-pro.com) com seu login para aceitar ou recusar o convite, em "Meu painel".';
+  window.open('https://wa.me/'+digits+'?text='+encodeURIComponent(msg),'_blank');
+  go('survey-team');
+}
 let TEAM_IDX=null;
 let TEAM_SHOW_OUT_OF_AREA=false; /* liga/desliga por pesquisa — reseta a cada entrada na tela */
 PAGES['survey-team']=()=>{
@@ -1634,6 +1705,7 @@ PAGES['survey-team']=()=>{
     loadUsersIfNeeded();
     return head('Atribuir equipe — '+s.name,'Carregando pesquisadores cadastrados…')+'<div class="empty">Carregando pesquisadores do banco de dados…</div>';
   }
+  if(!TEAM_INVITES_LOADED)loadTeamInvitesIfNeeded();
   const team=s.team||[];
   const targets=surveyCityTargets(s);
   const hasTarget=!!(targets.cities.size||targets.states.size);
@@ -1654,6 +1726,20 @@ PAGES['survey-team']=()=>{
     const naoSelecionavel=foraDaArea&&!on; // fora da área e nunca esteve na equipe: não pode ser marcado
     const hidden=naoSelecionavel&&!TEAM_SHOW_OUT_OF_AREA;
     const searchKey=esc((u.name+' '+area.label).toLowerCase());
+    const inv=TEAM_INVITES.find(i=>i.researcher_id===u.id);
+    // convite por WhatsApp: só faz sentido oferecer pra quem pode mesmo
+    // entrar na equipe (não pend, não fora da área, ainda não está na equipe)
+    const podeConvidar=!on&&!pend&&!naoSelecionavel;
+    let inviteHtml='';
+    if(podeConvidar){
+      if(inv&&inv.status==='pendente'){
+        inviteHtml=`<span class="pill pill-amber">✉ convite enviado</span><button class="btn-ghost" style="font-size:11px;padding:4px 8px" onclick="event.preventDefault();inviteResearcherWhatsapp('${u.id}')">Reenviar</button>`;
+      }else if(inv&&inv.status==='recusado'){
+        inviteHtml=`<span class="pill pill-red">recusou o convite</span><button class="btn-ghost" style="font-size:11px;padding:4px 8px" onclick="event.preventDefault();inviteResearcherWhatsapp('${u.id}')">Reenviar</button>`;
+      }else{
+        inviteHtml=`<button class="btn-ghost" style="font-size:11px;padding:4px 8px;color:var(--teal)" onclick="event.preventDefault();inviteResearcherWhatsapp('${u.id}')">✉ Convidar por WhatsApp</button>`;
+      }
+    }
     return `<label class="pick t-pesq-row" data-search="${searchKey}" data-fora="${naoSelecionavel?'1':'0'}" style="${(pend||foraDaArea)?'opacity:.7':''}${hidden?';display:none':''}">
       <input type="checkbox" class="t-pesq" value="${esc(u.name)}" ${on?'checked':''} ${(pend||naoSelecionavel)?'disabled':''}>
       <div class="avatar" style="width:30px;height:30px;font-size:11px">${esc(u.name).split(' ').map(n=>n[0]).join('')}</div>
@@ -1661,7 +1747,8 @@ PAGES['survey-team']=()=>{
         <div style="font-size:11px;color:var(--ink3)">${esc(area.label)}</div></div>
       ${area.match?'<span class="pill pill-green">● atua na área</span>':''}
       ${foraDaArea?`<span class="pill pill-gray">fora da área${on?' · já na equipe':''}</span>`:''}
-      ${pend?'<span class="pill pill-amber">● aguardando aprovação</span>':''}</label>`;
+      ${pend?'<span class="pill pill-amber">● aguardando aprovação</span>':''}
+      ${inviteHtml}</label>`;
   }).join(''):'<div class="empty">Nenhum pesquisador cadastrado ainda. Cadastre em Usuários → Pesquisadores.</div>';
   return head('Atribuir equipe — '+s.name,'Escolha pesquisadores cadastrados ou envie link de cadastro para novos',
     '<button class="btn btn-out" onclick="go(\'surveys\')">← Voltar</button><button class="btn btn-fill" onclick="teamSave()">Salvar equipe</button>')+`
@@ -1698,7 +1785,7 @@ PAGES['survey-team']=()=>{
     </div>
   </div>`;
 };
-function surveyTeam(idx){TEAM_IDX=idx;TEAM_SHOW_OUT_OF_AREA=false;go('survey-team');}
+function surveyTeam(idx){TEAM_IDX=idx;TEAM_SHOW_OUT_OF_AREA=false;TEAM_INVITES=[];TEAM_INVITES_LOADED=false;go('survey-team');}
 /* liga/desliga a visibilidade de quem está fora da área, sem perder o que
    já foi marcado na tela (por isso mexe direto no DOM em vez de re-renderizar
    a página inteira) — quem está fora da área nunca fica marcável por aqui,
@@ -1727,12 +1814,22 @@ function teamFilterRows(q){
 }
 async function teamSave(){
   const s=SURVEYS[TEAM_IDX];if(!s)return;
-  const names=[...document.querySelectorAll('.t-pesq:checked')].map(c=>c.value);
+  const names=new Set([...document.querySelectorAll('.t-pesq:checked')].map(c=>c.value));
+  // salvaguarda: quem já aceitou um convite entra automaticamente pelo banco
+  // (respond_survey_invite) assim que aceita — mas se essa tela foi aberta
+  // ANTES do aceite (lista de pesquisadores desatualizada), "Salvar equipe"
+  // não pode apagar esse vínculo só porque o checkbox aqui não estava
+  // marcado. Garante que quem aceitou continua na lista final.
+  TEAM_INVITES.filter(i=>i.status==='aceito').forEach(i=>{
+    const u=USERS.find(x=>x.id===i.researcher_id);
+    if(u)names.add(u.name);
+  });
+  const namesArr=[...names];
   try{
-    if(s.id)await syncSurveyTeam(s.id,names);
+    if(s.id)await syncSurveyTeam(s.id,namesArr);
   }catch(ex){alert('Não foi possível salvar a equipe: '+ex.message);return;}
-  s.team=names;
-  alert('Equipe salva: '+(names.length?names.join(', '):'nenhum pesquisador'));
+  s.team=namesArr;
+  alert('Equipe salva: '+(namesArr.length?namesArr.join(', '):'nenhum pesquisador'));
   go('surveys');
 }
 
@@ -4538,6 +4635,44 @@ async function loadMyContractIfNeeded(){
   const onKey=document.querySelector('.nav-item.on');
   const k=onKey&&onKey.dataset.key;
   if(k==='app-collect'||k==='my-contract'||k==='dashboard-pesq')go(k);
+}
+/* ---- convites de equipe recebidos por WhatsApp (aceitar/recusar em "Meu
+   painel") — ver PAGES['dashboard-pesq'] pelo card, e
+   inviteResearcherWhatsapp() no lado do admin pela criação do convite. ---- */
+let MY_INVITES=[],MY_INVITES_LOADED=false,MY_INVITES_LOADING=false;
+async function loadMyInvitesIfNeeded(){
+  if(MY_INVITES_LOADED||MY_INVITES_LOADING)return;
+  if(!CURRENT_PROFILE){MY_INVITES_LOADED=true;return;}
+  MY_INVITES_LOADING=true;
+  try{
+    const {data,error}=await sb.from('survey_invites').select('*')
+      .eq('researcher_id',CURRENT_PROFILE.id).eq('status','pendente');
+    if(!error){MY_INVITES=data||[];MY_INVITES_LOADED=true;}
+    else console.error('Erro ao carregar convites:',error);
+  }catch(ex){console.error('Erro de conexão ao carregar convites:',ex);}
+  MY_INVITES_LOADING=false;
+  const onKey=document.querySelector('.nav-item.on');
+  if(onKey&&onKey.dataset.key==='dashboard-pesq')go('dashboard-pesq');
+}
+let MY_INVITE_RESPONDING=null; /* id do convite sendo respondido agora — trava os botões pra não clicar 2x */
+async function respondMyInvite(inviteId,accept){
+  if(MY_INVITE_RESPONDING)return;
+  MY_INVITE_RESPONDING=inviteId;
+  go('dashboard-pesq');
+  try{
+    const {error}=await sb.rpc('respond_survey_invite',{p_invite_id:inviteId,p_accept:accept});
+    if(error)throw new Error(error.message);
+    MY_INVITES=MY_INVITES.filter(i=>i.id!==inviteId);
+    if(accept){
+      // o convite aceito grava o vínculo direto no banco (survey_team) — só
+      // precisamos recarregar as pesquisas pra essa passar a aparecer nas
+      // cotas/coleta desta conta.
+      SURVEYS_LOADED=false;
+      await loadSurveysIfNeeded();
+    }
+  }catch(ex){alert('Não foi possível responder ao convite: '+ex.message);}
+  MY_INVITE_RESPONDING=null;
+  go('dashboard-pesq');
 }
 PAGES['my-contract']=()=>{
   if(!CURRENT_PROFILE)return head('Meu contrato','Seu contrato de prestação de serviços')+'<div class="empty">Faça login para ver seu contrato.</div>';

@@ -9,9 +9,10 @@
 <link rel="icon" type="image/png" sizes="64x64" href="assets/favicon-64.png">
 <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
 <link rel="apple-touch-icon" href="assets/icon-512.png">
-<link rel="stylesheet" href="style.css?v=20260829142234">
+<link rel="stylesheet" href="style.css?v=20260830123000">
 </head>
 <body>
+<a class="skip-link" href="#main">Ir para o conteúdo principal</a>
 <!-- ===================== LOGIN ===================== -->
 <div id="login">
   <div class="login-card">
@@ -38,7 +39,7 @@
 
 <!-- ===================== APP ===================== -->
 <div id="app">
-  <div class="topbar">
+  <header class="topbar" role="banner">
     <button class="btn-ghost menu-toggle" id="menuToggle" onclick="toggleSidebar()" aria-label="Abrir menu">☰</button>
     <a href="index.html"><img src="assets/logo-wide.png" alt="PesquisaPro" class="brand-logo brand-logo-topbar"></a>
     <div class="tb-spacer"></div>
@@ -48,12 +49,12 @@
       <div><div class="un" id="tbName">Admin Master</div><div class="ur" id="tbRole">Administrador</div></div>
     </div>
     <button class="btn-ghost" onclick="logout()">Sair</button>
-  </div>
+  </header>
 
-  <div class="sidebar" id="sidebar"></div>
+  <nav class="sidebar" id="sidebar" aria-label="Navegação principal"></nav>
   <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="closeSidebar()"></div>
 
-  <div class="main" id="main"></div>
+  <main class="main" id="main" tabindex="-1" aria-live="polite"></main>
 </div>
 
 <!-- Bibliotecas pesadas são carregadas sob demanda pelo app.js, somente nas telas que as utilizam. -->
@@ -63,7 +64,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="supabase-client.js"></script>
 <!-- Código principal do protótipo -->
-<script src="app.js?v=20260829142234"></script>
-<script src="commercial.js?v=20260830110000"></script>
+<script src="app.js?v=20260830123000"></script>
+<script src="commercial.js?v=20260830123000"></script>
 </body>
 </html>

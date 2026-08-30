@@ -147,7 +147,11 @@ function buildSidebar(){
 }
 
 function go(key){
-  document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('on',n.dataset.key===key));
+  document.querySelectorAll('.nav-item').forEach(n=>{
+    const active=n.dataset.key===key;
+    n.classList.toggle('on',active);
+    if(active)n.setAttribute('aria-current','page');else n.removeAttribute('aria-current');
+  });
   if(window._beforeRender)window._beforeRender(key);
   document.getElementById('main').innerHTML=PAGES[key]?PAGES[key]():'<div class="empty">Em construção</div>';
   if(window._afterRender)window._afterRender(key);

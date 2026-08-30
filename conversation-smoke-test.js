@@ -4,6 +4,8 @@ const app = fs.readFileSync('app.js','utf8');
 const commercial = fs.readFileSync('commercial.js','utf8');
 const css = fs.readFileSync('style.css','utf8');
 assert(app.includes("'☏':"), 'ícone de conversa ausente');
+assert(app.includes('function conversationUrl(phone,msg)'), 'normalizador de conversa ausente');
+assert(app.includes("return 'https://wa.me/'+num+(msg?'?text='+encodeURIComponent(msg):'')"), 'montagem do link WhatsApp ausente');
 assert(app.includes('function conversationButton(phone,context='), 'helper de conversa ausente');
 assert(app.includes('clientWhatsAppMsg(${jsArg(phone)},${jsArg(context)})'), 'link contextual ausente');
 assert(app.includes('conversationButton(u.phone'), 'contato nas tabelas de usuários ausente');

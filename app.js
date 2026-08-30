@@ -3567,17 +3567,21 @@ function userEditFromView(){
   if(u&&['admin','coord','gerente'].includes(u.role))_docDraft=null;
   USER_ARMED=true;go('users');
 }
-function userWhatsApp(phone){
+function conversationUrl(phone,msg){
   const digits=(phone||'').replace(/\D/g,'');
-  if(!digits){alert('Este usuário não tem telefone cadastrado.');return;}
+  if(!digits)return '';
   const num=digits.length<=11?'55'+digits:digits;
-  window.open('https://wa.me/'+num,'_blank','noopener');
+  return 'https://wa.me/'+num+(msg?'?text='+encodeURIComponent(msg):'');
+}
+function userWhatsApp(phone){
+  const href=conversationUrl(phone,'');
+  if(!href){alert('Este usuário não tem telefone cadastrado.');return;}
+  window.open(href,'_blank','noopener');
 }
 function clientWhatsAppMsg(phone,msg){
-  const digits=(phone||'').replace(/\D/g,'');
-  if(!digits){alert('Cliente sem telefone cadastrado.');return;}
-  const num=digits.length<=11?'55'+digits:digits;
-  window.open('https://wa.me/'+num+(msg?'?text='+encodeURIComponent(msg):''),'_blank','noopener');
+  const href=conversationUrl(phone,msg);
+  if(!href){alert('Cliente sem telefone cadastrado.');return;}
+  window.open(href,'_blank','noopener');
 }
 function conversationButton(phone,context='Olá! Podemos conversar sobre a pesquisa?'){
   if(!phone)return '';

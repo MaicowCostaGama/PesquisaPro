@@ -2326,7 +2326,7 @@ function renderCollectMap(idx){
     const markerState=e.status==='rejected'?'is-rejected':e.calibration?'is-calibration':isLatest?'is-latest':'is-history';
     const icon=L.divIcon({
       html:`<span class="map-marker ${markerState}" style="--marker-color:${color}"><i></i></span>`,
-      className:'map-marker-wrap',iconSize:[34,34],iconAnchor:[17,17]});
+      className:'map-marker-wrap',iconSize:[36,42],iconAnchor:[18,38]});
     const marker=L.marker(mapDisplayPoint(e,events),{icon}).addTo(_collectMarkerLayer);
     marker.bindTooltip(buildMapTooltip(e,isLatest),{direction:'top',offset:[0,-18],sticky:true,className:'map-hover-tooltip'});
     marker.bindPopup(buildMapPopup(e,isLatest));

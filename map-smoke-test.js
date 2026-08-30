@@ -21,7 +21,8 @@ for (const token of [
   'AUDIT_HIGHLIGHT_ID=id',
   'function mapDisplayPoint(e,events)',
   'setView(pts[0],17',
-  'maxZoom:18'
+  'maxZoom:18',
+  'iconSize:[36,42],iconAnchor:[18,38]'
 ]) {
   assert(app.includes(token), `referência ausente: ${token}`);
 }
@@ -32,5 +33,8 @@ assert(css.includes('.map-toolbar'));
 assert(css.includes('.map-legend'));
 assert(css.includes('.map-loading'));
 assert(css.includes('.map-popup'));
+assert(css.includes('border-radius:50% 50% 50% 0'));
+assert(css.includes('.map-marker::before'));
+assert(css.includes('transform:rotate(-45deg)'));
 assert(css.includes('.collect-map-canvas{height:510px'));
 console.log('Map smoke test OK: filtros, ações, camadas, marcadores e layout responsivo verificados.');

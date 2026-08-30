@@ -1,0 +1,17 @@
+const assert = require('assert');
+const fs = require('fs');
+const app = fs.readFileSync('app.js','utf8');
+const commercial = fs.readFileSync('commercial.js','utf8');
+const css = fs.readFileSync('style.css','utf8');
+assert(app.includes("'☏':"), 'ícone de conversa ausente');
+assert(app.includes('function conversationButton(phone,context='), 'helper de conversa ausente');
+assert(app.includes('clientWhatsAppMsg(${jsArg(phone)},${jsArg(context)})'), 'link contextual ausente');
+assert(app.includes('conversationButton(u.phone'), 'contato nas tabelas de usuários ausente');
+assert(app.includes('conversationButton(s.phone'), 'contato nos cadastros pendentes ausente');
+assert(app.includes('conversationButton(e.phone'), 'contato na coleta/auditoria ausente');
+assert(commercial.includes('conversationButton(o.phone'), 'contato nas oportunidades ausente');
+assert(commercial.includes('comm-card-actions'), 'contato no card comercial ausente');
+assert(css.includes('.conversation-btn'), 'estilo do botão de conversa ausente');
+assert(css.includes('.map-popup-actions'), 'ações do popup sem agrupamento');
+assert(fs.readFileSync('app.html','utf8').includes('app.js?v=20260830240000'), 'cache do app desatualizado');
+console.log('Conversation smoke test OK: usuários, equipe, coleta, auditoria, oportunidades e links WhatsApp verificados.');

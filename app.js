@@ -245,7 +245,8 @@ const ICON_SVG={
   '↗':'<path d="M5 17 10 12l3 3 6-7"/><path d="M14 8h5v5"/>',
   '◷':'<circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/>',
   '☼':'<circle cx="12" cy="12" r="3"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4"/>',
-  '⏻':'<path d="M12 3v9"/><path d="M7.1 6.8a7 7 0 1 0 9.8 0"/>'
+  '⏻':'<path d="M12 3v9"/><path d="M7.1 6.8a7 7 0 1 0 9.8 0"/>',
+  '☏':'<path d="M4 5h16v11H9l-5 4V5Z"/><path d="M8 9h8M8 12h5"/>'
 };
 let ICON_UID=0;
 function icon3d(token,color){
@@ -1851,6 +1852,7 @@ PAGES['survey-team']=()=>{
       ${area.match?'<span class="pill pill-green">● atua na área</span>':''}
       ${foraDaArea?`<span class="pill pill-gray">fora da área${on?' · já na equipe':''}</span>`:''}
       ${pend?'<span class="pill pill-amber">● aguardando aprovação</span>':''}
+      ${conversationButton(u.phone,'Olá '+u.name+'! Podemos conversar sobre a pesquisa '+s.name+'?')}
       ${inviteHtml}</label>`;
   }).join(''):'<div class="empty">Nenhum pesquisador cadastrado ainda. Cadastre em Usuários → Pesquisadores.</div>';
   return head('Atribuir equipe — '+s.name,'Escolha pesquisadores cadastrados ou envie link de cadastro para novos',
@@ -1869,7 +1871,7 @@ PAGES['survey-team']=()=>{
         <div class="card-t">Convites desta pesquisa</div>
         <div class="card-d">Envie um convite individual por WhatsApp. O link já identifica a pesquisa e o pesquisador; ao aceitar, o vínculo entra automaticamente na equipe.</div>
         <div class="callout" style="margin-bottom:12px"><b>Fluxo seguro:</b> o link abre a tela de login. Depois de entrar com a própria conta, o pesquisador precisa tocar em <b>“Aceitar e entrar na equipe”</b>. Apenas o aceite autenticado grava o vínculo.</div>
-        <div class="team-invite-summary">${TEAM_INVITES.length?TEAM_INVITES.map(i=>{const u=USERS.find(x=>x.id===i.researcher_id);return `<div class="team-invite-row"><div><b>${esc(u?u.name:'Pesquisador')}</b><small>${i.status==='aceito'?'Já está na equipe':i.status==='recusado'?'Recusou o convite':'Aguardando aceite'}</small></div><span class="pill ${i.status==='aceito'?'pill-green':i.status==='recusado'?'pill-red':'pill-amber'}">${esc(i.status||'pendente')}</span></div>`;}).join(''):'<div class="empty" style="padding:12px 0">Nenhum convite enviado para esta pesquisa.</div>'}</div>
+        <div class="team-invite-summary">${TEAM_INVITES.length?TEAM_INVITES.map(i=>{const u=USERS.find(x=>x.id===i.researcher_id);return `<div class="team-invite-row"><div><b>${esc(u?u.name:'Pesquisador')}</b><small>${i.status==='aceito'?'Já está na equipe':i.status==='recusado'?'Recusou o convite':'Aguardando aceite'}</small></div><div class="team-invite-actions">${conversationButton(u?.phone,'Olá '+(u?.name||'pesquisador')+'! Podemos conversar sobre o convite da pesquisa?')}<span class="pill ${i.status==='aceito'?'pill-green':i.status==='recusado'?'pill-red':'pill-amber'}">${esc(i.status||'pendente')}</span></div></div>`;}).join(''):'<div class="empty" style="padding:12px 0">Nenhum convite enviado para esta pesquisa.</div>'}</div>
       </div>
       <div class="card">
         <div class="card-t" style="font-size:13px">Ainda não tem cadastro?</div>
@@ -2155,6 +2157,7 @@ function collectionEventRowToEntry(row){
     surveyId:row.survey_id,
     researcherId:row.researcher_id,
     name:u?u.name:'(pesquisador removido)',
+    phone:u?u.phone||'':'',
     cota:row.quota_label||'',
     lat:Number(row.lat),lng:Number(row.lng),acc:Number(row.accuracy_m)||0,
     ts:row.occurred_at?new Date(row.occurred_at).getTime():Date.now(),
@@ -2382,7 +2385,7 @@ function buildMapPopup(e,isLatest){
     <div class="map-popup-title">${esc(e.name)}${isLatest?'<span class="map-popup-latest">Última</span>':''}</div>
     <div class="map-popup-meta"><b>${esc(e.cota||'Sem cota')}</b><br>${new Date(e.ts).toLocaleString('pt-BR')}<br>Precisão do GPS: ±${Math.round(e.acc)}m</div>
     <div class="map-popup-status">${e.synced?'<span class="pill pill-green">Sincronizado</span>':'<span class="pill pill-amber">Pendente de sync</span>'}${statusExtra}</div>
-    <button class="btn-ghost map-popup-action" onclick="goToAuditFromMap('${e.id}')">🔎 Ver na auditoria</button>
+    <div class="map-popup-actions">${conversationButton(e.phone,'Olá '+e.name+'! Podemos conversar sobre a coleta '+(e.cota||'')+'?')}<button class="btn-ghost map-popup-action" onclick="goToAuditFromMap('${e.id}')">🔎 Ver na auditoria</button></div>
   </div>`;
 }
 let AUDIT_HIGHLIGHT_ID=null;
@@ -2402,6 +2405,7 @@ function renderLiveFeed(idx){
       <div style="flex:1"><b>${esc(e.name)}</b> coletou <span style="color:var(--ink3)">${esc(e.cota)}</span></div>
       <span style="color:var(--ink3);white-space:nowrap">${geoAgo(e.ts)}</span>
       <span class="pill ${e.synced?'pill-green':'pill-amber'}" style="flex-shrink:0">${e.synced?'Sincronizado':'Pendente'}</span>
+      ${conversationButton(e.phone,'Olá '+e.name+'! Podemos conversar sobre a coleta '+(e.cota||'')+'?')}
     </div>`).join('')||'<div class="empty" style="padding:14px 0">Nenhuma coleta ainda.</div>';
 }
 
@@ -2471,6 +2475,7 @@ function renderAudit(idx){
       (rejected?`<div style="margin-top:5px"><span class="pill pill-red" title="${esc(e.rejectReason||'')}">✕ Reprovada</span><div style="font-size:10.5px;color:var(--ink3);margin-top:2px;max-width:170px">${esc(e.rejectReason||'')}</div></div>`:'')+
       (e.calibration?'<div style="margin-top:5px"><span class="pill pill-blue">◎ Calibração</span></div>':'');
     const actionsCell=`<div style="display:flex;flex-direction:column;gap:4px;white-space:nowrap">
+      ${conversationButton(e.phone,'Olá '+e.name+'! Podemos conversar sobre a coleta '+(e.cota||'')+'?')}
       <button class="btn-ghost" style="font-size:11px;padding:3px 8px" onclick="auditReject('${e.id}')">${rejected?'↺ Reaprovar':'✕ Reprovar'}</button>
       <button class="btn-ghost" style="font-size:11px;padding:3px 8px" onclick="auditToggleCalibration('${e.id}')">${e.calibration?'↺ Nos resultados':'◎ Calibração'}</button>
     </div>`;
@@ -2511,7 +2516,8 @@ function renderAuditFlagged(idx){
     const badges=(e.status==='rejected'?'<span class="pill pill-red" style="margin-right:4px">✕ Reprovada</span>':'')+
       (e.calibration?'<span class="pill pill-blue">◎ Calibração</span>':'');
     const reasonTxt=e.status==='rejected'?`<div style="font-size:11.5px;color:var(--ink3);margin-top:2px">Motivo: ${esc(e.rejectReason||'—')}</div>`:'';
-    const btns=(e.status==='rejected'?`<button class="btn-ghost" style="font-size:11.5px;padding:4px 9px" onclick="auditReject('${e.id}')">↺ Desfazer reprovação</button>`:'')+
+    const btns=conversationButton(e.phone,'Olá '+e.name+'! Podemos conversar sobre a coleta '+(e.cota||'')+'?')+
+      (e.status==='rejected'?`<button class="btn-ghost" style="font-size:11.5px;padding:4px 9px" onclick="auditReject('${e.id}')">↺ Desfazer reprovação</button>`:'')+
       (e.calibration?`<button class="btn-ghost" style="font-size:11.5px;padding:4px 9px" onclick="auditToggleCalibration('${e.id}')">↺ Remover calibração</button>`:'');
     return `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--line);flex-wrap:wrap">
       <div>
@@ -3366,6 +3372,7 @@ function userTableRows(tab){
         <td>${pixPill}</td>
         <td>${st}</td>
         <td style="white-space:nowrap" onclick="event.stopPropagation()">
+          ${conversationButton(u.phone,'Olá '+u.name+'! Podemos conversar sobre seu cadastro e as próximas coletas?')}
           ${u.status!=='ativo'?`<button class="btn-ghost" style="color:var(--teal)" onclick="userPesqApproveList(${i})">Aprovar</button>`:''}
           <button class="btn-ghost" onclick="userShow(${i})">Ver dados</button>
           <button class="btn-ghost" onclick="userOpen(${i})">Editar</button>
@@ -3381,6 +3388,7 @@ function userTableRows(tab){
       <td>${(u.surveys||[]).length} pesquisa(s)</td>
       <td>${CLIENT_STATUS[u.status]||u.status}${u.resultsReleased?' <span class="pill pill-blue" style="margin-left:4px">📊 Acesso total liberado</span>':''}</td>
       <td style="white-space:nowrap" onclick="event.stopPropagation()">
+        ${conversationButton(u.phone,'Olá '+(u.contact||u.name)+'! Podemos conversar sobre sua pesquisa?')}
         <button class="btn-ghost" onclick="userShow(${i})">Abrir</button>
         <button class="btn-ghost" onclick="userOpen(${i})">Editar</button>
         <button class="btn-ghost" style="color:var(--red)" onclick="userDelete(${i})">Excluir</button>
@@ -3399,6 +3407,7 @@ function userTableRows(tab){
       <td><span class="pill pill-blue">${commission}</span></td>
       <td>${st}</td>
       <td style="white-space:nowrap" onclick="event.stopPropagation()">
+        ${conversationButton(u.phone,'Olá '+u.name+'! Podemos conversar sobre suas atividades no PesquisaPro?')}
         <button class="btn-ghost" onclick="userShow(${i})">Ver dados</button>
         <button class="btn-ghost" onclick="userOpen(${i})">Editar</button>
         <button class="btn-ghost" style="color:var(--red)" onclick="userDelete(${i})">Excluir</button>
@@ -3469,6 +3478,7 @@ function signupRows(){
           <div style="font-weight:600;font-size:13px">${esc(s.name)} ${SIGNUP_PILL[s.status]||''}</div>
           <div style="font-size:11px;color:var(--ink3)">${esc(s.cpf)} · ${esc(s.email)} · ${s.sent}</div>
         </div>
+        ${conversationButton(s.phone,'Olá '+s.name+'! Podemos conversar sobre seu cadastro no PesquisaPro?')}
         <button class="btn-ghost" onclick="signupView(${i})">Ver dados</button>
       </div>
       <div class="signup-actions">
@@ -3568,6 +3578,10 @@ function clientWhatsAppMsg(phone,msg){
   if(!digits){alert('Cliente sem telefone cadastrado.');return;}
   const num=digits.length<=11?'55'+digits:digits;
   window.open('https://wa.me/'+num+(msg?'?text='+encodeURIComponent(msg):''),'_blank','noopener');
+}
+function conversationButton(phone,context='Olá! Podemos conversar sobre a pesquisa?'){
+  if(!phone)return '';
+  return `<button type="button" class="btn-ghost conversation-btn" title="Abrir conversa no WhatsApp" onclick="event.preventDefault();event.stopPropagation();clientWhatsAppMsg(${jsArg(phone)},${jsArg(context)})">${icon3d('☏','#0f766e')}<span>Conversar</span></button>`;
 }
 function userView(){
   const u=USERS[USER_VIEW];if(!u)return userList();

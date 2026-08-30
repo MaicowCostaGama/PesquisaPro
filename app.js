@@ -2,11 +2,11 @@
 let selectedRole='admin';
 const ROLES={
   admin:{name:'Admin Master',role:'Administrador',initials:'AM',
-    nav:['dashboard','new-survey','surveys','surveys-done','sample','collect','reports','users','permissions','finance','contracts','contract-template','company']},
+    nav:['dashboard','commercial','new-survey','surveys','surveys-done','sample','collect','reports','users','permissions','finance','contracts','contract-template','company']},
   coord:{name:'Carla Menezes',role:'Coordenadora',initials:'CM',
-    nav:['dashboard','surveys','surveys-done','collect','reports','finance']},
+    nav:['dashboard','commercial','surveys','surveys-done','collect','reports','finance']},
   gerente:{name:'Rafael Dias',role:'Gerente',initials:'RD',
-    nav:['dashboard','sample','reports','finance']},
+    nav:['dashboard','commercial','sample','reports','finance']},
   pesq:{name:'João Pereira',role:'Pesquisador',initials:'JP',
     nav:['dashboard-pesq','app-collect','my-earnings','my-contract']},
   cliente:{name:'Prefeitura de Uberlândia',role:'Cliente',initials:'PU',
@@ -31,6 +31,7 @@ const NAV_META={
   'contract-template':{ico:'❒',label:'Modelos de contrato',group:'Pagamentos'},
   'my-contract':{ico:'✎',label:'Meu contrato',group:'Pagamentos'},
   company:{ico:'⌂',label:'Dados da empresa',group:'Administração'},
+  commercial:{ico:'↗',label:'Comercial',group:'Comercial'},
   'client-progress':{ico:'◷',label:'Andamento',group:'Minha pesquisa'},
   'client-results':{ico:'◫',label:'Resultados',group:'Minha pesquisa'},
 };
@@ -42,13 +43,13 @@ const NAV_META={
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
 
 const ROLE_NAV={
-  admin:['dashboard','new-survey','surveys','surveys-done','sample','collect','reports','users','permissions','finance','contracts','contract-template','company'],
-  coord:['dashboard','surveys','surveys-done','collect','reports','finance'],
-  gerente:['dashboard','sample','reports','finance'],
+  admin:['dashboard','commercial','new-survey','surveys','surveys-done','sample','collect','reports','users','permissions','finance','contracts','contract-template','company'],
+  coord:['dashboard','commercial','surveys','surveys-done','collect','reports','finance'],
+  gerente:['dashboard','commercial','sample','reports','finance'],
   pesq:['dashboard-pesq','app-collect','my-earnings','my-contract'],
   cliente:['client-progress','client-results'],
-  admpro:['dashboard','new-survey','surveys','surveys-done','sample','collect','reports','users','permissions','finance','contracts','contract-template','company'],
-  vendedor:['dashboard'],
+  admpro:['dashboard','commercial','new-survey','surveys','surveys-done','sample','collect','reports','users','permissions','finance','contracts','contract-template','company'],
+  vendedor:['commercial'],
   indicador:['dashboard'],
 };
 

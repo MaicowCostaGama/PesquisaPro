@@ -184,3 +184,13 @@ Sugestão de ordem de construção:
 5. Segurança e LGPD.
 
 (Há um guia de arquitetura e modelagem de dados mais detalhado em documento separado: "PesquisaPro_Guia_Construcao_NoCode".)
+
+## Módulo Comercial
+
+A aba **Comercial** centraliza oportunidades de venda de pesquisas em um funil com os estágios **Novo lead, Qualificação, Briefing, Proposta enviada, Negociação, Fechada ganha** e **Fechada perdida**. Administradores, ADM PesquisaPro, coordenadores e gerentes podem acompanhar o funil; vendedores visualizam e administram apenas as oportunidades atribuídas ao próprio perfil.
+
+O cadastro de vendedor usa o perfil `vendedor` que já existe na estrutura de usuários. Administradores podem criar vendedores em **Usuários → Vendedores**, informando nome, CPF, e-mail, telefone, cidade e senha. O vendedor entra depois com suas credenciais e acessa diretamente a aba Comercial.
+
+Cada oportunidade guarda empresa, contato, canais, cidade/região, origem, tipo de pesquisa, amostra estimada, valor estimado, briefing, notas e próxima ação. No detalhe da oportunidade é possível criar uma proposta com itens no formato `Descrição | quantidade | valor unitário`, escopo, validade e condições de pagamento. O sistema calcula os totais, salva a proposta e permite abrir um envio pré-preenchido por **WhatsApp** ou **e-mail**; após abrir o canal, a proposta passa ao status `Enviada` e a oportunidade avança para `Proposta enviada` quando ainda estava em `Novo lead`.
+
+Para ativar a persistência do módulo, execute `deploy/comercial.sql` no SQL Editor do projeto Supabase. A migration cria `commercial_opportunities`, `commercial_proposals` e `commercial_proposal_items`, seus índices e as políticas RLS. Ela não envia e-mails por servidor nem gera PDF nesta primeira versão: o envio abre o WhatsApp ou o cliente de e-mail com o texto pronto. Um próximo incremento pode adicionar link público versionado, PDF com identidade visual e envio transacional.

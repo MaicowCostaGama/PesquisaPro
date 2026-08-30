@@ -19,5 +19,5 @@ assert(css.includes('drop-shadow'));
 assert(css.includes('.nav-item .ico-3d'));
 assert(css.includes('background:linear-gradient(145deg,#3f73b3'));
 assert(css.includes('.nav-item.on .ico-3d'));
-assert(html.includes('style.css?v=20260830200000'));
+assert(html.includes('style.css?v=20260830220000'));
 console.log('Icon smoke test OK: catálogo SVG, menu, cards, profundidade e cache verificados.');

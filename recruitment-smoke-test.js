@@ -16,6 +16,7 @@ assert.match(moduleSource,/ranking/i,'ranking não encontrado');
 assert.match(moduleSource,/recruiterLink/,'link individual ausente');
 assert.match(moduleSource,/recruiter-qr/,'QR Code por recrutador ausente');
 assert.match(moduleSource,/recruitmentNotifySignup/,'notificação interna via WhatsApp ausente');
+assert.match(moduleSource,/userSetTab\('recrutador'\);userOpen\('new'\)/,'botão Novo recrutador não abre o perfil correto');
 assert.match(moduleSource,/recruiter_captures/,'consulta de captações ausente');
 assert.match(moduleSource,/approved/,'contagem de aprovados não encontrada');
 assert.doesNotMatch(moduleSource,/signups[^\n]*created_at/,'ranking usa created_at inexistente em signups');

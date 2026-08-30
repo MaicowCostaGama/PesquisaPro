@@ -50,7 +50,7 @@ const ROLE_NAV={
   cliente:['client-progress','client-results'],
   admpro:['dashboard','commercial','new-survey','surveys','surveys-done','sample','collect','reports','users','permissions','finance','contracts','contract-template','company'],
   vendedor:['commercial'],
-  indicador:['dashboard'],
+  indicador:['commercial'],
 };
 
 function initialsOf(name){
@@ -82,7 +82,7 @@ async function doLogin(){
 }
 
 async function afterLogin(user){
-  const {data:profile,error}=await sb.from('profiles').select('id,name,email,phone,role,status,cpf,cpf_cnpj,pf_pj,birth,cidade,rua,numero,cep,contact_person,doc_url,doc_foto_url,doc_comprovante_url,pix_key,pix_doc,pix_bank,pix_ag,pix_acc,results_released,approved_at').eq('id',user.id).single();
+  const {data:profile,error}=await sb.from('profiles').select('id,name,email,phone,role,status,cpf,cpf_cnpj,pf_pj,birth,cidade,rua,numero,cep,contact_person,doc_url,doc_foto_url,doc_comprovante_url,pix_key,pix_doc,pix_bank,pix_ag,pix_acc,results_released,approved_at,commission_rate,commission_rate_with_indicator').eq('id',user.id).single();
   if(error||!profile){
     const errEl=document.getElementById('li-error');
     errEl.textContent='Login feito, mas não encontramos seu perfil no sistema. Fale com o administrador.';
@@ -90,8 +90,8 @@ async function afterLogin(user){
     await sb.auth.signOut();
     return;
   }
-  CURRENT_PROFILE=profile;
-  selectedRole=profile.role;
+  CURRENT_PROFILE={...profile,commissionRate:Number(profile.commission_rate)||0,commissionRateWithIndicator:Number(profile.commission_rate_with_indicator)||0};
+  selectedRole=CURRENT_PROFILE.role;
   document.getElementById('login').style.display='none';
   document.getElementById('app').classList.add('show');
   document.getElementById('tbAvatar').textContent=initialsOf(profile.name);
@@ -3213,7 +3213,7 @@ function staffRoleOf(role){return ['admin','coord','gerente'].includes(role);}
 function lightRoleOf(role){return ['admpro','vendedor','indicador'].includes(role);}
 
 function profileRowToUser(row){
-  const base={id:row.id,name:row.name,email:row.email||'',phone:row.phone||'',role:row.role,status:row.status};
+  const base={id:row.id,name:row.name,email:row.email||'',phone:row.phone||'',role:row.role,status:row.status,commissionRate:Number(row.commission_rate)||0,commissionRateWithIndicator:Number(row.commission_rate_with_indicator)||0};
   if(staffRoleOf(row.role))return {...base,cpf:row.cpf||'',birth:row.birth||'',addr:row.cidade||'',doc:row.doc_url||''};
   if(row.role==='cliente')return {...base,company:row.name,cpfCnpj:row.cpf_cnpz||row.cpf_cnpj||'',pfpj:row.pf_pj||'pj',birth:row.birth||'',
     contact:row.contact_person||'',cidade:row.cidade||'',rua:row.rua||'',numero:row.numero||'',cep:row.cep||'',
@@ -3232,7 +3232,7 @@ function userToProfileRow(rec,role){
   else if(role==='pesq'){row.cpf=rec.cpf||null;row.birth=rec.birth||null;row.cidade=rec.cidade||null;row.rua=rec.rua||null;row.numero=rec.numero||null;row.cep=rec.cep||null;
     row.doc_foto_url=rec.docFoto||null;row.doc_comprovante_url=rec.docComprovante||null;
     row.pix_key=rec.pixKey||null;row.pix_doc=rec.pixDoc||null;row.pix_bank=rec.pixBank||null;row.pix_ag=rec.pixAg||null;row.pix_acc=rec.pixAcc||null;}
-  else{row.cpf=rec.cpf||null;row.cidade=rec.cidade||null;} // admpro, vendedor, indicador
+  else{row.cpf=rec.cpf||null;row.cidade=rec.cidade||null;row.commission_rate=Number(rec.commissionRate)||0;row.commission_rate_with_indicator=role==='vendedor'?(Number(rec.commissionRateWithIndicator)||0):0;} // admpro, vendedor, indicador
   return row;
 }
 let _usersLoadPromise=null;
@@ -3246,7 +3246,7 @@ function loadUsersIfNeeded(){
   _usersLoadPromise=(async()=>{
     USERS_LOADING=true;
     try{
-      const {data,error}=await sb.from('profiles').select('id,name,email,phone,role,status,cpf,cpf_cnpj,pf_pj,birth,cidade,rua,numero,cep,contact_person,doc_url,doc_foto_url,doc_comprovante_url,pix_key,pix_doc,pix_bank,pix_ag,pix_acc,results_released,approved_at,profile_cidades_atuacao(cidade)').order('created_at',{ascending:false});
+      const {data,error}=await sb.from('profiles').select('id,name,email,phone,role,status,cpf,cpf_cnpj,pf_pj,birth,cidade,rua,numero,cep,contact_person,doc_url,doc_foto_url,doc_comprovante_url,pix_key,pix_doc,pix_bank,pix_ag,pix_acc,results_released,approved_at,commission_rate,commission_rate_with_indicator,profile_cidades_atuacao(cidade)').order('created_at',{ascending:false});
       if(!error){USERS=(data||[]).map(profileRowToUser);USERS_LOADED=true;}
       else console.error('Erro ao carregar usuários:',error);
     }catch(ex){console.error('Erro de conexão ao carregar usuários:',ex);}
@@ -3335,12 +3335,12 @@ function userTabStats(tab){
 function userTableHead(tab){
   if(tab==='pesq')return '<tr><th>Nome</th><th>CPF</th><th>Cidades de atuação</th><th>Documentos</th><th>PIX</th><th>Status</th><th></th></tr>';
   if(tab==='cliente')return '<tr><th>Cliente</th><th>CPF/CNPJ</th><th>Celular</th><th>Pesquisas</th><th>Status</th><th></th></tr>';
-  return '<tr><th>Nome</th><th>CPF</th><th>Perfil</th><th>Celular</th><th>Status</th><th></th></tr>';
+  return '<tr><th>Nome</th><th>CPF</th><th>Perfil</th><th>Celular</th><th>Comissão</th><th>Status</th><th></th></tr>';
 }
 function userTableRows(tab){
   const items=usersInTab(tab);
   if(items.length===0){
-    const colspan=tab==='pesq'?7:6;
+    const colspan=tab==='pesq'?7:tab==='cliente'?6:7;
     return `<tr><td colspan="${colspan}" class="empty">Nenhum cadastro nesta aba ainda.</td></tr>`;
   }
   if(tab==='pesq'){
@@ -3385,6 +3385,7 @@ function userTableRows(tab){
   }
   return items.map(({u,i})=>{
     const st=u.status==='ativo'?'<span class="pill pill-green">● Ativo</span>':'<span class="pill pill-amber">● Pendente</span>';
+    const commission=u.role==='vendedor'&&u.commissionRateWithIndicator>0?`${u.commissionRate}% <span style="font-size:10px;color:var(--ink3)">/ ${u.commissionRateWithIndicator}% c/ ind.</span>`:`${u.commissionRate||0}%`;
     const initials=u.name.split(' ').map(n=>n[0]).slice(0,2).join('');
     return `<tr style="cursor:pointer" onclick="userShow(${i})">
       <td><div style="display:flex;align-items:center;gap:9px"><div class="avatar" style="width:28px;height:28px;font-size:11px">${initials}</div>
@@ -3392,6 +3393,7 @@ function userTableRows(tab){
       <td>${esc(u.cpf||'')}</td>
       <td>${ROLE_PILL[u.role]||u.role}</td>
       <td>${esc(u.phone||'')}</td>
+      <td><span class="pill pill-blue">${commission}</span></td>
       <td>${st}</td>
       <td style="white-space:nowrap" onclick="event.stopPropagation()">
         <button class="btn-ghost" onclick="userShow(${i})">Ver dados</button>
@@ -3831,7 +3833,7 @@ function userFormStaff(isNew){
   </div>`;
 }
 function userFormLight(isNew,role){
-  const u=isNew?{name:'',cpf:'',phone:'',email:'',cidade:'',role,status:'ativo'}:USERS[USER_EDIT];
+  const u=isNew?{name:'',cpf:'',phone:'',email:'',cidade:'',role,status:'ativo',commissionRate:0,commissionRateWithIndicator:0}:USERS[USER_EDIT];
   return head(isNew?('Novo — '+ROLE_LABEL[role]):'Editar usuário','Preencha os dados do cadastro',
     '<button class="btn btn-out" onclick="userBack()">← Voltar</button>')+`
   <div class="card" style="max-width:640px">
@@ -3846,6 +3848,7 @@ function userFormLight(isNew,role){
       <div><label class="lbl">Cidade</label><input class="inp" id="u-cidade" value="${esc(u.cidade||'')}" placeholder="Cidade/UF"></div>
     </div>
     ${isNew?`<div class="mb"><label class="lbl">Senha provisória *</label><input class="inp" id="u-password" type="text" placeholder="Defina uma senha (mín. 6 caracteres) — repasse para a pessoa"></div>`:''}
+    ${role==='vendedor'||role==='indicador'?`<div class="field-row mb"><div><label class="lbl">Comissão padrão (%) *</label><input class="inp" id="u-commission" type="number" min="0" max="100" step="0.01" value="${esc(u.commissionRate??0)}"><div style="font-size:11px;color:var(--ink3);margin-top:4px">Comece em 0% e defina conforme o acordo comercial.</div></div>${role==='vendedor'?`<div><label class="lbl">Comissão do vendedor com indicador (%)</label><input class="inp" id="u-commission-indicator" type="number" min="0" max="100" step="0.01" value="${esc(u.commissionRateWithIndicator??0)}"><div style="font-size:11px;color:var(--ink3);margin-top:4px">Deve ser menor ou igual à comissão padrão.</div></div>`:''}</div>`:''}
     <div class="mb" style="max-width:220px"><label class="lbl">Status</label><select class="inp" id="u-status">
       <option value="ativo" ${u.status==='ativo'?'selected':''}>Ativo</option>
       <option value="pendente" ${u.status==='pendente'?'selected':''}>Pendente</option></select></div>
@@ -4099,7 +4102,12 @@ async function userSaveLight(isNew,role){
   if(!phone)missing.push('Celular');if(!email)missing.push('E-mail');
   if(isNew&&(!password||password.length<6))missing.push('Senha provisória (mínimo 6 caracteres)');
   if(missing.length){alert('Preencha os campos obrigatórios:\n• '+missing.join('\n• '));return;}
-  const rec={name,cpf,phone,email,cidade:g('u-cidade'),role,status:g('u-status')||'ativo'};
+  const commissionRate=(role==='vendedor'||role==='indicador')?Number(g('u-commission').replace(',','.')):0;
+  const commissionRateWithIndicator=role==='vendedor'?Number(g('u-commission-indicator').replace(',','.')):0;
+  if(!Number.isFinite(commissionRate)||commissionRate<0||commissionRate>100){alert('A comissão padrão deve estar entre 0% e 100%.');return;}
+  if(!Number.isFinite(commissionRateWithIndicator)||commissionRateWithIndicator<0||commissionRateWithIndicator>100){alert('A comissão do vendedor com indicador deve estar entre 0% e 100%.');return;}
+  if(role==='vendedor'&&commissionRateWithIndicator>commissionRate){alert('Quando houver indicador, a comissão do vendedor deve ser menor ou igual à comissão padrão.');return;}
+  const rec={name,cpf,phone,email,cidade:g('u-cidade'),role,status:g('u-status')||'ativo',commissionRate,commissionRateWithIndicator};
   userSaveSetBusy(true);
   try{
     if(isNew){

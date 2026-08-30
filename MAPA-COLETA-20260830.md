@@ -8,8 +8,8 @@ O painel agora mostra um cabeçalho próprio de monitoramento, quantidade de pon
 
 Os marcadores foram atualizados para usar estados visuais distintos, com a última coleta destacada, histórico atenuado e estados de reprovação/calibração identificáveis. Ao passar o cursor, um tooltip mostra o pesquisador, a cota, o estado e o horário. A roda do mouse controla o zoom do mapa. Ao clicar no ponto, a coleta é encaminhada diretamente para a aba de auditoria, que posiciona e destaca a linha correspondente. Os popups apresentam pesquisador, cota, data/hora, precisão do GPS, sincronização e atalho adicional para a auditoria.
 
-O mapa preserva as camadas Mapa e Satélite, carrega o Leaflet sob demanda, exibe estado de carregamento/indisponibilidade e mantém o enquadramento enquanto novos pontos chegam pelo polling.
+O mapa preserva as camadas Mapa e Satélite, carrega o Leaflet sob demanda, exibe estado de carregamento/indisponibilidade e mantém o enquadramento enquanto novos pontos chegam pelo polling. O enquadramento aproxima a área das entrevistas, usa zoom 17 para uma única coleta e até 18 para grupos, e aplica um pequeno deslocamento visual em espiral quando várias entrevistas ocupam a mesma coordenada. A coordenada original permanece na auditoria. Ao clicar em qualquer ponto, a coleta é aberta na auditoria para decidir entre reprovar, marcar como calibração ou desfazer uma decisão.
 
 ## Validação
 
-Foram executados testes de sintaxe, testes existentes do aplicativo, teste Comercial, teste de convites, teste estrutural do mapa e teste unitário dos filtros. A prévia visual temporária confirmou o painel, controles, legenda, mapa Carto Voyager, controles de zoom e marcadores. A página de prévia foi removida e não faz parte da entrega.
+Foram executados testes de sintaxe, testes existentes do aplicativo, teste Comercial, teste de convites, teste estrutural do mapa, teste unitário dos filtros e teste unitário de sobreposição. A prévia visual temporária confirmou o painel, controles, legenda, mapa Carto Voyager, controles de zoom e marcadores. A página de prévia foi removida e não faz parte da entrega.

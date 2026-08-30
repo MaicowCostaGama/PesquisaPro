@@ -18,7 +18,10 @@ for (const token of [
   "scrollWheelZoom:true,zoomControl:true",
   'marker.bindTooltip(buildMapTooltip(e,isLatest)',
   'marker.on(\'click\',()=>goToAuditFromMap(e.id))',
-  'AUDIT_HIGHLIGHT_ID=id'
+  'AUDIT_HIGHLIGHT_ID=id',
+  'function mapDisplayPoint(e,events)',
+  'setView(pts[0],17',
+  'maxZoom:18'
 ]) {
   assert(app.includes(token), `referência ausente: ${token}`);
 }

@@ -2264,6 +2264,17 @@ function setCollectMapLayer(kind){
   const wrap=document.getElementById('collectMapLayerToggle');
   if(wrap)wrap.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.layer===kind));
 }
+function mapDisplayPoint(e,events){
+  const key=x=>`${x.lat.toFixed(4)},${x.lng.toFixed(4)}`;
+  const same=events.filter(x=>key(x)===key(e));
+  if(same.length<2)return [e.lat,e.lng];
+  const position=Math.max(0,same.findIndex(x=>x.id===e.id));
+  const angle=(position/same.length)*Math.PI*2-Math.PI/2;
+  const radius=18+Math.min(position,10)*7;
+  const latOffset=(radius/111320)*Math.cos(angle);
+  const lngOffset=(radius/(111320*Math.max(.25,Math.cos(e.lat*Math.PI/180))))*Math.sin(angle);
+  return [e.lat+latOffset,e.lng+lngOffset];
+}
 function renderCollectMap(idx){
   const mapEl=document.getElementById('collectMap');
   if(!mapEl)return;
@@ -2316,7 +2327,7 @@ function renderCollectMap(idx){
     const icon=L.divIcon({
       html:`<span class="map-marker ${markerState}" style="--marker-color:${color}"><i></i></span>`,
       className:'map-marker-wrap',iconSize:[34,34],iconAnchor:[17,17]});
-    const marker=L.marker([e.lat,e.lng],{icon}).addTo(_collectMarkerLayer);
+    const marker=L.marker(mapDisplayPoint(e,events),{icon}).addTo(_collectMarkerLayer);
     marker.bindTooltip(buildMapTooltip(e,isLatest),{direction:'top',offset:[0,-18],sticky:true,className:'map-hover-tooltip'});
     marker.bindPopup(buildMapPopup(e,isLatest));
     marker.on('click',()=>goToAuditFromMap(e.id));
@@ -2326,9 +2337,13 @@ function renderCollectMap(idx){
   const summary=document.getElementById('collectMapSummary');
   if(summary)summary.textContent=shown?`${shown} ponto${shown===1?'':'s'} visível${shown===1?'':'is'} · ${researchers.size} pesquisador${researchers.size===1?'':'es'}${shown<total?' · limite de visualização aplicado':''}`:'Nenhum ponto corresponde aos filtros atuais.';
   const note=document.getElementById('collectMapNote');
-  if(note)note.textContent=shown<total?`Mostrando ${shown} de ${total} coletas após os filtros. Clique em um ponto para ver detalhes.`:'Clique em um ponto para ver o detalhe da coleta.';
-  const pts=events.map(e=>[e.lat,e.lng]);
-  if(pts.length&&!_collectMapDidFit){try{_collectMap.fitBounds(pts,{padding:[50,50],maxZoom:16});_collectMapDidFit=true;}catch(e){}}
+  if(note)note.textContent=shown<total?`Mostrando ${shown} de ${total} coletas após os filtros. Clique em um ponto para abrir a auditoria.`:'Clique em um ponto para abrir a coleta na auditoria.';
+  const pts=events.map(e=>mapDisplayPoint(e,events));
+  if(pts.length&&!_collectMapDidFit){try{
+    if(pts.length===1)_collectMap.setView(pts[0],17,{animate:false});
+    else _collectMap.fitBounds(pts,{padding:[70,70],maxZoom:18});
+    _collectMapDidFit=true;
+  }catch(e){}}
 }
 function buildMapTooltip(e,isLatest){
   const state=e.status==='rejected'?'Reprovada':e.calibration?'Calibração':isLatest?'Última coleta':'Coleta registrada';

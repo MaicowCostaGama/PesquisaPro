@@ -13,12 +13,18 @@ for (const token of [
   'collectMapStatus',
   'collectMapLatest',
   "markerState=e.status==='rejected'?'is-rejected':e.calibration?'is-calibration':isLatest?'is-latest':'is-history'",
-  'collectMapSummary'
+  'collectMapSummary',
+  'buildMapTooltip',
+  "scrollWheelZoom:true,zoomControl:true",
+  'marker.bindTooltip(buildMapTooltip(e,isLatest)',
+  'marker.on(\'click\',()=>goToAuditFromMap(e.id))',
+  'AUDIT_HIGHLIGHT_ID=id'
 ]) {
   assert(app.includes(token), `referência ausente: ${token}`);
 }
 assert(app.includes("url:'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/"));
 assert(app.includes("url:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/"));
+assert(app.includes("collectTab(auditBtn,'auditoria')"));
 assert(css.includes('.map-toolbar'));
 assert(css.includes('.map-legend'));
 assert(css.includes('.map-loading'));

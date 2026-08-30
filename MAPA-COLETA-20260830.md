@@ -6,7 +6,7 @@ O mapa da coleta foi transformado em um painel de monitoramento de campo, manten
 
 O painel agora mostra um cabeçalho próprio de monitoramento, quantidade de pontos e pesquisadores visíveis, filtros por pesquisador e status, opção de exibir somente a última coleta de cada pesquisador, enquadramento automático/manual, atualização manual e atualização automática pelo polling da pesquisa aberta. Também inclui legenda para última coleta, histórico, reprovação e calibração.
 
-Os marcadores foram atualizados para usar estados visuais distintos, com a última coleta destacada, histórico atenuado e estados de reprovação/calibração identificáveis. Os popups apresentam pesquisador, cota, data/hora, precisão do GPS, sincronização e atalho para a auditoria.
+Os marcadores foram atualizados para usar estados visuais distintos, com a última coleta destacada, histórico atenuado e estados de reprovação/calibração identificáveis. Ao passar o cursor, um tooltip mostra o pesquisador, a cota, o estado e o horário. A roda do mouse controla o zoom do mapa. Ao clicar no ponto, a coleta é encaminhada diretamente para a aba de auditoria, que posiciona e destaca a linha correspondente. Os popups apresentam pesquisador, cota, data/hora, precisão do GPS, sincronização e atalho adicional para a auditoria.
 
 O mapa preserva as camadas Mapa e Satélite, carrega o Leaflet sob demanda, exibe estado de carregamento/indisponibilidade e mantém o enquadramento enquanto novos pontos chegam pelo polling.
 

@@ -2280,7 +2280,7 @@ function renderCollectMap(idx){
     if(_collectMap){try{_collectMap.remove();}catch(e){}}
     _collectMapTileLayer=null;
     _collectMapDidFit=false;
-    _collectMap=L.map(mapEl,{scrollWheelZoom:false}).setView([-18.5,-44.9],6);
+    _collectMap=L.map(mapEl,{scrollWheelZoom:true,zoomControl:true}).setView([-18.5,-44.9],6);
     setCollectMapLayer(_collectMapKind);
     _collectMarkerLayer=L.layerGroup().addTo(_collectMap);
     const LayerToggle=L.Control.extend({
@@ -2316,7 +2316,11 @@ function renderCollectMap(idx){
     const icon=L.divIcon({
       html:`<span class="map-marker ${markerState}" style="--marker-color:${color}"><i></i></span>`,
       className:'map-marker-wrap',iconSize:[34,34],iconAnchor:[17,17]});
-    L.marker([e.lat,e.lng],{icon}).addTo(_collectMarkerLayer).bindPopup(buildMapPopup(e,isLatest));
+    const marker=L.marker([e.lat,e.lng],{icon}).addTo(_collectMarkerLayer);
+    marker.bindTooltip(buildMapTooltip(e,isLatest),{direction:'top',offset:[0,-18],sticky:true,className:'map-hover-tooltip'});
+    marker.bindPopup(buildMapPopup(e,isLatest));
+    marker.on('click',()=>goToAuditFromMap(e.id));
+    marker.on('mouseover',()=>marker.openTooltip());
   });
   const researchers=new Set(events.map(e=>e.name));
   const summary=document.getElementById('collectMapSummary');
@@ -2325,6 +2329,10 @@ function renderCollectMap(idx){
   if(note)note.textContent=shown<total?`Mostrando ${shown} de ${total} coletas após os filtros. Clique em um ponto para ver detalhes.`:'Clique em um ponto para ver o detalhe da coleta.';
   const pts=events.map(e=>[e.lat,e.lng]);
   if(pts.length&&!_collectMapDidFit){try{_collectMap.fitBounds(pts,{padding:[50,50],maxZoom:16});_collectMapDidFit=true;}catch(e){}}
+}
+function buildMapTooltip(e,isLatest){
+  const state=e.status==='rejected'?'Reprovada':e.calibration?'Calibração':isLatest?'Última coleta':'Coleta registrada';
+  return `<b>${esc(e.name)}</b><br><span>${esc(e.cota||'Sem cota')} · ${state}</span><br><small>${new Date(e.ts).toLocaleString('pt-BR')}</small>`;
 }
 function buildMapPopup(e,isLatest){
   const statusExtra=e.status==='rejected'

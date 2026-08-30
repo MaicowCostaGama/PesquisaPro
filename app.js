@@ -81,7 +81,7 @@ async function doLogin(){
 }
 
 async function afterLogin(user){
-  const {data:profile,error}=await sb.from('profiles').select('*').eq('id',user.id).single();
+  const {data:profile,error}=await sb.from('profiles').select('id,name,email,phone,role,status,cpf,cpf_cnpj,pf_pj,birth,cidade,rua,numero,cep,contact_person,doc_url,doc_foto_url,doc_comprovante_url,pix_key,pix_doc,pix_bank,pix_ag,pix_acc,results_released,approved_at').eq('id',user.id).single();
   if(error||!profile){
     const errEl=document.getElementById('li-error');
     errEl.textContent='Login feito, mas não encontramos seu perfil no sistema. Fale com o administrador.';
@@ -172,9 +172,58 @@ function closeSidebar(){
 /* PAGES object is populated in the next script block */
 const PAGES={};
 
+/* ============ carregamento sob demanda de bibliotecas locais ============ */
+const LOCAL_ASSETS={
+  chart:{src:'vendor/chart.umd.js',ready:()=>typeof window.Chart!=='undefined'},
+  qrcode:{src:'vendor/qrcode.min.js',ready:()=>typeof window.QRCode!=='undefined'},
+  leaflet:{src:'vendor/leaflet.js',ready:()=>typeof window.L!=='undefined'}
+};
+const LOCAL_ASSET_PROMISES={};
+function loadLocalAsset(name){
+  const asset=LOCAL_ASSETS[name];
+  if(!asset)return Promise.reject(new Error('Ativo desconhecido: '+name));
+  if(asset.ready())return Promise.resolve();
+  if(LOCAL_ASSET_PROMISES[name])return LOCAL_ASSET_PROMISES[name];
+  if(name==='leaflet'&&!document.querySelector('link[data-pp-leaflet]')){
+    const link=document.createElement('link');
+    link.rel='stylesheet';link.href='vendor/leaflet.css';link.dataset.ppLeaflet='1';
+    document.head.appendChild(link);
+  }
+  LOCAL_ASSET_PROMISES[name]=new Promise((resolve,reject)=>{
+    const script=document.createElement('script');
+    script.src=asset.src;script.async=true;script.dataset.ppAsset=name;
+    script.onload=()=>asset.ready()?resolve():reject(new Error('Ativo carregado sem expor '+name));
+    script.onerror=()=>reject(new Error('Não foi possível carregar '+asset.src));
+    document.head.appendChild(script);
+  }).catch(error=>{delete LOCAL_ASSET_PROMISES[name];throw error;});
+  return LOCAL_ASSET_PROMISES[name];
+}
+
 /* ============ helpers ============ */
+/* Cálculo amostral defensivo: entradas inválidas não podem gerar Infinity/NaN
+   nem quebrar cartões, tabelas ou gráficos quando o usuário ainda está digitando. */
+function sampleSize(population,error,confidence,proportion){
+  const N=Number(population),e=Number(error),Z=Number(confidence),pRaw=Number(proportion);
+  if(!Number.isFinite(N)||N<=0||!Number.isFinite(e)||e<=0||e>=1||!Number.isFinite(Z)||Z<=0||!Number.isFinite(pRaw)||pRaw<=0||pRaw>=100)return 0;
+  if(N<=1)return 1;
+  const p=pRaw/100;
+  const variance=Z*Z*p*(1-p);
+  const denominator=e*e*(N-1)+variance;
+  if(!Number.isFinite(denominator)||denominator<=0)return 0;
+  return Math.max(1,Math.ceil((N*variance)/denominator));
+}
+let _wizCalcFrame=null,_sampleCalcFrame=null;
+function scheduleFrame(callback,slot){
+  if(slot.value!=null){
+    if(window.cancelAnimationFrame)window.cancelAnimationFrame(slot.value);else clearTimeout(slot.value);
+  }
+  const run=()=>{slot.value=null;callback();};
+  slot.value=window.requestAnimationFrame?window.requestAnimationFrame(run):setTimeout(run,0);
+}
+function scheduleWizCalc(){scheduleFrame(wizCalc,{get value(){return _wizCalcFrame;},set value(v){_wizCalcFrame=v;}});}
+function scheduleSampleCalc(){scheduleFrame(calcSample,{get value(){return _sampleCalcFrame;},set value(v){_sampleCalcFrame=v;}});}
 function head(title,desc,actions){
-  return `<div class="page-head"><div><h1>${title}</h1><p>${desc}</p></div>${actions?`<div class="ph-actions">${actions}</div>`:''}</div>`;
+  return `<div class="page-head"><div><h1>${esc(title)}</h1><p>${esc(desc)}</p></div>${actions?`<div class="ph-actions">${actions}</div>`:''}</div>`;
 }
 function stat(label,val,sub,ico,color){
   return `<div class="stat"><div class="s-top"><span class="s-label">${label}</span>
@@ -488,10 +537,13 @@ function renderDistributionOutput(out,rows,canvasId,setChart,prevChart){
   </div>`;
   const cv=document.getElementById(canvasId);
   if(cv){
-    setChart(new Chart(cv,{type:'bar',data:{labels:rows.map(r=>r.value_label||'(sem resposta)'),
+    const draw=()=>setChart(new Chart(cv,{type:'bar',data:{labels:rows.map(r=>r.value_label||'(sem resposta)'),
       datasets:[{data:rows.map(r=>+r.cnt),backgroundColor:rows.map((r,i)=>colors[i%colors.length]),borderRadius:5}]},
       options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
         scales:{y:{beginAtZero:true,grid:{color:'#e2e8f0'}},x:{grid:{display:false}}}}}));
+    if(typeof Chart==='undefined'){
+      loadLocalAsset('chart').then(()=>{if(document.getElementById(canvasId)===cv)draw();}).catch(()=>{});
+    }else draw();
   }
 }
 
@@ -689,8 +741,7 @@ async function loadSurveysIfNeeded(){
   if(k==='surveys'||k==='surveys-done'||k==='dashboard'||k==='dashboard-pesq'||k==='survey-team'||k==='client-progress'||k==='client-results'||k==='reports')go(k);
 }
 function surveySample(s){
-  const N=+s.pop||0,e=+s.err,Z=+s.conf,p=(+s.prop||50)/100;
-  return Math.ceil(Math.ceil((N*Z*Z*p*(1-p))/(e*e*(N-1)+Z*Z*p*(1-p)))*1.1);
+  return Math.ceil(sampleSize(s&&s.pop,s&&s.err,s&&s.conf,s&&s.prop)*1.1);
 }
 /* total de entrevistas válidas desta pesquisa — assim que a Coleta de campo
    estiver carregada (collection_events reais), usa a contagem de verdade;
@@ -818,9 +869,9 @@ function wizGeoRenderCidades(){
       <div class="geo-box" id="geo-city-list">
         ${items.map(({uf,c})=>{
           const checked=(WIZ.data.cidades[uf]||[]).includes(c);
-          const safeC=esc(c).replace(/'/g,'&#39;');
+          const safeC=jsArg(c);
           return `<label class="geo-city-row" data-name="${esc((c+' '+uf).toLowerCase())}">
-            <input type="checkbox" ${checked?'checked':''} onchange="wizToggleCidade('${uf}','${safeC}')">
+            <input type="checkbox" ${checked?'checked':''} onchange="wizToggleCidade(${jsArg(uf)},${safeC})">
             <span>${esc(c)}${ufs.length>1?` <span class="geo-uf-tag">${uf}</span>`:''}</span>
           </label>`;
         }).join('')}
@@ -1015,7 +1066,14 @@ function qRender(){
     </div>`;
   }).join('');
 }
-function esc(s){return (s||'').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
+function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;');}
+/* Serializa textos para uso dentro de atributos HTML que chamam funções JS.
+   JSON.stringify evita quebra por aspas, apóstrofos, barras ou quebras de linha. */
+function jsArg(value){
+  return JSON.stringify(String(value??''))
+    .replace(/&/g,'\\u0026').replace(/</g,'\\u003c').replace(/>/g,'\\u003e')
+    .replace(/"/g,'&quot;');
+}
 function fmtDataBR(iso){
   if(!iso)return '';
   const p=iso.split('-');if(p.length!==3)return iso;
@@ -1068,19 +1126,19 @@ function qLoadExample(){
 WIZ_BODY[3]=()=>`<div class="grid g2" style="grid-template-columns:1fr 1fr;align-items:start">
   <div class="card">
     <div class="card-t">Amostra</div><div class="card-d">Margem de erro e confiança determinam o tamanho</div>
-    <div class="mb"><label class="lbl">População (eleitores)</label><input class="inp" id="w-pop" type="number" value="${WIZ.data.pop}" oninput="wizCalc()"></div>
+    <div class="mb"><label class="lbl">População (eleitores)</label><input class="inp" id="w-pop" type="number" min="1" step="1" value="${WIZ.data.pop}" oninput="scheduleWizCalc()"></div>
     <div class="field-row mb">
-      <div><label class="lbl">Margem de erro</label><select class="inp" id="w-err" onchange="wizCalc()">
+      <div><label class="lbl">Margem de erro</label><select class="inp" id="w-err" onchange="scheduleWizCalc()">
         <option value="0.05" ${WIZ.data.err==='0.05'?'selected':''}>± 5%</option>
         <option value="0.04" ${WIZ.data.err==='0.04'?'selected':''}>± 4%</option>
         <option value="0.03" ${WIZ.data.err==='0.03'?'selected':''}>± 3%</option>
         <option value="0.02" ${WIZ.data.err==='0.02'?'selected':''}>± 2%</option></select></div>
-      <div><label class="lbl">Confiança</label><select class="inp" id="w-conf" onchange="wizCalc()">
+      <div><label class="lbl">Confiança</label><select class="inp" id="w-conf" onchange="scheduleWizCalc()">
         <option value="1.645" ${WIZ.data.conf==='1.645'?'selected':''}>90%</option>
         <option value="1.96" ${WIZ.data.conf==='1.96'?'selected':''}>95%</option>
         <option value="2.576" ${WIZ.data.conf==='2.576'?'selected':''}>99%</option></select></div>
     </div>
-    <div class="mb"><label class="lbl">Proporção esperada (p)</label><input class="inp" id="w-prop" type="number" value="${WIZ.data.prop}" oninput="wizCalc()"> <span style="font-size:11px;color:var(--ink3)">% — 50% se desconhecida</span></div>
+    <div class="mb"><label class="lbl">Proporção esperada (p)</label><input class="inp" id="w-prop" type="number" min="1" max="99" step="1" value="${WIZ.data.prop}" oninput="scheduleWizCalc()"> <span style="font-size:11px;color:var(--ink3)">% — 50% se desconhecida</span></div>
     <div class="callout"><b>n</b> = [N·Z²·p(1-p)] / [e²(N-1)+Z²·p(1-p)]</div>
   </div>
   <div>
@@ -1161,15 +1219,15 @@ WIZ_BODY[6]=()=>{
   const sel=WIZ.data.clientes;
   const rows=clienteUsers().map(c=>{
     const on=sel.includes(c.company);
-    const safeCompany=esc(c.company).replace(/'/g,'&#39;');
+    const safeCompany=jsArg(c.company);
     const statusPill=c.status==='ativo'?'pill-green':c.status==='prospecto'?'pill-amber':'pill-gray';
     const accessBtn=on
-      ?`<button type="button" class="client-access-btn ${c.resultsReleased?'on':''}" title="Liberar ou não acesso total (andamento em tempo real + resultados) para este cliente" onclick="wizToggleClientAccess('${safeCompany}')">${c.resultsReleased?'✓ acesso liberado':'🔒 liberar acesso'}</button>`
+      ?`<button type="button" class="client-access-btn ${c.resultsReleased?'on':''}" title="Liberar ou não acesso total (andamento em tempo real + resultados) para este cliente" onclick="wizToggleClientAccess(${safeCompany})">${c.resultsReleased?'✓ acesso liberado':'🔒 liberar acesso'}</button>`
       :'';
     const searchKey=esc((c.company+' '+(c.contact||'')+' '+(c.email||'')).toLowerCase());
     return `<div class="client-link-row ${on?'on':''}" data-name="${searchKey}">
       <label class="clr-check-label">
-        <input type="checkbox" ${on?'checked':''} onchange="wizToggleCliente('${safeCompany}')">
+        <input type="checkbox" ${on?'checked':''} onchange="wizToggleCliente(${safeCompany})">
         <div class="clr-info">
           <div class="clr-name">${esc(c.company)}</div>
           <div class="clr-sub">${esc(c.contact||'')||'—'}${c.email?' · '+esc(c.email):''}</div>
@@ -1322,11 +1380,7 @@ function wizNav(first){
 let _wizChart;
 function wizSampleN(){
   const gv=(id,fallback)=>{const e=document.getElementById(id);return e?e.value:fallback;};
-  const N=+gv('w-pop',WIZ.data.pop)||0;
-  const e=+gv('w-err',WIZ.data.err);
-  const Z=+gv('w-conf',WIZ.data.conf);
-  const p=(+gv('w-prop',WIZ.data.prop)||50)/100;
-  return Math.ceil((N*Z*Z*p*(1-p))/(e*e*(N-1)+Z*Z*p*(1-p)));
+  return sampleSize(gv('w-pop',WIZ.data.pop),gv('w-err',WIZ.data.err),gv('w-conf',WIZ.data.conf),gv('w-prop',WIZ.data.prop));
 }
 function wizSampleAdj(){return Math.ceil(wizSampleN()*1.1);}
 function wizCalc(){
@@ -1338,9 +1392,13 @@ function wizCalc(){
   WIZ.data.pop=+document.getElementById('w-pop').value;WIZ.data.err=document.getElementById('w-err').value;
   WIZ.data.conf=document.getElementById('w-conf').value;WIZ.data.prop=+document.getElementById('w-prop').value;
   const c=document.getElementById('wizChart');if(!c)return;
+  if(typeof Chart==='undefined'){
+    loadLocalAsset('chart').then(()=>{if(document.getElementById('wizChart')===c)wizCalc();}).catch(()=>{});
+    return;
+  }
   const N=WIZ.data.pop,Z=+WIZ.data.conf,p=WIZ.data.prop/100;
   const errs=[0.05,0.04,0.03,0.02];
-  const data=errs.map(e=>Math.ceil((N*Z*Z*p*(1-p))/(e*e*(N-1)+Z*Z*p*(1-p))));
+  const data=errs.map(e=>sampleSize(N,e,Z,p*100));
   if(_wizChart)_wizChart.destroy();
   _wizChart=new Chart(c,{type:'bar',data:{labels:errs.map(e=>'±'+(e*100)+'%'),
     datasets:[{data,backgroundColor:'#7c3aed',borderRadius:6}]},
@@ -1490,7 +1548,7 @@ function surveyRow(s,idx,opts){
       <button class="btn-ghost" onclick="surveyFinish(${idx})">Concluir</button>
       <button class="btn-ghost" style="color:var(--red)" onclick="surveyDelete(${idx})">Excluir</button>`;
   return `<tr>
-    <td><b>${s.name}</b>${tag}<div style="font-size:11px;color:var(--ink3)">${s.created}</div></td>
+    <td><b>${esc(s.name)}</b>${tag}<div style="font-size:11px;color:var(--ink3)">${esc(s.created)}</div></td>
     <td>${s.questions.length} ${s.questions.length===1?'pergunta':'perguntas'}</td>
     <td>${sample.toLocaleString('pt-BR')}</td>
     <td>${coll}</td>
@@ -1840,18 +1898,18 @@ PAGES.sample=()=>head('Cálculo de amostra','Defina o tamanho da amostra a parti
       <div class="card-t">Parâmetros</div>
       <div class="card-d">Fórmula para população finita</div>
       <div class="mb"><label class="lbl">População (N) — eleitores</label>
-        <input class="inp" id="sp-pop" type="number" value="16200000" oninput="calcSample()"></div>
+        <input class="inp" id="sp-pop" type="number" min="1" step="1" value="16200000" oninput="scheduleSampleCalc()"></div>
       <div class="field-row mb">
         <div><label class="lbl">Margem de erro</label>
-          <select class="inp" id="sp-err" onchange="calcSample()">
+          <select class="inp" id="sp-err" onchange="scheduleSampleCalc()">
             <option value="0.05">± 5%</option><option value="0.04">± 4%</option>
             <option value="0.03">± 3%</option><option value="0.02" selected>± 2%</option></select></div>
         <div><label class="lbl">Nível de confiança</label>
-          <select class="inp" id="sp-conf" onchange="calcSample()">
+          <select class="inp" id="sp-conf" onchange="scheduleSampleCalc()">
             <option value="1.645">90%</option><option value="1.96" selected>95%</option><option value="2.576">99%</option></select></div>
       </div>
       <div class="mb"><label class="lbl">Proporção esperada (p)</label>
-        <input class="inp" id="sp-prop" type="number" value="50" step="1" oninput="calcSample()"> <span style="font-size:11px;color:var(--ink3)">% — use 50% se desconhecida (mais conservador)</span></div>
+        <input class="inp" id="sp-prop" type="number" min="1" max="99" value="50" step="1" oninput="scheduleSampleCalc()"> <span style="font-size:11px;color:var(--ink3)">% — use 50% se desconhecida (mais conservador)</span></div>
       <div class="callout"><b>Fórmula:</b> n = [N·Z²·p(1-p)] / [e²(N-1) + Z²·p(1-p)]</div>
     </div>
     <div>
@@ -1916,7 +1974,7 @@ function collectList(){
     const pct=sample?Math.round(collected/sample*100):0;
     const team=(s.team||[]).length;
     return `<tr style="cursor:pointer" onclick="collectOpen(${i})">
-      <td><b>${s.name}</b><div style="font-size:11px;color:var(--ink3)">${s.created}</div></td>
+      <td><b>${esc(s.name)}</b><div style="font-size:11px;color:var(--ink3)">${esc(s.created)}</div></td>
       <td>${STATUS_PILL[s.status]}</td>
       <td>${team?team+(team===1?' pesquisador':' pesquisadores'):'<span style="color:var(--ink3)">sem equipe</span>'}</td>
       <td>${collected.toLocaleString('pt-BR')} / ${sample.toLocaleString('pt-BR')} (${pct}%)</td>
@@ -1941,13 +1999,13 @@ function collectDetail(idx){
     const syncPill=info.sync==='online'?'<span class="pill pill-green">● Online</span>':'<span class="pill pill-amber">● Offline</span>';
     const wa='https://wa.me/'+info.phone;
     return `<tr>
-      <td><div style="display:flex;align-items:center;gap:9px"><div class="avatar" style="width:28px;height:28px;font-size:11px">${name.split(' ').map(n=>n[0]).join('')}</div>${name}</div></td>
-      <td>${info.regional}</td>
-      <td><span class="pill pill-blue">${info.link}</span></td>
-      <td>${info.done} / ${info.meta}</td>
+      <td><div style="display:flex;align-items:center;gap:9px"><div class="avatar" style="width:28px;height:28px;font-size:11px">${esc(initialsOf(name))}</div>${esc(name)}</div></td>
+      <td>${esc(info.regional)}</td>
+      <td><span class="pill pill-blue">${esc(info.link)}</span></td>
+      <td>${Number(info.done)||0} / ${Number(info.meta)||0}</td>
       <td>${syncPill}</td>
       <td style="white-space:nowrap">
-        <button class="btn-ghost" onclick="alert('Protótipo: link reenviado para ${name}')">Reenviar link</button>
+        <button class="btn-ghost" onclick="alert('Protótipo: link reenviado')">Reenviar link</button>
         <a class="btn-ghost" style="color:var(--teal);display:inline-block" href="${wa}" target="_blank" rel="noopener">WhatsApp</a>
       </td></tr>`;
   }).join(''):'<tr><td colspan="6" class="empty">Nenhum pesquisador vinculado. Atribua a equipe em Minhas pesquisas.</td></tr>';
@@ -2035,6 +2093,7 @@ function collectTab(btn,which){
 
 /* ===== Coleta de campo: mapa, feed e auditoria (dados reais, tabela collection_events) ===== */
 const COLLECT_COLORS=['#2563eb','#059669','#ea580c','#7c3aed','#dc2626','#d97706'];
+const COLLECT_EVENT_SELECT='id,survey_id,researcher_id,quota_label,lat,lng,accuracy_m,occurred_at,synced,flags,status,reject_reason,rejected_at,is_calibration';
 let COLLECT_EVENTS=[];
 let COLLECT_EVENTS_LOADED=false,COLLECT_EVENTS_LOADING=false;
 let COLLECT_LIVE_TIMER=null;
@@ -2050,7 +2109,7 @@ function collectionEventRowToEntry(row){
     researcherId:row.researcher_id,
     name:u?u.name:'(pesquisador removido)',
     cota:row.quota_label||'',
-    lat:row.lat,lng:row.lng,acc:row.accuracy_m,
+    lat:Number(row.lat),lng:Number(row.lng),acc:Number(row.accuracy_m)||0,
     ts:row.occurred_at?new Date(row.occurred_at).getTime():Date.now(),
     synced:row.synced!==false,
     flags:row.flags||[],
@@ -2070,7 +2129,9 @@ async function loadCollectEventsIfNeeded(){
   COLLECT_EVENTS_LOADING=true;
   await loadUsersIfNeeded();
   try{
-    const {data,error}=await sb.from('collection_events').select('*').order('occurred_at',{ascending:false});
+    let query=sb.from('collection_events').select(COLLECT_EVENT_SELECT).order('occurred_at',{ascending:false});
+    if(selectedRole==='pesq'&&CURRENT_PROFILE&&CURRENT_PROFILE.id)query=query.eq('researcher_id',CURRENT_PROFILE.id);
+    const {data,error}=await query;
     if(!error){COLLECT_EVENTS=(data||[]).map(collectionEventRowToEntry);COLLECT_EVENTS_LOADED=true;}
     else console.error('Erro ao carregar coletas:',error);
   }catch(ex){console.error('Erro de conexão ao carregar coletas:',ex);}
@@ -2088,10 +2149,16 @@ function eventsForSurveyIdx(idx){
    pelo "ao vivo" da tela do admin/coord quanto depois de o pesquisador
    enviar uma coleta nova pelo app */
 async function pollCollectEvents(idx){
+  const survey=SURVEYS[idx];
+  if(!survey||!survey.id)return;
   try{
-    const {data,error}=await sb.from('collection_events').select('*').order('occurred_at',{ascending:false});
+    const {data,error}=await sb.from('collection_events').select(COLLECT_EVENT_SELECT)
+      .eq('survey_id',survey.id).order('occurred_at',{ascending:false});
     if(error)return;
-    COLLECT_EVENTS=(data||[]).map(collectionEventRowToEntry);
+    const fresh=(data||[]).map(collectionEventRowToEntry);
+    /* Mantém no cache as outras pesquisas e substitui somente a pesquisa aberta. */
+    COLLECT_EVENTS=COLLECT_EVENTS.filter(e=>e.surveyId!==survey.id).concat(fresh)
+      .sort((a,b)=>b.ts-a.ts);
     COLLECT_EVENTS_LOADED=true;
   }catch(ex){return;}
   if(COLLECT_IDX!==idx)return; // usuário já saiu dessa pesquisa enquanto a busca rodava
@@ -2143,7 +2210,9 @@ function renderCollectMap(idx){
   const mapEl=document.getElementById('collectMap');
   if(!mapEl)return;
   if(typeof L==='undefined'){
-    mapEl.innerHTML='<div class="empty" style="padding:60px 0">Mapa indisponível — sem internet para carregar a biblioteca de mapas.</div>';
+    mapEl.innerHTML='<div class="empty" style="padding:60px 0">Carregando mapa…</div>';
+    loadLocalAsset('leaflet').then(()=>{if(document.getElementById('collectMap')===mapEl)renderCollectMap(idx);})
+      .catch(()=>{if(document.getElementById('collectMap')===mapEl)mapEl.innerHTML='<div class="empty" style="padding:60px 0">Mapa indisponível — não foi possível carregar o mapa local.</div>';});
     return;
   }
   if(!_collectMap||_collectMap._container!==mapEl){
@@ -2169,7 +2238,7 @@ function renderCollectMap(idx){
   const s=SURVEYS[idx];if(!s)return;
   const team=s.team||[];
   const colorFor=name=>COLLECT_COLORS[team.indexOf(name)%COLLECT_COLORS.length]||'#2563eb';
-  const allEvents=eventsForSurveyIdx(idx);
+  const allEvents=eventsForSurveyIdx(idx).filter(e=>Number.isFinite(e.lat)&&Number.isFinite(e.lng));
   const events=allEvents.slice(0,COLLECT_MAP_MAX_POINTS);
   const shown=events.length;
   const total=allEvents.length;
@@ -2220,8 +2289,8 @@ function renderLiveFeed(idx){
   const events=eventsForSurveyIdx(idx).slice(0,8);
   el.innerHTML=events.map(e=>`
     <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:12.5px">
-      <div class="avatar" style="width:26px;height:26px;font-size:10.5px;flex-shrink:0">${e.name.split(' ').map(n=>n[0]).join('').slice(0,2)}</div>
-      <div style="flex:1"><b>${e.name}</b> coletou <span style="color:var(--ink3)">${e.cota}</span></div>
+      <div class="avatar" style="width:26px;height:26px;font-size:10.5px;flex-shrink:0">${esc(initialsOf(e.name))}</div>
+      <div style="flex:1"><b>${esc(e.name)}</b> coletou <span style="color:var(--ink3)">${esc(e.cota)}</span></div>
       <span style="color:var(--ink3);white-space:nowrap">${geoAgo(e.ts)}</span>
       <span class="pill ${e.synced?'pill-green':'pill-amber'}" style="flex-shrink:0">${e.synced?'Sincronizado':'Pendente'}</span>
     </div>`).join('')||'<div class="empty" style="padding:14px 0">Nenhuma coleta ainda.</div>';
@@ -2243,6 +2312,7 @@ function fmtGap(ms){
 const AUDIT_DIST_SUSPECT_M=30;   // abaixo disso: alerta forte (vermelho) — praticamente o mesmo ponto
 const AUDIT_DIST_WARN_M=100;     // abaixo disso: atenção (âmbar)
 function distMeters(lat1,lng1,lat2,lng2){
+  if(![lat1,lng1,lat2,lng2].every(Number.isFinite))return null;
   const R=6371000,toRad=d=>d*Math.PI/180;
   const dLat=toRad(lat2-lat1),dLng=toRad(lng2-lng1);
   const a=Math.sin(dLat/2)**2+Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLng/2)**2;
@@ -2254,19 +2324,19 @@ function fmtDist(m){
 function renderAudit(idx){
   const el=document.getElementById('auditBody');if(!el)return;
   const all=eventsForSurveyIdx(idx);
-  const byName={};
-  all.forEach(e=>{(byName[e.name]=byName[e.name]||[]).push(e);});
-  Object.values(byName).forEach(arr=>arr.sort((a,b)=>a.ts-b.ts));
-  const gapOf=e=>{
-    const arr=byName[e.name];
-    const i=arr.findIndex(x=>x.id===e.id);
-    return i>0?e.ts-arr[i-1].ts:null;
-  };
-  const distOf=e=>{
-    const arr=byName[e.name];
-    const i=arr.findIndex(x=>x.id===e.id);
-    return i>0?distMeters(e.lat,e.lng,arr[i-1].lat,arr[i-1].lng):null;
-  };
+  const byResearcher={};
+  all.forEach(e=>{
+    const key=e.researcherId||e.name;
+    (byResearcher[key]=byResearcher[key]||[]).push(e);
+  });
+  const previousById=new Map();
+  Object.values(byResearcher).forEach(arr=>{
+    arr.sort((a,b)=>a.ts-b.ts);
+    arr.forEach((e,i)=>{if(i>0)previousById.set(e.id,arr[i-1]);});
+  });
+  const previousOf=e=>previousById.get(e.id)||null;
+  const gapOf=e=>{const prev=previousOf(e);return prev?e.ts-prev.ts:null;};
+  const distOf=e=>{const prev=previousOf(e);return prev?distMeters(e.lat,e.lng,prev.lat,prev.lng):null;};
   let events=all.slice(0,80);
   if(AUDIT_HIGHLIGHT_ID!=null&&!events.some(x=>x.id===AUDIT_HIGHLIGHT_ID)){
     const found=all.find(x=>x.id===AUDIT_HIGHLIGHT_ID);
@@ -2284,7 +2354,7 @@ function renderAudit(idx){
     const distSuspect=distM!=null&&distM<AUDIT_DIST_SUSPECT_M;
     const distWarn=distM!=null&&!distSuspect&&distM<AUDIT_DIST_WARN_M;
     const distNote=distM==null?'':`<div style="margin-top:3px"><span class="pill ${distSuspect?'pill-red':distWarn?'pill-amber':'pill-gray'}" style="font-size:10.5px">≈${fmtDist(distM)} da anterior</span></div>`;
-    const flags=(e.flags||[]).slice();
+    const flags=(e.flags||[]).map(String).slice();
     if(suspect)flags.push('Intervalo muito curto p/ outra entrevista');
     if(distSuspect)flags.push('Georreferenciamento muito próximo da coleta anterior');
     const rejected=e.status==='rejected';
@@ -2296,14 +2366,14 @@ function renderAudit(idx){
       <button class="btn-ghost" style="font-size:11px;padding:3px 8px" onclick="auditToggleCalibration('${e.id}')">${e.calibration?'↺ Nos resultados':'◎ Calibração'}</button>
     </div>`;
     return `<tr data-eid="${e.id}"${rejected?' style="background:var(--red-l)"':''}>
-      <td>${e.name}</td>
-      <td>${e.cota}</td>
-      <td>${new Date(e.ts).toLocaleString('pt-BR')}</td>
+      <td>${esc(e.name)}</td>
+      <td>${esc(e.cota)}</td>
+      <td>${Number.isFinite(e.ts)?new Date(e.ts).toLocaleString('pt-BR'):'—'}</td>
       <td>${gapCell}</td>
-      <td>${e.lat.toFixed(5)}, ${e.lng.toFixed(5)}${distNote}</td>
-      <td>±${Math.round(e.acc)}m</td>
+      <td>${Number.isFinite(e.lat)&&Number.isFinite(e.lng)?e.lat.toFixed(5)+', '+e.lng.toFixed(5):'—'}${distNote}</td>
+      <td>${e.acc>0?'±'+Math.round(e.acc)+'m':'—'}</td>
       <td>${statusCell}</td>
-      <td>${flags.length?flags.map(f=>'<span class="pill pill-red" style="margin-right:4px;white-space:nowrap">'+f+'</span>').join(''):'<span style="color:var(--ink3)">—</span>'}</td>
+      <td>${flags.length?flags.map(f=>'<span class="pill pill-red" style="margin-right:4px;white-space:nowrap">'+esc(f)+'</span>').join(''):'<span style="color:var(--ink3)">—</span>'}</td>
       <td>${actionsCell}</td>
     </tr>`;
   }).join('')||'<tr><td colspan="9" class="empty">Nenhuma coleta registrada ainda.</td></tr>';
@@ -2657,12 +2727,12 @@ function renderAcollectForm(){
       let body='';
       if(q.type==='single'){
         body=(q.opts||[]).map(opt=>`<label style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:12px;${locked?'opacity:.7':''}">
-          <input type="radio" name="acq-${q.dbId}" ${a&&a.value===opt?'checked':''} ${locked?'disabled':''} onchange="acollectSetAnswer('${q.dbId}','${esc(opt).replace(/'/g,"\\'")}')"> ${esc(opt)}</label>`).join('');
+          <input type="radio" name="acq-${q.dbId}" ${a&&a.value===opt?'checked':''} ${locked?'disabled':''} onchange="acollectSetAnswer('${q.dbId}',${jsArg(opt)})"> ${esc(opt)}</label>`).join('');
       }else if(q.type==='multi'){
         body=(q.opts||[]).map(opt=>{
           const checked=a&&Array.isArray(a.value)&&a.value.includes(opt);
           return `<label style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:12px">
-          <input type="checkbox" ${checked?'checked':''} onchange="acollectToggleMultiAnswer('${q.dbId}','${esc(opt).replace(/'/g,"\\'")}')"> ${esc(opt)}</label>`;
+          <input type="checkbox" ${checked?'checked':''} onchange="acollectToggleMultiAnswer('${q.dbId}',${jsArg(opt)})"> ${esc(opt)}</label>`;
         }).join('');
       }else if(q.type==='scale'||q.type==='scale10'||q.type==='nps'){
         const max=ACOLLECT_SCALE_MAX[q.type]||5;
@@ -2777,7 +2847,9 @@ function acollectCancel(){
 }
 async function loadCollectEventsForced(){
   try{
-    const {data,error}=await sb.from('collection_events').select('*').order('occurred_at',{ascending:false});
+    let query=sb.from('collection_events').select(COLLECT_EVENT_SELECT).order('occurred_at',{ascending:false});
+    if(selectedRole==='pesq'&&CURRENT_PROFILE&&CURRENT_PROFILE.id)query=query.eq('researcher_id',CURRENT_PROFILE.id);
+    const {data,error}=await query;
     if(!error){COLLECT_EVENTS=(data||[]).map(collectionEventRowToEntry);COLLECT_EVENTS_LOADED=true;}
   }catch(ex){ /* mantém os dados já carregados se a nova busca falhar */ }
 }
@@ -3065,7 +3137,7 @@ function loadUsersIfNeeded(){
   _usersLoadPromise=(async()=>{
     USERS_LOADING=true;
     try{
-      const {data,error}=await sb.from('profiles').select('*, profile_cidades_atuacao(cidade)').order('created_at',{ascending:false});
+      const {data,error}=await sb.from('profiles').select('id,name,email,phone,role,status,cpf,cpf_cnpj,pf_pj,birth,cidade,rua,numero,cep,contact_person,doc_url,doc_foto_url,doc_comprovante_url,pix_key,pix_doc,pix_bank,pix_ag,pix_acc,results_released,approved_at,profile_cidades_atuacao(cidade)').order('created_at',{ascending:false});
       if(!error){USERS=(data||[]).map(profileRowToUser);USERS_LOADED=true;}
       else console.error('Erro ao carregar usuários:',error);
     }catch(ex){console.error('Erro de conexão ao carregar usuários:',ex);}
@@ -3300,13 +3372,15 @@ function refreshSignups(){
 }
 function renderSignupQR(){
   const box=document.getElementById('signup-qr');if(!box)return;
-  box.innerHTML='';
   const url='https://pesquisapro.com.br/cadastro/mg2026-x8f3';
-  if(window.QRCode){
-    try{ new QRCode(box,{text:url,width:108,height:108,colorDark:'#0f172a',colorLight:'#ffffff'}); return; }catch(e){}
-  }
-  // fallback visual se a lib não carregou (offline)
-  box.innerHTML='<div class="qr-fallback">QR<br>Code<div style="font-size:9px;margin-top:4px;font-weight:400">(requer internet<br>para gerar)</div></div>';
+  const draw=()=>{
+    box.innerHTML='';
+    try{new QRCode(box,{text:url,width:108,height:108,colorDark:'#0f172a',colorLight:'#ffffff'});return true;}catch(e){return false;}
+  };
+  if(typeof window.QRCode!=='undefined'&&draw())return;
+  box.innerHTML='<div class="qr-fallback" role="img" aria-label="QR Code indisponível no momento">QR<br>Code<div style="font-size:9px;margin-top:4px;font-weight:400">carregando…</div></div>';
+  loadLocalAsset('qrcode').then(()=>{if(document.getElementById('signup-qr')===box&&!draw())throw new Error('QR Code inválido');})
+    .catch(()=>{if(document.getElementById('signup-qr')===box)box.innerHTML='<div class="qr-fallback" role="img" aria-label="QR Code indisponível no momento">QR<br>Code<div style="font-size:9px;margin-top:4px;font-weight:400">indisponível offline</div></div>';});
 }
 function sendSignupWhatsApp(){
   const url='https://pesquisapro.com.br/cadastro/mg2026-x8f3';
@@ -3395,7 +3469,7 @@ function userViewGeneric(u){
     :'<span class="pill pill-red">● documento não anexado</span>';
   return head(u.name,'Dados do usuário',
     `<button class="btn btn-out" onclick="userViewBack()">← Voltar</button>
-     <button class="btn btn-out" style="color:var(--teal);border-color:var(--teal)" onclick="userWhatsApp('${esc(u.phone)}')">WhatsApp</button>
+     <button class="btn btn-out" style="color:var(--teal);border-color:var(--teal)" onclick="userWhatsApp(${jsArg(u.phone)})">WhatsApp</button>
      <button class="btn btn-fill" onclick="userEditFromView()">Editar</button>`)+`
   <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
     <div class="avatar" style="width:54px;height:54px;font-size:20px">${initials}</div>
@@ -3442,7 +3516,7 @@ function userViewPesq(u,idx){
     :dash;
   return head(u.name,'Dados do pesquisador',
     `<button class="btn btn-out" onclick="userViewBack()">← Voltar</button>
-     <button class="btn btn-out" style="color:var(--teal);border-color:var(--teal)" onclick="userWhatsApp('${esc(u.phone)}')">WhatsApp</button>
+     <button class="btn btn-out" style="color:var(--teal);border-color:var(--teal)" onclick="userWhatsApp(${jsArg(u.phone)})">WhatsApp</button>
      ${u.status!=='ativo'?`<button class="btn btn-fill" style="background:var(--teal)" onclick="userPesqApprove(${idx})">Aprovar</button>`:''}
      <button class="btn btn-fill" onclick="userEditFromView()">Editar</button>`)+`
   <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
@@ -3502,7 +3576,7 @@ function userViewCliente(u,idx){
   const endereco=enderecoParts.join(' · ');
   return head(u.name,'Dados do cliente',
     `<button class="btn btn-out" onclick="userViewBack()">← Voltar</button>
-     <button class="btn btn-out" style="color:var(--teal);border-color:var(--teal)" onclick="userWhatsApp('${esc(u.phone)}')">WhatsApp</button>
+     <button class="btn btn-out" style="color:var(--teal);border-color:var(--teal)" onclick="userWhatsApp(${jsArg(u.phone)})">WhatsApp</button>
      <button class="btn btn-fill" onclick="userEditFromView()">Editar</button>`)+`
   <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
     <div class="avatar" style="width:54px;height:54px;font-size:18px;background:var(--purple)">${initials}</div>
@@ -4817,6 +4891,7 @@ window._beforeRender=function(key){
 window._afterRender=function(key){
   if(key!=='collect'){stopCollectLive();}
   if(key!=='app-collect'){stopAcollectQuotaLive();}
+  if(key!=='dashboard'&&key!=='finance')disposeDashboardCharts();
   if(key==='collect'){
     if(COLLECT_IDX!=null){initCollectLive(COLLECT_IDX);}else{stopCollectLive();}
   }
@@ -4844,9 +4919,19 @@ window._afterRender=function(key){
   }
 };
 
+let _dashChart,_finChart;
+function disposeDashboardCharts(){
+  [_dashChart,_finChart].forEach(chart=>{if(chart){try{chart.destroy();}catch(e){}}});
+  _dashChart=null;_finChart=null;
+}
 function drawDash(){
   const c=document.getElementById('dashChart');if(!c)return;
-  new Chart(c,{type:'line',data:{labels:['1','2','3','4','5','6','7','8','9','10','11','12','13','14'],
+  if(typeof Chart==='undefined'){
+    loadLocalAsset('chart').then(()=>{if(document.getElementById('dashChart')===c)drawDash();}).catch(()=>{});
+    return;
+  }
+  if(_dashChart){try{_dashChart.destroy();}catch(e){}}
+  _dashChart=new Chart(c,{type:'line',data:{labels:['1','2','3','4','5','6','7','8','9','10','11','12','13','14'],
     datasets:[{label:'Coletas',data:[120,180,210,160,240,290,180,220,310,280,330,300,360,340],
       borderColor:'#2563eb',backgroundColor:'rgba(31,95,168,.12)',fill:true,tension:.35,pointRadius:0,borderWidth:2}]},
     options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
@@ -4854,7 +4939,12 @@ function drawDash(){
 }
 function drawFin(){
   const c=document.getElementById('finChart');if(!c)return;
-  new Chart(c,{type:'bar',data:{labels:['Sem 1','Sem 2','Sem 3','Sem 4'],
+  if(typeof Chart==='undefined'){
+    loadLocalAsset('chart').then(()=>{if(document.getElementById('finChart')===c)drawFin();}).catch(()=>{});
+    return;
+  }
+  if(_finChart){try{_finChart.destroy();}catch(e){}}
+  _finChart=new Chart(c,{type:'bar',data:{labels:['Sem 1','Sem 2','Sem 3','Sem 4'],
     datasets:[{label:'Repasse',data:[4200,6800,9100,14235],backgroundColor:'#059669',borderRadius:6}]},
     options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
       scales:{y:{beginAtZero:true,ticks:{callback:v=>'R$ '+(v/1000)+'k'},grid:{color:'#e2e8f0'}},x:{grid:{display:false}}}}});
@@ -4865,10 +4955,8 @@ function calcSample(){
   const N=+document.getElementById('sp-pop').value||0;
   const e=+document.getElementById('sp-err').value;
   const Z=+document.getElementById('sp-conf').value;
-  const p=(+document.getElementById('sp-prop').value||50)/100;
-  const num=N*Z*Z*p*(1-p);
-  const den=e*e*(N-1)+Z*Z*p*(1-p);
-  const n=Math.ceil(num/den);
+  const p=+document.getElementById('sp-prop').value||0;
+  const n=sampleSize(N,e,Z,p);
   const nadj=Math.ceil(n*1.1);
   document.getElementById('sp-n').textContent=n.toLocaleString('pt-BR');
   document.getElementById('sp-nadj').textContent=nadj.toLocaleString('pt-BR');
@@ -4878,8 +4966,12 @@ function calcSample(){
 let _sampleChart;
 function drawSampleChart(N,Z,p){
   const c=document.getElementById('sampleChart');if(!c)return;
+  if(typeof Chart==='undefined'){
+    loadLocalAsset('chart').then(()=>{if(document.getElementById('sampleChart')===c)drawSampleChart(N,Z,p);}).catch(()=>{});
+    return;
+  }
   const errs=[0.05,0.04,0.03,0.025,0.02,0.015];
-  const data=errs.map(e=>{const num=N*Z*Z*p*(1-p);const den=e*e*(N-1)+Z*Z*p*(1-p);return Math.ceil(num/den);});
+  const data=errs.map(e=>sampleSize(N,e,Z,p*100));
   if(_sampleChart)_sampleChart.destroy();
   _sampleChart=new Chart(c,{type:'bar',data:{labels:errs.map(e=>'±'+(e*100)+'%'),
     datasets:[{label:'Amostra',data,backgroundColor:'#7c3aed',borderRadius:6}]},

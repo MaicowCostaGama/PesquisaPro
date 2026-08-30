@@ -528,3 +528,19 @@
   .nav-group-exit{margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
   .nav-logout{color:var(--red,#dc2626)}
   .nav-logout:hover{background:rgba(220,38,38,.08)}
+
+/* ---------- acessibilidade e robustez visual ---------- */
+:where(button,a,input,select,textarea):focus-visible{outline:3px solid rgba(37,99,235,.45);outline-offset:2px}
+button:disabled{cursor:not-allowed;opacity:.62;transform:none!important;box-shadow:none!important}
+.btn,.btn-ghost,.chip,.q-region-btn,.q-quota-btn,.client-access-btn{min-height:36px}
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}
+@media(max-width:640px){
+  .sample-out{grid-template-columns:1fr}
+  .page-head .ph-actions{width:100%;margin-left:0;flex-wrap:wrap}
+  .page-head .ph-actions .btn{flex:1 1 auto;justify-content:center}
+  .card{padding:15px}
+  table{min-width:620px}
+  .card:has(table){overflow-x:auto}
+}

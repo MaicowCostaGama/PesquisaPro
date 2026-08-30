@@ -3,11 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PesquisaPro — Protótipo</title>
+<meta name="description" content="Painel PesquisaPro para criação de pesquisas, coleta de campo, auditoria e relatórios.">
+<meta name="theme-color" content="#2563eb">
+<title>PesquisaPro — Painel de pesquisas</title>
 <link rel="icon" type="image/png" sizes="64x64" href="assets/favicon-64.png">
 <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
 <link rel="apple-touch-icon" href="assets/icon-512.png">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
 <link rel="stylesheet" href="style.css?v=20260829142234">
 </head>
 <body>
@@ -21,14 +22,14 @@
     <p class="login-sub">Plataforma de pesquisa de opinião, coleta de campo e gestão de pagamentos.</p>
 
     <div class="field">
-      <label>E-mail</label>
-      <input type="text" placeholder="seu@email.com" id="li-email">
+      <label for="li-email">E-mail</label>
+      <input type="email" placeholder="seu@email.com" id="li-email" autocomplete="username" inputmode="email" required>
     </div>
     <div class="field">
-      <label>Senha</label>
-      <input type="password" placeholder="Sua senha" id="li-pass">
+      <label for="li-pass">Senha</label>
+      <input type="password" placeholder="Sua senha" id="li-pass" autocomplete="current-password" required>
     </div>
-    <div id="li-error" class="login-error" style="display:none;color:var(--red,#dc2626);font-size:12.5px;margin:-6px 0 10px"></div>
+    <div id="li-error" class="login-error" role="alert" aria-live="polite" style="display:none;color:var(--red,#dc2626);font-size:12.5px;margin:-6px 0 10px"></div>
 
     <button class="btn-primary" id="li-btn" onclick="doLogin()">Entrar</button>
     <p class="login-foot">Acesso restrito · fale com o administrador para criar sua conta</p>
@@ -55,13 +56,10 @@
   <div class="main" id="main"></div>
 </div>
 
-<!-- Bibliotecas externas (gráficos, QR Code e mapa) -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<!-- Bibliotecas pesadas são carregadas sob demanda pelo app.js, somente nas telas que as utilizam. -->
 <!-- Dados de referência (estados e municípios do Brasil) -->
 <script src="br-localidades.js"></script>
-<!-- Conexão com o banco de dados (Supabase) -->
+<!-- Conexão com o banco de dados (Supabase): necessária para autenticação e dados reais -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="supabase-client.js"></script>
 <!-- Código principal do protótipo -->

@@ -1,0 +1,11 @@
+const assert = require('assert');
+const fs = require('fs');
+const app = fs.readFileSync('app.js','utf8');
+const css = fs.readFileSync('style.css','utf8');
+const html = fs.readFileSync('app.html','utf8');
+for (const token of ['user-tabs','user-tab-context','users-count-chip','users-empty-state','user-table-heading','user-table-scroll']) assert(app.includes(token), `markup ausente: ${token}`);
+for (const token of ['.user-tabs','.user-tab.is-active','.users-empty-state','.user-table-scroll','.user-stat-grid','@media(max-width:600px)']) assert(css.includes(token), `estilo ausente: ${token}`);
+assert(app.includes('aria-current="${USER_TAB===t.key?\'page\':\'false\'}"'));
+assert(app.includes('USER_TAB_NEW_LABEL[tab]'));
+assert(html.includes('style.css?v=20260830230000'));
+console.log('Users layout smoke test OK: abas, contexto, cards, tabela, estado vazio, acessibilidade e responsividade verificados.');

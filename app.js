@@ -3305,9 +3305,10 @@ PAGES.users=()=>{
 };
 function userSetTab(tab){USER_TAB=tab;USER_VIEW=null;USER_EDIT=null;USER_ARMED=true;go('users');}
 function userTabBar(){
-  return `<div class="seg" style="flex-wrap:wrap;margin-bottom:16px">
-    ${USER_TABS.map(t=>`<button class="${USER_TAB===t.key?'on':''}" onclick="userSetTab('${t.key}')">${t.label}</button>`).join('')}
-  </div>`;
+  const total=usersInTab(USER_TAB).length;
+  return `<nav class="user-tabs" aria-label="Tipos de usuário"><div class="user-tabs-track">
+    ${USER_TABS.map(t=>{const count=usersInTab(t.key).length;return `<button class="user-tab ${USER_TAB===t.key?'is-active':''}" aria-current="${USER_TAB===t.key?'page':'false'}" onclick="userSetTab('${t.key}')"><span>${t.label}</span><b>${count}</b></button>`;}).join('')}
+  </div><div class="user-tab-context"><span class="eyebrow">CADASTROS</span><strong>${total} ${total===1?'registro':'registros'} nesta categoria</strong></div></nav>`;
 }
 function userTabStats(tab){
   const list=usersInTab(tab).map(x=>x.u);
@@ -3327,9 +3328,11 @@ function userTabStats(tab){
     </div>`;
   }
   const tabLabel=(USER_TABS.find(t=>t.key===tab)||{}).label||tab;
-  return `<div class="grid g2" style="margin-bottom:16px">
-    ${stat(tabLabel,String(list.length),'cadastrados','☺','#2563eb')}
+  const pending=list.filter(u=>u.status==='pendente').length;
+  return `<div class="grid g3 user-stat-grid" style="margin-bottom:16px">
+    ${stat(tabLabel,String(list.length),'cadastrados','◎','#2563eb')}
     ${stat('Ativos',String(list.filter(u=>u.status==='ativo').length),'liberados no sistema','✓','#059669')}
+    ${stat('Pendentes',String(pending),'aguardando ativação','◷','#d97706')}
   </div>`;
 }
 function userTableHead(tab){
@@ -3406,6 +3409,8 @@ let USER_SIGNUP_OPEN=false;
 function userSignupToggle(){USER_SIGNUP_OPEN=!USER_SIGNUP_OPEN;go('users');}
 function userList(){
   const tab=USER_TAB;
+  const tabInfo={pesq:['REDE DE CAMPO','Pesquisadores cadastrados e documentos para liberação de coleta.'],cliente:['BASE DE CLIENTES','Organizações e contatos que acompanham suas pesquisas.'],admpro:['EQUIPE INTERNA','Perfis ADM PesquisaPro autorizados no sistema.'],vendedor:['TIME COMERCIAL','Vendedores, percentuais de comissão e acesso ao funil.'],indicador:['PARCEIROS COMERCIAIS','Indicadores de clientes e percentuais de comissão.'],staff:['ADMINISTRAÇÃO','Usuários com acesso operacional e permissões de gestão.']}[tab]||['CADASTROS','Gestão dos perfis de acesso.'];
+  const currentCount=usersInTab(tab).length;
   const extras = tab==='pesq' ? `
   <div class="card mb" style="margin-top:16px">
     <div style="display:flex;align-items:center;gap:8px">
@@ -3440,14 +3445,14 @@ function userList(){
   <div class="callout" style="margin-top:16px">Clientes são cadastrados manualmente por um administrador — não há autocadastro para este perfil.</div>`
   : `
   <div class="callout" style="margin-top:16px">Este perfil só pode ser incluído manualmente pelo Administrador master ou por um ADM PesquisaPro autorizado — não há autocadastro.</div>`;
-  return head('Usuários','Cadastre e gerencie os diferentes perfis de usuário do sistema',
-    `<button class="btn btn-fill" onclick="userOpen('new')">+ Novo ${USER_TAB_NEW_LABEL[tab]||'usuário'}</button>`)+
+  const tableContent=currentCount?`<div class="user-table-scroll"><table><thead>${userTableHead(tab)}</thead><tbody>${userTableRows(tab)}</tbody></table></div>`:`<div class="users-empty-state"><div class="users-empty-icon">＋</div><div><h3>Nenhum ${USER_TAB_NEW_LABEL[tab]||'usuário'} cadastrado</h3><p>Comece adicionando o primeiro perfil nesta categoria para liberar o fluxo correspondente.</p><button class="btn btn-fill" onclick="userOpen('new')">Cadastrar ${USER_TAB_NEW_LABEL[tab]||'usuário'}</button></div></div>`;
+  return `<div class="users-page"><div class="users-context"><div><span class="eyebrow">${tabInfo[0]}</span><p>${tabInfo[1]}</p></div><span class="users-count-chip">${currentCount} ${currentCount===1?'perfil':'perfis'}</span></div>`+
+  head('Usuários','Cadastre e gerencie os diferentes perfis de usuário do sistema',
+    `<button class="btn btn-fill" onclick="userOpen('new')">＋ Novo ${USER_TAB_NEW_LABEL[tab]||'usuário'}</button>`)+
   userTabBar()+
   userTabStats(tab)+
-  `<div class="card">
-    <table><thead>${userTableHead(tab)}</thead>
-    <tbody>${userTableRows(tab)}</tbody></table>
-  </div>${extras}`;
+  `<div class="card user-table-card"><div class="user-table-heading"><div><div class="card-t">${USER_TAB_NEW_LABEL[tab]||'Usuários'} cadastrados</div><div class="card-d">Confira os dados, o status e as permissões antes de abrir um perfil.</div></div><span class="users-table-count">${currentCount}</span></div>${tableContent}
+  </div>${extras}</div>`;
 }
 function signupRows(){
   if(SIGNUPS.length===0)return '<div class="empty">Nenhum cadastro pendente.</div>';

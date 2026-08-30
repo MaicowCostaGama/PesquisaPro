@@ -100,6 +100,7 @@ async function afterLogin(user){
   buildSidebar();
   const nav=ROLE_NAV[profile.role]||['dashboard'];
   go(nav[0]);
+  if(typeof openSurveyInviteFromUrl==='function')openSurveyInviteFromUrl();
 }
 
 async function logout(){
@@ -347,11 +348,12 @@ PAGES['dashboard-pesq']=()=>{
     ${MY_INVITES.map(inv=>{
       const sv=SURVEYS.find(x=>x.id===inv.survey_id);
       const busy=MY_INVITE_RESPONDING===inv.id;
-      return `<div class="approve-row">
+      const focused=INVITE_FOCUS_ID===inv.id;
+      return `<div class="approve-row ${focused?'invite-focus':''}">
         <div class="avatar" style="width:30px;height:30px;font-size:11px">${(sv?sv.name:'?').slice(0,2).toUpperCase()}</div>
         <div style="flex:1"><div style="font-weight:600;font-size:13px">${esc(sv?sv.name:'Pesquisa')}</div>
-          <div style="font-size:11px;color:var(--ink3)">${sv?esc(sv.tipo||''):'carregando…'}</div></div>
-        <button class="btn-ghost" style="color:var(--teal)" ${busy?'disabled':''} onclick="respondMyInvite('${inv.id}',true)">${busy?'Enviando…':'Aceitar'}</button>
+          <div style="font-size:11px;color:var(--ink3)">${sv?esc(sv.tipo||''):'carregando…'}${focused?' · convite aberto pelo link':''}</div></div>
+        <button class="btn-ghost" style="color:var(--teal)" ${busy?'disabled':''} onclick="respondMyInvite('${inv.id}',true)">${busy?'Enviando…':focused?'Aceitar e entrar na equipe':'Aceitar'}</button>
         <button class="btn-ghost" style="color:var(--red)" ${busy?'disabled':''} onclick="respondMyInvite('${inv.id}',false)">Recusar</button>
       </div>`;
     }).join('')}
@@ -1714,6 +1716,17 @@ function whatsappDigits(phone){
   if(d.length<=11)d='55'+d; // sem DDI: assume Brasil
   return d;
 }
+function surveyInviteLink(inviteId){
+  const url=new URL('app.html',window.location.href);
+  url.search='';
+  url.searchParams.set('convite',inviteId);
+  return url.href;
+}
+async function copySurveyInviteLink(inviteId){
+  const link=surveyInviteLink(inviteId);
+  try{await navigator.clipboard.writeText(link);alert('Link do convite copiado.');}
+  catch(ex){window.prompt('Copie o link do convite:',link);}
+}
 let TEAM_INVITES=[],TEAM_INVITES_LOADED=false,TEAM_INVITES_LOADING=false;
 async function loadTeamInvitesIfNeeded(){
   const s=SURVEYS[TEAM_IDX];
@@ -1740,6 +1753,7 @@ async function inviteResearcherWhatsapp(researcherId){
   const u=USERS.find(x=>x.id===researcherId);if(!u)return;
   const digits=whatsappDigits(u.phone);
   if(!digits){alert('Este pesquisador não tem celular cadastrado — peça para ele atualizar o cadastro antes de convidar por WhatsApp.');return;}
+  let inviteId='';
   try{
     const {data:existing,error:selErr}=await sb.from('survey_invites').select('*').eq('survey_id',s.id).eq('researcher_id',researcherId);
     if(selErr)throw new Error(selErr.message);
@@ -1748,16 +1762,17 @@ async function inviteResearcherWhatsapp(researcherId){
     if(row){
       const {error:updErr}=await sb.from('survey_invites').update({status:'pendente',invited_by:CURRENT_PROFILE.id,invited_at:new Date().toISOString(),responded_at:null}).eq('id',row.id);
       if(updErr)throw new Error(updErr.message);
-      row.status='pendente';
+      row.status='pendente';inviteId=row.id;
     }else{
       const {data:inserted,error:insErr}=await sb.from('survey_invites').insert({survey_id:s.id,researcher_id:researcherId,invited_by:CURRENT_PROFILE.id,status:'pendente'}).select().single();
       if(insErr)throw new Error(insErr.message);
-      TEAM_INVITES.push(inserted);
+      TEAM_INVITES.push(inserted);inviteId=inserted.id;
     }
   }catch(ex){alert('Não foi possível criar o convite: '+ex.message);return;}
+  const link=surveyInviteLink(inviteId);
   const msg='Olá, '+u.name.split(' ')[0]+'! Você foi convidado(a) para a pesquisa "'+s.name+'" no PesquisaPro. '+
-    'Entre no app (pesquisa-pro.com) com seu login para aceitar ou recusar o convite, em "Meu painel".';
-  window.open('https://wa.me/'+digits+'?text='+encodeURIComponent(msg),'_blank');
+    'Abra este link, entre com seu login e toque em "Aceitar e entrar na equipe" para começar: '+link;
+  window.open('https://wa.me/'+digits+'?text='+encodeURIComponent(msg),'_blank','noopener');
   go('survey-team');
 }
 let TEAM_IDX=null;
@@ -1796,9 +1811,9 @@ PAGES['survey-team']=()=>{
     let inviteHtml='';
     if(podeConvidar){
       if(inv&&inv.status==='pendente'){
-        inviteHtml=`<span class="pill pill-amber">✉ convite enviado</span><button class="btn-ghost" style="font-size:11px;padding:4px 8px" onclick="event.preventDefault();inviteResearcherWhatsapp('${u.id}')">Reenviar</button>`;
+        inviteHtml=`<span class="pill pill-amber">✉ convite enviado</span><button class="btn-ghost" style="font-size:11px;padding:4px 8px" onclick="event.preventDefault();inviteResearcherWhatsapp('${u.id}')">Reenviar</button><button class="btn-ghost" style="font-size:11px;padding:4px 8px" onclick="event.preventDefault();copySurveyInviteLink('${inv.id}')">Copiar link</button>`;
       }else if(inv&&inv.status==='recusado'){
-        inviteHtml=`<span class="pill pill-red">recusou o convite</span><button class="btn-ghost" style="font-size:11px;padding:4px 8px" onclick="event.preventDefault();inviteResearcherWhatsapp('${u.id}')">Reenviar</button>`;
+        inviteHtml=`<span class="pill pill-red">recusou o convite</span><button class="btn-ghost" style="font-size:11px;padding:4px 8px" onclick="event.preventDefault();inviteResearcherWhatsapp('${u.id}')">Reenviar</button><button class="btn-ghost" style="font-size:11px;padding:4px 8px" onclick="event.preventDefault();copySurveyInviteLink('${inv.id}')">Copiar link</button>`;
       }else{
         inviteHtml=`<button class="btn-ghost" style="font-size:11px;padding:4px 8px;color:var(--teal)" onclick="event.preventDefault();inviteResearcherWhatsapp('${u.id}')">✉ Convidar por WhatsApp</button>`;
       }
@@ -1826,24 +1841,15 @@ PAGES['survey-team']=()=>{
     </div>
     <div>
       <div class="card mb">
-        <div class="card-t">Convidar novos pesquisadores</div>
-        <div class="card-d">Envie um link público. Quem abrir se cadastra e entra na fila para aprovação.</div>
-        <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
-          <input class="inp" value="pesquisapro.com.br/cadastro/mg2026-x8f3" readonly>
-          <button class="btn btn-out" onclick="alert('Protótipo: link copiado')">Copiar</button>
-        </div>
-        <button class="btn btn-fill" onclick="alert('Protótipo: link enviado por WhatsApp/e-mail')">Enviar link de cadastro</button>
+        <div class="card-t">Convites desta pesquisa</div>
+        <div class="card-d">Envie um convite individual por WhatsApp. O link já identifica a pesquisa e o pesquisador; ao aceitar, o vínculo entra automaticamente na equipe.</div>
+        <div class="callout" style="margin-bottom:12px"><b>Fluxo seguro:</b> o link abre a tela de login. Depois de entrar com a própria conta, o pesquisador precisa tocar em <b>“Aceitar e entrar na equipe”</b>. Apenas o aceite autenticado grava o vínculo.</div>
+        <div class="team-invite-summary">${TEAM_INVITES.length?TEAM_INVITES.map(i=>{const u=USERS.find(x=>x.id===i.researcher_id);return `<div class="team-invite-row"><div><b>${esc(u?u.name:'Pesquisador')}</b><small>${i.status==='aceito'?'Já está na equipe':i.status==='recusado'?'Recusou o convite':'Aguardando aceite'}</small></div><span class="pill ${i.status==='aceito'?'pill-green':i.status==='recusado'?'pill-red':'pill-amber'}">${esc(i.status||'pendente')}</span></div>`;}).join(''):'<div class="empty" style="padding:12px 0">Nenhum convite enviado para esta pesquisa.</div>'}</div>
       </div>
       <div class="card">
-        <div class="card-t" style="font-size:13px">Cadastros aguardando aprovação</div>
-        <div class="card-d">Novos pesquisadores só coletam após aprovação de um perfil administrativo</div>
-        <div class="approve-row">
-          <div class="avatar" style="width:30px;height:30px;font-size:11px;background:#d97706">AB</div>
-          <div style="flex:1"><div style="font-weight:600;font-size:13px">Ana Botelho</div>
-            <div style="font-size:11px;color:var(--ink3)">cadastrou-se há 2h · via link</div></div>
-          <button class="btn-ghost" style="color:var(--teal)" onclick="alert('Protótipo: cadastro aprovado. Pesquisadora liberada para coletar.')">Aprovar</button>
-          <button class="btn-ghost" style="color:var(--red)" onclick="alert('Protótipo: cadastro recusado')">Recusar</button>
-        </div>
+        <div class="card-t" style="font-size:13px">Ainda não tem cadastro?</div>
+        <div class="card-d">Cadastros novos continuam passando pela aprovação administrativa antes de coletar. Depois da aprovação, o pesquisador poderá receber convites específicos por pesquisa.</div>
+        <button class="btn btn-out" onclick="alert('O cadastro público deve ser compartilhado pelo administrador responsável.')">Ver orientação de cadastro</button>
       </div>
     </div>
   </div>`;
@@ -4720,20 +4726,26 @@ async function loadMyContractIfNeeded(){
 /* ---- convites de equipe recebidos por WhatsApp (aceitar/recusar em "Meu
    painel") — ver PAGES['dashboard-pesq'] pelo card, e
    inviteResearcherWhatsapp() no lado do admin pela criação do convite. ---- */
-let MY_INVITES=[],MY_INVITES_LOADED=false,MY_INVITES_LOADING=false;
-async function loadMyInvitesIfNeeded(){
-  if(MY_INVITES_LOADED||MY_INVITES_LOADING)return;
-  if(!CURRENT_PROFILE){MY_INVITES_LOADED=true;return;}
+let MY_INVITES=[],MY_INVITES_LOADED=false,MY_INVITES_LOADING=false,MY_INVITES_LOAD_PROMISE=null;
+function loadMyInvitesIfNeeded(){
+  if(MY_INVITES_LOADED)return Promise.resolve();
+  if(MY_INVITES_LOAD_PROMISE)return MY_INVITES_LOAD_PROMISE;
+  if(!CURRENT_PROFILE){MY_INVITES_LOADED=true;return Promise.resolve();}
   MY_INVITES_LOADING=true;
-  try{
-    const {data,error}=await sb.from('survey_invites').select('*')
-      .eq('researcher_id',CURRENT_PROFILE.id).eq('status','pendente');
-    if(!error){MY_INVITES=data||[];MY_INVITES_LOADED=true;}
-    else console.error('Erro ao carregar convites:',error);
-  }catch(ex){console.error('Erro de conexão ao carregar convites:',ex);}
-  MY_INVITES_LOADING=false;
-  const onKey=document.querySelector('.nav-item.on');
-  if(onKey&&onKey.dataset.key==='dashboard-pesq')go('dashboard-pesq');
+  MY_INVITES_LOAD_PROMISE=(async()=>{
+    try{
+      const {data,error}=await sb.from('survey_invites').select('*')
+        .eq('researcher_id',CURRENT_PROFILE.id).eq('status','pendente');
+      if(!error){MY_INVITES=data||[];MY_INVITES_LOADED=true;}
+      else console.error('Erro ao carregar convites:',error);
+    }catch(ex){console.error('Erro de conexão ao carregar convites:',ex);}
+    finally{
+      MY_INVITES_LOADING=false;MY_INVITES_LOAD_PROMISE=null;
+      const onKey=document.querySelector('.nav-item.on');
+      if(onKey&&onKey.dataset.key==='dashboard-pesq')go('dashboard-pesq');
+    }
+  })();
+  return MY_INVITES_LOAD_PROMISE;
 }
 let MY_INVITE_RESPONDING=null; /* id do convite sendo respondido agora — trava os botões pra não clicar 2x */
 async function respondMyInvite(inviteId,accept){
@@ -4751,9 +4763,28 @@ async function respondMyInvite(inviteId,accept){
       SURVEYS_LOADED=false;
       await loadSurveysIfNeeded();
     }
+    INVITE_FOCUS_ID=null;
+    const cleanUrl=new URL(window.location.href);cleanUrl.searchParams.delete('convite');
+    window.history.replaceState({},'',cleanUrl.href);
   }catch(ex){alert('Não foi possível responder ao convite: '+ex.message);}
   MY_INVITE_RESPONDING=null;
   go('dashboard-pesq');
+}
+let INVITE_FOCUS_ID=null;
+async function openSurveyInviteFromUrl(){
+  const inviteId=new URLSearchParams(window.location.search).get('convite');
+  if(!inviteId||!CURRENT_PROFILE||CURRENT_PROFILE.role!=='pesq')return;
+  INVITE_FOCUS_ID=inviteId;
+  if(!MY_INVITES_LOADED)await loadMyInvitesIfNeeded();
+  const invite=MY_INVITES.find(i=>i.id===inviteId);
+  if(invite){go('dashboard-pesq');return;}
+  try{
+    const {data,error}=await sb.from('survey_invites').select('id,status').eq('id',inviteId).eq('researcher_id',CURRENT_PROFILE.id).maybeSingle();
+    if(error)throw new Error(error.message);
+    if(data&&data.status==='aceito')alert('Este convite já foi aceito e você já está na equipe da pesquisa.');
+    else if(data&&data.status==='recusado')alert('Este convite já foi recusado. Peça um novo convite ao responsável pela pesquisa.');
+    else alert('Este convite não está disponível para esta conta. Confira se você entrou com o e-mail correto.');
+  }catch(ex){alert('Não foi possível abrir o convite: '+ex.message);}
 }
 PAGES['my-contract']=()=>{
   if(!CURRENT_PROFILE)return head('Meu contrato','Seu contrato de prestação de serviços')+'<div class="empty">Faça login para ver seu contrato.</div>';

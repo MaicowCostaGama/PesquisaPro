@@ -136,14 +136,14 @@ function buildSidebar(){
     if(visible.length===0)return;
     html+=`<div class="nav-group"><div class="ng-label">${g}</div>`;
     visible.forEach(i=>{
-      html+=`<button class="nav-item" data-key="${i.key}" onclick="go('${i.key}')"><span class="ico">${i.ico}</span>${i.label}</button>`;
+      html+=`<button class="nav-item" data-key="${i.key}" onclick="go('${i.key}')"><span class="ico ico-3d">${icon3d(i.ico,'#c9dcff')}</span>${i.label}</button>`;
     });
     html+='</div>';
   });
   // link para sair fica sempre dentro do menu (gaveta) — no celular os
   // botões do topo (inclusive o "Sair" ao lado do avatar) somem por falta de
   // espaço, então sem isso não havia como sair do sistema pelo celular.
-  html+=`<div class="nav-group nav-group-exit"><button class="nav-item nav-logout" onclick="logout()"><span class="ico">⏻</span>Sair do sistema</button></div>`;
+  html+=`<div class="nav-group nav-group-exit"><button class="nav-item nav-logout" onclick="logout()"><span class="ico ico-3d">${icon3d('⏻','#c9dcff')}</span>Sair do sistema</button></div>`;
   document.getElementById('sidebar').innerHTML=html;
 }
 
@@ -228,12 +228,37 @@ function scheduleFrame(callback,slot){
 }
 function scheduleWizCalc(){scheduleFrame(wizCalc,{get value(){return _wizCalcFrame;},set value(v){_wizCalcFrame=v;}});}
 function scheduleSampleCalc(){scheduleFrame(calcSample,{get value(){return _sampleCalcFrame;},set value(v){_sampleCalcFrame=v;}});}
+const ICON_SVG={
+  '▤':'<rect x="4" y="4" width="16" height="16" rx="4"/><path d="M8 9h8M8 12h8M8 15h5"/>',
+  '✦':'<path d="m12 3 1.5 5.5L19 10l-5.5 1.5L12 17l-1.5-5.5L5 10l5.5-1.5L12 3Z"/><path d="m19 15 .7 2.3L22 18l-2.3.7L19 21l-.7-2.3L16 18l2.3-.7L19 15Z"/>',
+  '❒':'<path d="M6 4h9l3 3v13H6V4Z"/><path d="M15 4v4h4M9 12h6M9 16h4"/>',
+  '✓':'<circle cx="12" cy="12" r="8"/><path d="m8.5 12 2.3 2.3 4.8-5"/>',
+  '∑':'<path d="M17 5H7l5.2 7L7 19h10"/><path d="M8 5h9M8 19h9"/>',
+  '⬇':'<path d="M12 3v11M8 10l4 4 4-4"/><path d="M5 18v2h14v-2"/>',
+  '▶':'<circle cx="12" cy="12" r="8"/><path d="m10 8 5 4-5 4V8Z"/>',
+  '◫':'<rect x="5" y="4" width="14" height="16" rx="2"/><path d="M8 16v-3M12 16V8M16 16v-6"/>',
+  '☺':'<circle cx="12" cy="8" r="3"/><path d="M6 20c.5-3.2 2.5-5 6-5s5.5 1.8 6 5"/>',
+  '⚿':'<path d="M6 10h12v10H6z"/><path d="M9 10V8a3 3 0 0 1 6 0v2M12 14v3"/>',
+  '$':'<rect x="4" y="6" width="16" height="13" rx="3"/><path d="M7 6V5h8l2 1M8 13h8M12 10v6"/>',
+  '✎':'<path d="m5 17-.8 3 3-.8L18 8.4a2 2 0 0 0-2.8-2.8L5 17Z"/><path d="m13.5 7.5 3 3"/>',
+  '⌂':'<path d="m4 11 8-7 8 7v8H4v-8Z"/><path d="M9 19v-5h6v5"/>',
+  '↗':'<path d="M5 17 10 12l3 3 6-7"/><path d="M14 8h5v5"/>',
+  '◷':'<circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/>',
+  '☼':'<circle cx="12" cy="12" r="3"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4"/>',
+  '⏻':'<path d="M12 3v9"/><path d="M7.1 6.8a7 7 0 1 0 9.8 0"/>'
+};
+let ICON_UID=0;
+function icon3d(token,color){
+  const uid=++ICON_UID;
+  const body=ICON_SVG[token]||ICON_SVG['❒'];
+  return `<svg class="icon3d" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false" style="--icon-color:${color};--icon-uid:${uid}"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${body}</g><path d="M7 6.2c1.4-1.1 3.1-1.7 5-1.7" fill="none" stroke="#fff" stroke-opacity=".44" stroke-width="1.2" stroke-linecap="round"/></svg>`;
+}
 function head(title,desc,actions){
   return `<div class="page-head"><div><h1>${esc(title)}</h1><p>${esc(desc)}</p></div>${actions?`<div class="ph-actions">${actions}</div>`:''}</div>`;
 }
 function stat(label,val,sub,ico,color){
   return `<div class="stat"><div class="s-top"><span class="s-label">${label}</span>
-    <span class="s-ico" style="background:${color}22;color:${color}">${ico}</span></div>
+    <span class="s-ico s-ico-3d" style="--icon-color:${color}">${icon3d(ico,color)}</span></div>
     <div class="s-val">${val}</div><div class="s-sub">${sub}</div></div>`;
 }
 function quota(label,done,total,color){

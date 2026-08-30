@@ -1999,7 +1999,7 @@ function collectList(){
     <tbody>${rows}</tbody></table>
   </div>`;
 }
-function collectOpen(i){COLLECT_IDX=i;COLLECT_ARMED=true;go('collect');}
+function collectOpen(i){COLLECT_IDX=i;COLLECT_ARMED=true;_collectMapFilters={researcher:'all',status:'all',latest:false};_collectMapDidFit=false;go('collect');}
 function collectBack(){COLLECT_IDX=null;go('collect');}
 let COLLECT_ARMED=false;
 function collectDetail(idx){
@@ -2022,6 +2022,8 @@ function collectDetail(idx){
   }).join(''):'<tr><td colspan="6" class="empty">Nenhum pesquisador vinculado. Atribua a equipe em Minhas pesquisas.</td></tr>';
   const sample=surveySample(s);
   const collected=surveyCollectedCount(s);
+  const mapResearchers=[...new Set(team)].sort((a,b)=>a.localeCompare(b));
+  const mapResearcherOptions=mapResearchers.map(name=>`<option value="${esc(name)}">${esc(name)}</option>`).join('');
   return head('Coleta e campo — '+s.name,'Pesquisadores vinculados a esta pesquisa',
     '<button class="btn btn-out" onclick="collectBack()">← Pesquisas</button><button class="btn btn-fill" onclick="alert(\'Protótipo: exportar dados brutos (CSV/SPSS)\')">Exportar dados</button>')+`
   <div class="grid g3" style="margin-bottom:16px">
@@ -2059,13 +2061,22 @@ function collectDetail(idx){
   </div>
 
   <div id="collectTabMapa" style="display:none">
-    <div class="card mb" style="padding:0;overflow:hidden">
-      <div id="collectMap" style="height:440px;background:var(--bg)"></div>
+    <div class="map-panel card mb">
+      <div class="map-panel-head">
+        <div><div class="map-eyebrow">MONITORAMENTO DE CAMPO</div><div class="card-t">Mapa de coletas</div><div class="card-d" id="collectMapSummary">Carregando pontos georreferenciados…</div></div>
+        <div class="map-panel-actions"><button class="btn btn-out" onclick="collectMapFit()">⌖ Enquadrar pontos</button><button class="btn btn-out" onclick="collectMapRefresh()">↻ Atualizar</button></div>
+      </div>
+      <div class="map-toolbar">
+        <label class="map-filter"><span>Pesquisador</span><select id="collectMapResearcher" onchange="collectMapApplyFilters()"><option value="all">Todos da equipe</option>${mapResearcherOptions}</select></label>
+        <label class="map-filter"><span>Status</span><select id="collectMapStatus" onchange="collectMapApplyFilters()"><option value="all">Todos os pontos</option><option value="valid">Válidas</option><option value="rejected">Reprovadas</option><option value="calibration">Calibração</option><option value="pending">Pendentes de sync</option></select></label>
+        <label class="map-check"><input type="checkbox" id="collectMapLatest" onchange="collectMapApplyFilters()"><span>Somente a última por pesquisador</span></label>
+      </div>
+      <div class="map-canvas-wrap"><div id="collectMap" class="collect-map-canvas" role="application" aria-label="Mapa de coletas georreferenciadas"></div><div id="collectMapLoading" class="map-loading" aria-live="polite">Preparando mapa…</div></div>
+      <div class="map-panel-foot"><div class="map-legend"><span><i class="map-dot map-dot-latest"></i>Última coleta</span><span><i class="map-dot map-dot-history"></i>Histórico</span><span><i class="map-dot map-dot-rejected"></i>Reprovada</span><span><i class="map-dot map-dot-calibration"></i>Calibração</span></div><div class="map-note" id="collectMapNote">Clique em um ponto para ver o detalhe.</div></div>
     </div>
-    <div class="card-d" id="collectMapNote" style="margin:-8px 0 14px">Cada ponto no mapa é uma coleta registrada — clique para ver detalhes.</div>
     <div class="card">
       <div class="card-t">Últimas coletas</div>
-      <div class="card-d">Chega uma nova entrevista georreferenciada a cada poucos segundos, de qualquer pesquisador da equipe</div>
+      <div class="card-d">Atualizado automaticamente a cada 20 segundos. Use os filtros do mapa para investigar uma equipe ou status específico.</div>
       <div id="liveFeed"></div>
     </div>
   </div>
@@ -2207,6 +2218,42 @@ const COLLECT_MAP_LAYERS={
   sat:{url:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',opts:{maxZoom:19,attribution:'© Esri, Maxar, Earthstar Geographics'}}
 };
 let _collectMapKind='street',_collectMapTileLayer=null;
+let _collectMapDidFit=false;
+let _collectMapFilters={researcher:'all',status:'all',latest:false};
+function collectMapReadFilters(){
+  _collectMapFilters={
+    researcher:document.getElementById('collectMapResearcher')?.value||'all',
+    status:document.getElementById('collectMapStatus')?.value||'all',
+    latest:!!document.getElementById('collectMapLatest')?.checked
+  };
+  return _collectMapFilters;
+}
+function collectMapFilterEvents(events){
+  const f=_collectMapFilters;
+  let out=events.filter(e=>f.researcher==='all'||e.name===f.researcher);
+  if(f.status==='valid')out=out.filter(e=>e.status==='valid'&&!e.calibration);
+  if(f.status==='rejected')out=out.filter(e=>e.status==='rejected');
+  if(f.status==='calibration')out=out.filter(e=>e.calibration);
+  if(f.status==='pending')out=out.filter(e=>!e.synced);
+  if(f.latest){
+    const latest=new Map();out.forEach(e=>{if(!latest.has(e.name)||e.ts>latest.get(e.name).ts)latest.set(e.name,e);});
+    out=[...latest.values()].sort((a,b)=>b.ts-a.ts);
+  }
+  return out;
+}
+function collectMapApplyFilters(){
+  collectMapReadFilters();
+  _collectMapDidFit=false;
+  renderCollectMap(COLLECT_IDX);
+}
+function collectMapFit(){
+  _collectMapDidFit=false;
+  renderCollectMap(COLLECT_IDX);
+}
+function collectMapRefresh(){
+  if(COLLECT_IDX==null)return;
+  pollCollectEvents(COLLECT_IDX);
+}
 function setCollectMapLayer(kind){
   if(!_collectMap||!COLLECT_MAP_LAYERS[kind])return;
   _collectMapKind=kind;
@@ -2220,15 +2267,19 @@ function setCollectMapLayer(kind){
 function renderCollectMap(idx){
   const mapEl=document.getElementById('collectMap');
   if(!mapEl)return;
+  const mapLoading=document.getElementById('collectMapLoading');
   if(typeof L==='undefined'){
-    mapEl.innerHTML='<div class="empty" style="padding:60px 0">Carregando mapa…</div>';
+    mapEl.innerHTML='';
+    if(mapLoading){mapLoading.textContent='Preparando mapa…';mapLoading.style.display='flex';}
     loadLocalAsset('leaflet').then(()=>{if(document.getElementById('collectMap')===mapEl)renderCollectMap(idx);})
-      .catch(()=>{if(document.getElementById('collectMap')===mapEl)mapEl.innerHTML='<div class="empty" style="padding:60px 0">Mapa indisponível — não foi possível carregar o mapa local.</div>';});
+      .catch(()=>{if(document.getElementById('collectMap')===mapEl&&mapLoading){mapLoading.textContent='Mapa indisponível — não foi possível carregar o mapa local.';mapLoading.style.display='flex';}});
     return;
   }
+  if(mapLoading)mapLoading.style.display='none';
   if(!_collectMap||_collectMap._container!==mapEl){
     if(_collectMap){try{_collectMap.remove();}catch(e){}}
     _collectMapTileLayer=null;
+    _collectMapDidFit=false;
     _collectMap=L.map(mapEl,{scrollWheelZoom:false}).setView([-18.5,-44.9],6);
     setCollectMapLayer(_collectMapKind);
     _collectMarkerLayer=L.layerGroup().addTo(_collectMap);
@@ -2250,41 +2301,40 @@ function renderCollectMap(idx){
   const team=s.team||[];
   const colorFor=name=>COLLECT_COLORS[team.indexOf(name)%COLLECT_COLORS.length]||'#2563eb';
   const allEvents=eventsForSurveyIdx(idx).filter(e=>Number.isFinite(e.lat)&&Number.isFinite(e.lng));
-  const events=allEvents.slice(0,COLLECT_MAP_MAX_POINTS);
+  const filtered=collectMapFilterEvents(allEvents);
+  const events=filtered.slice(0,COLLECT_MAP_MAX_POINTS);
   const shown=events.length;
-  const total=allEvents.length;
+  const total=filtered.length;
   const latestTsByName={},latestIdByName={};
-  events.forEach(e=>{
+  allEvents.forEach(e=>{
     if(!(e.name in latestTsByName)||e.ts>latestTsByName[e.name]){latestTsByName[e.name]=e.ts;latestIdByName[e.name]=e.id;}
   });
   events.forEach(e=>{
     const color=colorFor(e.name);
     const isLatest=latestIdByName[e.name]===e.id;
-    const ring=e.status==='rejected'?'#dc2626':e.calibration?'#2563eb':'#fff';
-    const size=isLatest?16:10;
-    const opacity=isLatest?1:0.6;
+    const markerState=e.status==='rejected'?'is-rejected':e.calibration?'is-calibration':isLatest?'is-latest':'is-history';
     const icon=L.divIcon({
-      html:`<span style="display:block;width:${size}px;height:${size}px;border-radius:50%;background:${color};border:2px solid ${ring};box-shadow:0 1px 4px rgba(0,0,0,.45);opacity:${opacity}"></span>`,
-      className:'',iconSize:[size,size]});
+      html:`<span class="map-marker ${markerState}" style="--marker-color:${color}"><i></i></span>`,
+      className:'map-marker-wrap',iconSize:[34,34],iconAnchor:[17,17]});
     L.marker([e.lat,e.lng],{icon}).addTo(_collectMarkerLayer).bindPopup(buildMapPopup(e,isLatest));
   });
+  const researchers=new Set(events.map(e=>e.name));
+  const summary=document.getElementById('collectMapSummary');
+  if(summary)summary.textContent=shown?`${shown} ponto${shown===1?'':'s'} visível${shown===1?'':'is'} · ${researchers.size} pesquisador${researchers.size===1?'':'es'}${shown<total?' · limite de visualização aplicado':''}`:'Nenhum ponto corresponde aos filtros atuais.';
   const note=document.getElementById('collectMapNote');
-  if(note)note.textContent=shown<total?`Mostrando as ${shown} coletas mais recentes de ${total}. Cada ponto é uma coleta — clique para ver detalhes.`:'Cada ponto no mapa é uma coleta registrada — clique para ver detalhes.';
+  if(note)note.textContent=shown<total?`Mostrando ${shown} de ${total} coletas após os filtros. Clique em um ponto para ver detalhes.`:'Clique em um ponto para ver o detalhe da coleta.';
   const pts=events.map(e=>[e.lat,e.lng]);
-  if(pts.length){try{_collectMap.fitBounds(pts,{padding:[50,50],maxZoom:16});}catch(e){}}
+  if(pts.length&&!_collectMapDidFit){try{_collectMap.fitBounds(pts,{padding:[50,50],maxZoom:16});_collectMapDidFit=true;}catch(e){}}
 }
 function buildMapPopup(e,isLatest){
   const statusExtra=e.status==='rejected'
-    ?'<div style="margin-top:4px"><span class="pill pill-red">✕ Reprovada</span></div>'+(e.rejectReason?`<div style="font-size:11px;color:var(--ink3);margin-top:2px;max-width:180px">Motivo: ${esc(e.rejectReason)}</div>`:'')
-    :e.calibration?'<div style="margin-top:4px"><span class="pill pill-blue">◎ Calibração</span></div>'
-    :'';
-  return `<div style="min-width:175px">
-    <b>${esc(e.name)}</b>${isLatest?' <span style="font-size:10px;color:var(--teal)">· última coleta</span>':''}<br>
-    ${esc(e.cota)}<br>
-    ${new Date(e.ts).toLocaleString('pt-BR')} · ±${Math.round(e.acc)}m<br>
-    ${e.synced?'<span class="pill pill-green">Sincronizado</span>':'<span class="pill pill-amber">Pendente</span>'}
-    ${statusExtra}
-    <div style="margin-top:8px"><button class="btn-ghost" style="font-size:11px;padding:4px 8px;width:100%" onclick="goToAuditFromMap('${e.id}')">🔎 Ver na auditoria</button></div>
+    ?'<span class="pill pill-red">✕ Reprovada</span>'+(e.rejectReason?`<div class="map-popup-reason">Motivo: ${esc(e.rejectReason)}</div>`:'')
+    :e.calibration?'<span class="pill pill-blue">◎ Calibração</span>':'';
+  return `<div class="map-popup">
+    <div class="map-popup-title">${esc(e.name)}${isLatest?'<span class="map-popup-latest">Última</span>':''}</div>
+    <div class="map-popup-meta"><b>${esc(e.cota||'Sem cota')}</b><br>${new Date(e.ts).toLocaleString('pt-BR')}<br>Precisão do GPS: ±${Math.round(e.acc)}m</div>
+    <div class="map-popup-status">${e.synced?'<span class="pill pill-green">Sincronizado</span>':'<span class="pill pill-amber">Pendente de sync</span>'}${statusExtra}</div>
+    <button class="btn-ghost map-popup-action" onclick="goToAuditFromMap('${e.id}')">🔎 Ver na auditoria</button>
   </div>`;
 }
 let AUDIT_HIGHLIGHT_ID=null;

@@ -7,7 +7,7 @@
   <meta name="description" content="Cadastro de pesquisador indicado pela PesquisaPro.">
   <title>Cadastro de pesquisador — PesquisaPro</title>
   <link rel="icon" type="image/png" sizes="64x64" href="assets/favicon-64.png">
-  <link rel="stylesheet" href="style.css?v=20260830300000">
+  <link rel="stylesheet" href="style.css?v=20260830310000">
   <style>
     body.signup-public{min-height:100vh;background:linear-gradient(135deg,#eff6ff 0%,#f8fafc 52%,#ecfeff 100%);color:#0f172a}
     .signup-shell{width:min(760px,calc(100% - 32px));margin:34px auto 56px}
@@ -43,7 +43,6 @@
       <span class="signup-kicker">Rede de pesquisadores</span>
       <h1 id="signup-title">Cadastre-se para participar das pesquisas</h1>
       <p class="signup-lead">Preencha seus dados com atenção. Seu cadastro será revisado pela equipe PesquisaPro antes da liberação para trabalhos de campo.</p>
-      <div id="recruiter-box" class="signup-recruiter" style="display:none"><div class="signup-recruiter-badge">R</div><div><strong id="recruiter-name">Recrutador PesquisaPro</strong><small>Indicação registrada neste cadastro</small></div></div>
       <div id="signup-loading" class="signup-status show">Validando o link de indicação…</div>
       <form id="signup-form" style="display:none" novalidate>
         <div class="signup-form-grid">
@@ -70,7 +69,7 @@
     (()=>{
       const params=new URLSearchParams(location.search);const code=(params.get('recrutador')||'').trim();
       const $=id=>document.getElementById(id);const show=(el,on)=>{if(el)el.style.display=on?'':'none';};
-      const loading=$('signup-loading'),form=$('signup-form'),status=$('signup-status'),rbox=$('recruiter-box');
+      const loading=$('signup-loading'),form=$('signup-form'),status=$('signup-status');
       const setStatus=(msg,ok=false)=>{status.textContent=msg;status.className='signup-status show '+(ok?'ok':'err');};
       async function boot(){
         if(!code){loading.className='signup-status show err';loading.textContent='Este link não contém um recrutador válido. Solicite um novo link à pessoa que fez a indicação.';return;}
@@ -79,7 +78,7 @@
           if(error)throw new Error(error.message);
           const r=Array.isArray(data)?data[0]:data;
           if(!r){loading.className='signup-status show err';loading.textContent='Link de recrutador inválido ou inativo.';return;}
-          $('recruiter-name').textContent=r.name||'Recrutador PesquisaPro';rbox.style.display='flex';loading.style.display='none';form.style.display='block';
+          loading.style.display='none';form.style.display='block';
         }catch(ex){loading.className='signup-status show err';loading.textContent='Não foi possível validar este link agora. Tente novamente em instantes.';console.error(ex);}
       }
       form.addEventListener('submit',async ev=>{
@@ -90,7 +89,7 @@
           const cities=$('cidades').value.split(',').map(x=>x.trim()).filter(Boolean);
           const {error}=await sb.rpc('submit_recruiter_signup',{p_recruiter_code:code,p_name:name,p_cpf:$('cpf').value.trim()||null,p_birth:$('birth').value||null,p_email:email,p_phone:phone,p_cidade:cidade,p_rua:$('rua').value.trim()||null,p_numero:$('numero').value.trim()||null,p_cep:$('cep').value.trim()||null,p_cidades_atuacao:cities});
           if(error)throw new Error(error.message);
-          form.style.display='none';rbox.style.display='none';setStatus('Cadastro enviado com sucesso. A equipe PesquisaPro fará a análise e entrará em contato se precisar de informações adicionais.',true);
+          form.style.display='none';setStatus('Cadastro enviado com sucesso. A equipe PesquisaPro fará a análise e entrará em contato se precisar de informações adicionais.',true);
         }catch(ex){setStatus('Não foi possível enviar o cadastro agora. Verifique os dados e tente novamente.');console.error(ex);btn.disabled=false;btn.textContent='Enviar meu cadastro';}
       });
       boot();

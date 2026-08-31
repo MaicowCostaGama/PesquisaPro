@@ -121,7 +121,7 @@ function commercialPaint(){
     root.innerHTML=`<div class="callout warn">Não foi possível carregar o Comercial agora: ${esc(COMM_ERROR)} <button class="btn-ghost" style="margin-left:8px" onclick="commercialRefresh()">Tentar novamente</button></div>`;
     return;
   }
-  root.innerHTML=COMM_VIEW==='form'?commercialOpportunityForm():COMM_VIEW==='detail'?commercialDetail():commIsPartner()?commercialPartnerDashboard():commercialBoard();
+  root.innerHTML=COMM_VIEW==='form'?commercialOpportunityForm():COMM_VIEW==='detail'?commercialDetail():COMM_VIEW==='performance'?commercialPerformanceDashboard():commIsPartner()?commercialPartnerDashboard():commercialBoard();
 }
 function commercialPartnerDashboard(){
   const opps=COMM_OPPORTUNITIES;
@@ -156,7 +156,7 @@ function commercialBoard(){
       <select class="inp comm-filter" onchange="commercialSetFilter('stage',this.value)"><option value="todos">Todos os estágios</option>${COMM_STAGES.map(s=>`<option value="${s.key}" ${COMM_FILTER_STAGE===s.key?'selected':''}>${s.label}</option>`).join('')}</select>
       ${commStaff()?`<select class="inp comm-filter" onchange="commercialSetFilter('seller',this.value)">${sellerOptions}</select>`:''}
     </div>
-    <div class="comm-toolbar-actions"><button class="btn btn-out" onclick="commercialRefresh()">↻ Atualizar</button><button class="btn btn-fill" onclick="commercialNewOpportunity()">＋ Nova oportunidade</button></div>
+    <div class="comm-toolbar-actions"><button class="btn btn-out" onclick="commercialRefresh()">↻ Atualizar</button><button class="btn btn-out" onclick="commercialSetView('performance')">Desempenho</button><button class="btn btn-fill" onclick="commercialNewOpportunity()">＋ Nova oportunidade</button></div>
   </div>
   <div class="grid g4 comm-stats">
     ${stat('Oportunidades abertas',String(open.length),'em andamento no funil','↗','#2563eb')}
@@ -172,6 +172,31 @@ function commercialBoard(){
   </div>
   <div class="card comm-admin-commissions"><div class="card-t">Comissões comerciais</div><div class="card-d">Acompanhe e atualize o status das comissões geradas nas vendas ganhas.</div>${COMM_COMMISSIONS.length?`<div class="comm-commission-admin-list">${COMM_COMMISSIONS.slice(0,12).map(c=>`<div class="comm-commission-row"><span><b>${esc(c.partner_role==='indicador'?commIndicatorName(c.partner_id):commSellerName(c.partner_id))}</b><small>${c.partner_role==='indicador'?'Indicador':'Vendedor'} · ${commMoney(c.amount)} · ${Number(c.rate||0).toLocaleString('pt-BR',{maximumFractionDigits:2})}% · ${commDateTime(c.created_at)}</small></span><select class="inp comm-status-select" onchange="commercialSetCommissionStatus('${c.id}',this.value)">${['a_receber','aprovada','paga','cancelada'].map(s=>`<option value="${s}" ${c.status===s?'selected':''}>${commCommissionStatusLabel(s)}</option>`).join('')}</select></div>`).join('')}</div>`:'<div class="empty">Nenhuma comissão gerada.</div>'}</div><div class="comm-board-note">Vendedores visualizam suas oportunidades. Indicadores visualizam suas indicações. Administradores e perfis de gestão acompanham o funil inteiro e as comissões.</div>`;
 }
+function commercialPerformanceDashboard(){
+  if(!commStaff())return '<div class="callout warn">Acompanhe seu desempenho na visão pessoal do Comercial.</div>';
+  const sellers=(USERS||[]).filter(u=>u.role==='vendedor'&&u.status!=='encerrado');
+  const sellerOpps=id=>COMM_OPPORTUNITIES.filter(o=>o.seller_id===id);
+  const sellerComms=id=>COMM_COMMISSIONS.filter(c=>c.partner_id===id&&c.partner_role==='vendedor');
+  const acceptedProposal=o=>COMM_PROPOSALS.find(p=>p.opportunity_id===o.id&&p.status==='aceita');
+  const wonValue=o=>Number(acceptedProposal(o)?.total||o.expected_value||0);
+  const rows=sellers.map(s=>{
+    const opps=sellerOpps(s.id),won=opps.filter(o=>o.stage==='ganha'),lost=opps.filter(o=>o.stage==='perdida'),open=opps.filter(o=>!['ganha','perdida'].includes(o.stage));
+    const props=COMM_PROPOSALS.filter(p=>p.seller_id===s.id||opps.some(o=>o.id===p.opportunity_id));
+    const sent=props.filter(p=>['enviada','aceita'].includes(p.status));
+    const comms=sellerComms(s.id),due=commCommissionMoneyTotal(comms,'a_receber'),approved=commCommissionMoneyTotal(comms,'aprovada'),paid=commCommissionMoneyTotal(comms,'paga');
+    const conversion=opps.length?Math.round(won.length/opps.length*100):0;
+    return {s,opps,won,lost,open,props,sent,comms,due,approved,paid,conversion,value:won.reduce((sum,o)=>sum+wonValue(o),0)};
+  }).sort((a,b)=>b.value-a.value||b.won.length-a.won.length||b.opps.length-a.opps.length);
+  const totalOpps=rows.reduce((n,r)=>n+r.opps.length,0),totalWon=rows.reduce((n,r)=>n+r.won.length,0),totalValue=rows.reduce((n,r)=>n+r.value,0),totalDue=rows.reduce((n,r)=>n+r.due,0),overallConversion=totalOpps?Math.round(totalWon/totalOpps*100):0;
+  return `<div class="comm-performance-page"><div class="comm-detail-actions"><button class="btn btn-out" onclick="commercialSetView('board')">← Voltar ao funil</button><button class="btn btn-out" onclick="commercialRefresh()">↻ Atualizar</button></div>
+    <div class="comm-performance-hero"><div><div class="eyebrow">GESTÃO COMERCIAL</div><h2>Desempenho dos vendedores</h2><p>Compare o avanço do funil, a conversão, o valor vendido e as comissões de cada responsável.</p></div><div class="comm-performance-hero-badge"><strong>${overallConversion}%</strong><span>conversão geral</span></div></div>
+    <div class="grid g4 comm-stats">${stat('Vendedores',String(sellers.length),'perfis ativos','♙','#2563eb')}${stat('Oportunidades',String(totalOpps),'atribuídas','↗','#7c3aed')}${stat('Valor vendido',commMoney(totalValue),'propostas aceitas','✓','#059669')}${stat('A receber',commMoney(totalDue),'comissões pendentes','◫','#d97706')}</div>
+    <section class="card comm-performance-card"><div class="section-heading"><div><div class="card-t">Ranking de desempenho</div><div class="card-d">Ordenado por valor vendido, depois por conversão e volume de oportunidades.</div></div><span class="pill pill-blue">${totalWon} vendas ganhas</span></div>
+      <div class="comm-performance-table-wrap"><table class="comm-performance-table"><thead><tr><th>Vendedor</th><th>Funil</th><th>Propostas</th><th>Conversão</th><th>Valor vendido</th><th>Comissões</th><th></th></tr></thead><tbody>${rows.length?rows.map((r,i)=>`<tr><td><div class="comm-performance-person"><span class="avatar recruiter-avatar">${esc(initialsOf(r.s.name))}</span><span><b>${esc(r.s.name)}</b><small>${esc(r.s.email||r.s.phone||'Sem contato')}</small></span></div></td><td><div class="comm-kpi-inline"><b>${r.opps.length}</b><small>${r.open.length} abertas · ${r.won.length} ganhas · ${r.lost.length} perdidas</small></div></td><td><div class="comm-kpi-inline"><b>${r.sent.length}</b><small>${r.props.length} criadas</small></div></td><td><span class="comm-conversion-pill ${r.conversion>=50?'is-good':r.conversion?'is-mid':'is-zero'}">${r.conversion}%</span></td><td><b>${commMoney(r.value)}</b></td><td><div class="comm-kpi-inline"><b>${commMoney(r.due)}</b><small>${commMoney(r.paid)} recebidas · ${commMoney(r.approved)} aprovadas</small></div></td><td><button class="btn-ghost" onclick="commercialOpenSellerPerformance('${r.s.id}')">Ver funil</button></td></tr>`).join(''):'<tr><td colspan="7" class="empty">Nenhum vendedor ativo cadastrado.</td></tr>'}</tbody></table></div></section>
+    <div class="callout">A conversão considera oportunidades ganhas dividido pelo total de oportunidades atribuídas. O valor vendido prioriza o total da proposta aceita; quando não houver proposta, usa o valor estimado da oportunidade.</div>
+  </div>`;
+}
+function commercialOpenSellerPerformance(id){COMM_FILTER_SELLER=id;COMM_VIEW='board';COMM_SELECTED_ID=null;commercialPaint();}
 function commercialOpportunityCard(o){
   const propCount=COMM_PROPOSALS.filter(p=>p.opportunity_id===o.id).length;
   const overdue=o.next_action_at&&new Date(o.next_action_at+'T23:59:59')<new Date()&&!['ganha','perdida'].includes(o.stage);
@@ -221,6 +246,7 @@ function commercialEditOpportunity(id){COMM_VIEW='form';COMM_EDIT_ID=id;commerci
 function commercialCancelForm(){COMM_VIEW='board';COMM_EDIT_ID=null;commercialPaint();}
 function commercialOpenOpportunity(id){COMM_SELECTED_ID=id;COMM_VIEW='detail';COMM_PROPOSAL_FORM=null;commercialPaint();}
 function commercialBackToBoard(){COMM_VIEW='board';COMM_PROPOSAL_FORM=null;commercialPaint();}
+function commercialSetView(view){COMM_VIEW=view;COMM_SELECTED_ID=null;COMM_PROPOSAL_FORM=null;commercialPaint();}
 function commercialSetFilter(kind,value){if(kind==='stage')COMM_FILTER_STAGE=value;else COMM_FILTER_SELLER=value;COMM_VIEW='board';commercialPaint();}
 
 async function commercialSaveOpportunity(){
@@ -230,6 +256,7 @@ async function commercialSaveOpportunity(){
   const current=COMM_OPPORTUNITIES.find(x=>x.id===COMM_EDIT_ID);
   const seller=commStaff()?(value('comm-seller')||null):(selectedRole==='vendedor'?CURRENT_PROFILE.id:(current?.seller_id||null));
   const indicator=commStaff()?(value('comm-indicator')||null):(selectedRole==='indicador'?CURRENT_PROFILE.id:(current?.indicator_id||null));
+  if(selectedRole!=='indicador'&&!seller){alert('Selecione o vendedor responsável antes de salvar a oportunidade.');return;}
   const row={company,client_name:client,email:value('comm-email')||null,phone:value('comm-phone')||null,city:value('comm-city')||null,source:value('comm-source')||'Outro',survey_type:value('comm-survey-type')||null,estimated_interviews:value('comm-interviews')?Number(value('comm-interviews')):null,region:value('comm-region')||null,expected_value:value('comm-value')?Number(value('comm-value')):null,next_action_at:value('comm-next-action')||null,description:value('comm-description')||null,notes:value('comm-notes')||null,seller_id:seller,indicator_id:indicator,updated_at:new Date().toISOString()};
   const btn=[...document.querySelectorAll('#commercialRoot .btn-fill')].find(x=>x.textContent.includes('Cadastrar')||x.textContent.includes('Salvar'));
   if(btn)btn.disabled=true;
@@ -243,6 +270,8 @@ async function commercialSaveOpportunity(){
 }
 async function commercialMoveStage(id,stage){
   const valid=COMM_STAGES.some(s=>s.key===stage);if(!valid)return;
+  const opportunity=COMM_OPPORTUNITIES.find(x=>x.id===id);
+  if(['proposta','negociacao','ganha'].includes(stage)&&!opportunity?.seller_id){alert('Atribua um vendedor responsável antes de avançar para esta etapa.');return;}
   const {error}=await sb.from('commercial_opportunities').update({stage,updated_at:new Date().toISOString()}).eq('id',id);
   if(error){alert('Não foi possível atualizar o estágio: '+error.message);return;}
   const o=COMM_OPPORTUNITIES.find(x=>x.id===id);if(o)o.stage=stage;
@@ -260,11 +289,12 @@ function commercialParseItems(text){
 }
 async function commercialSaveProposal(){
   const o=COMM_OPPORTUNITIES.find(x=>x.id===COMM_PROPOSAL_FORM?.opportunityId);if(!o)return;
+  if(!o.seller_id){alert('Atribua um vendedor responsável antes de criar a proposta.');return;}
   const g=id=>{const e=document.getElementById(id);return e?e.value.trim():'';};
   const items=commercialParseItems(g('comm-prop-items'));const typedTotal=Number(g('comm-prop-total'))||0;const total=typedTotal||items.reduce((s,i)=>s+i.total,0);
   if(!items.length&&!total){alert('Informe ao menos um item ou um valor total.');return;}
   const proposalId=COMM_PROPOSAL_FORM.proposalId;const existing=proposalId?COMM_PROPOSALS.find(x=>x.id===proposalId):null;
-  const row={opportunity_id:o.id,proposal_number:existing?.proposal_number||commercialProposalNumber(),status:existing?.status||'rascunho',valid_until:g('comm-prop-valid')||null,scope_text:g('comm-prop-scope')||null,payment_terms:g('comm-prop-terms')||null,subtotal:items.reduce((s,i)=>s+i.total,0),discount:0,total,created_by:CURRENT_PROFILE.id,updated_at:new Date().toISOString()};
+  const row={opportunity_id:o.id,seller_id:o.seller_id,proposal_number:existing?.proposal_number||commercialProposalNumber(),status:existing?.status||'rascunho',valid_until:g('comm-prop-valid')||null,scope_text:g('comm-prop-scope')||null,payment_terms:g('comm-prop-terms')||null,subtotal:items.reduce((s,i)=>s+i.total,0),discount:0,total,created_by:CURRENT_PROFILE.id,updated_at:new Date().toISOString()};
   try{
     let saved,error;
     if(proposalId){const r=await sb.from('commercial_proposals').update(row).eq('id',proposalId).select().single();saved=r.data;error=r.error;}
@@ -300,6 +330,8 @@ async function commercialSetCommissionStatus(id,status){
 async function commercialSetProposalStatus(id,status){
   if(!['aceita','recusada'].includes(status))return;
   const p=COMM_PROPOSALS.find(x=>x.id===id);if(!p)return;
+  const opportunity=COMM_OPPORTUNITIES.find(x=>x.id===p.opportunity_id);
+  if(status==='aceita'&&!opportunity?.seller_id){alert('Atribua um vendedor responsável antes de aceitar a proposta.');return;}
   const {error}=await sb.from('commercial_proposals').update({status,updated_at:new Date().toISOString()}).eq('id',id);
   if(error){alert('Não foi possível atualizar a proposta: '+error.message);return;}
   if(status==='aceita'){

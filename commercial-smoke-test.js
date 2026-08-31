@@ -38,4 +38,8 @@ assert(migration.includes('vendedor gerencia propostas das suas oportunidades'))
 assert(migration.includes('vendedor gerencia itens das suas propostas'));
 assert(source.includes("window.open(href,'_blank','noopener')"));
 assert(source.includes("sent_via:via"));
+assert(source.includes("COMM_VIEW==='performance'"),'visão de desempenho ausente');
+assert(source.includes('commercialPerformanceDashboard'),'painel de desempenho ausente');
+assert(source.includes('Atribua um vendedor responsável'),'vínculo obrigatório de vendedor ausente');
+assert(source.includes('seller_id:o.seller_id'),'proposta sem vendedor responsável');
 console.log('Commercial smoke test OK: itens, totais, estágios, RLS e envio verificados.');

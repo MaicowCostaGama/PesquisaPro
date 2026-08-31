@@ -672,3 +672,25 @@ table{font-size:12.5px}th{color:var(--ink3);font-size:10px;letter-spacing:.65px;
 .pill-teal{background:#ccfbf1;color:#0f766e}
 @media(max-width:900px){.recruiter-grid{grid-template-columns:1fr}.recruitment-stat-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:580px){.recruitment-hero{align-items:flex-start}.recruitment-hero-icon{display:none}.section-heading{align-items:flex-start;flex-direction:column}.recruiter-qr-layout{align-items:flex-start}.recruiter-qr{width:104px;height:104px}.recruiter-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.recruiter-personal-link{align-items:stretch;flex-direction:column}.recruiter-personal-link .btn{width:100%}}
+
+/* Desempenho comercial por vendedor */
+.comm-performance-page{display:flex;flex-direction:column;gap:16px}
+.comm-performance-hero{display:flex;justify-content:space-between;align-items:center;gap:22px;padding:24px 26px;border-radius:22px;background:linear-gradient(135deg,#0d2142 0%,#173b76 58%,#2563eb 100%);color:#fff;box-shadow:0 18px 42px rgba(15,47,92,.18)}
+.comm-performance-hero h2{margin:6px 0 8px;font-size:26px;letter-spacing:-.03em}
+.comm-performance-hero p{margin:0;color:rgba(255,255,255,.75);max-width:720px}
+.comm-performance-hero-badge{min-width:128px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px 18px;border-radius:18px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);backdrop-filter:blur(8px)}
+.comm-performance-hero-badge strong{font-size:32px;line-height:1}
+.comm-performance-hero-badge span{margin-top:7px;font-size:11px;color:rgba(255,255,255,.78);text-transform:uppercase;letter-spacing:.08em}
+.comm-performance-card{overflow:hidden}
+.comm-performance-table-wrap{overflow-x:auto;margin:0 -2px}
+.comm-performance-table{min-width:940px}
+.comm-performance-table th{white-space:nowrap}
+.comm-performance-person{display:flex;align-items:center;gap:10px;min-width:190px}
+.comm-performance-person small,.comm-kpi-inline small{display:block;color:var(--ink3);font-size:11px;margin-top:3px;white-space:nowrap}
+.comm-kpi-inline b{font-size:15px;color:var(--ink)}
+.comm-conversion-pill{display:inline-flex;align-items:center;justify-content:center;min-width:54px;padding:6px 9px;border-radius:999px;font-weight:800;font-size:12px}
+.comm-conversion-pill.is-good{color:#047857;background:#d1fae5}
+.comm-conversion-pill.is-mid{color:#9a3412;background:#ffedd5}
+.comm-conversion-pill.is-zero{color:#64748b;background:#f1f5f9}
+@media(max-width:700px){.comm-performance-hero{align-items:flex-start;flex-direction:column}.comm-performance-hero-badge{align-self:flex-start;min-width:112px}.comm-performance-hero h2{font-size:22px}.comm-performance-table{min-width:820px}}
+@media(prefers-reduced-motion:reduce){.comm-performance-hero,.comm-conversion-pill{transition:none!important}}

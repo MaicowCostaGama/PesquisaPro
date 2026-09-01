@@ -6,7 +6,7 @@ Esta versão atualiza o cadastro público aberto por link de recrutador.
 
 O cadastro exige documento oficial com foto e comprovante de endereço. Os arquivos são enviados para o bucket privado `researcher-documents` e os caminhos são gravados na tabela `signups`; o pesquisador não recebe acesso de leitura aos documentos.
 
-A cidade onde a pessoa mora continua sendo um campo independente. Para as cidades em que deseja atuar, o formulário usa uma lista pesquisável dos 853 municípios de Minas Gerais, obtida da API de Localidades do IBGE e armazenada localmente em `public-cities.js`. O candidato pode escolher de uma a cinco cidades, remover escolhas e pesquisar sem acentos.
+A cidade onde a pessoa mora continua sendo um campo independente. Para as cidades em que deseja atuar, o formulário usa uma lista pesquisável de municípios de todo o Brasil, obtida da API de Localidades do IBGE e armazenada localmente em `public-cities.js`. O candidato pode escolher de uma a cinco cidades, remover escolhas e pesquisar sem acentos por cidade, estado ou UF.
 
 ## Gestão
 
@@ -22,4 +22,4 @@ A versão aceita imagens e PDF de até 10 MB por arquivo. A validação de conte
 
 ## Fonte da lista de cidades
 
-A lista local foi gerada a partir da API oficial de Localidades do IBGE: https://servicodados.ibge.gov.br/api/v1/localidades/estados/MG/municipios
+A lista local foi gerada a partir do endpoint nacional da API oficial de Localidades do IBGE, com nome do município e sigla da UF: https://servicodados.ibge.gov.br/api/v1/localidades/municipios. A resposta utilizada contém 5.571 municípios distribuídos pelas 27 UFs.

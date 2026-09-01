@@ -7,7 +7,7 @@
   <meta name="description" content="Cadastro de pesquisador indicado pela PesquisaPro.">
   <title>Cadastro de pesquisador — PesquisaPro</title>
   <link rel="icon" type="image/png" sizes="64x64" href="assets/favicon-64.png">
-  <link rel="stylesheet" href="style.css?v=20260830310000">
+  <link rel="stylesheet" href="style.css?v=20260831020000">
   <style>
     body.signup-public{min-height:100vh;background:linear-gradient(135deg,#eff6ff 0%,#f8fafc 52%,#ecfeff 100%);color:#0f172a}
     .signup-shell{width:min(760px,calc(100% - 32px));margin:34px auto 56px}
@@ -72,7 +72,7 @@
           <div class="signup-field"><label for="cep">CEP</label><input id="cep" name="cep" inputmode="numeric" autocomplete="postal-code"></div>
           <div class="signup-field full"><label for="doc-foto">Documento oficial com foto *</label><div class="signup-file"><input id="doc-foto" name="doc_foto" type="file" accept="image/*,.pdf" required><span class="signup-file-name" id="doc-foto-name">Nenhum arquivo selecionado</span></div><div class="signup-file-note">Envie uma foto legível ou PDF da CNH, RG ou outro documento oficial. Limite de 10 MB.</div></div>
           <div class="signup-field full"><label for="doc-comprovante">Comprovante de endereço *</label><div class="signup-file"><input id="doc-comprovante" name="doc_comprovante" type="file" accept="image/*,.pdf" required><span class="signup-file-name" id="doc-comprovante-name">Nenhum arquivo selecionado</span></div><div class="signup-file-note">Pode ser conta de água, luz, telefone ou outro comprovante recente. Limite de 10 MB.</div></div>
-          <div class="signup-field full"><label for="city-search">Cidades em que deseja participar *</label><div class="city-picker"><input id="city-search" class="city-search" type="search" placeholder="Buscar cidade de Minas Gerais…" autocomplete="off"><div class="city-count"><span>Escolha até 5 cidades</span><strong id="city-count-label">0/5 selecionadas</strong></div><div id="city-selected" class="city-selected" aria-live="polite"></div><div id="city-options" class="city-options" role="listbox" aria-label="Cidades disponíveis"></div></div><div class="signup-help">Selecione uma ou até cinco cidades. Use a busca para encontrar rapidamente sua região.</div></div>
+          <div class="signup-field full"><label for="city-search">Cidades em que deseja participar *</label><div class="city-picker"><input id="city-search" class="city-search" type="search" placeholder="Buscar cidade, estado ou UF…" autocomplete="off"><div class="city-count"><span>Escolha até 5 cidades</span><strong id="city-count-label">0/5 selecionadas</strong></div><div id="city-selected" class="city-selected" aria-live="polite"></div><div id="city-options" class="city-options" role="listbox" aria-label="Cidades disponíveis"></div></div><div class="signup-help">Selecione de uma a cinco cidades de qualquer estado do Brasil. Use a busca por cidade, estado ou UF para encontrar rapidamente sua região.</div></div>
         </div>
         <div class="signup-actions"><button id="signup-submit" type="submit">Enviar meu cadastro</button><span class="signup-help">Ao enviar, você autoriza a equipe a analisar seus dados para trabalhos de pesquisa.</span></div>
       </form>
@@ -82,7 +82,7 @@
   </main>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="supabase-client.js"></script>
-  <script src="public-cities.js?v=310000"></script>
+  <script src="public-cities.js?v=20260831020100"></script>
   <script>
     (()=>{
       const params=new URLSearchParams(location.search);const code=(params.get('recrutador')||'').trim();

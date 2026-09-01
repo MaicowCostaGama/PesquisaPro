@@ -16,7 +16,11 @@ assert(html.includes('p_doc_foto_url:fotoPath'), 'documento com foto não é env
 assert(html.includes('p_doc_comprovante_url:comprovantePath'), 'comprovante não é enviado');
 assert(html.includes("sb.storage.from('researcher-documents').upload"), 'upload privado ausente');
 assert(html.includes('public-cities.js'), 'lista local de cidades não é carregada');
-assert(cities.includes('Belo Horizonte/MG'), 'lista de cidades não contém município esperado');
+const cityValues = [...cities.matchAll(/"([^"]+\/(?:AC|AL|AP|AM|BA|CE|DF|ES|GO|MA|MT|MS|MG|PA|PB|PR|PE|PI|RJ|RN|RS|RO|RR|SC|SP|SE|TO))"/g)].map(match => match[1]);
+const cityUfs = new Set(cityValues.map(city => city.split('/').pop()));
+assert(cityValues.length === 5571, `lista nacional deveria ter 5.571 municípios, encontrou ${cityValues.length}`);
+assert(cityUfs.size === 27, `lista nacional deveria ter 27 UFs, encontrou ${cityUfs.size}`);
+['Belo Horizonte/MG', 'São Paulo/SP', 'Salvador/BA', 'Manaus/AM', 'Porto Alegre/RS', 'Brasília/DF'].forEach(city => assert(cityValues.includes(city), `lista nacional não contém ${city}`));
 assert(migration.includes("researcher-documents"), 'bucket privado ausente na migration');
 assert(migration.includes('p_doc_foto_url text'), 'assinatura de documento com foto ausente');
 assert(migration.includes('p_doc_comprovante_url text'), 'assinatura de comprovante ausente');

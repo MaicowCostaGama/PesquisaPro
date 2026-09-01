@@ -694,3 +694,7 @@ table{font-size:12.5px}th{color:var(--ink3);font-size:10px;letter-spacing:.65px;
 .comm-conversion-pill.is-zero{color:#64748b;background:#f1f5f9}
 @media(max-width:700px){.comm-performance-hero{align-items:flex-start;flex-direction:column}.comm-performance-hero-badge{align-self:flex-start;min-width:112px}.comm-performance-hero h2{font-size:22px}.comm-performance-table{min-width:820px}}
 @media(prefers-reduced-motion:reduce){.comm-performance-hero,.comm-conversion-pill{transition:none!important}}
+
+/* Documentos privados da fila de cadastro */
+.signup-doc-actions{display:inline-flex;align-items:center;gap:5px;margin-left:8px}.signup-doc-actions .btn-ghost{padding:5px 8px;font-size:11px;color:var(--brand-d);border:1px solid rgba(37,99,235,.2);background:var(--brand-l)}.signup-doc-actions .btn-ghost:hover{background:#dbeafe;border-color:#93c5fd}
+@media(max-width:700px){.signup-doc-actions{width:100%;margin:6px 0 0}.signup-doc-actions .btn-ghost{flex:1}.signup-actions{flex-wrap:wrap}.signup-actions>div{margin-left:0!important;width:100%;justify-content:flex-start;flex-wrap:wrap}}

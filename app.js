@@ -3501,6 +3501,7 @@ function signupRows(){
     const docsOk=s.docFoto&&s.docComprovante;
     const docCount=(s.docFoto?1:0)+(s.docComprovante?1:0);
     const docPill=docsOk?'<span class="pill pill-green">● docs ok</span>':`<span class="pill pill-red">● ${docCount}/2 docs</span>`;
+    const docActions=`<span class="signup-doc-actions">${s.docFoto?`<button class="btn-ghost" onclick="event.stopPropagation();signupOpenDocument(${i},'foto')">Documento</button>`:''}${s.docComprovante?`<button class="btn-ghost" onclick="event.stopPropagation();signupOpenDocument(${i},'comprovante')">Endereço</button>`:''}</span>`;
     const note=s.status==='diligencia'&&s.note?`<div class="signup-note">⚠ Em diligência: ${esc(s.note)}</div>`:'';
     return `<div class="signup-row">
       <div class="signup-top">
@@ -3513,7 +3514,7 @@ function signupRows(){
         <button class="btn-ghost" onclick="signupView(${i})">Ver dados</button>
       </div>
       <div class="signup-actions">
-        ${docPill}
+        ${docPill}${docActions}
         <div style="margin-left:auto;display:flex;gap:6px">
           <button class="btn-ghost" style="color:var(--teal)" onclick="signupApprove(${i})">Aprovar</button>
           <button class="btn-ghost" style="color:var(--amber)" onclick="signupDiligence(${i})">Diligenciar</button>
@@ -3547,6 +3548,21 @@ function sendSignupWhatsApp(){
   const digits=(phone||'').replace(/\D/g,'');
   const base=digits?('https://wa.me/'+(digits.length<=11?'55'+digits:digits)):'https://wa.me/';
   window.open(base+'?text='+msg,'_blank','noopener');
+}
+async function signupOpenDocument(i,kind){
+  const s=SIGNUPS[i];
+  const path=kind==='foto'?s.docFoto:s.docComprovante;
+  if(!path){alert('Este documento não foi anexado.');return;}
+  const popup=window.open('about:blank','_blank','noopener');
+  try{
+    let url=path;
+    if(!/^https?:\/\//i.test(path)){
+      const {data,error}=await sb.storage.from('researcher-documents').createSignedUrl(path,600);
+      if(error||!data?.signedUrl)throw new Error(error?.message||'URL temporária indisponível');
+      url=data.signedUrl;
+    }
+    if(popup)popup.location.href=url;else window.location.href=url;
+  }catch(ex){if(popup)popup.close();alert('Não foi possível abrir este documento. Verifique se a migration de documentos foi executada e se o arquivo ainda existe.');console.error(ex);}
 }
 function signupView(i){
   const s=SIGNUPS[i];

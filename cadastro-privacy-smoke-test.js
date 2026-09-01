@@ -10,4 +10,8 @@ assert(source.includes("sb.rpc('recruiter_public_info'"), 'validação do recrut
 assert(source.includes("sb.rpc('submit_recruiter_signup'"), 'submissão rastreável ausente');
 assert(source.includes('p_recruiter_code:code'), 'código não é enviado para rastreamento');
 assert(source.includes('style.css?v=20260830310000'), 'cache atualizado ausente');
+assert(source.includes('signup-value-title'), 'seção de benefícios ausente');
+assert(source.includes('Ganhe por entrevista aprovada'), 'explicação de ganhos ausente');
+assert(source.includes('O cadastro não garante participação imediata nem renda fixa'.toLowerCase()) || source.toLowerCase().includes('renda fixa'), 'aviso de expectativa ausente');
+assert(source.includes('Aguarde a análise'), 'etapas do cadastro ausentes');
 console.log('Cadastro privacy smoke test OK: recrutador oculto e rastreamento preservado.');

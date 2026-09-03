@@ -5209,7 +5209,7 @@ PAGES.company=()=>head('Dados da empresa','Informações usadas em contratos e r
         <div><label class="lbl">Inscrição estadual <span class="pill pill-gray">🔒 fixo</span></label><input class="inp" value="Isento" disabled style="background:var(--bg);color:var(--ink3);cursor:not-allowed"></div>
       </div>
       <div class="mb"><label class="lbl">Endereço</label><input class="inp" value="Av. Afonso Pena, 1000 — Belo Horizonte/MG"></div>
-      <div class="field-row"><div><label class="lbl">Telefone</label><input class="inp" value="(31) 99999-0000"></div><div><label class="lbl">E-mail</label><input class="inp" value="contato@pesquisapro.com.br"></div></div>
+      <div class="field-row"><div><label class="lbl">Telefone</label><input class="inp" value="(31) 99668-3030"></div><div><label class="lbl">E-mail</label><input class="inp" value="contato@pesquisapro.com.br"></div></div>
     </div>
     <div class="card">
       <div class="card-t">Marca e responsável técnico <span class="pill pill-gray">🔒 fixo</span></div>

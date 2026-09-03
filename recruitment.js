@@ -9,7 +9,7 @@
     const origin=window.location.origin;
     return origin&&origin!=='null'&&!origin.startsWith('file:')?origin:'https://pesquisa-pro.vercel.app';
   };
-  const BUSINESS_WHATSAPP='553996683030';
+  const BUSINESS_WHATSAPP='5531996683030';
   let RECRUITMENT_LOADED=false;
   let RECRUITMENT_LOADING=false;
   let RECRUITMENT_DATA={recruiters:[],signups:[],captures:[]};

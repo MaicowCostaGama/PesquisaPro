@@ -15,5 +15,5 @@ assert(commercial.includes('conversationButton(o.phone'), 'contato nas oportunid
 assert(commercial.includes('comm-card-actions'), 'contato no card comercial ausente');
 assert(css.includes('.conversation-btn'), 'estilo do botão de conversa ausente');
 assert(css.includes('.map-popup-actions'), 'ações do popup sem agrupamento');
-assert(fs.readFileSync('app.html','utf8').includes('app.js?v=20260903050000'), 'cache do app desatualizado');
+assert(fs.readFileSync('app.html','utf8').includes('app.js?v=20260903070000'), 'cache do app desatualizado');
 console.log('Conversation smoke test OK: usuários, equipe, coleta, auditoria, oportunidades e links WhatsApp verificados.');

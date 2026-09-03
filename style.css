@@ -712,3 +712,36 @@ table{font-size:12.5px}th{color:var(--ink3);font-size:10px;letter-spacing:.65px;
 .user-actions-cell{min-width:265px;text-align:right;white-space:normal}.user-actions-cell>.btn-ghost,.user-actions-cell>.conversation-btn{display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;min-height:32px;margin:2px;padding:6px 9px;border-radius:9px;font-size:11px;line-height:1.1}.user-actions-cell>.conversation-btn{color:#0f766e;border-color:#b9eadf;background:#f0fdf9}.user-actions-cell>.conversation-btn:hover{color:#0f766e;border-color:#77d6c5;background:#dcfdf6}.user-actions-cell>.user-password-reset{color:#1d5ec5!important}.user-actions-cell>[onclick*="userDelete"]{color:#b42318!important;border-color:#f1c3bd!important;background:#fff8f7}.user-actions-cell>[onclick*="userDelete"]:hover{background:#fff0ee;border-color:#e99c91!important;color:#991b1b!important}.user-actions-cell>[onclick*="userShow"],.user-actions-cell>[onclick*="userOpen"]{background:#fff}
 @media(max-width:1050px){.user-tabs-head{align-items:flex-start;flex-direction:column;gap:10px}.user-tab-context{align-self:flex-end}.user-tabs-track{padding-bottom:2px}.user-actions-cell{min-width:230px}}
 @media(max-width:640px){.user-tabs{padding:13px 12px 10px;border-radius:15px}.user-tabs-head{padding-bottom:11px}.user-tab-context{align-self:stretch}.user-tab-context-icon{width:29px;height:29px}.user-tabs-track{margin:0 -4px;padding:10px 4px 2px}.user-tab{min-height:36px;padding:0 10px;font-size:11.5px}.user-actions-cell{min-width:190px;text-align:left}.user-actions-cell>.btn-ghost,.user-actions-cell>.conversation-btn{margin:2px 1px;padding:6px 8px}.user-table-scroll table{min-width:820px}}
+
+/* Responsividade unificada das fichas de perfil e do canal do recrutador */
+#main,.main,.profile-page,.recruitment-page{min-width:0;max-width:100%}.profile-page .page-head,.recruitment-page .page-head{min-width:0}.profile-page .page-head>div:first-child,.recruitment-page .page-head>div:first-child{min-width:0}.profile-page .page-head h1,.recruitment-page .page-head h1{overflow-wrap:anywhere}.profile-page .page-head p,.recruitment-page .page-head p{overflow-wrap:anywhere}.profile-page .grid,.profile-page .card,.recruitment-page .card{min-width:0;max-width:100%}.profile-page .card:has(table){overflow-x:hidden}.profile-page table{width:100%;min-width:0;table-layout:fixed}.profile-page td{overflow-wrap:anywhere;word-break:break-word}.profile-page td:first-child{width:38%;word-break:normal}.profile-page .doc-attached{min-width:0}.profile-page .doc-attached span{min-width:0;overflow-wrap:anywhere;word-break:break-word}.profile-page .chip{max-width:100%;overflow-wrap:anywhere;white-space:normal}.profile-page .page-head .ph-actions,.recruitment-page .page-head .ph-actions{min-width:0}
+.recruiter-personal-page .recruitment-hero{min-width:0;overflow:hidden}.recruiter-personal-page .recruitment-hero>div:first-child{min-width:0;max-width:100%}.recruiter-personal-page .recruitment-hero h2,.recruiter-personal-page .recruitment-hero p{overflow-wrap:anywhere}.recruiter-personal-page .recruiter-personal-link{min-width:0;max-width:100%}.recruiter-personal-page .recruiter-personal-link code{min-width:0;max-width:100%}
+@media(max-width:860px){
+  .profile-page .page-head,.recruitment-page .page-head{gap:11px;margin-bottom:18px}
+  .profile-page .page-head .ph-actions,.recruitment-page .page-head .ph-actions{width:100%;margin-left:0;display:flex;flex-wrap:wrap;gap:7px}
+  .profile-page .page-head .ph-actions>button,.profile-page .page-head .ph-actions>a,.recruitment-page .page-head .ph-actions>button,.recruitment-page .page-head .ph-actions>a{flex:1 1 145px;justify-content:center;min-width:0}
+  .profile-page .grid.g2{grid-template-columns:minmax(0,1fr)}
+  .profile-page .card:has(table){overflow-x:hidden}
+}
+@media(max-width:580px){
+  body{overflow-x:hidden}
+  .profile-page .page-head .ph-actions>button,.profile-page .page-head .ph-actions>a{flex-basis:calc(50% - 7px);font-size:11.5px;padding-left:9px;padding-right:9px}
+  .profile-page .page-head .ph-actions>.btn-ghost{min-height:36px}
+  .profile-page .card{padding:14px}
+  .profile-page .card-t{font-size:14px}
+  .profile-page table{font-size:12px}
+  .profile-page td{padding:9px 8px;vertical-align:top}
+  .profile-page td:first-child{width:40%;font-size:11px}
+  .profile-page .doc-attached{align-items:flex-start;gap:7px;flex-wrap:wrap}
+  .profile-page .doc-attached .btn-ghost{margin-left:auto}
+  .recruiter-personal-page .recruitment-hero{align-items:stretch;flex-direction:column;padding:18px 16px;border-radius:15px}
+  .recruiter-personal-page .recruitment-hero h2{font-size:22px;line-height:1.15}
+  .recruiter-personal-page .recruitment-hero p{font-size:12px}
+  .recruiter-personal-page .recruitment-stat-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+  .recruiter-personal-page .recruitment-section{padding:14px}
+  .recruiter-personal-page .user-table-scroll{max-width:100%;overflow-x:auto}
+}
+@media(max-width:380px){
+  .profile-page .page-head .ph-actions>button,.profile-page .page-head .ph-actions>a{flex-basis:100%}
+  .recruiter-personal-page .recruitment-stat-grid{grid-template-columns:1fr}
+}

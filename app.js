@@ -3767,7 +3767,7 @@ function userViewGeneric(u){
   const docBlock=u.doc
     ?`<div class="doc-attached" style="margin:0"><span>📎 ${esc(u.doc)}</span><button class="btn-ghost" onclick="alert('Protótipo: abrir/baixar documento')">abrir</button></div>`
     :'<span class="pill pill-red">● documento não anexado</span>';
-  return head(u.name,'Dados do usuário',
+  return '<div class="profile-page profile-page-generic">'+head(u.name,'Dados do usuário',
     `<button class="btn btn-out" onclick="userViewBack()">← Voltar</button>
      <button class="btn btn-out" style="color:var(--teal);border-color:var(--teal)" onclick="userWhatsApp(${jsArg(u.phone)})">WhatsApp</button>
      ${userPasswordResetButton(u,USER_VIEW)}
@@ -3803,7 +3803,7 @@ function userViewGeneric(u){
         ${row('Status',u.status==='ativo'?'Ativo':'Pendente')}
       </table>
     </div>
-  </div>`;
+  </div></div>`;
 }
 function userViewPesq(u,idx){
   const initials=u.name.split(' ').map(n=>n[0]).slice(0,2).join('');
@@ -3815,7 +3815,7 @@ function userViewPesq(u,idx){
   const cidades=(u.cidadesAtuacao||[]).length
     ?u.cidadesAtuacao.map(c=>`<span class="chip" style="margin:2px">${esc(c)}</span>`).join('')
     :dash;
-  return head(u.name,'Dados do pesquisador',
+  return '<div class="profile-page profile-page-pesq">'+head(u.name,'Dados do pesquisador',
     `<button class="btn btn-out" onclick="userViewBack()">← Voltar</button>
      <button class="btn btn-out" style="color:var(--teal);border-color:var(--teal)" onclick="userWhatsApp(${jsArg(u.phone)})">WhatsApp</button>
      ${userPasswordResetButton(u,idx)}
@@ -3867,7 +3867,7 @@ function userViewPesq(u,idx){
         ${!u.pixKey?'<div class="callout warn" style="margin-top:12px;font-size:12px">Dados de PIX não informados. Edite o cadastro para incluí-los antes de processar pagamentos.</div>':''}
       </div>
     </div>
-  </div>`;
+  </div></div>`;
 }
 function userViewCliente(u,idx){
   const initials=u.name.split(' ').map(n=>n[0]).slice(0,2).join('').toUpperCase();
@@ -3876,7 +3876,7 @@ function userViewCliente(u,idx){
   const surveys=(u.surveys||[]).length?u.surveys.map(s=>`<div class="chip" style="margin:2px">${esc(s)}</div>`).join(''):dash;
   const enderecoParts=[[u.rua,u.numero].filter(Boolean).join(', '),u.cidade,u.cep?('CEP '+u.cep):''].filter(Boolean);
   const endereco=enderecoParts.join(' · ');
-  return head(u.name,'Dados do cliente',
+  return '<div class="profile-page profile-page-client">'+head(u.name,'Dados do cliente',
     `<button class="btn btn-out" onclick="userViewBack()">← Voltar</button>
      <button class="btn btn-out" style="color:var(--teal);border-color:var(--teal)" onclick="userWhatsApp(${jsArg(u.phone)})">WhatsApp</button>
      ${userPasswordResetButton(u,idx)}
@@ -3921,7 +3921,7 @@ function userViewCliente(u,idx){
         <button class="btn btn-out" style="width:100%;margin-top:8px" onclick="go('reports')">Abrir relatório (visão interna)</button>
       </div>
     </div>
-  </div>`;
+  </div></div>`;
 }
 function approvePesqCommon(i){
   const u=USERS[i];

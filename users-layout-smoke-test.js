@@ -7,8 +7,8 @@ for (const token of ['user-tabs','user-tab-context','users-count-chip','users-em
 for (const token of ['.user-tabs','.user-tab.is-active','.users-empty-state','.user-table-scroll','.user-stat-grid','@media(max-width:600px)']) assert(css.includes(token), `estilo ausente: ${token}`);
 assert(app.includes('aria-current="${USER_TAB===t.key?\'page\':\'false\'}"'));
 assert(app.includes('USER_TAB_NEW_LABEL[tab]'));
-assert(html.includes('style.css?v=20260903050000'));
-assert(html.includes('app.js?v=20260903050000'));
-assert(html.includes('commercial.js?v=20260903050000'));
-assert(html.includes('recruitment.js?v=20260903050000'));
+assert(html.includes('style.css?v=20260903070000'));
+assert(html.includes('app.js?v=20260903070000'));
+assert(html.includes('commercial.js?v=20260903070000'));
+assert(html.includes('recruitment.js?v=20260903070000'));
 console.log('Users layout smoke test OK: abas, contexto, cards, tabela, estado vazio, acessibilidade e responsividade verificados.');

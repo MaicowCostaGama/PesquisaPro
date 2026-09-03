@@ -209,7 +209,7 @@ create table public.collection_answers (
 create table public.payments (
   id uuid primary key default gen_random_uuid(),
   survey_id uuid not null references public.surveys(id) on delete cascade,
-  researcher_id uuid not null references public.profiles(id) on delete cascade,
+  researcher_id uuid references public.profiles(id) on delete set null,
   valid_count integer not null default 0,
   rejected_count integer not null default 0,
   status text not null default 'pendente' check (status in ('pendente','aprovado','auditoria')),
@@ -511,8 +511,12 @@ declare
   v_valid integer;
   v_rejected integer;
 begin
-  v_survey_id := coalesce(new.survey_id, old.survey_id);
-  v_researcher_id := coalesce(new.researcher_id, old.researcher_id);
+  if new.researcher_id is null then
+    return null;
+  end if;
+
+  v_survey_id := new.survey_id;
+  v_researcher_id := new.researcher_id;
 
   select count(*) filter (where status = 'valid'), count(*) filter (where status = 'rejected')
     into v_valid, v_rejected

@@ -8,8 +8,10 @@ A correção altera essa relação para `ON DELETE SET NULL`. Assim, ao excluir 
 
 Executar uma vez no SQL Editor o arquivo `deploy/exclusao-pesquisador-com-coletas.sql`. A migration é transacional e recria a constraint `collection_events_researcher_id_fkey` com `ON DELETE SET NULL`.
 
-Antes da execução, não é necessário apagar eventos manualmente. Depois da mensagem **Success. No rows returned**, o administrador poderá excluir o pesquisador pelo painel.
+Em seguida, executar `deploy/exclusao-pesquisador-pagamentos.sql`. Essa segunda migration torna `payments.researcher_id` anulável, preserva o resumo financeiro e ajusta o gatilho para não recriar pagamentos durante a remoção do perfil.
+
+Antes da execução, não é necessário apagar eventos ou pagamentos manualmente. Depois de cada mensagem **Success. No rows returned**, o administrador poderá excluir o pesquisador pelo painel.
 
 ## Segurança e auditoria
 
-A alteração não libera acesso adicional nem remove eventos de coleta. Ela apenas permite a remoção do perfil sem apagar o histórico da pesquisa. O painel também identifica o erro antigo e informa o nome exato da migration caso ela ainda não tenha sido executada.
+As alterações não liberam acesso adicional nem removem eventos ou resumos financeiros. Elas apenas removem o vínculo de identidade do perfil, mantendo o histórico para auditoria. O painel identifica os bloqueios antigos de coleta e financeiro e informa o nome exato da migration que ainda faltar executar.

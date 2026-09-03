@@ -3851,6 +3851,8 @@ async function userDelete(idx){
       const errorText=String(error.message||'');
       if(error.code==='23503'&&errorText.includes('collection_events')){
         alert('Este pesquisador possui histórico de coletas. Execute a migration deploy/exclusao-pesquisador-com-coletas.sql no Supabase para preservar as entrevistas e permitir a exclusão do perfil.');
+      }else if(error.code==='23503'&&errorText.includes('payments')){
+        alert('O histórico financeiro ainda está bloqueando a exclusão. Execute também a migration deploy/exclusao-pesquisador-pagamentos.sql no Supabase.');
       }else{
         alert('Não foi possível excluir: '+errorText);
       }

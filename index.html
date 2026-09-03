@@ -51,7 +51,7 @@
           <div class="lp-trust-item"><b>27</b><span>Regionais atendidas</span></div>
           <div class="lp-trust-item"><b>R$ 5–30</b><span>Ganho por entrevista</span></div>
         </div>
-        <p class="lp-trust-note">*Números de demonstração do protótipo.</p>
+        <p class="lp-trust-note">*Indicadores apresentados podem variar conforme a operação.</p>
       </div>
 
       <div class="lp-hero-visual">
@@ -211,13 +211,13 @@
           </div>
 
           <button type="submit" class="btn btn-fill" style="width:100%;justify-content:center">Enviar mensagem</button>
-          <p class="lp-form-note">Protótipo de demonstração — este formulário não envia dados de verdade.</p>
+          <p class="lp-form-note">Ao enviar, sua mensagem será aberta no WhatsApp oficial do PesquisaPro para atendimento.</p>
         </form>
 
         <div class="lp-form-card lp-success" id="lpSuccess">
           <div class="ls-ico">✓</div>
           <h3>Recebemos sua mensagem!</h3>
-          <p>Nossa equipe entra em contato em até 1 dia útil.<br>Protótipo de demonstração — dados fictícios.</p>
+          <p id="lpSuccessText">Sua mensagem foi preparada no WhatsApp. Conclua o envio por lá para falar com nossa equipe.</p>
           <button class="btn btn-out" style="margin-top:18px" onclick="lpReset()">Enviar outra mensagem</button>
         </div>
       </div>
@@ -229,7 +229,7 @@
 <footer class="lp-footer">
   <div class="lp-main lp-footer-in">
     <img src="assets/logo-wide.png" alt="PesquisaPro">
-    <span class="lp-footer-note">© 2026 PesquisaPro · Protótipo de demonstração · dados fictícios</span>
+    <span class="lp-footer-note">© 2026 PesquisaPro · Atendimento e recrutamento em todo o Brasil</span>
     <div class="lp-footer-links">
       <a href="#sobre">Sobre</a>
       <a href="#contato">Contato</a>
@@ -254,7 +254,19 @@ document.querySelectorAll('.lp-radio-opt').forEach(lbl=>{
 });
 function lpSubmit(e){
   e.preventDefault();
-  document.getElementById('lpForm').style.display='none';
+  const form=e.currentTarget;
+  const inputs=form.querySelectorAll('input[type="text"]');
+  const name=(inputs[0]?.value||'').trim();
+  const contact=(inputs[1]?.value||'').trim();
+  const interest=form.querySelector('input[name="lpInterest"]:checked')?.value||'outro';
+  const message=(form.querySelector('textarea')?.value||'').trim();
+  const interestLabel={pesquisador:'ser pesquisador',cliente:'contratar uma pesquisa',outro:'outro assunto'}[interest]||'outro assunto';
+  const text=['Olá, equipe PesquisaPro!','Tenho interesse em '+interestLabel+'.','Nome: '+name,'Contato: '+contact,message?'Mensagem: '+message:''].filter(Boolean).join('\n');
+  const whatsappUrl='https://wa.me/553996683030?text='+encodeURIComponent(text);
+  const popup=window.open(whatsappUrl,'_blank','noopener');
+  const success=document.getElementById('lpSuccessText');
+  if(success)success.textContent=popup?'Sua mensagem foi preparada no WhatsApp. Conclua o envio por lá para falar com nossa equipe.':'O navegador bloqueou a abertura automática. Use o WhatsApp oficial do PesquisaPro para enviar sua mensagem.';
+  form.style.display='none';
   document.getElementById('lpSuccess').style.display='block';
   document.getElementById('lpSuccess').scrollIntoView({behavior:'smooth', block:'center'});
   return false;

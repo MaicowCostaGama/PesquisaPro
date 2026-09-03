@@ -12,7 +12,7 @@ const ROLES={
   cliente:{name:'Prefeitura de Uberlândia',role:'Cliente',initials:'PU',
     nav:['client-progress','client-results']},
 };
-const CLIENT_SELF_IDX=0; /* cliente de demonstração ao entrar com o perfil "Cliente" */
+const CLIENT_SELF_IDX=0; /* cliente de referência ao entrar com o perfil "Cliente" */
 const NAV_META={
   dashboard:{ico:'▤',label:'Painel geral',group:'Visão geral'},
   'dashboard-pesq':{ico:'▤',label:'Meu painel',group:'Visão geral'},
@@ -478,7 +478,7 @@ PAGES['dashboard-pesq']=()=>{
 
 /* ============ ÁREA DO CLIENTE ============
    Quando quem está logado é de verdade um cliente (login real via Supabase
-   Auth), usamos o próprio CURRENT_PROFILE — nunca o array de demonstração
+   Auth), usamos o próprio CURRENT_PROFILE — nunca o array de referência local
    USERS (que só é carregado para sessões de staff) nem um índice fixo. A
    pesquisa do cliente é achada pelo id real dele em survey_clients
    (SURVEYS[].clientIds), não por casamento de nome. */
@@ -2042,7 +2042,7 @@ PAGES.sample=()=>head('Cálculo de amostra','Defina o tamanho da amostra a parti
 
 /* ============ QUOTAS ============ */
 PAGES.quotas=()=>head('Metas e cotas','Distribua a amostra por variáveis e acompanhe o cumprimento em campo',
-  '<button class="btn btn-out" onclick="alert(\'Protótipo: importar perfil populacional (IBGE/TSE)\')">Importar perfil</button><button class="btn btn-fill" onclick="alert(\'Protótipo: salvar plano de cotas\')">Salvar plano</button>')+`
+  '<button class="btn btn-out" onclick="alert(\'Recurso ainda não configurado: importar perfil populacional (IBGE/TSE)\')">Importar perfil</button><button class="btn btn-fill" onclick="alert(\'Recurso ainda não configurado: salvar plano de cotas\')">Salvar plano</button>')+`
   <div class="grid g4" style="margin-bottom:16px">
     ${stat('Amostra total','4.200','plano amostral aprovado','∑','#2563eb')}
     ${stat('Cotas definidas','54','sexo × idade × região','◷','#7c3aed')}
@@ -2118,7 +2118,7 @@ function collectDetail(idx){
       <td>${Number(info.done)||0} / ${Number(info.meta)||0}</td>
       <td>${syncPill}</td>
       <td style="white-space:nowrap">
-        <button class="btn-ghost" onclick="alert('Protótipo: link reenviado')">Reenviar link</button>
+        <button class="btn-ghost" onclick="alert('Recurso ainda não configurado: link reenviado')">Reenviar link</button>
         <a class="btn-ghost" style="color:var(--teal);display:inline-block" href="${wa}" target="_blank" rel="noopener">WhatsApp</a>
       </td></tr>`;
   }).join(''):'<tr><td colspan="6" class="empty">Nenhum pesquisador vinculado. Atribua a equipe em Minhas pesquisas.</td></tr>';
@@ -2127,7 +2127,7 @@ function collectDetail(idx){
   const mapResearchers=[...new Set(team)].sort((a,b)=>a.localeCompare(b));
   const mapResearcherOptions=mapResearchers.map(name=>`<option value="${esc(name)}">${esc(name)}</option>`).join('');
   return head('Coleta e campo — '+s.name,'Pesquisadores vinculados a esta pesquisa',
-    '<button class="btn btn-out" onclick="collectBack()">← Pesquisas</button><button class="btn btn-fill" onclick="alert(\'Protótipo: exportar dados brutos (CSV/SPSS)\')">Exportar dados</button>')+`
+    '<button class="btn btn-out" onclick="collectBack()">← Pesquisas</button><button class="btn btn-fill" onclick="alert(\'Recurso ainda não configurado: exportar dados brutos (CSV/SPSS)\')">Exportar dados</button>')+`
   <div class="grid g3" style="margin-bottom:16px">
     ${stat('Pesquisadores',String(team.length),'vinculados','☺','#2563eb')}
     ${stat('Coletado',collected.toLocaleString('pt-BR'),'de '+sample.toLocaleString('pt-BR'),'✓','#059669')}
@@ -3492,7 +3492,7 @@ function userTableRows(tab){
       const docsOk=u.docFoto&&u.docComprovante;
       const docCount=(u.docFoto?1:0)+(u.docComprovante?1:0);
       const docPillTop=docsOk?'<span class="pill pill-green">● 2/2 anexados</span>':`<span class="pill pill-red">● ${docCount}/2 anexados</span>`;
-      const docLine=(val)=>val?`<div style="font-size:11px;line-height:1.6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px" title="${esc(val)}"><a href="#" onclick="event.stopPropagation();event.preventDefault();alert('Protótipo: abrir/baixar documento')" style="color:var(--teal);text-decoration:none">📎 ${esc(val)}</a></div>`:'';
+      const docLine=(val)=>val?`<div style="font-size:11px;line-height:1.6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px" title="${esc(val)}"><a href="#" onclick="event.stopPropagation();event.preventDefault();alert('Recurso ainda não configurado: abrir/baixar documento')" style="color:var(--teal);text-decoration:none">📎 ${esc(val)}</a></div>`:'';
       const docPill=`<div>${docPillTop}</div>${docLine(u.docFoto)}${docLine(u.docComprovante)}`;
       const pixPill=u.pixKey?`<span class="pill pill-green" title="${esc(u.pixBank||'')} ${esc(u.pixAg||'')}/${esc(u.pixAcc||'')}">● ${esc((u.pixKey||'').length>16?u.pixKey.slice(0,15)+'…':u.pixKey)}</span>`:'<span class="pill pill-gray">— não informado</span>';
       const initials=u.name.split(' ').map(n=>n[0]).slice(0,2).join('');
@@ -3576,14 +3576,14 @@ function userList(){
     <div class="card-d">Envie para que a pessoa preencha o próprio cadastro com todos os campos obrigatórios. O cadastro entra na fila acima para sua aprovação.</div>
     <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
       <input class="inp" value="pesquisapro.com.br/cadastro/mg2026-x8f3" readonly>
-      <button class="btn btn-out" onclick="alert('Protótipo: link copiado')">Copiar</button>
+      <button class="btn btn-out" onclick="alert('Recurso ainda não configurado: link copiado')">Copiar</button>
     </div>
     <div style="display:flex;gap:14px;align-items:center">
       <div id="signup-qr" class="qr-box"></div>
       <div style="flex:1">
         <button class="btn btn-fill" style="width:100%;margin-bottom:8px;background:var(--teal)" onclick="sendSignupWhatsApp()">Enviar link + QR por WhatsApp</button>
-        <button class="btn btn-out" style="width:100%;margin-bottom:8px" onclick="alert('Protótipo: link enviado por e-mail')">Enviar por e-mail</button>
-        <button class="btn btn-out" style="width:100%" onclick="alert('Protótipo: QR Code baixado/impresso')">Baixar QR Code</button>
+        <button class="btn btn-out" style="width:100%;margin-bottom:8px" onclick="alert('Recurso ainda não configurado: link enviado por e-mail')">Enviar por e-mail</button>
+        <button class="btn btn-out" style="width:100%" onclick="alert('Recurso ainda não configurado: QR Code baixado/impresso')">Baixar QR Code</button>
       </div>
     </div>`:''}
   </div>
@@ -3765,7 +3765,7 @@ function userViewGeneric(u){
   const row=(l,v)=>`<tr><td style="color:var(--ink3);width:38%">${l}</td><td style="font-weight:600">${v||dash}</td></tr>`;
   const isStaff=['admin','coord','gerente'].includes(u.role);
   const docBlock=u.doc
-    ?`<div class="doc-attached" style="margin:0"><span>📎 ${esc(u.doc)}</span><button class="btn-ghost" onclick="alert('Protótipo: abrir/baixar documento')">abrir</button></div>`
+    ?`<div class="doc-attached" style="margin:0"><span>📎 ${esc(u.doc)}</span><button class="btn-ghost" onclick="alert('Recurso ainda não configurado: abrir/baixar documento')">abrir</button></div>`
     :'<span class="pill pill-red">● documento não anexado</span>';
   return '<div class="profile-page profile-page-generic">'+head(u.name,'Dados do usuário',
     `<button class="btn btn-out" onclick="userViewBack()">← Voltar</button>
@@ -3810,7 +3810,7 @@ function userViewPesq(u,idx){
   const dash='<span style="color:var(--ink3);font-weight:400">—</span>';
   const row=(l,v)=>`<tr><td style="color:var(--ink3);width:38%">${l}</td><td style="font-weight:600">${v||dash}</td></tr>`;
   const docRow=(label,val)=>val
-    ?`<div class="doc-attached" style="margin:0 0 8px"><span>📎 ${esc(label)}: ${esc(val)}</span><button class="btn-ghost" onclick="alert('Protótipo: abrir/baixar documento')">abrir</button></div>`
+    ?`<div class="doc-attached" style="margin:0 0 8px"><span>📎 ${esc(label)}: ${esc(val)}</span><button class="btn-ghost" onclick="alert('Recurso ainda não configurado: abrir/baixar documento')">abrir</button></div>`
     :`<div style="margin-bottom:8px"><span class="pill pill-red">● ${esc(label)}: não anexado</span></div>`;
   const cidades=(u.cidadesAtuacao||[]).length
     ?u.cidadesAtuacao.map(c=>`<span class="chip" style="margin:2px">${esc(c)}</span>`).join('')
@@ -3907,7 +3907,7 @@ function userViewCliente(u,idx){
         <div class="card-t">Aprovação do formulário</div>
         <div class="card-d">Envie o formulário da pesquisa para o cliente revisar e aprovar</div>
         <button class="btn btn-fill" style="width:100%;background:var(--teal)" onclick="userClienteSendForm(${idx})">Enviar formulário via WhatsApp</button>
-        <button class="btn btn-out" style="width:100%;margin-top:8px" onclick="alert('Protótipo: formulário enviado por e-mail para aprovação')">Enviar por e-mail</button>
+        <button class="btn btn-out" style="width:100%;margin-top:8px" onclick="alert('Recurso ainda não configurado: formulário enviado por e-mail para aprovação')">Enviar por e-mail</button>
       </div>
       <div class="card">
         <div class="card-t">Acesso do cliente (andamento + resultados)</div>
@@ -3917,7 +3917,7 @@ function userViewCliente(u,idx){
         </button>
         <div class="divider"></div>
         <button class="btn btn-fill" style="width:100%;background:var(--teal)" onclick="userClienteSendReport(${idx})">Enviar relatório via WhatsApp</button>
-        <button class="btn btn-out" style="width:100%;margin-top:8px" onclick="alert('Protótipo: relatório (PDF) enviado por e-mail')">Enviar relatório por e-mail</button>
+        <button class="btn btn-out" style="width:100%;margin-top:8px" onclick="alert('Recurso ainda não configurado: relatório (PDF) enviado por e-mail')">Enviar relatório por e-mail</button>
         <button class="btn btn-out" style="width:100%;margin-top:8px" onclick="go('reports')">Abrir relatório (visão interna)</button>
       </div>
     </div>
@@ -4542,7 +4542,7 @@ function financeDetail(idx){
   }).join(''):'<tr><td colspan="7" class="empty">Nenhum pesquisador atribuído a esta pesquisa ainda — atribua a equipe em Minhas pesquisas.</td></tr>';
   return head('Financeiro — '+s.name,'Pagamento por entrevista válida coletada nesta pesquisa',
     '<button class="btn btn-out" onclick="financeBack()">← Financeiro</button>'+
-    (rows.length?'<button class="btn btn-out" onclick="alert(\'Protótipo: exportar remessa bancária / PIX em lote desta pesquisa\')">Exportar remessa</button><button class="btn btn-fill" onclick="alert(\'Protótipo: processar pagamentos aprovados desta pesquisa\')">Processar pagamentos</button>':''))+`
+    (rows.length?'<button class="btn btn-out" onclick="alert(\'Recurso ainda não configurado: exportar remessa bancária / PIX em lote desta pesquisa\')">Exportar remessa</button><button class="btn btn-fill" onclick="alert(\'Recurso ainda não configurado: processar pagamentos aprovados desta pesquisa\')">Processar pagamentos</button>':''))+`
   <div class="grid g4" style="margin-bottom:16px">
     ${stat('A pagar nesta pesquisa',brl(t.valor),t.valid.toLocaleString('pt-BR')+' entrevistas válidas','$','#2563eb')}
     ${stat('Pesquisadores',String(t.count),'com coleta nesta pesquisa','☺','#059669')}
@@ -4562,7 +4562,7 @@ function financeDetail(idx){
         <tr><td>Formulário em região remota</td><td style="text-align:right"><b>${brl(priceRemote)}</b></td></tr>
         <tr><td>Bônus meta diária batida</td><td style="text-align:right"><b>+ R$ 20,00</b></td></tr>
       </tbody></table>
-      <button class="btn btn-out" style="margin-top:10px" onclick="alert('Protótipo: editar tabela de valores desta pesquisa')">Editar valores</button>
+      <button class="btn btn-out" style="margin-top:10px" onclick="alert('Recurso ainda não configurado: editar tabela de valores desta pesquisa')">Editar valores</button>
     </div>
     <div class="card"><div class="card-t" style="font-size:13px">Repasse acumulado nesta pesquisa</div>
       <div style="position:relative;height:180px;margin-top:6px"><canvas id="finChart" role="img" aria-label="Repasse acumulado"></canvas></div>
@@ -4788,7 +4788,7 @@ async function signCompanyContract(){
 
 /* ============ CONTRACT TEMPLATE EDITOR ============ */
 PAGES['contract-template']=()=>head('Modelos de contrato','Use seu próprio modelo. Os campos entre {chaves} são preenchidos automaticamente para cada pessoa.',
-  '<button class="btn btn-out" onclick="alert(\'Protótipo: importar .docx / .pdf como modelo\')">⬆ Importar arquivo</button><button class="btn btn-fill" onclick="alert(\'Protótipo: modelo salvo. Passa a ficar disponível ao gerar contratos.\')">Salvar modelo</button>')+`
+  '<button class="btn btn-out" onclick="alert(\'Recurso ainda não configurado: importar .docx / .pdf como modelo\')">⬆ Importar arquivo</button><button class="btn btn-fill" onclick="alert(\'Recurso ainda não configurado: modelo salvo. Passa a ficar disponível ao gerar contratos.\')">Salvar modelo</button>')+`
   <div class="grid g2" style="grid-template-columns:1.15fr .85fr;align-items:start">
     <div class="card">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
@@ -5198,7 +5198,7 @@ function downloadContractCopy(){
 
 /* ============ COMPANY ============ */
 PAGES.company=()=>head('Dados da empresa','Informações usadas em contratos e relatórios oficiais',
-  '<button class="btn btn-fill" onclick="alert(\'Protótipo: CNPJ, endereço e contato salvos\')">Salvar</button>')+`
+  '<button class="btn btn-fill" onclick="alert(\'Recurso ainda não configurado: CNPJ, endereço e contato salvos\')">Salvar</button>')+`
   <div class="callout mb">🔒 O PesquisaPro é a única empresa cadastrada no sistema — por isso, apenas <b>CNPJ</b>, <b>endereço</b> e <b>contato</b> podem ser alterados aqui. Os demais dados de identificação são fixos.</div>
   <div class="grid g2">
     <div class="card">

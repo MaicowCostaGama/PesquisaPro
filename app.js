@@ -42,6 +42,50 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
+let PASSWORD_RECOVERY_MODE=false;
+
+function showLoginError(message){
+  const error=document.getElementById('li-error');
+  if(error){error.textContent=message;error.style.display='block';}
+}
+function openPasswordRecovery(){
+  PASSWORD_RECOVERY_MODE=true;
+  const login=document.getElementById('login');
+  const card=document.getElementById('password-reset-card');
+  if(login)login.style.display='flex';
+  document.querySelector('.login-card:not(#password-reset-card)')?.style.setProperty('display','none');
+  if(card)card.style.display='block';
+  document.getElementById('rp-pass')?.focus();
+}
+function closePasswordRecovery(){
+  PASSWORD_RECOVERY_MODE=false;
+  const card=document.getElementById('password-reset-card');
+  const normal=document.querySelector('.login-card:not(#password-reset-card)');
+  if(card)card.style.display='none';
+  if(normal)normal.style.display='block';
+}
+async function completePasswordReset(){
+  const pass=document.getElementById('rp-pass')?.value||'';
+  const confirmPass=document.getElementById('rp-pass-confirm')?.value||'';
+  const error=document.getElementById('rp-error');
+  const button=document.getElementById('rp-btn');
+  if(error)error.style.display='none';
+  if(pass.length<8){if(error){error.textContent='A nova senha deve ter pelo menos 8 caracteres.';error.style.display='block';}return;}
+  if(pass!==confirmPass){if(error){error.textContent='As senhas não conferem.';error.style.display='block';}return;}
+  if(button){button.disabled=true;button.textContent='Salvando…';}
+  try{
+    const {error:updateError}=await sb.auth.updateUser({password:pass});
+    if(updateError)throw new Error(updateError.message);
+    await sb.auth.signOut();
+    closePasswordRecovery();
+    const loginError=document.getElementById('li-error');
+    if(loginError){loginError.textContent='Senha atualizada. Entre novamente com sua nova senha.';loginError.style.display='block';loginError.style.color='var(--green,#047857)';}
+    history.replaceState({},document.title,window.location.pathname);
+  }catch(ex){
+    if(error){error.textContent='Não foi possível atualizar a senha. O link pode ter expirado; solicite uma nova redefinição.';error.style.display='block';}
+    console.error(ex);
+  }finally{if(button){button.disabled=false;button.textContent='Salvar nova senha';}}
+}
 
 const ROLE_NAV={
   admin:['dashboard','commercial','recruitment','new-survey','surveys','surveys-done','sample','collect','reports','users','permissions','finance','contracts','contract-template','company'],
@@ -83,6 +127,24 @@ async function doLogin(){
   }
 }
 
+function passwordResetRedirect(){
+  return window.location.origin+window.location.pathname+'?redefinir-senha=1';
+}
+async function requestOwnPasswordReset(){
+  const email=(document.getElementById('li-email')?.value||'').trim();
+  if(!email){showLoginError('Informe seu e-mail para receber o link de redefinição.');return;}
+  const button=document.querySelector('.password-recovery-link');
+  if(button){button.disabled=true;button.textContent='Enviando…';}
+  try{
+    const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:passwordResetRedirect()});
+    if(error)throw new Error(error.message);
+    showLoginError('Se este e-mail estiver cadastrado, você receberá um link para criar uma nova senha.');
+    const errorEl=document.getElementById('li-error');
+    if(errorEl)errorEl.style.color='var(--green,#047857)';
+  }catch(ex){showLoginError('Não foi possível enviar o link agora. Verifique o e-mail e tente novamente.');console.error(ex);}
+  finally{if(button){button.disabled=false;button.textContent='Esqueci minha senha';}}
+}
+
 async function afterLogin(user){
   const {data:profile,error}=await sb.from('profiles').select('id,name,email,phone,role,status,cpf,cpf_cnpj,pf_pj,birth,cidade,rua,numero,cep,contact_person,doc_url,doc_foto_url,doc_comprovante_url,pix_key,pix_doc,pix_bank,pix_ag,pix_acc,results_released,approved_at,commission_rate,commission_rate_with_indicator,recruiter_code,recruiter_capture_value').eq('id',user.id).single();
   if(error||!profile){
@@ -113,11 +175,21 @@ async function logout(){
   document.getElementById('li-pass').value='';
 }
 
-/* se já existir uma sessão válida (usuário não fechou o navegador), entra direto */
+function isPasswordRecoveryLink(){
+  return new URLSearchParams(window.location.search).get('redefinir-senha')==='1'||window.location.hash.includes('type=recovery');
+}
+sb.auth.onAuthStateChange((event)=>{
+  if(event==='PASSWORD_RECOVERY')openPasswordRecovery();
+});
+
+/* se já existir uma sessão válida (usuário não fechou o navegador), entra direto;
+   links de recuperação ficam na tela própria para o usuário definir a nova senha. */
 (async function checkExistingSession(){
   try{
+    if(isPasswordRecoveryLink())openPasswordRecovery();
     const {data}=await sb.auth.getSession();
     if(data&&data.session&&data.session.user){
+      if(isPasswordRecoveryLink()){openPasswordRecovery();return;}
       await afterLogin(data.session.user);
     }
   }catch(ex){ /* sem sessão anterior ou sem conexão — fica na tela de login normalmente */ }
@@ -3205,7 +3277,37 @@ const USER_TABS=[
 ];
 const USER_TAB_ROLES={pesq:['pesq'],cliente:['cliente'],admpro:['admpro'],vendedor:['vendedor'],indicador:['indicador'],recrutador:['recrutador'],staff:['admin','coord','gerente']};
 let USER_TAB='pesq';
-function usersInTab(tab){const roles=USER_TAB_ROLES[tab]||[];return USERS.map((u,i)=>({u,i})).filter(x=>roles.includes(x.u.role));}
+let USER_SEARCH='';
+function normalizeUserSearch(value){return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();}
+function compactUserSearch(value){return normalizeUserSearch(value).replace(/[^a-z0-9]/g,'');}
+function userSearchText(user){return [user.name,user.email,user.cpf,user.cpfCnpj,user.phone,user.contact,user.cidade,ROLE_LABEL[user.role]||user.role].filter(Boolean).join(' ');}
+function userMatchesSearch(user){
+  const query=normalizeUserSearch(USER_SEARCH);
+  if(!query)return true;
+  const text=normalizeUserSearch(userSearchText(user));
+  const compactQuery=compactUserSearch(USER_SEARCH);
+  const compactText=compactUserSearch(userSearchText(user));
+  return text.includes(query)||(compactQuery&&compactText.includes(compactQuery));
+}
+function usersInTab(tab){const roles=USER_TAB_ROLES[tab]||[];return USERS.map((u,i)=>({u,i})).filter(x=>roles.includes(x.u.role)&&userMatchesSearch(x.u));}
+function userSearchInput(value){
+  USER_SEARCH=value||'';
+  go('users');
+  const input=document.getElementById('user-search');
+  if(input){input.focus();input.setSelectionRange(USER_SEARCH.length,USER_SEARCH.length);}
+}
+function userClearSearch(){USER_SEARCH='';go('users');document.getElementById('user-search')?.focus();}
+async function userSendPasswordReset(idx){
+  const user=USERS[idx];
+  if(!user)return;
+  if(!user.email){alert('Este usuário não possui e-mail cadastrado. Atualize o cadastro antes de enviar a redefinição.');return;}
+  if(!confirm('Enviar um link de redefinição de senha para '+user.email+'? A senha atual não será exibida.'))return;
+  try{
+    const {error}=await sb.auth.resetPasswordForEmail(user.email,{redirectTo:passwordResetRedirect()});
+    if(error)throw new Error(error.message);
+    alert('Link de redefinição enviado para o e-mail cadastrado. O usuário deverá abrir a mensagem e criar uma nova senha.');
+  }catch(ex){alert('Não foi possível enviar a redefinição: '+ex.message);}
+}
 function clienteUsers(){return USERS.filter(u=>u.role==='cliente');}
 function pesqUsers(){return USERS.filter(u=>u.role==='pesq');}
 let USER_EDIT=null; // index sendo editado, ou 'new', ou null (lista)
@@ -3406,6 +3508,7 @@ function userTableRows(tab){
           ${u.status!=='ativo'?`<button class="btn-ghost" style="color:var(--teal)" onclick="userPesqApproveList(${i})">Aprovar</button>`:''}
           <button class="btn-ghost" onclick="userShow(${i})">Ver dados</button>
           <button class="btn-ghost" onclick="userOpen(${i})">Editar</button>
+          ${userPasswordResetButton(u,i)}
           <button class="btn-ghost" style="color:var(--red)" onclick="userDelete(${i})">Excluir</button>
         </td></tr>`;
     }).join('');
@@ -3421,6 +3524,7 @@ function userTableRows(tab){
         ${conversationButton(u.phone,'Olá '+(u.contact||u.name)+'! Podemos conversar sobre sua pesquisa?')}
         <button class="btn-ghost" onclick="userShow(${i})">Abrir</button>
         <button class="btn-ghost" onclick="userOpen(${i})">Editar</button>
+        ${userPasswordResetButton(u,i)}
         <button class="btn-ghost" style="color:var(--red)" onclick="userDelete(${i})">Excluir</button>
       </td></tr>`).join('');
   }
@@ -3441,6 +3545,7 @@ function userTableRows(tab){
         ${conversationButton(u.phone,'Olá '+u.name+'! Podemos conversar sobre suas atividades no PesquisaPro?')}
         <button class="btn-ghost" onclick="userShow(${i})">Ver dados</button>
         <button class="btn-ghost" onclick="userOpen(${i})">Editar</button>
+        ${userPasswordResetButton(u,i)}
         <button class="btn-ghost" style="color:var(--red)" onclick="userDelete(${i})">Excluir</button>
       </td></tr>`;
   }).join('');
@@ -3485,12 +3590,14 @@ function userList(){
   <div class="callout" style="margin-top:16px">Clientes são cadastrados manualmente por um administrador — não há autocadastro para este perfil.</div>`
   : `
   <div class="callout" style="margin-top:16px">Este perfil só pode ser incluído manualmente pelo Administrador master ou por um ADM PesquisaPro autorizado — não há autocadastro.</div>`;
-  const tableContent=currentCount?`<div class="user-table-scroll"><table><thead>${userTableHead(tab)}</thead><tbody>${userTableRows(tab)}</tbody></table></div>`:`<div class="users-empty-state"><div class="users-empty-icon">＋</div><div><h3>Nenhum ${USER_TAB_NEW_LABEL[tab]||'usuário'} cadastrado</h3><p>Comece adicionando o primeiro perfil nesta categoria para liberar o fluxo correspondente.</p><button class="btn btn-fill" onclick="userOpen('new')">Cadastrar ${USER_TAB_NEW_LABEL[tab]||'usuário'}</button></div></div>`;
+  const tableContent=currentCount?`<div class="user-table-scroll"><table><thead>${userTableHead(tab)}</thead><tbody>${userTableRows(tab)}</tbody></table></div>`:`<div class="users-empty-state"><div class="users-empty-icon">＋</div><div><h3>${USER_SEARCH?'Nenhum resultado encontrado':'Nenhum '+(USER_TAB_NEW_LABEL[tab]||'usuário')+' cadastrado'}</h3><p>${USER_SEARCH?'Tente outro nome, CPF ou e-mail.':'Comece adicionando o primeiro perfil nesta categoria para liberar o fluxo correspondente.'}</p>${USER_SEARCH?'<button class="btn btn-out" onclick="userClearSearch()">Limpar busca</button>':`<button class="btn btn-fill" onclick="userOpen('new')">Cadastrar ${USER_TAB_NEW_LABEL[tab]||'usuário'}</button>`}</div></div>`;
+  const searchBar=`<div class="user-search-bar" role="search"><div class="user-search-main"><label class="sr-only" for="user-search">Buscar usuário</label><span class="user-search-icon">⌕</span><input id="user-search" class="inp" type="search" value="${esc(USER_SEARCH)}" placeholder="Buscar por nome, CPF ou e-mail…" autocomplete="off" oninput="userSearchInput(this.value)">${USER_SEARCH?'<button type="button" class="user-search-clear" title="Limpar busca" aria-label="Limpar busca" onclick="userClearSearch()">×</button>':''}</div><span class="user-search-hint">A busca vale para a aba atual e ignora acentos e pontuação.</span></div>`;
   return `<div class="users-page"><div class="users-context"><div><span class="eyebrow">${tabInfo[0]}</span><p>${tabInfo[1]}</p></div><span class="users-count-chip">${currentCount} ${currentCount===1?'perfil':'perfis'}</span></div>`+
   head('Usuários','Cadastre e gerencie os diferentes perfis de usuário do sistema',
     `<button class="btn btn-fill" onclick="userOpen('new')">＋ Novo ${USER_TAB_NEW_LABEL[tab]||'usuário'}</button>`)+
   userTabBar()+
   userTabStats(tab)+
+  searchBar+
   `<div class="card user-table-card"><div class="user-table-heading"><div><div class="card-t">${USER_TAB_NEW_LABEL[tab]||'Usuários'} cadastrados</div><div class="card-d">Confira os dados, o status e as permissões antes de abrir um perfil.</div></div><span class="users-table-count">${currentCount}</span></div>${tableContent}
   </div>${extras}</div>`;
 }
@@ -3630,6 +3737,11 @@ function userWhatsApp(phone){
   if(!href){alert('Este usuário não tem telefone cadastrado.');return;}
   window.open(href,'_blank','noopener');
 }
+function userPasswordResetButton(user,index){
+  return user.email
+    ? `<button type="button" class="btn-ghost user-password-reset" title="Enviar link seguro de redefinição de senha" onclick="event.preventDefault();event.stopPropagation();userSendPasswordReset(${index})">Resetar senha</button>`
+    : '';
+}
 function clientWhatsAppMsg(phone,msg){
   const href=conversationUrl(phone,msg);
   if(!href){alert('Cliente sem telefone cadastrado.');return;}
@@ -3656,6 +3768,7 @@ function userViewGeneric(u){
   return head(u.name,'Dados do usuário',
     `<button class="btn btn-out" onclick="userViewBack()">← Voltar</button>
      <button class="btn btn-out" style="color:var(--teal);border-color:var(--teal)" onclick="userWhatsApp(${jsArg(u.phone)})">WhatsApp</button>
+     ${userPasswordResetButton(u,USER_VIEW)}
      <button class="btn btn-fill" onclick="userEditFromView()">Editar</button>`)+`
   <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
     <div class="avatar" style="width:54px;height:54px;font-size:20px">${initials}</div>
@@ -3703,6 +3816,7 @@ function userViewPesq(u,idx){
   return head(u.name,'Dados do pesquisador',
     `<button class="btn btn-out" onclick="userViewBack()">← Voltar</button>
      <button class="btn btn-out" style="color:var(--teal);border-color:var(--teal)" onclick="userWhatsApp(${jsArg(u.phone)})">WhatsApp</button>
+     ${userPasswordResetButton(u,idx)}
      ${u.status!=='ativo'?`<button class="btn btn-fill" style="background:var(--teal)" onclick="userPesqApprove(${idx})">Aprovar</button>`:''}
      <button class="btn btn-fill" onclick="userEditFromView()">Editar</button>`)+`
   <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
@@ -3763,6 +3877,7 @@ function userViewCliente(u,idx){
   return head(u.name,'Dados do cliente',
     `<button class="btn btn-out" onclick="userViewBack()">← Voltar</button>
      <button class="btn btn-out" style="color:var(--teal);border-color:var(--teal)" onclick="userWhatsApp(${jsArg(u.phone)})">WhatsApp</button>
+     ${userPasswordResetButton(u,idx)}
      <button class="btn btn-fill" onclick="userEditFromView()">Editar</button>`)+`
   <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
     <div class="avatar" style="width:54px;height:54px;font-size:18px;background:var(--purple)">${initials}</div>

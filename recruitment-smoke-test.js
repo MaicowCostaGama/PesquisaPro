@@ -33,6 +33,6 @@ assert.match(publicPage,/recruiter_public_info/,'página pública não valida re
 assert.match(publicPage,/submit_recruiter_signup/,'página pública não grava captação');
 assert.match(publicPage,/get\('recrutador'\)/,'parâmetro do link de recrutador ausente');
 assert.match(publicPage,/p_cidades_atuacao/,'cidades de atuação não enviadas');
-assert.match(html,/recruitment\.js\?v=20260830310000/,'módulo não carregado com cache-busting');
+assert.match(html,/recruitment\.js\?v=20260903030000/,'módulo não carregado com cache-busting');
 assert.ok(fs.existsSync(path.join(root,'vendor','qrcode.min.js')),'QR Code local ausente');
 console.log('recruitment-smoke-test: OK');

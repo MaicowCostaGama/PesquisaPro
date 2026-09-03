@@ -9,7 +9,7 @@
 <link rel="icon" type="image/png" sizes="64x64" href="assets/favicon-64.png">
 <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
 <link rel="apple-touch-icon" href="assets/icon-512.png">
-<link rel="stylesheet" href="style.css?v=20260830310000">
+<link rel="stylesheet" href="style.css?v=20260903030000">
 </head>
 <body>
 <a class="skip-link" href="#main">Ir para o conteúdo principal</a>
@@ -33,7 +33,19 @@
     <div id="li-error" class="login-error" role="alert" aria-live="polite" style="display:none;color:var(--red,#dc2626);font-size:12.5px;margin:-6px 0 10px"></div>
 
     <button class="btn-primary" id="li-btn" onclick="doLogin()">Entrar</button>
+    <button type="button" class="password-recovery-link" onclick="requestOwnPasswordReset()">Esqueci minha senha</button>
     <p class="login-foot">Acesso restrito · fale com o administrador para criar sua conta</p>
+  </div>
+  <div class="login-card password-reset-card" id="password-reset-card" style="display:none">
+    <a href="index.html" class="lp-back-home">← Voltar ao site</a>
+    <div class="logo"><img src="assets/logo-wide.png" alt="PesquisaPro" class="brand-logo brand-logo-login"></div>
+    <h2 class="password-reset-title">Criar nova senha</h2>
+    <p class="login-sub">Defina uma nova senha para continuar acessando o PesquisaPro.</p>
+    <div class="field"><label for="rp-pass">Nova senha</label><input type="password" id="rp-pass" autocomplete="new-password" minlength="8" placeholder="Mínimo de 8 caracteres"></div>
+    <div class="field"><label for="rp-pass-confirm">Confirmar nova senha</label><input type="password" id="rp-pass-confirm" autocomplete="new-password" minlength="8" placeholder="Digite novamente"></div>
+    <div id="rp-error" class="login-error" role="alert" aria-live="polite" style="display:none;color:var(--red,#dc2626);font-size:12.5px;margin:-6px 0 10px"></div>
+    <button class="btn-primary" id="rp-btn" onclick="completePasswordReset()">Salvar nova senha</button>
+    <p class="login-foot">Após salvar, entre novamente com sua nova senha.</p>
   </div>
 </div>
 
@@ -64,8 +76,8 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="supabase-client.js"></script>
 <!-- Código principal do protótipo -->
-<script src="app.js?v=20260830310000"></script>
-<script src="commercial.js?v=20260830310000"></script>
-<script src="recruitment.js?v=20260830310000"></script>
+<script src="app.js?v=20260903030000"></script>
+<script src="commercial.js?v=20260903030000"></script>
+<script src="recruitment.js?v=20260903030000"></script>
 </body>
 </html>

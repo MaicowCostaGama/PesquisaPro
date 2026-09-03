@@ -3847,7 +3847,15 @@ async function userDelete(idx){
   if(!confirm('Excluir o cadastro de "'+u.name+'"? Isso remove o perfil do sistema (o login de acesso, se existir, precisa ser removido separadamente pelo suporte técnico).'))return;
   if(u.id){
     const {error}=await sb.from('profiles').delete().eq('id',u.id);
-    if(error){alert('Não foi possível excluir: '+error.message);return;}
+    if(error){
+      const errorText=String(error.message||'');
+      if(error.code==='23503'&&errorText.includes('collection_events')){
+        alert('Este pesquisador possui histórico de coletas. Execute a migration deploy/exclusao-pesquisador-com-coletas.sql no Supabase para preservar as entrevistas e permitir a exclusão do perfil.');
+      }else{
+        alert('Não foi possível excluir: '+errorText);
+      }
+      return;
+    }
   }
   USERS.splice(idx,1);USER_VIEW=null;USER_EDIT=null;go('users');
 }

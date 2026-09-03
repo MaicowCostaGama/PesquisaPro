@@ -171,7 +171,7 @@ create table public.survey_team (
 create table public.collection_events (
   id uuid primary key default gen_random_uuid(),
   survey_id uuid not null references public.surveys(id) on delete cascade,
-  researcher_id uuid references public.profiles(id),
+  researcher_id uuid references public.profiles(id) on delete set null,
   quota_label text,
   lat double precision,
   lng double precision,

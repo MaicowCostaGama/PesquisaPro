@@ -3443,9 +3443,11 @@ PAGES.users=()=>{
 function userSetTab(tab){USER_TAB=tab;USER_VIEW=null;USER_EDIT=null;USER_ARMED=true;go('users');}
 function userTabBar(){
   const total=usersInTab(USER_TAB).length;
-  return `<nav class="user-tabs" aria-label="Tipos de usuário"><div class="user-tabs-track">
-    ${USER_TABS.map(t=>{const count=usersInTab(t.key).length;return `<button class="user-tab ${USER_TAB===t.key?'is-active':''}" aria-current="${USER_TAB===t.key?'page':'false'}" onclick="userSetTab('${t.key}')"><span>${t.label}</span><b>${count}</b></button>`;}).join('')}
-  </div><div class="user-tab-context"><span class="eyebrow">CADASTROS</span><strong>${total} ${total===1?'registro':'registros'} nesta categoria</strong></div></nav>`;
+  const activeLabel=(USER_TABS.find(t=>t.key===USER_TAB)||{}).label||'Usuários';
+  return `<nav class="user-tabs" aria-label="Tipos de usuário">
+    <div class="user-tabs-head"><div><span class="eyebrow">CATEGORIA</span><strong>Escolha um perfil para administrar</strong></div><div class="user-tab-context"><span class="user-tab-context-icon">${icon3d('☺','#2563eb')}</span><div><span class="eyebrow">${activeLabel.toUpperCase()}</span><strong>${total} ${total===1?'registro':'registros'}</strong></div></div></div>
+    <div class="user-tabs-track">${USER_TABS.map(t=>{const count=usersInTab(t.key).length;return `<button class="user-tab ${USER_TAB===t.key?'is-active':''}" aria-current="${USER_TAB===t.key?'page':'false'}" onclick="userSetTab('${t.key}')"><span>${t.label}</span><b>${count}</b></button>`;}).join('')}</div>
+  </nav>`;
 }
 function userTabStats(tab){
   const list=usersInTab(tab).map(x=>x.u);
@@ -3503,7 +3505,7 @@ function userTableRows(tab){
         <td>${docPill}</td>
         <td>${pixPill}</td>
         <td>${st}</td>
-        <td style="white-space:nowrap" onclick="event.stopPropagation()">
+        <td class="user-actions-cell" onclick="event.stopPropagation()">
           ${conversationButton(u.phone,'Olá '+u.name+'! Podemos conversar sobre seu cadastro e as próximas coletas?')}
           ${u.status!=='ativo'?`<button class="btn-ghost" style="color:var(--teal)" onclick="userPesqApproveList(${i})">Aprovar</button>`:''}
           <button class="btn-ghost" onclick="userShow(${i})">Ver dados</button>
@@ -3520,7 +3522,7 @@ function userTableRows(tab){
       <td>${esc(u.phone||'')}</td>
       <td>${(u.surveys||[]).length} pesquisa(s)</td>
       <td>${CLIENT_STATUS[u.status]||u.status}${u.resultsReleased?' <span class="pill pill-blue" style="margin-left:4px">📊 Acesso total liberado</span>':''}</td>
-      <td style="white-space:nowrap" onclick="event.stopPropagation()">
+      <td class="user-actions-cell" onclick="event.stopPropagation()">
         ${conversationButton(u.phone,'Olá '+(u.contact||u.name)+'! Podemos conversar sobre sua pesquisa?')}
         <button class="btn-ghost" onclick="userShow(${i})">Abrir</button>
         <button class="btn-ghost" onclick="userOpen(${i})">Editar</button>
@@ -3541,7 +3543,7 @@ function userTableRows(tab){
       <td>${esc(u.phone||'')}</td>
       <td><span class="pill ${u.role==='recrutador'?'pill-teal':'pill-blue'}">${earning}</span></td>
       <td>${st}</td>
-      <td style="white-space:nowrap" onclick="event.stopPropagation()">
+      <td class="user-actions-cell" onclick="event.stopPropagation()">
         ${conversationButton(u.phone,'Olá '+u.name+'! Podemos conversar sobre suas atividades no PesquisaPro?')}
         <button class="btn-ghost" onclick="userShow(${i})">Ver dados</button>
         <button class="btn-ghost" onclick="userOpen(${i})">Editar</button>

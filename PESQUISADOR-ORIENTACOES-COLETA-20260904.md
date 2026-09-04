@@ -12,7 +12,7 @@ A orientação também reforça que respostas não devem ser alteradas para atin
 
 ## Vídeo
 
-O arquivo `assets/pesquisa-pro-orientacoes-coleta.mp4` contém seis telas explicativas com narração em português brasileiro. O pôster `assets/pesquisa-pro-orientacoes-coleta-poster.png` é exibido antes do carregamento do vídeo. A duração aproximada é de 113 segundos.
+O arquivo `assets/pesquisa-pro-orientacoes-coleta.mp4` contém seis telas reais e higienizadas do fluxo móvel de coleta, com narração em português brasileiro sincronizada por etapa. O vídeo mostra o painel do pesquisador, seleção de cota, questionário, confirmação final e envio. O pôster `assets/pesquisa-pro-orientacoes-coleta-poster.png` usa a primeira captura real e é exibido antes do carregamento do vídeo. A duração aproximada é de 113 segundos.
 
 ## Acesso
 

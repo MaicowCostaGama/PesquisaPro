@@ -8,7 +8,7 @@ const ROLES={
   gerente:{name:'Rafael Dias',role:'Gerente',initials:'RD',
     nav:['dashboard','commercial','sample','reports','finance']},
   pesq:{name:'João Pereira',role:'Pesquisador',initials:'JP',
-    nav:['dashboard-pesq','researcher-guide','app-collect','my-earnings','my-contract']},
+    nav:['dashboard-pesq','researcher-guide','app-collect','my-earnings','my-contract','support']},
   cliente:{name:'Prefeitura de Uberlândia',role:'Cliente',initials:'PU',
     nav:['client-progress','client-results']},
 };
@@ -23,6 +23,7 @@ const NAV_META={
   collect:{ico:'⬇',label:'Coleta e campo',group:'Pesquisa'},
   'app-collect':{ico:'▶',label:'Coletar (app)',group:'Campo'},
   'researcher-guide':{ico:'▣',label:'Orientações para coleta',group:'Campo'},
+  support:{ico:'☎',label:'Suporte',group:'Ajuda'},
   reports:{ico:'◫',label:'Relatórios',group:'Análise'},
   users:{ico:'☺',label:'Usuários',group:'Administração'},
   permissions:{ico:'⚿',label:'Perfis e permissões',group:'Administração'},
@@ -92,7 +93,7 @@ const ROLE_NAV={
   admin:['dashboard','commercial','recruitment','new-survey','surveys','surveys-done','sample','collect','reports','users','permissions','finance','contracts','contract-template','company'],
   coord:['dashboard','commercial','surveys','surveys-done','collect','reports','finance'],
   gerente:['dashboard','commercial','sample','reports','finance'],
-  pesq:['dashboard-pesq','researcher-guide','app-collect','my-earnings','my-contract'],
+  pesq:['dashboard-pesq','researcher-guide','app-collect','my-earnings','my-contract','support'],
   cliente:['client-progress','client-results'],
   admpro:['dashboard','commercial','recruitment','new-survey','surveys','surveys-done','sample','collect','reports','users','permissions','finance','contracts','contract-template','company'],
   vendedor:['commercial'],
@@ -220,6 +221,14 @@ function buildSidebar(){
   // espaço, então sem isso não havia como sair do sistema pelo celular.
   html+=`<div class="nav-group nav-group-exit"><button class="nav-item nav-logout" onclick="logout()"><span class="ico ico-3d">${icon3d('⏻','#c9dcff')}</span>Sair do sistema</button></div>`;
   document.getElementById('sidebar').innerHTML=html;
+}
+
+function openResearcherSupport(){
+  const phone='5531996683030';
+  const name=(CURRENT_PROFILE?.name||'').trim();
+  const text='Olá! Sou pesquisador(a) da PesquisaPro'+(name?' ('+name+')':'')+' e preciso de suporte para usar o aplicativo de coleta.';
+  const url='https://wa.me/'+phone+'?text='+encodeURIComponent(text);
+  window.open(url,'_blank','noopener,noreferrer');
 }
 
 function go(key){

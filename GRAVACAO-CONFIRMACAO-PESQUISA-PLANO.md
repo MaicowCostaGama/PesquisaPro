@@ -20,7 +20,7 @@ A gravação no navegador usará `getUserMedia({audio:true})` somente depois da 
 
 ## Regra da amostra
 
-A seleção de aproximadamente 20% é feita por função server-side no banco, usando `random() < 0.20` durante a reserva da entrevista. Não há `Math.random()` no navegador para decidir a amostra, portanto o pesquisador não controla a seleção. Uma reserva ativa é reutilizada até a entrevista ser enviada ou expirar, evitando mudar a decisão durante o mesmo atendimento.
+A seleção de aproximadamente 20% é feita por função server-side no banco, usando `random() < 0.20` dentro da faixa acumulada durante a reserva da entrevista. A função serializa a decisão por pesquisa e considera eventos selecionados mais reservas ainda abertas. Não há `Math.random()` no navegador para decidir a amostra, portanto o pesquisador não controla a seleção. Uma reserva ativa é reutilizada até a entrevista ser enviada ou expirar, evitando mudar a decisão durante o mesmo atendimento.
 
 A auditoria diferencia entrevistas não selecionadas, selecionadas, autorizadas, recusadas, aguardando upload e com falha técnica. Como a regra é probabilística, 20% é uma aproximação ao longo do volume de entrevistas, não uma garantia de exatamente 20% em cada pequeno lote.
 
@@ -41,3 +41,8 @@ A migration `deploy/gravacao-confirmacao-20pct.sql` deve ser executada no SQL Ed
 O teste de aceitação deve usar uma pesquisa em campo e um pesquisador atribuído. Em cada entrevista, o pesquisador deve responder o questionário, observar se a confirmação final foi selecionada, testar a recusa e, em uma entrevista selecionada, autorizar o microfone, gravar o trecho curto, revisar a prévia e enviar. Na aba Auditoria, a gestão deve visualizar somente o status e, quando houver áudio, abrir uma URL assinada temporária. O caminho do arquivo nunca deve ser exibido para o pesquisador.
 
 A limpeza de arquivos é restrita à gestão. Em uma falha rara entre o upload e o vínculo do evento, o arquivo permanece privado para posterior limpeza administrativa; não foi criada deleção ampla para usuários autenticados.
+
+
+### Atualização da regra de amostra
+
+Se a primeira versão desta migration já tiver sido executada, execute novamente o arquivo atualizado. Ele é idempotente e substitui as funções de reserva para considerar a proporção acumulada e as reservas abertas; não cria um segundo bucket nem duplica as tabelas.

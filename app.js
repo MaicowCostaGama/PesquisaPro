@@ -2751,8 +2751,8 @@ PAGES['app-collect']=()=>{
       <div id="acollectForm"></div>
       <div id="acollectRecording"></div>
       <div id="acollectMsg"></div>
-      <button id="startCollectBtn" class="btn-primary" style="height:44px;margin-top:12px;font-size:14px" disabled onclick="acollectStart()">▶ Iniciar coleta</button>
-      <div id="geoHint" style="font-size:11px;color:var(--ink3);text-align:center;margin-top:6px">Ative a localização para liberar a coleta</div>
+      <div id="geoHint" class="collect-step-hint is-blocked" role="status" aria-live="polite"><strong>1º selecione uma cota</strong><span>Toque em uma cota disponível acima para liberar o início.</span></div>
+      <button id="startCollectBtn" class="btn-primary" style="height:44px;margin-top:10px;font-size:14px" disabled onclick="acollectStart()">▶ Iniciar coleta</button>
     </div>
     <div>
       <div class="card mb">
@@ -2933,9 +2933,13 @@ function renderAcollectQuotas(){
       const pct=Math.min(100,Math.round(done/q.target*100));
       const color=full?'var(--teal)':'var(--accent)';
       const clickable=!full&&!ACOLLECT_IN_PROGRESS;
-      return `<div class="q-card" style="padding:10px;margin-bottom:8px;cursor:${clickable?'pointer':'default'};${selected?'border-color:var(--accent)':''}${full?';opacity:.65':''}" ${clickable?`onclick="acollectSelectQuotaIdx(${qi})"`:''}>
-        <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:600"><span>${esc(q.label)}</span><span style="color:${color}">${done}/${q.target}${full?' ✓':''}</span></div>
+      const cardAttrs=clickable
+        ?`role="button" tabindex="0" aria-pressed="${selected?'true':'false'}" aria-label="Selecionar cota ${esc(q.label)}" onclick="acollectSelectQuotaIdx(${qi})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();acollectSelectQuotaIdx(${qi})}"`
+        :`aria-disabled="true"`;
+      return `<div class="q-card quota-choice ${selected?'is-selected':''} ${full?'is-full':''}" style="padding:10px;margin-bottom:8px;cursor:${clickable?'pointer':'default'};${selected?'border-color:var(--accent);background:var(--accent-l)':''}${full?';opacity:.65':''}" ${cardAttrs}>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px;font-weight:600"><span>${esc(q.label)}</span><span style="color:${color};white-space:nowrap">${done}/${q.target}${full?' ✓':''}</span></div>
         <div class="bar" style="margin-top:6px"><span style="width:${pct}%;background:${color}"></span></div>
+        ${selected?'<div class="quota-selected-hint">✓ Cota selecionada — toque em “Iniciar coleta”</div>':clickable?'<div class="quota-touch-hint">Toque para selecionar</div>':''}
       </div>`;
     }).join('');
   renderAcollectActionState();
@@ -3204,7 +3208,13 @@ function renderAcollectActionState(){
   btn.disabled=!active;
   btn.style.opacity=active?'1':'.5';
   btn.style.cursor=active?'pointer':'not-allowed';
-  if(hint)hint.textContent=!geoOk?geoStatusUi().hint:!hasSurvey?'Nenhuma pesquisa em campo atribuída a você':!hasQuota?'Escolha uma cota para liberar a coleta':'Localização ativa — pode coletar';
+  if(hint){
+    const hintState=!geoOk?'is-blocked':!hasSurvey?'is-blocked':!hasQuota?'is-blocked':'is-ready';
+    const hintTitle=!geoOk?'Ative a localização':!hasSurvey?'Nenhuma pesquisa disponível':!hasQuota?'1º selecione uma cota':'Cota selecionada — agora inicie a coleta';
+    const hintText=!geoOk?geoStatusUi().hint:!hasSurvey?'Não há pesquisa em campo atribuída a você.':!hasQuota?'Toque em uma cota disponível acima para liberar o botão.':'Confira a cota selecionada e toque em “Iniciar coleta”.';
+    hint.className='collect-step-hint '+hintState;
+    hint.innerHTML='<strong>'+hintTitle+'</strong><span>'+hintText+'</span>';
+  }
 }
 /* antes de começar a entrevista de verdade, revalida a cota escolhida
    direto no banco — o card pode ter ficado desatualizado (mesmo com a

@@ -90,6 +90,56 @@ create policy "gestao remove confirmacoes"
     and public.is_staff()
   );
 
+create or replace function public.collection_recording_should_select(p_survey_id uuid)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_total integer;
+  v_selected integer;
+  v_reserved integer;
+  v_min_target integer;
+  v_max_target integer;
+begin
+  -- Serializa a decisão por pesquisa para dois pesquisadores que iniciem
+  -- entrevistas simultaneamente não ultrapassarem a proporção acumulada.
+  perform pg_advisory_xact_lock(hashtext('collection-recording:' || p_survey_id::text));
+
+  select count(*)::integer into v_total
+    from public.collection_events
+   where survey_id = p_survey_id;
+
+  select count(*)::integer into v_selected
+    from public.collection_events
+   where survey_id = p_survey_id
+     and recording_required = true;
+
+  select count(*)::integer into v_reserved
+    from public.collection_recording_reservations
+   where survey_id = p_survey_id
+     and recording_required = true
+     and consumed_at is null
+     and expires_at > now();
+
+  v_selected := coalesce(v_selected,0) + coalesce(v_reserved,0);
+
+  -- Mantém a aleatoriedade dentro da faixa permitida e força a próxima
+  -- seleção quando a proporção acumulada cair abaixo de aproximadamente 20%.
+  v_min_target := floor((v_total + 1) * 0.20);
+  v_max_target := ceil((v_total + 1) * 0.20);
+
+  if v_selected < v_min_target then
+    return true;
+  elsif v_selected >= v_max_target then
+    return false;
+  end if;
+
+  return random() < 0.20;
+end;
+$$;
+
 create or replace function public.reserve_collection_recording(p_survey_id uuid)
 returns table(reservation_id uuid, recording_required boolean)
 language plpgsql
@@ -130,7 +180,7 @@ begin
 
   if v_id is null then
     insert into public.collection_recording_reservations(survey_id, researcher_id, recording_required)
-    values (p_survey_id, v_researcher_id, random() < 0.20)
+    values (p_survey_id, v_researcher_id, public.collection_recording_should_select(p_survey_id))
     returning id, collection_recording_reservations.recording_required
       into v_id, v_required;
   end if;
@@ -161,7 +211,7 @@ begin
       return new;
     end if;
     insert into public.collection_recording_reservations(survey_id, researcher_id, recording_required)
-    values (new.survey_id, auth.uid(), random() < 0.20)
+    values (new.survey_id, auth.uid(), public.collection_recording_should_select(new.survey_id))
     returning id, collection_recording_reservations.recording_required
       into v_reservation, v_required;
     new.recording_reservation_id := v_reservation;
@@ -282,6 +332,7 @@ begin
 end;
 $$;
 
+revoke all on function public.collection_recording_should_select(uuid) from public;
 revoke all on function public.reserve_collection_recording(uuid) from public;
 revoke all on function public.attach_collection_recording(uuid,text,text,integer) from public;
 revoke all on function public.mark_collection_recording_failed(uuid,text) from public;

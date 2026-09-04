@@ -21,7 +21,13 @@ for (const token of [
 ]) assert(app.includes(token), `fluxo de gravação ausente: ${token}`);
 
 for (const token of [
+  'collection_recording_should_select',
   "random() < 0.20",
+  'pg_advisory_xact_lock',
+  'v_min_target',
+  'v_max_target',
+  'v_reserved',
+  'expires_at > now()',
   "recording_status in ('not_selected','declined','pending_upload','uploaded','failed')",
   "bucket_id = 'collection-recordings'",
   'public.is_staff()',
@@ -38,4 +44,7 @@ assert(migration.includes('ACOLLECT_RECORDING_MAX_SECONDS') === false, 'detalhe 
 assert(app.includes('const ACOLLECT_RECORDING_MAX_SECONDS=12'), 'limite de 12 segundos não encontrado');
 assert(css.includes('.recording-consent-card'), 'estilo do consentimento ausente');
 assert(css.includes('.recording-ready audio'), 'player da prévia ausente');
+assert(app.includes('1º selecione uma cota'), 'instrução de seleção de cota ausente');
+assert(app.includes('Cota selecionada — agora inicie a coleta'), 'instrução após selecionar cota ausente');
+assert(app.includes('quota-choice'), 'cartão de cota sem área de toque');
 console.log('Gravação de confirmação smoke test OK: seleção server-side, consentimento, limite, privacidade e auditoria verificados.');

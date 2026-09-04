@@ -92,7 +92,7 @@ const ROLE_NAV={
   admin:['dashboard','commercial','recruitment','new-survey','surveys','surveys-done','sample','collect','reports','users','permissions','finance','contracts','contract-template','company'],
   coord:['dashboard','commercial','surveys','surveys-done','collect','reports','finance'],
   gerente:['dashboard','commercial','sample','reports','finance'],
-  pesq:['dashboard-pesq','app-collect','my-earnings','my-contract'],
+  pesq:['dashboard-pesq','researcher-guide','app-collect','my-earnings','my-contract'],
   cliente:['client-progress','client-results'],
   admpro:['dashboard','commercial','recruitment','new-survey','surveys','surveys-done','sample','collect','reports','users','permissions','finance','contracts','contract-template','company'],
   vendedor:['commercial'],

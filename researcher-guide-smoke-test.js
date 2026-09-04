@@ -9,6 +9,7 @@ const poster=path.join(root,'assets','pesquisa-pro-orientacoes-coleta-poster.png
 function assert(condition,message){if(!condition)throw new Error(message);}
 assert(app.includes("'researcher-guide'"),'rota do guia não encontrada');
 assert(app.includes("label:'Orientações para coleta'"),'item do menu do pesquisador não encontrado');
+assert(app.includes("pesq:['dashboard-pesq','researcher-guide','app-collect'"),'orientação não autorizada no menu real do pesquisador');
 assert(app.includes("PAGES['researcher-guide']"),'página de orientações não encontrada');
 assert(app.includes('researcher-guide-video'),'player do tutorial não encontrado');
 assert(app.includes('pesquisa-pro-orientacoes-coleta.mp4'),'fonte do vídeo não encontrada');

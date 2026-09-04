@@ -1,0 +1,23 @@
+const fs=require('fs');
+const path=require('path');
+const root=__dirname;
+const app=fs.readFileSync(path.join(root,'app.js'),'utf8');
+const css=fs.readFileSync(path.join(root,'style.css'),'utf8');
+const html=fs.readFileSync(path.join(root,'app.html'),'utf8');
+const video=path.join(root,'assets','pesquisa-pro-orientacoes-coleta.mp4');
+const poster=path.join(root,'assets','pesquisa-pro-orientacoes-coleta-poster.png');
+function assert(condition,message){if(!condition)throw new Error(message);}
+assert(app.includes("'researcher-guide'"),'rota do guia não encontrada');
+assert(app.includes("label:'Orientações para coleta'"),'item do menu do pesquisador não encontrado');
+assert(app.includes("PAGES['researcher-guide']"),'página de orientações não encontrada');
+assert(app.includes('researcher-guide-video'),'player do tutorial não encontrado');
+assert(app.includes('pesquisa-pro-orientacoes-coleta.mp4'),'fonte do vídeo não encontrada');
+assert(app.includes('Selecione a cota'),'orientação de seleção da cota não encontrada');
+assert(app.includes('responda à confirmação final se aparecer'),'orientação de confirmação final não encontrada');
+assert(app.includes('não altere respostas para atingir a meta'),'orientação de integridade não encontrada');
+assert(css.includes('.researcher-guide-page'),'estilos da página de orientações não encontrados');
+assert(css.includes('@media(max-width:760px)'), 'regras móveis do guia não encontradas');
+assert(html.includes('app.js?v=20260904170000'),'cache do app não atualizado');
+assert(fs.existsSync(video)&&fs.statSync(video).size>100000,'vídeo tutorial ausente ou vazio');
+assert(fs.existsSync(poster)&&fs.statSync(poster).size>10000,'pôster do tutorial ausente ou vazio');
+console.log('researcher-guide-smoke-test: PASS');

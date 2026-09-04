@@ -8,7 +8,7 @@ const ROLES={
   gerente:{name:'Rafael Dias',role:'Gerente',initials:'RD',
     nav:['dashboard','commercial','sample','reports','finance']},
   pesq:{name:'João Pereira',role:'Pesquisador',initials:'JP',
-    nav:['dashboard-pesq','app-collect','my-earnings','my-contract']},
+    nav:['dashboard-pesq','researcher-guide','app-collect','my-earnings','my-contract']},
   cliente:{name:'Prefeitura de Uberlândia',role:'Cliente',initials:'PU',
     nav:['client-progress','client-results']},
 };
@@ -22,6 +22,7 @@ const NAV_META={
   sample:{ico:'∑',label:'Cálculo de amostra',group:'Pesquisa'},
   collect:{ico:'⬇',label:'Coleta e campo',group:'Pesquisa'},
   'app-collect':{ico:'▶',label:'Coletar (app)',group:'Campo'},
+  'researcher-guide':{ico:'▣',label:'Orientações para coleta',group:'Campo'},
   reports:{ico:'◫',label:'Relatórios',group:'Análise'},
   users:{ico:'☺',label:'Usuários',group:'Administração'},
   permissions:{ico:'⚿',label:'Perfis e permissões',group:'Administração'},
@@ -404,6 +405,45 @@ async function loadDashQuotasIfNeeded(){
   const onKey=document.querySelector('.nav-item.on');
   if(onKey&&onKey.dataset.key==='dashboard-pesq')go('dashboard-pesq');
 }
+PAGES['researcher-guide']=()=>{
+  const primeiroNome=(CURRENT_PROFILE&&CURRENT_PROFILE.name)?CURRENT_PROFILE.name.trim().split(' ')[0]:'';
+  return head('Orientações para coleta',primeiroNome?('Olá '+primeiroNome+' — aprenda a coletar com segurança e qualidade'):'Aprenda a coletar com segurança e qualidade')+`
+  <div class="researcher-guide-page">
+    <div class="researcher-guide-hero card mb">
+      <div class="guide-hero-copy">
+        <span class="eyebrow">GUIA DO PESQUISADOR</span>
+        <h2>Como realizar uma coleta completa no PesquisaPro</h2>
+        <p>Assista ao tutorial e consulte o passo a passo antes de sair a campo. O objetivo é garantir localização correta, respeito às cotas, qualidade da entrevista e envio sem perda de dados.</p>
+        <div class="guide-hero-actions">
+          <button class="btn btn-accent" onclick="document.getElementById('researcher-guide-video')?.scrollIntoView({behavior:'smooth',block:'center'});document.getElementById('researcher-guide-video')?.play().catch(()=>{})">▶ Assistir ao tutorial</button>
+          <button class="btn btn-ghost" onclick="go('app-collect')">Abrir app de coleta →</button>
+        </div>
+      </div>
+      <div class="guide-hero-badge"><span class="guide-badge-icon">✓</span><strong>Coleta validada</strong><small>GPS, cota e envio conferidos</small></div>
+    </div>
+    <div class="card mb guide-video-card">
+      <div class="card-t">Vídeo tutorial</div>
+      <div class="card-d">Veja como iniciar uma coleta, escolher a cota, finalizar a entrevista e enviar os dados.</div>
+      <div class="guide-video-frame">
+        <video id="researcher-guide-video" controls playsinline preload="metadata" poster="assets/pesquisa-pro-orientacoes-coleta-poster.svg" aria-label="Tutorial de uso do aplicativo de coleta">
+          <source src="assets/pesquisa-pro-orientacoes-coleta.mp4" type="video/mp4">
+          Seu navegador não conseguiu carregar o vídeo. Use o passo a passo abaixo ou atualize a página.
+        </video>
+        <div class="guide-video-fallback"><strong>Vídeo em carregamento</strong><span>Se a conexão estiver lenta, siga o guia rápido abaixo.</span></div>
+      </div>
+    </div>
+    <div class="guide-section-title"><span class="eyebrow">PASSO A PASSO</span><h3>Faça a coleta na ordem correta</h3><p>Use esta sequência em todas as entrevistas para reduzir erros e evitar retrabalho.</p></div>
+    <div class="guide-step-grid">
+      ${[['01','Prepare o celular','Ative o GPS, permita a localização no navegador, confira a internet e mantenha a bateria suficiente para o trabalho.'],['02','Escolha a pesquisa','No menu, abra “Coletar (app)” e confirme se a pesquisa exibida é a correta antes de iniciar.'],['03','Selecione a cota','Toque em uma cota disponível. A instrução “1º selecione uma cota” deve desaparecer antes de iniciar.'],['04','Confirme a localização','A coleta exige georreferenciamento. Aguarde o status de localização ativa e permaneça no local da entrevista.'],['05','Aplique o questionário','Leia as perguntas com neutralidade, registre respostas verdadeiras e não pule campos obrigatórios.'],['06','Finalize e envie','Revise a entrevista, responda à confirmação final se aparecer, envie e aguarde a confirmação do servidor.']].map(([n,t,d])=>`<article class="guide-step"><span class="guide-step-num">${n}</span><div><h4>${t}</h4><p>${d}</p></div></article>`).join('')}
+    </div>
+    <div class="grid g2 guide-lower-grid">
+      <div class="card guide-checklist"><div class="card-t">Antes de enviar, confira</div><div class="card-d">Uma revisão de 20 segundos evita a maioria dos problemas.</div><label><input type="checkbox"> A cota escolhida corresponde ao perfil entrevistado</label><label><input type="checkbox"> A localização está ativa e atualizada</label><label><input type="checkbox"> As respostas foram conferidas com o entrevistado</label><label><input type="checkbox"> A tela confirmou o envio ao servidor</label></div>
+      <div class="card guide-support"><div class="card-t">Se algo não funcionar</div><div class="card-d">Não tente repetir várias vezes sem conferir o motivo.</div><div class="guide-support-row"><span>GPS bloqueado</span><strong>Ative a localização e recarregue a página.</strong></div><div class="guide-support-row"><span>Sem cota</span><strong>Verifique se você entrou na pesquisa correta.</strong></div><div class="guide-support-row"><span>Envio pendente</span><strong>Mantenha a página aberta até confirmar o servidor.</strong></div><button class="btn btn-ghost" onclick="go('app-collect')">Voltar para a coleta →</button></div>
+    </div>
+    <div class="guide-note"><strong>Importante:</strong> nunca compartilhe sua senha, não altere respostas para atingir a meta e procure a coordenação quando houver dúvida sobre uma cota ou abordagem.</div>
+  </div>`;
+};
+
 PAGES['dashboard-pesq']=()=>{
   if(!SURVEYS_LOADED)loadSurveysIfNeeded();
   if(!COLLECT_EVENTS_LOADED)loadCollectEventsIfNeeded();

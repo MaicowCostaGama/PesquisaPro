@@ -679,3 +679,41 @@ create policy "qualquer logado vê a assinatura da contratante"
 -- RLS desligado nelas, só o back-end (chave service_role) deve acessá-las,
 -- nunca o navegador diretamente.
 -- ============================================================================
+
+
+-- ----------------------------------------------------------------------------
+-- 11) CONFIRMAÇÃO FINAL GRAVADA (aprox. 20% das entrevistas)
+-- ----------------------------------------------------------------------------
+-- A gravação é somente um trecho final autorizado pelo entrevistado.
+-- O áudio fica em bucket privado; a gestão acessa por URL assinada.
+create table public.collection_recording_reservations (
+  id uuid primary key default gen_random_uuid(),
+  survey_id uuid not null references public.surveys(id) on delete cascade,
+  researcher_id uuid not null references public.profiles(id) on delete cascade,
+  recording_required boolean not null,
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null default (now() + interval '30 minutes'),
+  consumed_at timestamptz
+);
+
+create unique index collection_recording_reservations_active_idx
+  on public.collection_recording_reservations (survey_id, researcher_id)
+  where consumed_at is null;
+
+alter table public.collection_events
+  add column recording_reservation_id uuid references public.collection_recording_reservations(id) on delete set null,
+  add column recording_required boolean not null default false,
+  add column recording_consent boolean,
+  add column recording_status text not null default 'not_selected'
+    check (recording_status in ('not_selected','declined','pending_upload','uploaded','failed')),
+  add column recording_error text,
+  add column recording_created_at timestamptz;
+
+create table public.collection_recordings (
+  collection_event_id uuid primary key references public.collection_events(id) on delete cascade,
+  storage_path text not null,
+  mime_type text not null,
+  duration_ms integer,
+  created_at timestamptz not null default now(),
+  uploaded_by uuid references public.profiles(id) on delete set null
+);

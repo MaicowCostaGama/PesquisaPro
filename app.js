@@ -2191,9 +2191,10 @@ function collectDetail(idx){
     </div>
     <div class="card">
       <div class="card-t">Auditoria da coleta</div>
-      <div class="card-d">Todas as entrevistas desta pesquisa: pesquisador, cota, coordenadas (com a distância até a coleta anterior do mesmo pesquisador), horário, intervalo desde a entrevista anterior e alertas de qualidade. Reprove uma coleta com fraude/erro (não entra no pagamento do pesquisador) ou marque como calibração (fica fora do cálculo dos resultados, mas continua contando para o pagamento). As duas ações podem ser desfeitas a qualquer momento, aqui ou no painel acima.</div>
+      <div class="card-d">Todas as entrevistas desta pesquisa: pesquisador, cota, coordenadas (com a distância até a coleta anterior do mesmo pesquisador), horário, intervalo desde a entrevista anterior, confirmação final e alertas de qualidade. Aproximadamente 20% podem ser selecionadas para uma confirmação curta em áudio, sempre com autorização do entrevistado. Reprove uma coleta com fraude/erro (não entra no pagamento do pesquisador) ou marque como calibração (fica fora do cálculo dos resultados, mas continua contando para o pagamento). As duas ações podem ser desfeitas a qualquer momento, aqui ou no painel acima.</div>
+      <div id="auditRecordingSummary" class="recording-summary"></div>
       <div style="overflow-x:auto">
-      <table><thead><tr><th>Pesquisador</th><th>Cota</th><th>Data/hora</th><th title="Tempo desde a entrevista anterior do mesmo pesquisador">Intervalo</th><th>Coordenadas</th><th>Precisão</th><th>Status</th><th>Alertas</th><th>Ações</th></tr></thead>
+      <table><thead><tr><th>Pesquisador</th><th>Cota</th><th>Data/hora</th><th title="Tempo desde a entrevista anterior do mesmo pesquisador">Intervalo</th><th>Coordenadas</th><th>Precisão</th><th>Status</th><th>Confirmação</th><th>Alertas</th><th>Ações</th></tr></thead>
       <tbody id="auditBody"></tbody></table>
       </div>
     </div>
@@ -2217,7 +2218,38 @@ function collectTab(btn,which){
 
 /* ===== Coleta de campo: mapa, feed e auditoria (dados reais, tabela collection_events) ===== */
 const COLLECT_COLORS=['#2563eb','#059669','#ea580c','#7c3aed','#dc2626','#d97706'];
-const COLLECT_EVENT_SELECT='id,survey_id,researcher_id,quota_label,lat,lng,accuracy_m,occurred_at,synced,flags,status,reject_reason,rejected_at,is_calibration';
+const COLLECT_EVENT_SELECT_BASE='id,survey_id,researcher_id,quota_label,lat,lng,accuracy_m,occurred_at,synced,flags,status,reject_reason,rejected_at,is_calibration';
+const COLLECT_EVENT_SELECT=COLLECT_EVENT_SELECT_BASE+',recording_reservation_id,recording_required,recording_consent,recording_status,recording_error,recording_created_at';
+let COLLECT_RECORDING_COLUMNS_AVAILABLE=true;
+let COLLECTION_RECORDINGS={};
+const COLLECTION_RECORDING_STAFF_ROLES=['admin','coord','gerente','admpro'];
+function collectionCanManageRecording(){return COLLECTION_RECORDING_STAFF_ROLES.includes(selectedRole);}
+async function fetchCollectionEvents({surveyId=null,ownOnly=false}={}){
+  const build=select=>{
+    let query=sb.from('collection_events').select(select).order('occurred_at',{ascending:false});
+    if(surveyId)query=query.eq('survey_id',surveyId);
+    if(ownOnly&&CURRENT_PROFILE&&CURRENT_PROFILE.id)query=query.eq('researcher_id',CURRENT_PROFILE.id);
+    return query;
+  };
+  let result=await build(COLLECT_RECORDING_COLUMNS_AVAILABLE?COLLECT_EVENT_SELECT:COLLECT_EVENT_SELECT_BASE);
+  if(result.error&&COLLECT_RECORDING_COLUMNS_AVAILABLE&&/recording_|column|schema cache/i.test(result.error.message||'')){
+    COLLECT_RECORDING_COLUMNS_AVAILABLE=false;
+    result=await build(COLLECT_EVENT_SELECT_BASE);
+  }
+  return result;
+}
+async function loadCollectionRecordingsForEvents(events){
+  if(!collectionCanManageRecording())return;
+  const ids=events.map(e=>e.id).filter(Boolean);
+  if(!ids.length)return;
+  try{
+    const {data,error}=await sb.from('collection_recordings')
+      .select('collection_event_id,storage_path,mime_type,duration_ms,created_at')
+      .in('collection_event_id',ids);
+    if(error)return;
+    (data||[]).forEach(r=>{COLLECTION_RECORDINGS[r.collection_event_id]=r;});
+  }catch(ex){/* migration ainda não aplicada ou tabela indisponível */}
+}
 let COLLECT_EVENTS=[];
 let COLLECT_EVENTS_LOADED=false,COLLECT_EVENTS_LOADING=false;
 let COLLECT_LIVE_TIMER=null;
@@ -2242,6 +2274,12 @@ function collectionEventRowToEntry(row){
     rejectReason:row.reject_reason||null,
     rejectedAt:row.rejected_at?new Date(row.rejected_at).getTime():null,
     calibration:!!row.is_calibration,
+    recordingRequired:!!row.recording_required,
+    recordingConsent:row.recording_consent===true?true:row.recording_consent===false?false:null,
+    recordingStatus:row.recording_status||'not_selected',
+    recordingError:row.recording_error||'',
+    recordingCreatedAt:row.recording_created_at?new Date(row.recording_created_at).getTime():null,
+    recordingPath:['admin','coord','gerente','admpro'].includes(selectedRole)?(row.recording_path||null):null,
   };
 }
 /* carrega as coletas — o próprio RLS decide o que cada papel enxerga: staff
@@ -2254,10 +2292,8 @@ async function loadCollectEventsIfNeeded(){
   COLLECT_EVENTS_LOADING=true;
   await loadUsersIfNeeded();
   try{
-    let query=sb.from('collection_events').select(COLLECT_EVENT_SELECT).order('occurred_at',{ascending:false});
-    if(selectedRole==='pesq'&&CURRENT_PROFILE&&CURRENT_PROFILE.id)query=query.eq('researcher_id',CURRENT_PROFILE.id);
-    const {data,error}=await query;
-    if(!error){COLLECT_EVENTS=(data||[]).map(collectionEventRowToEntry);COLLECT_EVENTS_LOADED=true;}
+    const {data,error}=await fetchCollectionEvents({ownOnly:selectedRole==='pesq'});
+    if(!error){COLLECT_EVENTS=(data||[]).map(collectionEventRowToEntry);COLLECT_EVENTS_LOADED=true;await loadCollectionRecordingsForEvents(COLLECT_EVENTS);}
     else console.error('Erro ao carregar coletas:',error);
   }catch(ex){console.error('Erro de conexão ao carregar coletas:',ex);}
   COLLECT_EVENTS_LOADING=false;
@@ -2277,10 +2313,10 @@ async function pollCollectEvents(idx){
   const survey=SURVEYS[idx];
   if(!survey||!survey.id)return;
   try{
-    const {data,error}=await sb.from('collection_events').select(COLLECT_EVENT_SELECT)
-      .eq('survey_id',survey.id).order('occurred_at',{ascending:false});
+    const {data,error}=await fetchCollectionEvents({surveyId:survey.id});
     if(error)return;
     const fresh=(data||[]).map(collectionEventRowToEntry);
+    await loadCollectionRecordingsForEvents(fresh);
     /* Mantém no cache as outras pesquisas e substitui somente a pesquisa aberta. */
     COLLECT_EVENTS=COLLECT_EVENTS.filter(e=>e.surveyId!==survey.id).concat(fresh)
       .sort((a,b)=>b.ts-a.ts);
@@ -2509,9 +2545,41 @@ function distMeters(lat1,lng1,lat2,lng2){
 function fmtDist(m){
   return m<1000?Math.round(m)+'m':(m/1000).toFixed(1)+'km';
 }
+function collectionRecordingCell(e){
+  if(!e.recordingRequired)return'<span class="pill pill-gray">Não selecionada</span>';
+  const rec=COLLECTION_RECORDINGS[e.id];
+  if(e.recordingStatus==='uploaded'&&rec?.storage_path){
+    const duration=rec.duration_ms?` <span style="color:var(--ink3)">${Math.round(rec.duration_ms/1000)}s</span>`:'';
+    return'<span class="pill pill-green">✓ Autorizada</span>'+duration+`<button class="btn-ghost" style="display:block;font-size:10.5px;padding:3px 7px;margin-top:5px" onclick="openCollectionRecording(${jsArg(e.id)})">▶ Ouvir 10 min</button>`;
+  }
+  if(e.recordingStatus==='declined')return'<span class="pill pill-gray">Recusada</span>';
+  if(e.recordingStatus==='failed')return'<span class="pill pill-red">Falha técnica</span>'+(e.recordingError?`<div style="font-size:10.5px;color:var(--ink3);margin-top:3px;max-width:150px">${esc(e.recordingError)}</div>`:'');
+  if(e.recordingStatus==='pending_upload')return'<span class="pill pill-amber">Aguardando áudio</span>';
+  return'<span class="pill pill-amber">Selecionada</span>';
+}
+async function openCollectionRecording(eventId){
+  if(!collectionCanManageRecording())return;
+  const rec=COLLECTION_RECORDINGS[eventId];
+  if(!rec?.storage_path){alert('Esta confirmação ainda não possui áudio disponível.');return;}
+  try{
+    const {data,error}=await sb.storage.from('collection-recordings').createSignedUrl(rec.storage_path,600);
+    if(error||!data?.signedUrl)throw new Error(error?.message||'URL temporária indisponível');
+    window.open(data.signedUrl,'_blank','noopener');
+  }catch(ex){alert('Não foi possível abrir a confirmação gravada: '+ex.message);}
+}
 function renderAudit(idx){
   const el=document.getElementById('auditBody');if(!el)return;
   const all=eventsForSurveyIdx(idx);
+  const selected=all.filter(e=>e.recordingRequired);
+  const counts={uploaded:0,declined:0,failed:0,pending:0};
+  selected.forEach(e=>{
+    if(e.recordingStatus==='uploaded')counts.uploaded++;
+    else if(e.recordingStatus==='declined')counts.declined++;
+    else if(e.recordingStatus==='failed')counts.failed++;
+    else counts.pending++;
+  });
+  const summary=document.getElementById('auditRecordingSummary');
+  if(summary)summary.innerHTML=`<div class="recording-summary-title">Amostra de confirmação</div><div class="recording-summary-items"><span><b>${selected.length}</b> selecionada(s)</span><span class="summary-ok"><b>${counts.uploaded}</b> com áudio</span><span><b>${counts.declined}</b> recusada(s)</span><span class="summary-warn"><b>${counts.failed+counts.pending}</b> pendente(s)/falha(s)</span></div>`;
   const byResearcher={};
   all.forEach(e=>{
     const key=e.researcherId||e.name;
@@ -2549,6 +2617,7 @@ function renderAudit(idx){
     const statusCell=`${e.synced?'<span class="pill pill-green">Sincronizado</span>':'<span class="pill pill-amber">Pendente</span>'}`+
       (rejected?`<div style="margin-top:5px"><span class="pill pill-red" title="${esc(e.rejectReason||'')}">✕ Reprovada</span><div style="font-size:10.5px;color:var(--ink3);margin-top:2px;max-width:170px">${esc(e.rejectReason||'')}</div></div>`:'')+
       (e.calibration?'<div style="margin-top:5px"><span class="pill pill-blue">◎ Calibração</span></div>':'');
+    const recordingCell=collectionRecordingCell(e);
     const actionsCell=`<div style="display:flex;flex-direction:column;gap:4px;white-space:nowrap">
       ${conversationButton(e.phone,'Olá '+e.name+'! Podemos conversar sobre a coleta '+(e.cota||'')+'?')}
       <button class="btn-ghost" style="font-size:11px;padding:3px 8px" onclick="auditReject('${e.id}')">${rejected?'↺ Reaprovar':'✕ Reprovar'}</button>
@@ -2562,10 +2631,11 @@ function renderAudit(idx){
       <td>${Number.isFinite(e.lat)&&Number.isFinite(e.lng)?e.lat.toFixed(5)+', '+e.lng.toFixed(5):'—'}${distNote}</td>
       <td>${e.acc>0?'±'+Math.round(e.acc)+'m':'—'}</td>
       <td>${statusCell}</td>
+      <td>${recordingCell}</td>
       <td>${flags.length?flags.map(f=>'<span class="pill pill-red" style="margin-right:4px;white-space:nowrap">'+esc(f)+'</span>').join(''):'<span style="color:var(--ink3)">—</span>'}</td>
       <td>${actionsCell}</td>
     </tr>`;
-  }).join('')||'<tr><td colspan="9" class="empty">Nenhuma coleta registrada ainda.</td></tr>';
+  }).join('')||'<tr><td colspan="10" class="empty">Nenhuma coleta registrada ainda.</td></tr>';
   if(AUDIT_HIGHLIGHT_ID!=null){
     const row=el.querySelector(`tr[data-eid="${AUDIT_HIGHLIGHT_ID}"]`);
     if(row){
@@ -2679,6 +2749,7 @@ PAGES['app-collect']=()=>{
       <div id="acollectSurveyPicker"></div>
       <div id="acollectQuotas"><div class="empty" style="padding:10px 0">Carregando cotas…</div></div>
       <div id="acollectForm"></div>
+      <div id="acollectRecording"></div>
       <div id="acollectMsg"></div>
       <button id="startCollectBtn" class="btn-primary" style="height:44px;margin-top:12px;font-size:14px" disabled onclick="acollectStart()">▶ Iniciar coleta</button>
       <div id="geoHint" style="font-size:11px;color:var(--ink3);text-align:center;margin-top:6px">Ative a localização para liberar a coleta</div>
@@ -2692,6 +2763,7 @@ PAGES['app-collect']=()=>{
           <li><span class="ck">✓</span>Coordenadas, horário, cota e as respostas de verdade ficam gravadas no banco assim que a coleta é enviada — é isso que alimenta Relatórios e Resultados</li>
           <li><span class="ck">✓</span>O pesquisador só enxerga e escolhe as cotas desta pesquisa que ainda faltam</li>
           <li><span class="ck">✓</span>Entrevista muito rápida (menos de 1 min entre iniciar e enviar) é sinalizada para a auditoria</li>
+          <li><span class="ck">✓</span>Em aproximadamente 20% das entrevistas, o app pode solicitar uma confirmação final curta em áudio, sempre com autorização do entrevistado</li>
         </ul>
         <div style="font-size:11px;color:var(--ink3);margin-top:8px">Ainda não implementado: funcionamento 100% offline com fila de sincronização — por enquanto é preciso ter internet no momento de enviar a coleta (o GPS em si funciona sem internet).</div>
       </div>
@@ -2742,6 +2814,10 @@ let ACOLLECT_SURVEY_ID=null,ACOLLECT_QUOTA_COUNTS={},ACOLLECT_QUOTA_LIST=[];
 let ACOLLECT_SELECTED_QUOTA=null,ACOLLECT_IN_PROGRESS=false,ACOLLECT_SUBMITTING=false,ACOLLECT_STARTED_AT=null;
 let ACOLLECT_TICK=null;
 let ACOLLECT_ANSWERS={}; /* {questionDbId: {value, locked}} — respostas de verdade da entrevista em andamento */
+let ACOLLECT_RECORDING_FEATURE_AVAILABLE=null;
+let ACOLLECT_RECORDING_RESERVATION_ID=null,ACOLLECT_RECORDING_REQUIRED=false,ACOLLECT_RECORDING_CONSENT=null;
+let ACOLLECT_RECORDING_STATUS='not_selected',ACOLLECT_RECORDING_BLOB=null,ACOLLECT_RECORDING_MIME='',ACOLLECT_RECORDING_DURATION_MS=null,ACOLLECT_RECORDING_STREAM=null,ACOLLECT_RECORDING_RECORDER=null,ACOLLECT_RECORDING_CHUNKS=[],ACOLLECT_RECORDING_PREVIEW_URL=null,ACOLLECT_RECORDING_STOP_TIMER=null,ACOLLECT_RECORDING_STARTED_AT=null,ACOLLECT_RECORDING_ERROR='';
+const ACOLLECT_RECORDING_MAX_SECONDS=12;
 const ACOLLECT_MIN_SECONDS=60; /* entrevista concluída mais rápido que isso é sinalizada na auditoria */
 const ACOLLECT_SCALE_MAX={scale:5,scale10:10,nps:10}; /* nps vai de 0 a 10 (11 pontos) */
 
@@ -2806,6 +2882,7 @@ async function acollectPickSurvey(id){
   if(ACOLLECT_IN_PROGRESS){alert('Termine ou cancele a entrevista em andamento antes de trocar de pesquisa.');renderAcollectSurveyPicker();return;}
   ACOLLECT_SURVEY_ID=id;
   ACOLLECT_SELECTED_QUOTA=null;
+  acollectResetRecordingState();
   renderAcollectSurveyPicker();
   await acollectLoadQuotasForCurrent();
 }
@@ -2890,6 +2967,145 @@ function acollectToggleMultiAnswer(qDbId,label){
   ACOLLECT_ANSWERS[qDbId]={value:cur};
   renderAcollectActionState();
 }
+function acollectResetRecordingState(){
+  if(ACOLLECT_RECORDING_STOP_TIMER){clearTimeout(ACOLLECT_RECORDING_STOP_TIMER);ACOLLECT_RECORDING_STOP_TIMER=null;}
+  const recorder=ACOLLECT_RECORDING_RECORDER;
+  ACOLLECT_RECORDING_STATUS='not_selected';
+  if(recorder&&recorder.state!=='inactive')recorder.stop();
+  if(ACOLLECT_RECORDING_STREAM){ACOLLECT_RECORDING_STREAM.getTracks().forEach(track=>track.stop());ACOLLECT_RECORDING_STREAM=null;}
+  if(ACOLLECT_RECORDING_PREVIEW_URL){URL.revokeObjectURL(ACOLLECT_RECORDING_PREVIEW_URL);ACOLLECT_RECORDING_PREVIEW_URL=null;}
+  ACOLLECT_RECORDING_FEATURE_AVAILABLE=null;
+  ACOLLECT_RECORDING_RESERVATION_ID=null;
+  ACOLLECT_RECORDING_REQUIRED=false;
+  ACOLLECT_RECORDING_CONSENT=null;
+  ACOLLECT_RECORDING_BLOB=null;
+  ACOLLECT_RECORDING_MIME='';
+  ACOLLECT_RECORDING_DURATION_MS=null;
+  ACOLLECT_RECORDING_RECORDER=null;
+  ACOLLECT_RECORDING_CHUNKS=[];
+  ACOLLECT_RECORDING_STARTED_AT=null;
+  ACOLLECT_RECORDING_ERROR='';
+}
+function acollectRecordingMime(){
+  if(typeof MediaRecorder==='undefined')return'';
+  return ['audio/webm;codecs=opus','audio/webm','audio/mp4','audio/ogg;codecs=opus'].find(x=>MediaRecorder.isTypeSupported?.(x))||'';
+}
+async function acollectReserveRecording(){
+  ACOLLECT_RECORDING_FEATURE_AVAILABLE=false;
+  ACOLLECT_RECORDING_REQUIRED=false;
+  ACOLLECT_RECORDING_STATUS='not_selected';
+  if(!ACOLLECT_SURVEY_ID||!CURRENT_PROFILE?.id)return;
+  try{
+    const {data,error}=await sb.rpc('reserve_collection_recording',{p_survey_id:ACOLLECT_SURVEY_ID});
+    if(error||!data?.[0])return;
+    ACOLLECT_RECORDING_FEATURE_AVAILABLE=true;
+    ACOLLECT_RECORDING_RESERVATION_ID=data[0].reservation_id;
+    ACOLLECT_RECORDING_REQUIRED=data[0].recording_required===true;
+    ACOLLECT_RECORDING_STATUS=ACOLLECT_RECORDING_REQUIRED?'awaiting_consent':'not_selected';
+  }catch(ex){console.warn('Confirmação de áudio não disponível:',ex);}
+}
+function renderAcollectRecording(){
+  const el=document.getElementById('acollectRecording');
+  if(!el)return;
+  if(!ACOLLECT_IN_PROGRESS||!ACOLLECT_RECORDING_FEATURE_AVAILABLE||!ACOLLECT_RECORDING_REQUIRED){el.innerHTML='';return;}
+  if(ACOLLECT_RECORDING_STATUS==='awaiting_consent'){
+    el.innerHTML=`<div class="recording-consent-card">
+      <div class="recording-consent-title">Confirmação final de qualidade</div>
+      <p>Esta entrevista foi selecionada para uma confirmação curta em áudio. Explique ao entrevistado que a gravação não registra o questionário inteiro, será usada somente para verificar se a pesquisa foi realizada corretamente e ficará disponível apenas para a gestão.</p>
+      <p class="recording-prompt">Pergunte: “Você confirma que esta pesquisa foi realizada corretamente e que respondeu às perguntas de forma voluntária?”</p>
+      <label class="recording-check"><input type="checkbox" id="acollectRecordingConsent" onchange="acollectRecordingConsentChanged(this.checked)"> O entrevistado autorizou a gravação desta confirmação final.</label>
+      <div class="recording-consent-actions"><button type="button" class="btn-ghost" onclick="acollectRecordingDecline()">Recusar / enviar sem áudio</button><button type="button" class="btn-primary" id="acollectRecordingStartBtn" disabled onclick="acollectRecordingStart()">● Gravar confirmação</button></div>
+    </div>`;
+    return;
+  }
+  if(ACOLLECT_RECORDING_STATUS==='recording'){
+    el.innerHTML=`<div class="recording-consent-card recording-active"><div class="recording-consent-title">Gravando confirmação final</div><p>Grave apenas a resposta curta do entrevistado. O áudio será interrompido automaticamente em ${ACOLLECT_RECORDING_MAX_SECONDS} segundos.</p><div class="recording-timer" id="acollectRecordingTimer">00:00</div><button type="button" class="btn-danger" onclick="acollectRecordingStop()">■ Parar gravação</button></div>`;
+    return;
+  }
+  if(ACOLLECT_RECORDING_STATUS==='ready'){
+    const preview=ACOLLECT_RECORDING_PREVIEW_URL?`<audio controls preload="metadata" src="${ACOLLECT_RECORDING_PREVIEW_URL}"></audio>`:'';
+    el.innerHTML=`<div class="recording-consent-card recording-ready"><div class="recording-consent-title">Confirmação pronta</div><p>Revise o trecho abaixo. Se estiver inaudível, grave novamente. O áudio será enviado junto com a entrevista.</p>${preview}<div class="recording-consent-actions"><button type="button" class="btn-ghost" onclick="acollectRecordingRetake()">Gravar novamente</button><span class="pill pill-green">✓ Será anexado ao enviar</span></div></div>`;
+    return;
+  }
+  if(ACOLLECT_RECORDING_STATUS==='declined'){
+    el.innerHTML='<div class="recording-note"><b>Entrevista sem áudio.</b> O entrevistado não autorizou a confirmação gravada. A entrevista continua válida e pode ser enviada.</div>';
+    return;
+  }
+  if(ACOLLECT_RECORDING_STATUS==='failed'){
+    el.innerHTML='<div class="recording-note recording-note-error"><b>Áudio não anexado.</b> '+esc(ACOLLECT_RECORDING_ERROR||'Falha técnica na gravação')+'. A entrevista continua válida; envie sem o áudio.</div>';
+  }
+}
+function acollectRecordingConsentChanged(checked){
+  ACOLLECT_RECORDING_CONSENT=checked===true;
+  const btn=document.getElementById('acollectRecordingStartBtn');if(btn)btn.disabled=!checked;
+}
+function acollectRecordingDecline(){
+  ACOLLECT_RECORDING_CONSENT=false;
+  ACOLLECT_RECORDING_STATUS='declined';
+  renderAcollectRecording();
+  renderAcollectActionState();
+}
+async function acollectRecordingStart(){
+  if(ACOLLECT_RECORDING_CONSENT!==true||ACOLLECT_RECORDING_STATUS!=='awaiting_consent')return;
+  if(!window.isSecureContext||!navigator.mediaDevices?.getUserMedia||typeof MediaRecorder==='undefined'){
+    alert('Este aparelho ou navegador não permite gravação segura de áudio. A entrevista pode ser enviada sem gravação.');
+    ACOLLECT_RECORDING_ERROR='Navegador ou contexto sem suporte seguro ao microfone';
+    ACOLLECT_RECORDING_STATUS='failed';renderAcollectRecording();renderAcollectActionState();return;
+  }
+  const mime=acollectRecordingMime();
+  try{
+    ACOLLECT_RECORDING_STREAM=await navigator.mediaDevices.getUserMedia({audio:true});
+    ACOLLECT_RECORDING_MIME=mime||'audio/webm';
+    ACOLLECT_RECORDING_CHUNKS=[];
+    ACOLLECT_RECORDING_RECORDER=new MediaRecorder(ACOLLECT_RECORDING_STREAM,mime?{mimeType:mime}:undefined);
+    ACOLLECT_RECORDING_RECORDER.ondataavailable=event=>{if(event.data?.size)ACOLLECT_RECORDING_CHUNKS.push(event.data);};
+    ACOLLECT_RECORDING_RECORDER.onerror=()=>{ACOLLECT_RECORDING_ERROR='O gravador interrompeu a captura';ACOLLECT_RECORDING_STATUS='failed';acollectRecordingStopTracks();renderAcollectRecording();renderAcollectActionState();};
+    ACOLLECT_RECORDING_RECORDER.onstop=()=>{
+      if(ACOLLECT_RECORDING_STATUS!=='recording')return;
+      const blob=new Blob(ACOLLECT_RECORDING_CHUNKS,{type:ACOLLECT_RECORDING_MIME});
+      if(!blob.size){ACOLLECT_RECORDING_ERROR='O navegador não retornou dados de áudio';ACOLLECT_RECORDING_STATUS='failed';renderAcollectRecording();renderAcollectActionState();return;}
+      ACOLLECT_RECORDING_BLOB=blob;
+      ACOLLECT_RECORDING_DURATION_MS=Math.min(ACOLLECT_RECORDING_MAX_SECONDS*1000,Date.now()-ACOLLECT_RECORDING_STARTED_AT);
+      if(ACOLLECT_RECORDING_PREVIEW_URL)URL.revokeObjectURL(ACOLLECT_RECORDING_PREVIEW_URL);
+      ACOLLECT_RECORDING_PREVIEW_URL=URL.createObjectURL(blob);
+      ACOLLECT_RECORDING_STATUS='ready';
+      acollectRecordingStopTracks();
+      renderAcollectRecording();renderAcollectActionState();
+    };
+    ACOLLECT_RECORDING_STATUS='recording';
+    ACOLLECT_RECORDING_STARTED_AT=Date.now();
+    renderAcollectRecording();
+    let seconds=0;
+    const timer=setInterval(()=>{
+      seconds=Math.floor((Date.now()-ACOLLECT_RECORDING_STARTED_AT)/1000);
+      const timerEl=document.getElementById('acollectRecordingTimer');if(timerEl)timerEl.textContent='00:'+String(seconds).padStart(2,'0');
+      if(ACOLLECT_RECORDING_STATUS!=='recording')clearInterval(timer);
+    },250);
+    ACOLLECT_RECORDING_STOP_TIMER=setTimeout(()=>acollectRecordingStop(),ACOLLECT_RECORDING_MAX_SECONDS*1000);
+    ACOLLECT_RECORDING_RECORDER.start();
+  }catch(ex){
+    ACOLLECT_RECORDING_ERROR='Permissão do microfone negada ou dispositivo indisponível';
+    ACOLLECT_RECORDING_STATUS='failed';
+    acollectRecordingStopTracks();
+    renderAcollectRecording();
+    renderAcollectActionState();
+    alert('Não foi possível acessar o microfone. A entrevista pode ser enviada sem gravação.');
+  }
+}
+function acollectRecordingStopTracks(){
+  if(ACOLLECT_RECORDING_STOP_TIMER){clearTimeout(ACOLLECT_RECORDING_STOP_TIMER);ACOLLECT_RECORDING_STOP_TIMER=null;}
+  if(ACOLLECT_RECORDING_STREAM){ACOLLECT_RECORDING_STREAM.getTracks().forEach(track=>track.stop());ACOLLECT_RECORDING_STREAM=null;}
+}
+function acollectRecordingStop(){
+  if(ACOLLECT_RECORDING_STATUS!=='recording')return;
+  ACOLLECT_RECORDING_STOP_TIMER=null;
+  if(ACOLLECT_RECORDING_RECORDER&&ACOLLECT_RECORDING_RECORDER.state!=='inactive')ACOLLECT_RECORDING_RECORDER.stop();
+}
+function acollectRecordingRetake(){
+  if(ACOLLECT_RECORDING_PREVIEW_URL){URL.revokeObjectURL(ACOLLECT_RECORDING_PREVIEW_URL);ACOLLECT_RECORDING_PREVIEW_URL=null;}
+  ACOLLECT_RECORDING_BLOB=null;ACOLLECT_RECORDING_DURATION_MS=null;ACOLLECT_RECORDING_CONSENT=true;ACOLLECT_RECORDING_STATUS='awaiting_consent';
+  renderAcollectRecording();
+}
 /* perguntas ainda sem resposta (todas exceto "resposta aberta", que é
    opcional) — usado para travar o botão "Concluir e enviar" */
 function acollectMissingRequired(){
@@ -2971,9 +3187,11 @@ function renderAcollectActionState(){
       btn.parentNode.insertBefore(actionsEl,btn);
     }
     const missing=acollectMissingRequired().length;
-    const submitBlocked=ACOLLECT_SUBMITTING||missing>0;
+    const recordingPending=ACOLLECT_RECORDING_REQUIRED&&['awaiting_consent','recording'].includes(ACOLLECT_RECORDING_STATUS);
+    const submitBlocked=ACOLLECT_SUBMITTING||missing>0||recordingPending;
     actionsEl.innerHTML=`<div class="online-banner" style="margin-bottom:8px">▶ Entrevista em andamento — ${acollectElapsedLabel()}</div>
       ${missing>0?`<div style="font-size:11.5px;color:var(--ink3);margin-bottom:6px">Faltam responder ${missing} pergunta${missing>1?'s':''}</div>`:''}
+      ${recordingPending?'<div style="font-size:11.5px;color:var(--ink3);margin-bottom:6px">Conclua a confirmação final ou escolha enviar sem áudio.</div>':''}
       <button class="btn-primary" style="height:40px;font-size:14px;width:100%;${submitBlocked?'opacity:.5':''}" ${submitBlocked?'disabled':''} onclick="acollectSubmit()">${ACOLLECT_SUBMITTING?'Enviando…':'✓ Concluir e enviar'}</button>
       <button class="btn-ghost" style="width:100%;margin-top:6px" ${ACOLLECT_SUBMITTING?'disabled':''} onclick="acollectCancel()">Cancelar</button>`;
     if(hint)hint.textContent='';
@@ -3016,6 +3234,8 @@ async function acollectStart(){
     }
     renderAcollectQuotas();
   }
+  acollectResetRecordingState();
+  await acollectReserveRecording();
   ACOLLECT_IN_PROGRESS=true;
   ACOLLECT_STARTED_AT=Date.now();
   ACOLLECT_ANSWERS={};
@@ -3023,6 +3243,7 @@ async function acollectStart(){
     ACOLLECT_ANSWERS[quotaEntry.questionDbId]={value:ACOLLECT_SELECTED_QUOTA,locked:true};
   }
   renderAcollectForm();
+  renderAcollectRecording();
   renderAcollectActionState();
 }
 function acollectCancel(){
@@ -3030,6 +3251,7 @@ function acollectCancel(){
   ACOLLECT_STARTED_AT=null;
   ACOLLECT_SUBMITTING=false;
   ACOLLECT_ANSWERS={};
+  acollectResetRecordingState();
   if(ACOLLECT_TICK){clearInterval(ACOLLECT_TICK);ACOLLECT_TICK=null;}
   const formEl=document.getElementById('acollectForm');
   if(formEl)formEl.innerHTML='';
@@ -3037,10 +3259,8 @@ function acollectCancel(){
 }
 async function loadCollectEventsForced(){
   try{
-    let query=sb.from('collection_events').select(COLLECT_EVENT_SELECT).order('occurred_at',{ascending:false});
-    if(selectedRole==='pesq'&&CURRENT_PROFILE&&CURRENT_PROFILE.id)query=query.eq('researcher_id',CURRENT_PROFILE.id);
-    const {data,error}=await query;
-    if(!error){COLLECT_EVENTS=(data||[]).map(collectionEventRowToEntry);COLLECT_EVENTS_LOADED=true;}
+    const {data,error}=await fetchCollectionEvents({ownOnly:selectedRole==='pesq'});
+    if(!error){COLLECT_EVENTS=(data||[]).map(collectionEventRowToEntry);COLLECT_EVENTS_LOADED=true;await loadCollectionRecordingsForEvents(COLLECT_EVENTS);}
   }catch(ex){ /* mantém os dados já carregados se a nova busca falhar */ }
 }
 /* monta as linhas de collection_answers a partir de ACOLLECT_ANSWERS —
@@ -3070,30 +3290,61 @@ function acollectBuildAnswerRows(eventId){
    concluída rápido demais para ter sido aplicada de verdade (menos de
    ACOLLECT_MIN_SECONDS entre "Iniciar" e "Concluir e enviar") — fica visível
    para o staff na aba Auditoria. */
+async function acollectUploadRecording(eventId){
+  if(!ACOLLECT_RECORDING_REQUIRED||ACOLLECT_RECORDING_CONSENT!==true)return{ok:true};
+  if(ACOLLECT_RECORDING_STATUS!=='ready'||!ACOLLECT_RECORDING_BLOB){
+    const {error}=await sb.rpc('mark_collection_recording_failed',{p_collection_event_id:eventId,p_error:ACOLLECT_RECORDING_ERROR||'Confirmação autorizada sem áudio disponível'});
+    return{ok:!error,error:error?.message||''};
+  }
+  const ext=ACOLLECT_RECORDING_MIME.includes('mp4')?'m4a':ACOLLECT_RECORDING_MIME.includes('ogg')?'ogg':'webm';
+  const randomPart=window.crypto?.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.random().toString(16).slice(2);
+  const path='confirmations/'+CURRENT_PROFILE.id+'/'+eventId+'-'+randomPart+'.'+ext;
+  const {error:uploadError}=await sb.storage.from('collection-recordings').upload(path,ACOLLECT_RECORDING_BLOB,{contentType:ACOLLECT_RECORDING_MIME||'audio/webm',upsert:false});
+  if(uploadError){
+    await sb.rpc('mark_collection_recording_failed',{p_collection_event_id:eventId,p_error:uploadError.message});
+    return{ok:false,error:uploadError.message};
+  }
+  const {error:attachError}=await sb.rpc('attach_collection_recording',{p_collection_event_id:eventId,p_storage_path:path,p_mime_type:ACOLLECT_RECORDING_MIME||'audio/webm',p_duration_ms:ACOLLECT_RECORDING_DURATION_MS||null});
+  if(attachError){
+    await sb.rpc('mark_collection_recording_failed',{p_collection_event_id:eventId,p_error:attachError.message});
+    return{ok:false,error:attachError.message};
+  }
+  return{ok:true};
+}
 async function acollectSubmit(){
   if(!ACOLLECT_IN_PROGRESS||ACOLLECT_SUBMITTING)return;
   if(GEO.status!=='granted'){alert('A localização foi perdida — aguarde reconectar antes de enviar.');return;}
   const missing=acollectMissingRequired();
   if(missing.length){alert('Faltam responder '+missing.length+' pergunta(s) antes de enviar.');return;}
+  if(ACOLLECT_RECORDING_REQUIRED&&['awaiting_consent','recording'].includes(ACOLLECT_RECORDING_STATUS)){
+    alert('Conclua a confirmação final ou escolha enviar sem áudio antes de finalizar.');return;
+  }
   ACOLLECT_SUBMITTING=true;
   renderAcollectActionState();
   const elapsedMs=Date.now()-ACOLLECT_STARTED_AT;
   const flags=[];
   if(elapsedMs<ACOLLECT_MIN_SECONDS*1000)flags.push('Tempo de aplicação muito curto');
   const quotaLabel=ACOLLECT_SELECTED_QUOTA||null;
+  const eventPayload={
+    survey_id:ACOLLECT_SURVEY_ID,
+    researcher_id:CURRENT_PROFILE.id,
+    quota_label:quotaLabel,
+    lat:GEO.lat,lng:GEO.lng,accuracy_m:GEO.acc,
+    occurred_at:new Date().toISOString(),
+    synced:true,
+    flags,
+    status:'valid',
+    is_calibration:false,
+  };
+  if(ACOLLECT_RECORDING_FEATURE_AVAILABLE===true){
+    eventPayload.recording_reservation_id=ACOLLECT_RECORDING_RESERVATION_ID;
+    eventPayload.recording_consent=ACOLLECT_RECORDING_CONSENT;
+    eventPayload.recording_status=ACOLLECT_RECORDING_STATUS==='failed'?'failed':ACOLLECT_RECORDING_STATUS==='declined'?'declined':'not_selected';
+    eventPayload.recording_error=ACOLLECT_RECORDING_ERROR||null;
+  }
   let eventId=null;
   try{
-    const {data,error}=await sb.from('collection_events').insert({
-      survey_id:ACOLLECT_SURVEY_ID,
-      researcher_id:CURRENT_PROFILE.id,
-      quota_label:quotaLabel,
-      lat:GEO.lat,lng:GEO.lng,accuracy_m:GEO.acc,
-      occurred_at:new Date().toISOString(),
-      synced:true,
-      flags,
-      status:'valid',
-      is_calibration:false,
-    }).select().single();
+    const {data,error}=await sb.from('collection_events').insert(eventPayload).select().single();
     if(error)throw new Error(error.message);
     eventId=data.id;
   }catch(ex){
@@ -3114,10 +3365,16 @@ async function acollectSubmit(){
     // claramente em vez de tentar reverter.
     alert('A coleta foi enviada, mas houve um problema ao salvar as respostas do questionário ('+ex.message+'). Avise o coordenador.');
   }
+  let recordingResult={ok:true};
+  if(ACOLLECT_RECORDING_REQUIRED&&ACOLLECT_RECORDING_CONSENT===true){
+    recordingResult=await acollectUploadRecording(eventId);
+  }
   ACOLLECT_IN_PROGRESS=false;ACOLLECT_SUBMITTING=false;ACOLLECT_STARTED_AT=null;ACOLLECT_SELECTED_QUOTA=null;ACOLLECT_ANSWERS={};
   if(ACOLLECT_TICK){clearInterval(ACOLLECT_TICK);ACOLLECT_TICK=null;}
   const formEl=document.getElementById('acollectForm');
   if(formEl)formEl.innerHTML='';
+  acollectResetRecordingState();
+  renderAcollectRecording();
   PAYMENTS_LOADED=false; // financeiro recalculado no banco (gatilho) — recarrega na próxima visita
   await loadCollectEventsForced();
   ACOLLECT_QUOTA_COUNTS=await loadQuotaCounts(ACOLLECT_SURVEY_ID);
@@ -3125,7 +3382,9 @@ async function acollectSubmit(){
   renderGeoLog();
   const msg=document.getElementById('acollectMsg');
   if(msg){
-    msg.innerHTML='<div class="online-banner">✓ Coleta enviada com sucesso</div>';
+    msg.innerHTML=recordingResult.ok
+      ?'<div class="online-banner">✓ Coleta enviada com sucesso</div>'
+      :'<div class="offline-banner">✓ Coleta enviada; a confirmação de áudio não pôde ser anexada.</div>';
     setTimeout(()=>{if(msg)msg.innerHTML='';},4000);
   }
 }

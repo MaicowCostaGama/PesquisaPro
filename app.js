@@ -274,7 +274,8 @@ const PAGES={};
 const LOCAL_ASSETS={
   chart:{src:'vendor/chart.umd.js',ready:()=>typeof window.Chart!=='undefined'},
   qrcode:{src:'vendor/qrcode.min.js',ready:()=>typeof window.QRCode!=='undefined'},
-  leaflet:{src:'vendor/leaflet.js',ready:()=>typeof window.L!=='undefined'}
+  leaflet:{src:'vendor/leaflet.js',ready:()=>typeof window.L!=='undefined'},
+  jspdf:{src:'vendor/jspdf.umd.min.js',ready:()=>typeof window.jspdf!=='undefined'}
 };
 const LOCAL_ASSET_PROMISES={};
 function loadLocalAsset(name){
@@ -634,7 +635,7 @@ PAGES['client-progress']=()=>{
   const sample=surveySample(s);
   const pct=sample?Math.min(100,Math.round(s.collected/sample*100)):0;
   if(!c.resultsReleased){
-    return head(s.name,'Andamento da coleta · '+c.company)+`
+    return head(s.name,'Andamento da coleta · '+c.company)+clientPublishedReportsMarkup()+`
     <div class="card mb">
       <div class="card-t">Progresso geral da coleta</div>
       <div class="card-d">Percentual coletado até o momento</div>
@@ -646,7 +647,7 @@ PAGES['client-progress']=()=>{
     <div class="callout" style="margin-top:6px">🔒 Acesso completo ainda não liberado. Assim que confirmarmos o pagamento, você passa a acompanhar aqui o andamento detalhado em tempo real (equipe em campo, progresso por cota, cobertura por região) e também os resultados da pesquisa.</div>`;
   }
   return head(s.name,'Andamento da coleta em tempo real · '+c.company,
-    '<button class="btn btn-fill" onclick="go(\'client-results\')">Ver resultados →</button>')+`
+    '<button class="btn btn-fill" onclick="go(\'client-results\')">Ver resultados →</button>')+clientPublishedReportsMarkup()+`
   <div class="grid g4" style="margin-bottom:18px">
     ${stat('Coletado',s.collected.toLocaleString('pt-BR'),'de '+sample.toLocaleString('pt-BR')+' · '+pct+'%','✓','#2563eb')}
     ${stat('Pesquisadores em campo',String((s.team||[]).length),'atuando nesta pesquisa','☺','#059669')}
@@ -696,6 +697,7 @@ const STATUS_LABEL={campo:'Em campo',rascunho:'Rascunho',encerrada:'Concluída'}
 function reportsQuestionsForSurvey(s){
   return (s.questions||[]).filter(q=>q.dbId&&q.type!=='open');
 }
+function clientPublishedReportsMarkup(){return `<div class="card mb client-published-reports" id="client-published-reports"><div class="card-t">Relatórios finais</div><div class="card-d">Documentos revisados e disponibilizados pela equipe PesquisaPro.</div><div id="client-published-reports-list"><div class="empty" style="padding:16px 0">Carregando relatórios…</div></div></div>`;}
 let CR_QUESTION_DBID=null;
 PAGES['client-results']=()=>{
   if(!SURVEYS_LOADED)loadSurveysIfNeeded();
@@ -737,6 +739,18 @@ PAGES['client-results']=()=>{
   <div class="callout mb" style="margin-top:16px">Os resultados mostram a distribuição real de respostas de cada pergunta, calculada a partir das entrevistas válidas (excluindo coletas de calibração e reprovadas). Cruzamento entre duas ou mais perguntas ao mesmo tempo (ex.: voto × idade) ainda não está disponível — cada pergunta é mostrada separadamente.</div>`;
 };
 function clientResultsPickQuestion(id){CR_QUESTION_DBID=id;clientResultsLoadAndRender();}
+async function clientLoadPublishedReports(){
+  const wrap=document.getElementById('client-published-reports-list');if(!wrap||!sb?.rpc)return;
+  const s=clientSelfSurvey();if(!s){wrap.innerHTML='<div class="empty" style="padding:14px 0">Nenhum relatório disponível.</div>';return;}
+  try{
+    const {data,error}=await sb.rpc('client_published_reports',{p_survey_id:s.id});if(error)throw error;
+    const reports=data||[];
+    if(!reports.length){wrap.innerHTML='<div class="empty" style="padding:14px 0">A equipe ainda não publicou um relatório final para esta pesquisa.</div>';return;}
+    const rows=[];
+    for(const r of reports){let url='';try{url=(await sb.storage.from('client-reports').createSignedUrl(r.pdf_path,600)).data?.signedUrl||'';}catch(ex){}rows.push(`<div class="client-report-row"><div><b>${esc(r.title||'Relatório final')}</b><span>${esc(r.subtitle||'PesquisaPro')} · publicado em ${r.published_at?new Date(r.published_at).toLocaleDateString('pt-BR'):'—'}</span>${r.executive_summary?`<p>${esc(r.executive_summary).slice(0,220)}${r.executive_summary.length>220?'…':''}</p>`:''}</div>${url?`<a class="btn btn-fill" href="${esc(url)}" target="_blank" rel="noopener">Abrir PDF</a>`:'<span class="pill pill-amber">Preparando arquivo</span>'}</div>`);}
+    wrap.innerHTML=rows.join('');
+  }catch(ex){wrap.innerHTML='<div class="callout warn">Não foi possível carregar os relatórios publicados agora.</div>';}
+}
 let _clientResultsChart;
 async function clientResultsLoadAndRender(){
   const out=document.getElementById('cr-output');
@@ -3594,6 +3608,10 @@ let RP_CROSS_QUESTION_IDS=[];
 let RP_REPORT_LIVE_TIMER=null;
 let RP_REPORT_CHANNEL=null;
 let RP_REPORT_LOADING=false;
+let RP_REPORT_ANALYSIS_CACHE={surveyId:null,overviewRows:[],crossRows:[],crossIds:[]};
+let RP_REPORT_DOCUMENT_ID=null;
+let RP_REPORT_DOCUMENT_STATUS='new';
+let RP_REPORT_CLIENTS=[];
 function reportsAvailableSurveys(){return SURVEYS.filter(s=>reportsQuestionsForSurvey(s).length>0);}
 function reportsCurrentSurvey(){return SURVEYS.find(s=>s.id===RP_SURVEY_ID)||null;}
 function reportsCurrentQuestions(){return reportsQuestionsForSurvey(reportsCurrentSurvey()||{});}
@@ -3607,6 +3625,32 @@ function reportsModeButton(mode,label,icon){return `<button class="reports-mode-
 function reportsCrossQuestionSelect(index,qs){
   const selected=RP_CROSS_QUESTION_IDS[index]||'';
   return `<div class="reports-variable-control"><label class="lbl">Variável ${index+1}${index===0?'':' (opcional)'}</label><select class="inp" onchange="reportsPickCrossQuestion(${index},this.value)"><option value="">${index===0?'Escolha uma pergunta':'Não usar'}</option>${qs.map(q=>`<option value="${q.dbId}" ${q.dbId===selected?'selected':''}>${esc(q.text||'(pergunta sem texto)')}</option>`).join('')}</select></div>`;
+}
+function reportsClientsForSurvey(survey){
+  return (survey?.clientIds||[]).map(id=>USERS.find(u=>u.id===id)).filter(Boolean);
+}
+function reportsDocumentEditorMarkup(survey){
+  const clients=reportsClientsForSurvey(survey);RP_REPORT_CLIENTS=clients;
+  const defaultClient=clients[0]?.id||'';
+  const title='Relatório de resultados — '+(survey?.name||'Pesquisa');
+  const sections=[['includeMethodology','Ficha técnica e metodologia',true],['includeOverview','Resultados de todas as perguntas',RP_REPORT_MODE==='overview'],['includeCross','Gráficos e tabelas de cruzamentos',RP_REPORT_MODE==='builder'],['includeSummary','Síntese executiva',true]];
+  return `<section class="card reports-document-editor" id="reports-document-editor">
+    <div class="reports-document-head"><div><div class="reports-eyebrow">ENTREGA AO CLIENTE</div><h2>Estrutura do relatório final</h2><p>Monte a apresentação, escolha os blocos e disponibilize o PDF somente quando estiver revisado.</p></div><span id="rp-document-status" class="reports-document-status draft">Rascunho</span></div>
+    <div class="reports-document-grid">
+      <div><label class="lbl">Cliente destinatário</label><select class="inp" id="rp-doc-client" onchange="reportsDocClientChanged()"><option value="">${clients.length?'Selecione o cliente':'Nenhum cliente vinculado'}</option>${clients.map(c=>`<option value="${c.id}" ${c.id===defaultClient?'selected':''}>${esc(c.company||c.name||c.email||'Cliente')}</option>`).join('')}</select></div>
+      <div><label class="lbl">Título do relatório</label><input class="inp" id="rp-doc-title" value="${esc(title)}"></div>
+      <div><label class="lbl">Subtítulo</label><input class="inp" id="rp-doc-subtitle" value="PesquisaPro · Resultados e análise"></div>
+      <div><label class="lbl">Período / identificação</label><input class="inp" id="rp-doc-period" value="${esc(survey?.dataIni||'')} ${survey?.dataFim?'— '+esc(survey.dataFim):''}"></div>
+    </div>
+    <div class="reports-document-grid reports-document-texts">
+      <div><label class="lbl">Apresentação</label><textarea class="inp" id="rp-doc-presentation" rows="4">Este relatório apresenta os principais resultados da pesquisa, com base nas entrevistas válidas realizadas pela rede de pesquisadores do PesquisaPro.</textarea></div>
+      <div><label class="lbl">Metodologia</label><textarea class="inp" id="rp-doc-methodology" rows="4">A análise considera entrevistas válidas, excluindo registros reprovados e entrevistas de calibração. Percentuais são calculados sobre a base válida informada em cada tabela.</textarea></div>
+      <div><label class="lbl">Síntese executiva</label><textarea class="inp" id="rp-doc-summary" rows="4" placeholder="Registre aqui a leitura executiva dos resultados."></textarea></div>
+    </div>
+    <div class="reports-section-picker"><div class="lbl">Blocos incluídos no PDF</div><div class="reports-section-options">${sections.map(([id,label,checked])=>`<label class="reports-section-option"><input type="checkbox" id="rp-doc-${id.replace('include','').toLowerCase()}" ${checked?'checked':''}> <span>${label}</span></label>`).join('')}</div></div>
+    <div class="reports-document-actions"><button class="btn btn-out" onclick="reportsSaveDraft()">Salvar estrutura</button><button class="btn btn-fill" onclick="reportsGeneratePdf()">Gerar PDF</button><button class="btn btn-fill reports-publish-btn" onclick="reportsFinalizeAndPublish()">Finalizar e disponibilizar ao cliente</button></div>
+    <div id="rp-document-feedback" class="reports-document-feedback" role="status"></div>
+  </section>`;
 }
 PAGES.reports=()=>{
   if(!SURVEYS_LOADED)loadSurveysIfNeeded();
@@ -3624,9 +3668,10 @@ PAGES.reports=()=>{
     ${RP_REPORT_MODE==='builder'?`<div class="reports-builder-grid">${[0,1,2].map(i=>reportsCrossQuestionSelect(i,qs)).join('')}</div><div class="reports-builder-note">Selecione de uma a três perguntas. Para perguntas de múltipla escolha, as opções marcadas na mesma entrevista aparecem agrupadas.</div>`:''}
   </div>
   <div id="rp-output"><div class="empty" style="padding:28px 0">Carregando resultados reais…</div></div>
+  ${reportsDocumentEditorMarkup(survey,qs)}
   <div class="callout reports-footnote"><b>Base de análise:</b> entrevistas válidas, excluindo coletas reprovadas e de calibração. Os dados são atualizados automaticamente enquanto esta aba estiver aberta.</div>`;
 };
-function reportsPickSurvey(id){RP_SURVEY_ID=id;RP_CROSS_QUESTION_IDS=[];go('reports');}
+function reportsPickSurvey(id){RP_SURVEY_ID=id;RP_CROSS_QUESTION_IDS=[];RP_REPORT_DOCUMENT_ID=null;RP_REPORT_DOCUMENT_STATUS='new';RP_REPORT_ANALYSIS_CACHE={surveyId:null,overviewRows:[],crossRows:[],crossIds:[]};go('reports');}
 function reportsSetMode(mode){RP_REPORT_MODE=mode;go('reports');}
 function reportsPickCrossQuestion(index,id){
   const next=RP_CROSS_QUESTION_IDS.slice(0,3);next[index]=id||null;
@@ -3660,12 +3705,14 @@ async function reportsLoadAndRender(isLive=false){
     if(RP_REPORT_MODE==='overview'){
       const {data,error}=await sb.rpc('survey_report_all_questions',{p_survey_id:survey.id});
       if(error)throw error;
+      RP_REPORT_ANALYSIS_CACHE={surveyId:survey.id,overviewRows:data||[],crossRows:RP_REPORT_ANALYSIS_CACHE.crossRows||[],crossIds:RP_REPORT_ANALYSIS_CACHE.crossIds||[]};
       renderReportsOverview(out,data||[],qs);
     }else{
       const ids=RP_CROSS_QUESTION_IDS.filter(Boolean).slice(0,3);
       if(!ids.length){out.innerHTML='<div class="card"><div class="empty">Escolha pelo menos uma variável para montar o relatório.</div></div>';return;}
       const {data,error}=await sb.rpc('survey_report_cross_tab',{p_survey_id:survey.id,p_question_ids:ids});
       if(error)throw error;
+      RP_REPORT_ANALYSIS_CACHE={surveyId:survey.id,overviewRows:RP_REPORT_ANALYSIS_CACHE.overviewRows||[],crossRows:data||[],crossIds:ids};
       renderReportsCross(out,data||[],ids,qs);
     }
     reportsSetLiveStatus(isLive?'Atualizado agora':'Atualização automática ativa','live');
@@ -3691,6 +3738,63 @@ function renderReportsCross(out,rows,ids,qs){
   const body=(rows||[]).map(r=>{const vals=[r.variable_1,r.variable_2,r.variable_3].slice(0,ids.length);const pct=reportPercent(Number(r.cnt||0),total);return `<tr>${vals.map(v=>`<td>${esc(v||'(sem resposta)')}</td>`).join('')}<td><strong>${Number(r.cnt||0).toLocaleString('pt-BR')}</strong></td><td><b>${pct}%</b></td></tr>`;}).join('');
   out.innerHTML=`<div class="reports-cross-head"><div><h2>Relatório montado</h2><p>${ids.length} variável${ids.length===1?'':'is'} cruzada${ids.length===1?'':'s'} sobre ${total.toLocaleString('pt-BR')} entrevistas válidas.</p></div><button class="btn btn-out" onclick="reportsExportCurrent()">↧ Exportar CSV</button></div><div class="card reports-cross-card"><div class="reports-cross-scroll"><table><thead><tr>${head}<th>Entrevistas</th><th>% da base</th></tr></thead><tbody>${body||'<tr><td colspan="'+(ids.length+2)+'" class="empty">Nenhuma combinação encontrada.</td></tr>'}</tbody></table></div></div>`;
 }
+function reportsDocValue(id){return (document.getElementById(id)?.value||'').trim();}
+function reportsDocChecked(id){return !!document.getElementById(id)?.checked;}
+function reportsDocPayload(){
+  const survey=reportsCurrentSurvey();
+  return {surveyId:survey?.id||null,clientId:reportsDocValue('rp-doc-client'),title:reportsDocValue('rp-doc-title'),subtitle:reportsDocValue('rp-doc-subtitle'),period:reportsDocValue('rp-doc-period'),presentation:reportsDocValue('rp-doc-presentation'),methodology:reportsDocValue('rp-doc-methodology'),executiveSummary:reportsDocValue('rp-doc-summary'),sections:{includeMethodology:reportsDocChecked('rp-doc-methodology'),includeOverview:reportsDocChecked('rp-doc-overview'),includeCross:reportsDocChecked('rp-doc-cross'),includeSummary:reportsDocChecked('rp-doc-summary'),period:reportsDocValue('rp-doc-period'),crossQuestionIds:RP_CROSS_QUESTION_IDS.filter(Boolean).slice(0,3)}};
+}
+function reportsDocFeedback(text,kind=''){const el=document.getElementById('rp-document-feedback');if(el){el.className='reports-document-feedback '+kind;el.textContent=text;}}
+function reportsSetDocumentStatus(status){RP_REPORT_DOCUMENT_STATUS=status||'draft';const el=document.getElementById('rp-document-status');if(!el)return;el.className='reports-document-status '+status;el.textContent=status==='published'?'Publicado':status==='draft'?'Rascunho':'Novo';}
+function reportsFillDraft(r){
+  if(!r)return;RP_REPORT_DOCUMENT_ID=r.id||null;reportsSetDocumentStatus(r.status||'draft');
+  const values={ 'rp-doc-client':r.client_id,'rp-doc-title':r.title,'rp-doc-subtitle':r.subtitle,'rp-doc-presentation':r.presentation,'rp-doc-methodology':r.methodology,'rp-doc-summary':r.executive_summary };
+  Object.entries(values).forEach(([id,value])=>{const el=document.getElementById(id);if(el&&value!=null)el.value=value;});
+  const sec=typeof r.sections==='string'?JSON.parse(r.sections||'{}'):r.sections||{};
+  const checks={methodology:sec.includeMethodology,overview:sec.includeOverview,cross:sec.includeCross,summary:sec.includeSummary};
+  Object.entries(checks).forEach(([k,value])=>{const el=document.getElementById('rp-doc-'+k);if(el&&value!=null)el.checked=!!value;});
+  const period=document.getElementById('rp-doc-period');if(period&&sec.period!=null)period.value=sec.period;
+}
+async function reportsLoadDraft(){
+  const survey=reportsCurrentSurvey(),clientId=reportsDocValue('rp-doc-client');if(!survey||!clientId||!sb?.rpc)return;
+  try{const {data,error}=await sb.rpc('report_document_latest',{p_survey_id:survey.id,p_client_id:clientId});if(error)throw error;reportsFillDraft(Array.isArray(data)?data[0]:data);}catch(ex){/* migration ainda não aplicada: o editor continua utilizável localmente */}
+}
+function reportsDocClientChanged(){RP_REPORT_DOCUMENT_ID=null;reportsSetDocumentStatus('new');reportsLoadDraft();}
+async function reportsSaveDraft(silent=false){
+  const p=reportsDocPayload();
+  if(!p.surveyId||!p.clientId){if(!silent)reportsDocFeedback('Selecione o cliente vinculado à pesquisa antes de salvar.','warn');return null;}
+  if(!p.title){if(!silent)reportsDocFeedback('Informe um título para o relatório.','warn');return null;}
+  try{
+    const {data,error}=await sb.rpc('report_document_save',{p_report_id:RP_REPORT_DOCUMENT_ID,p_survey_id:p.surveyId,p_client_id:p.clientId,p_title:p.title,p_subtitle:p.subtitle,p_presentation:p.presentation,p_methodology:p.methodology,p_executive_summary:p.executiveSummary,p_sections:p.sections});
+    if(error)throw error;RP_REPORT_DOCUMENT_ID=data;reportsSetDocumentStatus('draft');if(!silent)reportsDocFeedback('Estrutura salva como rascunho.','ok');return data;
+  }catch(ex){if(!silent)reportsDocFeedback('Não foi possível salvar. Execute a migration relatorios-pdf-clientes.sql. '+(ex.message||ex),'warn');return null;}
+}
+function reportsPdfLines(doc,text,x,y,width,lineHeight=5){const lines=doc.splitTextToSize(String(text||''),width);doc.text(lines,x,y);return y+lines.length*lineHeight;}
+function reportsPdfHeader(doc,title,subtitle){doc.setFillColor(15,42,86);doc.rect(0,0,210,18,'F');doc.setTextColor(255,255,255);doc.setFont('helvetica','bold');doc.setFontSize(12);doc.text('PesquisaPro',16,11);doc.setFont('helvetica','normal');doc.setFontSize(8);doc.text(subtitle||'Relatório de pesquisa',194,11,{align:'right'});doc.setTextColor(15,42,86);doc.setFont('helvetica','bold');doc.setFontSize(17);doc.text(title||'Relatório de resultados',16,31);return 42;}
+function reportsPdfFooter(doc){const pages=doc.internal.getNumberOfPages();for(let i=1;i<=pages;i++){doc.setPage(i);doc.setDrawColor(220,228,238);doc.line(16,285,194,285);doc.setTextColor(100,116,139);doc.setFont('helvetica','normal');doc.setFontSize(8);doc.text('PesquisaPro · documento gerado pela plataforma',16,291);doc.text('Página '+i+' de '+pages,194,291,{align:'right'});}}
+async function reportsEnsurePdfData(payload){
+  const survey=reportsCurrentSurvey();if(!survey)return;
+  if(payload.sections.includeOverview&&RP_REPORT_ANALYSIS_CACHE.surveyId!==survey.id||payload.sections.includeOverview&&!RP_REPORT_ANALYSIS_CACHE.overviewRows.length){const {data,error}=await sb.rpc('survey_report_all_questions',{p_survey_id:survey.id});if(error)throw error;RP_REPORT_ANALYSIS_CACHE.overviewRows=data||[];RP_REPORT_ANALYSIS_CACHE.surveyId=survey.id;}
+  const ids=payload.sections.crossQuestionIds||[];
+  if(payload.sections.includeCross&&ids.length&&(!RP_REPORT_ANALYSIS_CACHE.crossRows.length||RP_REPORT_ANALYSIS_CACHE.surveyId!==survey.id||JSON.stringify(RP_REPORT_ANALYSIS_CACHE.crossIds)!==JSON.stringify(ids))){const {data,error}=await sb.rpc('survey_report_cross_tab',{p_survey_id:survey.id,p_question_ids:ids});if(error)throw error;RP_REPORT_ANALYSIS_CACHE.crossRows=data||[];RP_REPORT_ANALYSIS_CACHE.crossIds=ids;RP_REPORT_ANALYSIS_CACHE.surveyId=survey.id;}
+}
+async function reportsCreatePdfBlob(){
+  const payload=reportsDocPayload();if(!payload.surveyId)throw new Error('Selecione uma pesquisa válida.');
+  await reportsEnsurePdfData(payload);await loadLocalAsset('jspdf');const jsPDF=window.jspdf?.jsPDF;if(!jsPDF)throw new Error('Gerador PDF indisponível.');
+  const doc=new jsPDF({unit:'mm',format:'a4'}),survey=reportsCurrentSurvey(),client=reportsClientsForSurvey(survey).find(c=>c.id===payload.clientId);const W=210,M=16,bodyW=178;
+  doc.setFillColor(15,42,86);doc.rect(0,0,W,297,'F');doc.setFillColor(37,99,235);doc.roundedRect(16,28,62,8,4,4,'F');doc.setTextColor(255,255,255);doc.setFont('helvetica','bold');doc.setFontSize(13);doc.text('PesquisaPro',47,33.5,{align:'center'});doc.setFontSize(27);doc.text(payload.title||'Relatório de resultados',16,75,{maxWidth:178});doc.setFont('helvetica','normal');doc.setFontSize(13);doc.text(payload.subtitle||'Resultados e análise',16,104,{maxWidth:170});doc.setDrawColor(96,165,250);doc.line(16,117,194,117);doc.setFontSize(10);doc.text('Cliente: '+(client?.company||client?.name||'—'),16,132);doc.text('Pesquisa: '+(survey.name||'—'),16,140);if(payload.period)doc.text('Período: '+payload.period,16,148);doc.setTextColor(191,219,254);doc.setFontSize(9);doc.text('Relatório preparado na plataforma de pesquisa e coleta de campo PesquisaPro',16,270,{maxWidth:170});
+  let y=reportsPdfHeader(doc,payload.title,payload.subtitle);
+  if(payload.presentation){doc.setFont('helvetica','bold');doc.setFontSize(15);doc.text('Apresentação',M,y);y+=9;doc.setFont('helvetica','normal');doc.setFontSize(10);doc.setTextColor(51,65,85);y=reportsPdfLines(doc,payload.presentation,M,y,bodyW,5)+8;}
+  if(payload.sections.includeMethodology){doc.setFont('helvetica','bold');doc.setFontSize(15);doc.setTextColor(15,42,86);doc.text('Ficha técnica e metodologia',M,y);y+=9;doc.setFont('helvetica','normal');doc.setFontSize(10);doc.setTextColor(51,65,85);y=reportsPdfLines(doc,payload.methodology,M,y,bodyW,5)+8;}
+  if(payload.sections.includeSummary&&payload.executiveSummary){doc.setFillColor(239,246,255);doc.roundedRect(M,y,bodyW,34,3,3,'F');doc.setTextColor(15,42,86);doc.setFont('helvetica','bold');doc.setFontSize(12);doc.text('Síntese executiva',M+6,y+9);doc.setFont('helvetica','normal');doc.setTextColor(51,65,85);doc.setFontSize(9.5);reportsPdfLines(doc,payload.executiveSummary,M+6,y+17,bodyW-12,4.8);y+=45;}
+  if(payload.sections.includeOverview){doc.addPage();y=reportsPdfHeader(doc,'Resultados por pergunta',payload.title);const byQ={};(RP_REPORT_ANALYSIS_CACHE.overviewRows||[]).forEach(r=>(byQ[r.question_id]||(byQ[r.question_id]=[])).push(r));for(const [qi,q] of reportsCurrentQuestions().entries()){const rows=byQ[q.dbId]||[];if(!rows.length)continue;if(y>250){doc.addPage();y=reportsPdfHeader(doc,'Resultados por pergunta',payload.title);}doc.setTextColor(15,42,86);doc.setFont('helvetica','bold');doc.setFontSize(11);y=reportsPdfLines(doc,(qi+1)+'. '+q.text,M,y,bodyW,5)+3;const base=Number(rows[0]?.valid_base)||rows.reduce((a,r)=>a+Number(r.cnt||0),0);for(const r of rows){const cnt=Number(r.cnt||0),pct=base?Math.round(cnt/base*100):0;doc.setTextColor(51,65,85);doc.setFont('helvetica','normal');doc.setFontSize(9);doc.text(String(r.value_label||'(sem resposta)'),M,y);doc.text(cnt.toLocaleString('pt-BR')+' · '+pct+'%',194,y,{align:'right'});doc.setFillColor(226,232,240);doc.roundedRect(M,y+2,bodyW,3,1,1,'F');doc.setFillColor(37,99,235);doc.roundedRect(M,y+2,Math.max(1,bodyW*Math.min(100,pct)/100),3,1,1,'F');y+=11;}y+=7;}}
+  if(payload.sections.includeCross&&payload.sections.crossQuestionIds?.length){doc.addPage();y=reportsPdfHeader(doc,'Cruzamentos selecionados',payload.title);const ids=payload.sections.crossQuestionIds;doc.setTextColor(51,65,85);doc.setFont('helvetica','normal');doc.setFontSize(9);y=reportsPdfLines(doc,ids.map((id,i)=>(i+1)+'. '+reportsQuestionLabel(id)).join(' · '),M,y,bodyW,4.5)+8;const rows=RP_REPORT_ANALYSIS_CACHE.crossRows||[];const cols=[...ids.map((id)=>reportsQuestionLabel(id)),'Entrevistas','% da base'];const widths=ids.length===1?[104,30,34]:ids.length===2?[55,55,24,24]:[42,42,42,24,24];let x=M;doc.setFillColor(15,42,86);doc.setTextColor(255,255,255);doc.setFont('helvetica','bold');doc.setFontSize(7.5);cols.forEach((c,i)=>{doc.rect(x,y,widths[i],9,'F');doc.text(String(c).slice(0,28),x+2,y+5.8,{maxWidth:widths[i]-4});x+=widths[i];});y+=9;const total=Number(rows[0]?.valid_base)||0;doc.setFont('helvetica','normal');rows.slice(0,42).forEach((r,ri)=>{if(y>270){doc.addPage();y=reportsPdfHeader(doc,'Cruzamentos selecionados',payload.title);y+=4;}x=M;const vals=[r.variable_1,r.variable_2,r.variable_3].slice(0,ids.length);const cells=[...vals,Number(r.cnt||0).toLocaleString('pt-BR'),(total?Math.round(Number(r.cnt||0)/total*100):0)+'%'];cells.forEach((c,i)=>{doc.setFillColor(ri%2?248:241,245,249);doc.setTextColor(51,65,85);doc.rect(x,y,widths[i],8,'F');doc.text(String(c||'—').slice(0,30),x+2,y+5.2,{maxWidth:widths[i]-4});x+=widths[i];});y+=8;});}
+  reportsPdfFooter(doc);return {blob:doc.output('blob'),payload};
+}
+async function reportsGeneratePdf(){
+  reportsDocFeedback('Gerando PDF com os blocos selecionados…');try{const id=await reportsSaveDraft(true);if(!id)throw new Error('Salve uma estrutura com cliente e título antes de gerar.');const result=await reportsCreatePdfBlob();const url=URL.createObjectURL(result.blob);const a=document.createElement('a');a.href=url;a.download='relatorio-pesquisapro-'+new Date().toISOString().slice(0,10)+'.pdf';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);reportsDocFeedback('PDF gerado e baixado. Revise o arquivo antes de publicar ao cliente.','ok');}catch(ex){reportsDocFeedback(ex.message||String(ex),'warn');}}
+async function reportsFinalizeAndPublish(){
+  reportsDocFeedback('Salvando, gerando e publicando o PDF…');try{const id=await reportsSaveDraft(true);if(!id)throw new Error('Salve uma estrutura com cliente e título antes de finalizar.');const result=await reportsCreatePdfBlob();const path='reports/'+id+'/'+Date.now()+'.pdf';const {error:uploadError}=await sb.storage.from('client-reports').upload(path,result.blob,{upsert:true,contentType:'application/pdf'});if(uploadError)throw uploadError;const {error:publishError}=await sb.rpc('report_document_publish',{p_report_id:id,p_pdf_path:path});if(publishError)throw publishError;reportsSetDocumentStatus('published');reportsDocFeedback('Relatório finalizado e disponibilizado ao cliente.','ok');}catch(ex){reportsDocFeedback(ex.message||String(ex),'warn');}}
 function reportsExportCurrent(){
   const table=document.querySelector('#rp-output table');if(!table){alert('Gere um relatório antes de exportar.');return;}
   const lines=[...table.querySelectorAll('tr')].map(tr=>[...tr.children].map(cell=>'"'+String(cell.textContent||'').replace(/"/g,'""').trim()+'"').join(';'));
@@ -5711,8 +5815,8 @@ window._afterRender=function(key){
   }
   if(key==='dashboard')drawDash();
   if(key==='app-collect'&&MY_CONTRACT)initGeoCollect(); /* só inicia GPS/coleta se o contrato já estiver assinado — ver PAGES['app-collect'] */
-  if(key==='client-results')clientResultsLoadAndRender();
-  if(key==='reports'){reportsLoadAndRender();reportsStartLive();}
+  if(key==='client-results'){clientResultsLoadAndRender();clientLoadPublishedReports();}
+  if(key==='reports'){reportsLoadAndRender();reportsStartLive();reportsLoadDraft();}
   if(key==='my-earnings')renderMyRejected();
   if(key==='sample'){calcSample();}
   if(key==='quotas'){quotaSeg(document.querySelector('#quotaSeg button'),'sexo');}

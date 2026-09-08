@@ -19,14 +19,16 @@ const checks=[
   ['reidratação completa',app.includes('reportsNormalizeCrossings')&&app.includes('reportsFillDraft')&&app.includes('reportsLoadDraft')&&app.includes('data-crossing-question')],
   ['geração local PDF',app.includes('loadLocalAsset(\'jspdf\')')&&app.includes('reportsCreatePdfBlob')],
   ['PDF percorre todos os cruzamentos',app.includes('reportsCreateMultiCrossPdfBlob')&&app.includes('reportsPdfWriteCrossing')&&app.includes('payload.sections.crossings')],
+  ['matriz percentual com totais',app.includes('reportsCrossMatrixModel')&&app.includes('reportsCrossPct')&&app.includes('cross-total-row')&&app.includes('<th>TOTAL</th>')],
+  ['matriz horizontal no PDF',app.includes("doc.addPage('a4','landscape')")&&app.includes('reportsCrossMatrixMarkup')],
   ['finalização e publicação',app.includes('reportsFinalizeAndPublish')&&app.includes('report_document_publish')],
   ['biblioteca do cliente',app.includes('clientPublishedReportsMarkup')&&app.includes('client_published_reports')],
   ['bucket privado',sql.includes("'client-reports'")&&sql.includes('public = false')],
   ['RLS de gestão',sql.includes('public.is_staff()')&&sql.includes('staff manages report documents')],
   ['RLS do cliente',sql.includes('client sees published report documents')&&sql.includes('rd.client_id = auth.uid()')],
   ['cliente recebe apenas publicados',sql.includes("rd.status='published'")&&sql.includes('client_published_reports')],
-  ['cache atualizado',html.includes('20260908140000')],
-  ['estilos responsivos',css.includes('.reports-document-editor')&&css.includes('.reports-crossing-card')&&css.includes('@media(max-width:760px)')],
+  ['cache atualizado',html.includes('20260908150000')],
+  ['estilos responsivos',css.includes('.reports-document-editor')&&css.includes('.reports-crossing-card')&&css.includes('.reports-cross-matrix')&&css.includes('@media(max-width:760px)')],
   ['jsPDF local',fs.existsSync(jspdf)&&fs.statSync(jspdf).size>100000],
 ];
 let failed=0;for(const [label,ok] of checks){console.log(`${ok?'PASS':'FAIL'} — ${label}`);if(!ok)failed++;}

@@ -6,7 +6,25 @@ A central de **Relatórios** possui um editor de estrutura para a gestão montar
 
 O editor permite informar o cliente destinatário, título, subtítulo, período, apresentação, metodologia e síntese executiva. Também permite escolher os blocos que entrarão no documento: ficha técnica, resultados de todas as perguntas, cruzamentos selecionados e síntese executiva.
 
-A capa usa a identidade visual PesquisaPro, com azul institucional, hierarquia editorial, identificação do cliente e da pesquisa. As páginas internas apresentam resultados por pergunta com contagens, percentuais e barras comparativas. Cada cruzamento incluído apresenta sua própria seção, título analítico e tabela com uma, duas ou três variáveis.
+A capa usa a identidade visual PesquisaPro, com azul institucional, hierarquia editorial, identificação do cliente e da pesquisa. As páginas internas apresentam resultados por pergunta com contagens, percentuais e barras comparativas. Cada cruzamento incluído apresenta sua própria seção, título analítico e tabela matricial.
+
+## Padrão das tabelas de cruzamento
+
+As tabelas seguem o padrão de matriz apresentado para o relatório. A primeira variável fica nas linhas, a segunda variável fica nas colunas e cada célula mostra o percentual daquela combinação sobre a **base total de entrevistas válidas**. A última coluna apresenta o total percentual de cada linha e a última linha apresenta os totais percentuais de cada coluna, com o total geral no canto inferior direito.
+
+As categorias são ordenadas conforme as opções cadastradas na pesquisa. Categorias que não estejam mais cadastradas, mas ainda apareçam nos dados, são adicionadas ao final para não ocultar respostas existentes. Valores ausentes aparecem como `sem resposta`. Quando o cruzamento possui uma terceira variável, a tabela é separada em uma matriz para cada categoria da terceira variável, mantendo o mesmo padrão de totais.
+
+No PDF, as matrizes são geradas em páginas horizontais para acomodar cabeçalhos extensos, como faixas de renda, sem perder legibilidade. A prévia do painel utiliza rolagem horizontal responsiva em telas menores.
+
+| Elemento | Padrão aplicado |
+| --- | --- |
+| Linhas | Categorias da primeira variável selecionada. |
+| Colunas | Categorias da segunda variável selecionada. |
+| Células | Percentual da combinação sobre a base total válida. |
+| Última coluna | Total percentual da linha. |
+| Última linha | Total percentual da coluna. |
+| Canto inferior direito | Total geral observado sobre a base válida. |
+| Terceira variável | Uma matriz independente para cada categoria da terceira variável. |
 
 ## Vários cruzamentos independentes
 
@@ -44,6 +62,6 @@ O perfil do cliente consulta apenas documentos com status `published` e vinculad
 
 ## Migration necessária
 
-A migration `deploy/relatorios-pdf-clientes.sql` já foi aplicada no Supabase e continua sendo a base do recurso. **Não há migration SQL adicional para múltiplos cruzamentos**, porque `report_documents.sections` já é um campo `jsonb` destinado à estrutura do documento; a lista de cartões é gravada dentro desse JSON pelas RPCs existentes.
+A migration `deploy/relatorios-pdf-clientes.sql` já foi aplicada no Supabase e continua sendo a base do recurso. **Não há migration SQL adicional para o padrão matricial**, porque os dados brutos do cruzamento já são retornados pela RPC existente e a transformação para percentuais, matriz e totais é feita no front-end e no gerador de PDF.
 
 Antes da migration, o editor visual continua carregando, mas salvar, carregar rascunhos, publicar e listar PDFs retornará uma orientação para executar o SQL. Depois da aplicação, o rascunho passa a incluir `crossings` junto com os demais blocos editoriais.

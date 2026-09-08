@@ -5,6 +5,7 @@ const app=fs.readFileSync(path.join(root,'app.js'),'utf8');
 const schema=fs.readFileSync(path.join(root,'deploy','schema.sql'),'utf8');
 const clientSql=fs.readFileSync(path.join(root,'deploy','relatorios-resultados-clientes.sql'),'utf8');
 const css=fs.readFileSync(path.join(root,'style.css'),'utf8');
+const geoSql=fs.readFileSync(path.join(root,'deploy','georreferenciamento-clientes.sql'),'utf8');
 const html=fs.readFileSync(path.join(root,'app.html'),'utf8');
 const checks=[
   ['cliente localiza pesquisa pelo vínculo real',app.includes("SURVEYS.find(s=>(s.clientIds||[]).includes(CURRENT_PROFILE.id))")],
@@ -18,12 +19,18 @@ const checks=[
   ['RPC cliente para cruzamentos',app.includes("sb.rpc('client_report_cross_tab'")&&clientSql.includes('client_report_cross_tab')],
   ['RPC exige liberação',clientSql.includes('client_results_released')&&clientSql.includes("raise exception 'results not released'")],
   ['estilos da visão cliente',css.includes('.reports-client-crossing')&&css.includes('.reports-client-intro')],
+  ['mapa georreferenciado do cliente',app.includes('clientGeoStartLive')&&app.includes('clientGeoRenderMap')&&app.includes('clientGeoFilter')],
+  ['feed agregado em tempo real',app.includes("sb.rpc('client_collection_geo_feed'")&&app.includes('client-geo-feed-row')],
+  ['RPC geográfica protegida',app.includes("sb.rpc('client_collection_geo_summary'")&&geoSql.includes('client_collection_geo_summary')&&geoSql.includes("results not released")],
+  ['coordenadas aproximadas',geoSql.includes('round(ce.lat::numeric, 3)')&&geoSql.includes('round(ce.lng::numeric, 3)')],
+  ['sem dados pessoais no mapa',geoSql.includes('quota_label text')&&geoSql.includes('accuracy_m numeric')&&!geoSql.includes('researcher_id text')],
+  ['estilos do mapa cliente',css.includes('.client-geo-map-canvas')&&css.includes('.client-geo-marker')],
   ['consulta protegida novamente antes da RPC',app.includes('Os resultados ainda não foram liberados para esta pesquisa.')],
   ['RPC autoriza cliente vinculado',schema.includes("exists (select 1 from public.survey_clients sc where sc.survey_id = p_survey_id and sc.client_id = auth.uid())")],
   ['permissão de perguntas do cliente',schema.includes('cliente vê perguntas das suas pesquisas')&&schema.includes('survey_questions')],
   ['vínculo traz estado de liberação',app.includes('survey_clients(client_id, results_released)')],
   ['toggle do master grava vínculo da pesquisa',app.includes("from('survey_clients').update({results_released:next})")],
-  ['cache atualizado',html.includes('20260908190000')],
+  ['cache atualizado',html.includes('20260908200000')],
 ];
 let failed=0;for(const [label,ok] of checks){console.log(`${ok?'PASS':'FAIL'} — ${label}`);if(!ok)failed++;}
 if(failed)process.exit(1);

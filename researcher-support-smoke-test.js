@@ -7,5 +7,5 @@ assert(/support:\{ico:'☎',label:'Suporte',group:'Ajuda'\}/.test(app),'Item Sup
 assert(/function openResearcherSupport\(\)/.test(app),'Handler do Suporte não foi criado');
 assert(/5531996683030/.test(app),'Número de WhatsApp do suporte está incorreto');
 assert(/preciso de suporte para usar o aplicativo de coleta/.test(app),'Mensagem contextual do suporte não encontrada');
-assert(/app\.js\?v=20260908190000/.test(html),'Cache do app não foi atualizado');
+assert(/app\.js\?v=20260908200000/.test(html),'Cache do app não foi atualizado');
 console.log('researcher-support-smoke-test: PASS');

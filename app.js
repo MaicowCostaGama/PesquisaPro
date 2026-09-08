@@ -707,6 +707,11 @@ function clientPublishedReportsMarkup(){return `<div class="card mb client-publi
 let CR_QUESTION_DBID=null;
 let CR_CLIENT_REPORT_CACHE={surveyId:null,overviewRows:[],crossRowsById:{},document:null};
 let CR_CLIENT_REPORT_LOADING=false;
+let CR_CLIENT_GEO_CACHE={surveyId:null,points:[],feed:[]};
+let CR_CLIENT_GEO_LOADING=false;
+let CR_CLIENT_GEO_TIMER=null;
+let _clientGeoMap=null,_clientGeoTileLayer=null,_clientGeoMarkerLayer=null,_clientGeoDidFit=false;
+let CR_CLIENT_GEO_FILTER='all';
 PAGES['client-results']=()=>{
   if(!SURVEYS_LOADED)loadSurveysIfNeeded();
   const c=clientSelf(),s=clientSelfSurvey();
@@ -715,9 +720,51 @@ PAGES['client-results']=()=>{
     const sample=surveySample(s),pct=sample?Math.min(100,Math.round(s.collected/sample*100)):0;
     return head('Resultados',s.name)+`<div class="card" style="text-align:center;padding:52px 24px"><div style="width:56px;height:56px;border-radius:16px;background:var(--amber-l);color:var(--amber);font-size:26px;display:flex;align-items:center;justify-content:center;margin:0 auto 16px">🔒</div><div style="font-weight:800;font-size:18px">Resultados ainda não liberados</div><p style="color:var(--ink3);font-size:13.5px;margin-top:8px;max-width:440px;margin-left:auto;margin-right:auto;line-height:1.6">A coleta está em <b>${pct}%</b> da meta. Assim que os dados forem validados, a equipe do PesquisaPro libera o relatório nesta área.</p><button class="btn btn-out" style="margin-top:20px" onclick="go('client-progress')">← Ver andamento da coleta</button></div>`;
   }
-  return head('Resultados',s.name)+`<div id="cr-client-report"><div class="empty" style="padding:28px 0">Carregando relatório de resultados…</div></div>${clientPublishedReportsMarkup()}<div class="callout mb" style="margin-top:16px">Os resultados são calculados sobre entrevistas válidas, excluindo coletas reprovadas e de calibração. Os cruzamentos aparecem somente quando foram incluídos em um relatório final publicado para esta pesquisa.</div>`;
+  return head('Resultados',s.name)+`<div id="cr-client-report"><div class="empty" style="padding:28px 0">Carregando relatório de resultados…</div></div><section id="cr-client-geo" class="client-geo-section"><div class="card"><div class="empty" style="padding:28px 0">Carregando georreferenciamento…</div></div></section>${clientPublishedReportsMarkup()}<div class="callout mb" style="margin-top:16px">Os resultados são calculados sobre entrevistas válidas, excluindo coletas reprovadas e de calibração. O mapa mostra áreas aproximadas e dados agregados, sem identificar pesquisadores ou revelar coordenadas exatas.</div>`;
 };
 function clientResultsPickQuestion(id){CR_QUESTION_DBID=id;clientResultsLoadAndRender();}
+function clientGeoNormalizePoint(row){return {lat:Number(row.lat),lng:Number(row.lng),pointCount:Number(row.point_count)||0,validCount:Number(row.valid_count)||0,rejectedCount:Number(row.rejected_count)||0,calibrationCount:Number(row.calibration_count)||0,lastAt:row.last_occurred_at||null};}
+function clientGeoFilteredPoints(){return CR_CLIENT_GEO_CACHE.points.filter(p=>{if(CR_CLIENT_GEO_FILTER==='valid')return p.validCount>0;if(CR_CLIENT_GEO_FILTER==='rejected')return p.rejectedCount>0;if(CR_CLIENT_GEO_FILTER==='calibration')return p.calibrationCount>0;return true;});}
+function clientGeoStatusPill(status,calibration){if(calibration)return '<span class="pill pill-blue">◎ Calibração</span>';if(status==='rejected')return '<span class="pill pill-red">✕ Reprovada</span>';if(status==='valid')return '<span class="pill pill-green">✓ Válida</span>';return '<span class="pill pill-amber">Pendente</span>';}
+function clientGeoApplyFilter(){CR_CLIENT_GEO_FILTER=document.getElementById('clientGeoFilter')?.value||'all';_clientGeoDidFit=false;clientGeoRender();}
+function clientGeoRefresh(){clientGeoLoad(true);}
+function clientGeoStopLive(){if(CR_CLIENT_GEO_TIMER){clearInterval(CR_CLIENT_GEO_TIMER);CR_CLIENT_GEO_TIMER=null;}if(_clientGeoMap){try{_clientGeoMap.remove();}catch(e){}_clientGeoMap=null;_clientGeoTileLayer=null;_clientGeoMarkerLayer=null;_clientGeoDidFit=false;}}
+function clientGeoStartLive(){clientGeoStopLive();clientGeoLoad();CR_CLIENT_GEO_TIMER=setInterval(()=>clientGeoLoad(true),20000);}
+async function clientGeoLoad(isLive=false){
+  const wrap=document.getElementById('cr-client-geo');if(!wrap||CR_CLIENT_GEO_LOADING)return;
+  const c=clientSelf(),s=clientSelfSurvey();if(!c||!s||!clientResultsReleasedForSurvey(c,s))return;
+  CR_CLIENT_GEO_LOADING=true;
+  try{
+    const [{data:pointRows,error:pointError},{data:feedRows,error:feedError}]=await Promise.all([
+      sb.rpc('client_collection_geo_summary',{p_survey_id:s.id}),
+      sb.rpc('client_collection_geo_feed',{p_survey_id:s.id})
+    ]);
+    if(pointError)throw pointError;if(feedError)throw feedError;
+    CR_CLIENT_GEO_CACHE={surveyId:s.id,points:(pointRows||[]).map(clientGeoNormalizePoint),feed:(feedRows||[]).map(r=>({quotaLabel:r.quota_label||'Sem cota',status:r.status||'valid',isCalibration:!!r.is_calibration,occurredAt:r.occurred_at||null,synced:r.synced!==false,accuracyM:Number(r.accuracy_m)||0}))};
+    clientGeoRender();
+  }catch(ex){
+    wrap.innerHTML='<div class="card"><div class="callout warn"><b>Não foi possível carregar o georreferenciamento.</b><br>Verifique se a migration de georreferenciamento para clientes foi executada no Supabase. Detalhe: '+esc(ex?.message||ex)+'</div></div>';
+  }finally{CR_CLIENT_GEO_LOADING=false;}
+}
+function clientGeoRender(){
+  const wrap=document.getElementById('cr-client-geo');if(!wrap)return;
+  const points=clientGeoFilteredPoints(),all=CR_CLIENT_GEO_CACHE.points;
+  const total=all.reduce((sum,p)=>sum+p.pointCount,0),valid=all.reduce((sum,p)=>sum+p.validCount,0),rejected=all.reduce((sum,p)=>sum+p.rejectedCount,0),calibration=all.reduce((sum,p)=>sum+p.calibrationCount,0);
+  wrap.innerHTML=`<div class="card client-geo-card"><div class="map-panel-head"><div><div class="map-eyebrow">MONITORAMENTO DA COLETA</div><div class="card-t">Georreferenciamento em tempo real</div><div class="card-d" id="clientGeoSummary">${points.length} área${points.length===1?'':'s'} aproximada${points.length===1?'':'s'} · ${total.toLocaleString('pt-BR')} entrevista${total===1?'':'s'}</div></div><div class="map-panel-actions"><button class="btn btn-out" onclick="clientGeoRefresh()">↻ Atualizar</button></div></div><div class="grid g4 client-geo-stats"><div class="stat"> <div class="s-top"><span class="s-label">Entrevistas</span></div><div class="s-val">${total.toLocaleString('pt-BR')}</div><div class="s-sub">com localização</div></div><div class="stat"><div class="s-top"><span class="s-label">Válidas</span></div><div class="s-val" style="color:var(--teal)">${valid.toLocaleString('pt-BR')}</div><div class="s-sub">consideradas nos resultados</div></div><div class="stat"><div class="s-top"><span class="s-label">Reprovadas</span></div><div class="s-val" style="color:var(--red)">${rejected.toLocaleString('pt-BR')}</div><div class="s-sub">fora dos resultados</div></div><div class="stat"><div class="s-top"><span class="s-label">Calibração</span></div><div class="s-val" style="color:var(--brand)">${calibration.toLocaleString('pt-BR')}</div><div class="s-sub">fora dos resultados</div></div></div><div class="map-toolbar client-geo-toolbar"><label class="map-filter"><span>Exibir no mapa</span><select id="clientGeoFilter" onchange="clientGeoApplyFilter()"><option value="all" ${CR_CLIENT_GEO_FILTER==='all'?'selected':''}>Todas as áreas</option><option value="valid" ${CR_CLIENT_GEO_FILTER==='valid'?'selected':''}>Com entrevistas válidas</option><option value="rejected" ${CR_CLIENT_GEO_FILTER==='rejected'?'selected':''}>Com reprovações</option><option value="calibration" ${CR_CLIENT_GEO_FILTER==='calibration'?'selected':''}>Com calibração</option></select></label><span class="client-geo-privacy-note">Pontos aproximados, sem identificação de pesquisadores.</span></div><div class="map-canvas-wrap"><div id="clientGeoMap" class="collect-map-canvas client-geo-map-canvas" role="application" aria-label="Mapa de áreas aproximadas da coleta"></div><div id="clientGeoMapLoading" class="map-loading" aria-live="polite">Preparando mapa…</div></div><div class="map-panel-foot"><div class="map-legend"><span><i class="map-dot map-dot-latest"></i>Área com coleta</span><span><i class="map-dot map-dot-rejected"></i>Com reprovação</span><span><i class="map-dot map-dot-calibration"></i>Com calibração</span></div><div class="map-note">A localização é arredondada para proteger a privacidade de campo.</div></div></div><div class="card client-geo-feed-card"><div class="card-t">Atividade recente da coleta</div><div class="card-d">Últimas movimentações agregadas, atualizadas automaticamente a cada 20 segundos.</div><div id="clientGeoFeed">${clientGeoFeedMarkup()}</div></div>`;
+  clientGeoRenderMap();
+}
+function clientGeoFeedMarkup(){const rows=CR_CLIENT_GEO_CACHE.feed||[];const filtered=CR_CLIENT_GEO_FILTER==='all'?rows:rows.filter(r=>CR_CLIENT_GEO_FILTER==='calibration'?r.isCalibration:CR_CLIENT_GEO_FILTER==='rejected'?r.status==='rejected':r.status==='valid'&&!r.isCalibration);return filtered.slice(0,12).map(r=>`<div class="client-geo-feed-row"><span class="client-geo-feed-icon">📍</span><div><b>${esc(r.quotaLabel||'Sem cota')}</b><span>${r.occurredAt?new Date(r.occurredAt).toLocaleString('pt-BR'):'—'} · precisão informada ${r.accuracyM?`±${Math.round(r.accuracyM)}m`:'—'}</span></div><div>${clientGeoStatusPill(r.status,r.isCalibration)}</div></div>`).join('')||'<div class="empty" style="padding:14px 0">Nenhuma atividade corresponde ao filtro.</div>';}
+function clientGeoRenderMap(){
+  const mapEl=document.getElementById('clientGeoMap');if(!mapEl)return;
+  const loading=document.getElementById('clientGeoMapLoading');
+  if(typeof L==='undefined'){if(loading){loading.style.display='flex';loading.textContent='Preparando mapa…';}loadLocalAsset('leaflet').then(()=>{if(document.getElementById('clientGeoMap')===mapEl)clientGeoRenderMap();}).catch(()=>{if(loading){loading.style.display='flex';loading.textContent='Mapa indisponível no momento.';}});return;}
+  if(loading)loading.style.display='none';
+  if(!_clientGeoMap||_clientGeoMap._container!==mapEl){if(_clientGeoMap){try{_clientGeoMap.remove();}catch(e){}}_clientGeoMap=L.map(mapEl,{scrollWheelZoom:true,zoomControl:true,maxZoom:16}).setView([-18.5,-44.9],6);_clientGeoTileLayer=L.tileLayer(COLLECT_MAP_LAYERS.street.url,COLLECT_MAP_LAYERS.street.opts).addTo(_clientGeoMap);_clientGeoMarkerLayer=L.layerGroup().addTo(_clientGeoMap);}
+  _clientGeoMarkerLayer.clearLayers();const points=clientGeoFilteredPoints();
+  points.forEach(p=>{if(!Number.isFinite(p.lat)||!Number.isFinite(p.lng))return;const color=p.rejectedCount>0?'#dc2626':p.calibrationCount>0?'#2563eb':'#059669';const icon=L.divIcon({html:`<span class="client-geo-marker" style="--marker-color:${color}"><b>${p.pointCount}</b></span>`,className:'client-geo-marker-wrap',iconSize:[42,42],iconAnchor:[21,21]});const marker=L.marker([p.lat,p.lng],{icon}).addTo(_clientGeoMarkerLayer);marker.bindTooltip(`${p.pointCount} entrevista${p.pointCount===1?'':'s'} · área aproximada`,{direction:'top',sticky:true});marker.bindPopup(`<div class="map-popup"><div class="map-popup-title">Área aproximada</div><div class="map-popup-meta"><b>${p.pointCount.toLocaleString('pt-BR')}</b> entrevista${p.pointCount===1?'':'s'}<br>Última atualização: ${p.lastAt?new Date(p.lastAt).toLocaleString('pt-BR'):'—'}</div><div class="map-popup-status"><span class="pill pill-green">${p.validCount} válidas</span> ${p.rejectedCount?`<span class="pill pill-red">${p.rejectedCount} reprovadas</span>`:''} ${p.calibrationCount?`<span class="pill pill-blue">${p.calibrationCount} calibração</span>`:''}</div></div>`);});
+  if(points.length&&!_clientGeoDidFit){try{const bounds=L.latLngBounds(points.filter(p=>Number.isFinite(p.lat)&&Number.isFinite(p.lng)).map(p=>[p.lat,p.lng]));if(bounds.isValid())_clientGeoMap.fitBounds(bounds,{padding:[50,50],maxZoom:13});_clientGeoDidFit=true;}catch(e){}}
+}
+
 function clientReportQuestionLabel(qs,id){return qs.find(q=>q.dbId===id)?.text||'(variável sem texto)';}
 function clientReportCrossOptionLabels(qs,qid){return (qs.find(q=>q.dbId===qid)?.opts||[]).map(v=>String(v||'').trim()).filter(Boolean);}
 function clientReportCrossOrderedValues(rows,index,qid,qs){const values=[],seen=new Set();(rows||[]).forEach(row=>{const value=reportsCrossValue([row.variable_1,row.variable_2,row.variable_3][index]);if(!seen.has(value)){seen.add(value);values.push(value);}});const preferred=clientReportCrossOptionLabels(qs,qid);return [...preferred.filter(v=>seen.has(v)),...values.filter(v=>!preferred.includes(v))];}
@@ -5880,7 +5927,7 @@ window._beforeRender=function(key){
 };
 
 window._afterRender=function(key){
-  if(key!=='collect'){stopCollectLive();}
+  if(key!=='collect'){stopCollectLive();}if(key!=='client-results'){clientGeoStopLive();}
   if(key!=='app-collect'){stopAcollectQuotaLive();}
   if(key!=='reports'){reportsStopLive();}
   if(key!=='dashboard'&&key!=='finance')disposeDashboardCharts();
@@ -5895,7 +5942,7 @@ window._afterRender=function(key){
   }
   if(key==='dashboard')drawDash();
   if(key==='app-collect'&&MY_CONTRACT)initGeoCollect(); /* só inicia GPS/coleta se o contrato já estiver assinado — ver PAGES['app-collect'] */
-  if(key==='client-results'){clientLoadReportOverview();clientLoadPublishedReports();}
+  if(key==='client-results'){clientLoadReportOverview();clientLoadPublishedReports();clientGeoStartLive();}
   if(key==='reports'){reportsLoadAndRender();reportsStartLive();reportsLoadDraft();}
   if(key==='my-earnings')renderMyRejected();
   if(key==='sample'){calcSample();}

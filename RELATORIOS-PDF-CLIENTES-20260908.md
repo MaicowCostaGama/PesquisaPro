@@ -71,3 +71,9 @@ Antes da migration, o editor visual continua carregando, mas salvar, carregar ra
 Quando a gestão libera os resultados para o cliente vinculado à pesquisa, a aba **Resultados** deixa de mostrar apenas uma pergunta por vez e passa a apresentar a estrutura analítica completa: título e subtítulo do relatório publicado, apresentação, todas as perguntas com distribuição, contagens, percentuais e barras comparativas, síntese executiva e as matrizes de cruzamento incluídas no relatório publicado. Os cruzamentos respeitam o limite de até três variáveis, os totais por linha e coluna e a base total de entrevistas válidas.
 
 A leitura utiliza as RPCs agregadas de `deploy/relatorios-resultados-clientes.sql`. Elas não retornam respostas individuais e verificam, no banco, se o usuário autenticado é o cliente vinculado e se o resultado está liberado no vínculo `survey_clients` ou no campo legado `profiles.results_released`. A migration deve ser executada no Supabase antes de usar a nova visão completa do cliente.
+
+## Georreferenciamento no perfil do cliente
+
+A aba **Resultados** do cliente também inclui um painel de acompanhamento georreferenciado da coleta. O painel apresenta mapa, quantidade de entrevistas com localização, válidas, reprovadas e de calibração, filtro por situação e feed recente anonimizado, com atualização automática a cada 20 segundos.
+
+Por segurança, o cliente não recebe nome, telefone, CPF, e-mail, rota do pesquisador, motivo de reprovação ou coordenada exata. A migration `deploy/georreferenciamento-clientes.sql` arredonda latitude e longitude para três casas decimais, agrega pontos por área aproximada e valida no banco se o cliente está vinculado e liberado para a pesquisa. A aplicação usa Leaflet localmente e mostra os marcadores numerados com indicação da situação agregada da área.

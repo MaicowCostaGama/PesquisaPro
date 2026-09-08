@@ -3609,29 +3609,42 @@ let RP_REPORT_LIVE_TIMER=null;
 let RP_REPORT_CHANNEL=null;
 let RP_REPORT_LOADING=false;
 let RP_REPORT_ANALYSIS_CACHE={surveyId:null,overviewRows:[],crossRows:[],crossIds:[]};
+let RP_REPORT_CROSS_ANALYSIS_CACHE={};
 let RP_REPORT_DOCUMENT_ID=null;
 let RP_REPORT_DOCUMENT_STATUS='new';
 let RP_REPORT_CLIENTS=[];
 let RP_REPORT_DRAFT_HYDRATED=false;
+let RP_REPORT_CROSSINGS=[];
+let RP_ACTIVE_CROSSING_ID=null;
+let RP_REPORT_DRAFT_SECTIONS=null;
 function reportsAvailableSurveys(){return SURVEYS.filter(s=>reportsQuestionsForSurvey(s).length>0);}
 function reportsCurrentSurvey(){return SURVEYS.find(s=>s.id===RP_SURVEY_ID)||null;}
 function reportsCurrentQuestions(){return reportsQuestionsForSurvey(reportsCurrentSurvey()||{});}
-function reportsEnsureCrossSelection(qs){
+function reportsCrossingQuestionIds(crossing){return [...(crossing?.questionIds||crossing?.crossQuestionIds||[])].filter(Boolean).slice(0,3);}
+function reportsMakeCrossing(questionIds=[],index=RP_REPORT_CROSSINGS.length){return {id:'cross-'+Date.now()+'-'+Math.random().toString(36).slice(2,7),title:'Cruzamento '+(index+1),questionIds:questionIds.filter(Boolean).slice(0,3),include:true};}
+function reportsNormalizeCrossings(sections){
+  const legacyIds=Array.isArray(sections?.crossQuestionIds)?sections.crossQuestionIds:[];
+  const raw=Array.isArray(sections?.crossings)?sections.crossings:(legacyIds.length?[{id:'cross-legacy',title:sections.crossTitle||'Cruzamento 1',questionIds:legacyIds,include:sections.includeCross!==false}]:[]);
+  const used=new Set();
+  return raw.map((crossing,index)=>{let id=String(crossing?.id||'cross-'+(index+1));while(used.has(id))id+='-'+index;used.add(id);const title=String(crossing?.title||crossing?.crossTitle||'Cruzamento '+(index+1)).trim()||'Cruzamento '+(index+1);return {id,title,questionIds:reportsCrossingQuestionIds(crossing),include:crossing?.include!==false};}).filter(crossing=>crossing.questionIds.length||crossing.title);
+}
+function reportsActiveCrossing(){return RP_REPORT_CROSSINGS.find(crossing=>crossing.id===RP_ACTIVE_CROSSING_ID)||null;}
+function reportsSyncActiveCrossing(){const crossing=reportsActiveCrossing();if(crossing){RP_ACTIVE_CROSSING_ID=crossing.id;RP_CROSS_QUESTION_IDS=reportsCrossingQuestionIds(crossing);}else{RP_ACTIVE_CROSSING_ID=null;RP_CROSS_QUESTION_IDS=[];}}
+function reportsEnsureCrossings(qs){
   const valid=new Set(qs.map(q=>q.dbId));
-  RP_CROSS_QUESTION_IDS=RP_CROSS_QUESTION_IDS.filter(id=>valid.has(id)).slice(0,3);
-  if(!RP_REPORT_DRAFT_HYDRATED&&!RP_CROSS_QUESTION_IDS.length&&qs[0])RP_CROSS_QUESTION_IDS=[qs[0].dbId];
+  RP_REPORT_CROSSINGS=RP_REPORT_CROSSINGS.map(crossing=>({...crossing,questionIds:reportsCrossingQuestionIds(crossing).filter(id=>valid.has(id)).slice(0,3)})).filter(crossing=>crossing.questionIds.length||crossing.title);
+  if(!RP_REPORT_CROSSINGS.length&&!RP_REPORT_DRAFT_HYDRATED&&qs[0])RP_REPORT_CROSSINGS=[reportsMakeCrossing([qs[0].dbId])];
+  if(!RP_ACTIVE_CROSSING_ID||!RP_REPORT_CROSSINGS.some(crossing=>crossing.id===RP_ACTIVE_CROSSING_ID))RP_ACTIVE_CROSSING_ID=RP_REPORT_CROSSINGS[0]?.id||null;
+  reportsSyncActiveCrossing();
 }
-function reportsCrossSelectionSummary(){
-  const labels=RP_CROSS_QUESTION_IDS.filter(Boolean).slice(0,3).map((id,i)=>(i+1)+'. '+reportsQuestionLabel(id));
-  return labels.length?labels.join(' · '):'Nenhuma variável selecionada. O bloco de cruzamento não será incluído no PDF.';
-}
-function reportsUpdateCrossSelectionSummary(){const el=document.getElementById('rp-cross-save-summary');if(el)el.textContent=reportsCrossSelectionSummary();}
+function reportsEnsureCrossSelection(qs){reportsEnsureCrossings(qs);}
+function reportsCrossSelectionSummary(crossing=reportsActiveCrossing()){const labels=reportsCrossingQuestionIds(crossing).map((id,index)=>(index+1)+'. '+reportsQuestionLabel(id));return labels.length?labels.join(' · '):'Nenhuma variável selecionada. Este cruzamento não entrará no PDF até receber variáveis.';}
+function reportsUpdateCrossSelectionSummary(crossingId=null){document.querySelectorAll('[data-crossing-summary]').forEach(el=>{if(!crossingId||el.dataset.crossingSummary===crossingId){const crossing=RP_REPORT_CROSSINGS.find(item=>item.id===el.dataset.crossingSummary);el.textContent=reportsCrossSelectionSummary(crossing);}});}
 function reportsQuestionLabel(id){return reportsCurrentQuestions().find(q=>q.dbId===id)?.text||'(variável sem texto)';}
 function reportsModeButton(mode,label,icon){return `<button class="reports-mode-btn ${RP_REPORT_MODE===mode?'on':''}" onclick="reportsSetMode('${mode}')"><span>${icon}</span>${label}</button>`;}
-function reportsCrossQuestionSelect(index,qs){
-  const selected=RP_CROSS_QUESTION_IDS[index]||'';
-  return `<div class="reports-variable-control"><label class="lbl">Variável ${index+1}${index===0?'':' (opcional)'}</label><select class="inp" onchange="reportsPickCrossQuestion(${index},this.value)"><option value="">${index===0?'Escolha uma pergunta':'Não usar'}</option>${qs.map(q=>`<option value="${q.dbId}" ${q.dbId===selected?'selected':''}>${esc(q.text||'(pergunta sem texto)')}</option>`).join('')}</select></div>`;
-}
+function reportsCrossQuestionSelect(crossingId,index,qs){const crossing=RP_REPORT_CROSSINGS.find(item=>item.id===crossingId);const selected=reportsCrossingQuestionIds(crossing)[index]||'';return `<div class="reports-variable-control"><label class="lbl">Variável ${index+1}${index===0?'':' (opcional)'}</label><select class="inp" data-crossing-question="${esc(crossingId)}" data-crossing-index="${index}" onchange="reportsPickCrossQuestion(${jsArg(crossingId)},${index},this.value)"><option value="">${index===0?'Escolha uma pergunta':'Não usar'}</option>${qs.map(q=>`<option value="${q.dbId}" ${q.dbId===selected?'selected':''}>${esc(q.text||'(pergunta sem texto)')}</option>`).join('')}</select></div>`;}
+function reportsCrossingCardMarkup(crossing,index,qs){const safeId=jsArg(crossing.id);return `<article class="reports-crossing-card ${crossing.id===RP_ACTIVE_CROSSING_ID?'is-active':''}" data-crossing-card="${esc(crossing.id)}"><div class="reports-crossing-card-head"><div><div class="reports-crossing-kicker">CRUZAMENTO ${index+1}</div><input class="inp reports-crossing-title" data-crossing-title="${esc(crossing.id)}" value="${esc(crossing.title)}" aria-label="Título do cruzamento ${index+1}" oninput="reportsUpdateCrossingTitle(${safeId},this.value)"></div><div class="reports-crossing-actions"><button class="btn btn-out" onclick="reportsSetActiveCrossing(${safeId})">${crossing.id===RP_ACTIVE_CROSSING_ID?'Visualizando':'Visualizar'}</button><button class="btn btn-out reports-crossing-remove" onclick="reportsRemoveCrossing(${safeId})">Remover</button></div></div><div class="reports-builder-grid">${[0,1,2].map(i=>reportsCrossQuestionSelect(crossing.id,i,qs)).join('')}</div><div class="reports-crossing-card-foot"><label class="reports-section-option"><input type="checkbox" data-crossing-include="${esc(crossing.id)}" ${crossing.include!==false?'checked':''} onchange="reportsToggleCrossingInclude(${safeId},this.checked)"> Incluir este cruzamento no PDF</label><span data-crossing-summary="${esc(crossing.id)}">${esc(reportsCrossSelectionSummary(crossing))}</span></div></article>`;}
+function reportsCrossingsBuilderMarkup(qs){const cards=RP_REPORT_CROSSINGS.map((crossing,index)=>reportsCrossingCardMarkup(crossing,index,qs)).join('');return `<div class="reports-crossings-builder">${cards||'<div class="reports-crossings-empty">Nenhum cruzamento salvo nesta estrutura. Adicione o primeiro cruzamento para começar.</div>'}<div class="reports-crossings-builder-actions"><button class="btn btn-out" onclick="reportsAddCrossing()">+ Adicionar outro cruzamento</button><button class="btn btn-out" onclick="reportsSaveDraft()">Salvar cruzamentos na estrutura</button></div></div>`;}
 function reportsClientsForSurvey(survey){
   return (survey?.clientIds||[]).map(id=>USERS.find(u=>u.id===id)).filter(Boolean);
 }
@@ -3639,7 +3652,7 @@ function reportsDocumentEditorMarkup(survey){
   const clients=reportsClientsForSurvey(survey);RP_REPORT_CLIENTS=clients;
   const defaultClient=clients[0]?.id||'';
   const title='Relatório de resultados — '+(survey?.name||'Pesquisa');
-  const sections=[['includeMethodology','Ficha técnica e metodologia',true],['includeOverview','Resultados de todas as perguntas',RP_REPORT_MODE==='overview'],['includeCross','Gráficos e tabelas de cruzamentos',RP_REPORT_MODE==='builder'],['includeSummary','Síntese executiva',true]];
+  const draftSections=RP_REPORT_DRAFT_SECTIONS||{};const sections=[['includeMethodology','Ficha técnica e metodologia',draftSections.includeMethodology??true],['includeOverview','Resultados de todas as perguntas',draftSections.includeOverview??(RP_REPORT_MODE==='overview')],['includeCross','Gráficos e tabelas de cruzamentos',draftSections.includeCross??(RP_REPORT_MODE==='builder')],['includeSummary','Síntese executiva',draftSections.includeSummary??true]];
   return `<section class="card reports-document-editor" id="reports-document-editor">
     <div class="reports-document-head"><div><div class="reports-eyebrow">ENTREGA AO CLIENTE</div><h2>Estrutura do relatório final</h2><p>Monte a apresentação, escolha os blocos e disponibilize o PDF somente quando estiver revisado.</p></div><span id="rp-document-status" class="reports-document-status draft">Rascunho</span></div>
     <div class="reports-document-grid">
@@ -3647,7 +3660,7 @@ function reportsDocumentEditorMarkup(survey){
       <div><label class="lbl">Título do relatório</label><input class="inp" id="rp-doc-title" value="${esc(title)}"></div>
       <div><label class="lbl">Subtítulo</label><input class="inp" id="rp-doc-subtitle" value="PesquisaPro · Resultados e análise"></div>
       <div><label class="lbl">Período / identificação</label><input class="inp" id="rp-doc-period" value="${esc(survey?.dataIni||'')} ${survey?.dataFim?'— '+esc(survey.dataFim):''}"></div>
-      <div><label class="lbl">Título dos cruzamentos</label><input class="inp" id="rp-doc-cross-title" value="Cruzamentos selecionados"></div>
+      <div class="reports-crossing-structure-note"><label class="lbl">Cruzamentos analíticos</label><div class="reports-crossing-structure-hint">Configure o título, as variáveis e a inclusão no PDF em cada cartão do modo “Montar relatório”.</div></div>
     </div>
     <div class="reports-document-grid reports-document-texts">
       <div><label class="lbl">Apresentação</label><textarea class="inp" id="rp-doc-presentation" rows="4">Este relatório apresenta os principais resultados da pesquisa, com base nas entrevistas válidas realizadas pela rede de pesquisadores do PesquisaPro.</textarea></div>
@@ -3672,19 +3685,22 @@ PAGES.reports=()=>{
   <div class="card reports-toolbar mb">
     <div class="reports-toolbar-top"><div><div class="reports-eyebrow">CENTRAL DE ANÁLISE</div><h2>Resultados da pesquisa</h2><p>Veja todas as perguntas e monte cruzamentos com até três variáveis.</p></div><span id="rp-live-status" class="reports-live-badge"><i></i>Atualizando automaticamente</span></div>
     <div class="reports-toolbar-grid"><div><label class="lbl">Pesquisa</label><select class="inp" id="rp-survey" onchange="reportsPickSurvey(this.value)">${surveys.map(s=>`<option value="${s.id}" ${s.id===RP_SURVEY_ID?'selected':''}>${esc(s.name)}</option>`).join('')}</select></div><div class="reports-mode-switch" role="tablist" aria-label="Modo de relatório">${reportsModeButton('overview','Todas as perguntas','▦')}${reportsModeButton('builder','Montar relatório','⚒')}</div></div>
-    ${RP_REPORT_MODE==='builder'?`<div class="reports-builder-grid">${[0,1,2].map(i=>reportsCrossQuestionSelect(i,qs)).join('')}</div><div class="reports-builder-note">Selecione de uma a três perguntas. Para perguntas de múltipla escolha, as opções marcadas na mesma entrevista aparecem agrupadas.</div><div class="reports-cross-save-box"><div><strong>Cruzamento que será salvo na estrutura</strong><div id="rp-cross-save-summary">${esc(reportsCrossSelectionSummary())}</div></div><button class="btn btn-out" onclick="reportsSaveDraft()">Salvar cruzamento na estrutura</button></div>`:''}
+    ${RP_REPORT_MODE==='builder'?`<div class="reports-builder-note">Cada cartão abaixo representa um cruzamento independente. Cada cruzamento aceita de uma a três variáveis e pode ser incluído ou retirado do PDF separadamente.</div>${reportsCrossingsBuilderMarkup(qs)}`:''}
   </div>
   <div id="rp-output"><div class="empty" style="padding:28px 0">Carregando resultados reais…</div></div>
   ${reportsDocumentEditorMarkup(survey,qs)}
   <div class="callout reports-footnote"><b>Base de análise:</b> entrevistas válidas, excluindo coletas reprovadas e de calibração. Os dados são atualizados automaticamente enquanto esta aba estiver aberta.</div>`;
 };
-function reportsPickSurvey(id){RP_SURVEY_ID=id;RP_CROSS_QUESTION_IDS=[];RP_REPORT_DOCUMENT_ID=null;RP_REPORT_DOCUMENT_STATUS='new';RP_REPORT_DRAFT_HYDRATED=false;RP_REPORT_ANALYSIS_CACHE={surveyId:null,overviewRows:[],crossRows:[],crossIds:[]};go('reports');}
+function reportsPickSurvey(id){RP_SURVEY_ID=id;RP_CROSS_QUESTION_IDS=[];RP_REPORT_CROSSINGS=[];RP_ACTIVE_CROSSING_ID=null;RP_REPORT_DRAFT_SECTIONS=null;RP_REPORT_DOCUMENT_ID=null;RP_REPORT_DOCUMENT_STATUS='new';RP_REPORT_DRAFT_HYDRATED=false;RP_REPORT_ANALYSIS_CACHE={surveyId:null,overviewRows:[],crossRows:[],crossIds:[]};RP_REPORT_CROSS_ANALYSIS_CACHE={};go('reports');}
 function reportsSetMode(mode){RP_REPORT_MODE=mode;RP_REPORT_DRAFT_HYDRATED=true;go('reports');}
-function reportsPickCrossQuestion(index,id){
-  const next=RP_CROSS_QUESTION_IDS.slice(0,3);next[index]=id||null;
-  RP_CROSS_QUESTION_IDS=next.filter(Boolean).slice(0,3);RP_REPORT_DRAFT_HYDRATED=true;
-  reportsUpdateCrossSelectionSummary();reportsLoadAndRender();
-}
+function reportsAddCrossing(){const crossing=reportsMakeCrossing([],RP_REPORT_CROSSINGS.length);RP_REPORT_CROSSINGS=[...RP_REPORT_CROSSINGS,crossing];RP_ACTIVE_CROSSING_ID=crossing.id;reportsSyncActiveCrossing();go('reports');}
+function reportsSetActiveCrossing(id){if(!RP_REPORT_CROSSINGS.some(crossing=>crossing.id===id))return;RP_ACTIVE_CROSSING_ID=id;reportsSyncActiveCrossing();go('reports');}
+function reportsUpdateCrossingTitle(id,title){const normalized=String(title||'').trim();RP_REPORT_CROSSINGS=RP_REPORT_CROSSINGS.map(crossing=>crossing.id===id?{...crossing,title:normalized||'Cruzamento'}:crossing);}
+function reportsToggleCrossingInclude(id,include){RP_REPORT_CROSSINGS=RP_REPORT_CROSSINGS.map(crossing=>crossing.id===id?{...crossing,include:!!include}:crossing);}
+function reportsRemoveCrossing(id){const remaining=RP_REPORT_CROSSINGS.filter(crossing=>crossing.id!==id);RP_REPORT_CROSSINGS=remaining;if(RP_ACTIVE_CROSSING_ID===id)RP_ACTIVE_CROSSING_ID=remaining[0]?.id||null;reportsSyncActiveCrossing();go('reports');}
+function reportsPickCrossQuestion(crossingId,index,id){const crossing=RP_REPORT_CROSSINGS.find(item=>item.id===crossingId);if(!crossing)return;const next=reportsCrossingQuestionIds(crossing);next[index]=id||null;const questionIds=next.filter(Boolean).slice(0,3);RP_REPORT_CROSSINGS=RP_REPORT_CROSSINGS.map(item=>item.id===crossingId?{...item,questionIds}:item);RP_ACTIVE_CROSSING_ID=crossingId;reportsSyncActiveCrossing();RP_REPORT_DRAFT_HYDRATED=true;reportsUpdateCrossSelectionSummary(crossingId);reportsLoadAndRender();}
+function reportsCrossingPayloads(){return RP_REPORT_CROSSINGS.map((crossing,index)=>({id:crossing.id,title:String(crossing.title||'Cruzamento '+(index+1)).trim()||'Cruzamento '+(index+1),questionIds:reportsCrossingQuestionIds(crossing),include:crossing.include!==false})).filter(crossing=>crossing.questionIds.length);}
+function reportsCrossingForPayload(crossing){return reportsCrossingPayloads().find(item=>item.id===crossing.id)||null;}
 function reportsSetLiveStatus(text,kind='live'){
   const el=document.getElementById('rp-live-status');if(!el)return;
   el.className='reports-live-badge '+kind;el.innerHTML=`<i></i>${esc(text)}`;
@@ -3715,8 +3731,8 @@ async function reportsLoadAndRender(isLive=false){
       RP_REPORT_ANALYSIS_CACHE={surveyId:survey.id,overviewRows:data||[],crossRows:RP_REPORT_ANALYSIS_CACHE.crossRows||[],crossIds:RP_REPORT_ANALYSIS_CACHE.crossIds||[]};
       renderReportsOverview(out,data||[],qs);
     }else{
-      const ids=RP_CROSS_QUESTION_IDS.filter(Boolean).slice(0,3);
-      if(!ids.length){out.innerHTML='<div class="card"><div class="empty">Escolha pelo menos uma variável para montar o relatório.</div></div>';return;}
+      const active=reportsActiveCrossing();const ids=reportsCrossingQuestionIds(active);
+      if(!ids.length){out.innerHTML='<div class="card"><div class="empty">Escolha pelo menos uma variável no cruzamento ativo para montar a prévia.</div></div>';return;}
       const {data,error}=await sb.rpc('survey_report_cross_tab',{p_survey_id:survey.id,p_question_ids:ids});
       if(error)throw error;
       RP_REPORT_ANALYSIS_CACHE={surveyId:survey.id,overviewRows:RP_REPORT_ANALYSIS_CACHE.overviewRows||[],crossRows:data||[],crossIds:ids};
@@ -3749,7 +3765,7 @@ function reportsDocValue(id){return (document.getElementById(id)?.value||'').tri
 function reportsDocChecked(id){return !!document.getElementById(id)?.checked;}
 function reportsDocPayload(){
   const survey=reportsCurrentSurvey();
-  return {surveyId:survey?.id||null,clientId:reportsDocValue('rp-doc-client'),title:reportsDocValue('rp-doc-title'),subtitle:reportsDocValue('rp-doc-subtitle'),period:reportsDocValue('rp-doc-period'),presentation:reportsDocValue('rp-doc-presentation'),methodology:reportsDocValue('rp-doc-methodology-text'),executiveSummary:reportsDocValue('rp-doc-summary-text'),sections:{includeMethodology:reportsDocChecked('rp-doc-methodology'),includeOverview:reportsDocChecked('rp-doc-overview'),includeCross:reportsDocChecked('rp-doc-cross'),includeSummary:reportsDocChecked('rp-doc-summary'),period:reportsDocValue('rp-doc-period'),crossTitle:reportsDocValue('rp-doc-cross-title'),crossQuestionIds:RP_CROSS_QUESTION_IDS.filter(Boolean).slice(0,3)}};
+  const active=reportsActiveCrossing();const crossings=reportsCrossingPayloads();return {surveyId:survey?.id||null,clientId:reportsDocValue('rp-doc-client'),title:reportsDocValue('rp-doc-title'),subtitle:reportsDocValue('rp-doc-subtitle'),period:reportsDocValue('rp-doc-period'),presentation:reportsDocValue('rp-doc-presentation'),methodology:reportsDocValue('rp-doc-methodology-text'),executiveSummary:reportsDocValue('rp-doc-summary-text'),sections:{includeMethodology:reportsDocChecked('rp-doc-methodology'),includeOverview:reportsDocChecked('rp-doc-overview'),includeCross:reportsDocChecked('rp-doc-cross'),includeSummary:reportsDocChecked('rp-doc-summary'),period:reportsDocValue('rp-doc-period'),crossTitle:active?.title||'Cruzamentos selecionados',crossQuestionIds:reportsCrossingQuestionIds(active),crossings}};
 }
 function reportsDocFeedback(text,kind=''){const el=document.getElementById('rp-document-feedback');if(el){el.className='reports-document-feedback '+kind;el.textContent=text;}}
 function reportsSetDocumentStatus(status){RP_REPORT_DOCUMENT_STATUS=status||'draft';const el=document.getElementById('rp-document-status');if(!el)return;el.className='reports-document-status '+status;el.textContent=status==='published'?'Publicado':status==='draft'?'Rascunho':'Novo';}
@@ -3758,9 +3774,11 @@ function reportsFillDraft(r){
   const values={ 'rp-doc-client':r.client_id,'rp-doc-title':r.title,'rp-doc-subtitle':r.subtitle,'rp-doc-presentation':r.presentation,'rp-doc-methodology-text':r.methodology,'rp-doc-summary-text':r.executive_summary };
   Object.entries(values).forEach(([id,value])=>{const el=document.getElementById(id);if(el&&value!=null)el.value=value;});
   const sec=typeof r.sections==='string'?JSON.parse(r.sections||'{}'):r.sections||{};
-  RP_CROSS_QUESTION_IDS=(sec.crossQuestionIds||[]).filter(Boolean).slice(0,3);
-  const crossTitle=document.getElementById('rp-doc-cross-title');if(crossTitle&&sec.crossTitle)crossTitle.value=sec.crossTitle;
-  document.querySelectorAll('.reports-builder-grid select').forEach((el,index)=>{el.value=RP_CROSS_QUESTION_IDS[index]||'';});
+  RP_REPORT_DRAFT_SECTIONS=sec;
+  RP_REPORT_CROSSINGS=reportsNormalizeCrossings(sec);RP_ACTIVE_CROSSING_ID=RP_REPORT_CROSSINGS[0]?.id||null;reportsSyncActiveCrossing();
+  document.querySelectorAll('[data-crossing-question]').forEach(el=>{const crossing=RP_REPORT_CROSSINGS.find(item=>item.id===el.dataset.crossingQuestion);const index=Number(el.dataset.crossingIndex||0);el.value=reportsCrossingQuestionIds(crossing)[index]||'';});
+  document.querySelectorAll('[data-crossing-title]').forEach(el=>{const crossing=RP_REPORT_CROSSINGS.find(item=>item.id===el.dataset.crossingTitle);if(crossing)el.value=crossing.title;});
+  document.querySelectorAll('[data-crossing-include]').forEach(el=>{const crossing=RP_REPORT_CROSSINGS.find(item=>item.id===el.dataset.crossingInclude);if(crossing)el.checked=crossing.include!==false;});
   const checks={methodology:sec.includeMethodology,overview:sec.includeOverview,cross:sec.includeCross,summary:sec.includeSummary};
   Object.entries(checks).forEach(([k,value])=>{const el=document.getElementById('rp-doc-'+k);if(el&&value!=null)el.checked=!!value;});
   const period=document.getElementById('rp-doc-period');if(period&&sec.period!=null)period.value=sec.period;
@@ -3772,7 +3790,7 @@ async function reportsLoadDraft(){
   try{const {data,error}=await sb.rpc('report_document_latest',{p_survey_id:survey.id,p_client_id:clientId});if(error)throw error;reportsFillDraft(Array.isArray(data)?data[0]:data);}catch(ex){/* migration ainda não aplicada: o editor continua utilizável localmente */}
   RP_REPORT_DRAFT_HYDRATED=true;reportsUpdateCrossSelectionSummary();
 }
-function reportsDocClientChanged(){RP_REPORT_DOCUMENT_ID=null;RP_CROSS_QUESTION_IDS=[];RP_REPORT_DRAFT_HYDRATED=false;reportsSetDocumentStatus('new');reportsLoadDraft();}
+function reportsDocClientChanged(){RP_REPORT_DOCUMENT_ID=null;RP_CROSS_QUESTION_IDS=[];RP_REPORT_CROSSINGS=[];RP_ACTIVE_CROSSING_ID=null;RP_REPORT_DRAFT_SECTIONS=null;RP_REPORT_CROSS_ANALYSIS_CACHE={};RP_REPORT_DRAFT_HYDRATED=false;reportsSetDocumentStatus('new');reportsLoadDraft();}
 async function reportsSaveDraft(silent=false){
   const p=reportsDocPayload();
   if(!p.surveyId||!p.clientId){if(!silent)reportsDocFeedback('Selecione o cliente vinculado à pesquisa antes de salvar.','warn');return null;}
@@ -3788,21 +3806,29 @@ function reportsPdfFooter(doc){const pages=doc.internal.getNumberOfPages();for(l
 async function reportsEnsurePdfData(payload){
   const survey=reportsCurrentSurvey();if(!survey)return;
   if(payload.sections.includeOverview&&RP_REPORT_ANALYSIS_CACHE.surveyId!==survey.id||payload.sections.includeOverview&&!RP_REPORT_ANALYSIS_CACHE.overviewRows.length){const {data,error}=await sb.rpc('survey_report_all_questions',{p_survey_id:survey.id});if(error)throw error;RP_REPORT_ANALYSIS_CACHE.overviewRows=data||[];RP_REPORT_ANALYSIS_CACHE.surveyId=survey.id;}
-  const ids=payload.sections.crossQuestionIds||[];
-  if(payload.sections.includeCross&&ids.length&&(!RP_REPORT_ANALYSIS_CACHE.crossRows.length||RP_REPORT_ANALYSIS_CACHE.surveyId!==survey.id||JSON.stringify(RP_REPORT_ANALYSIS_CACHE.crossIds)!==JSON.stringify(ids))){const {data,error}=await sb.rpc('survey_report_cross_tab',{p_survey_id:survey.id,p_question_ids:ids});if(error)throw error;RP_REPORT_ANALYSIS_CACHE.crossRows=data||[];RP_REPORT_ANALYSIS_CACHE.crossIds=ids;RP_REPORT_ANALYSIS_CACHE.surveyId=survey.id;}
+  const crossings=payload.sections.includeCross?(payload.sections.crossings||[]).filter(crossing=>crossing.include!==false&&crossing.questionIds?.length):[];
+  for(const crossing of crossings){const ids=reportsCrossingQuestionIds(crossing);const cached=RP_REPORT_CROSS_ANALYSIS_CACHE[crossing.id];if(!cached||cached.surveyId!==survey.id||JSON.stringify(cached.ids)!==JSON.stringify(ids)){const {data,error}=await sb.rpc('survey_report_cross_tab',{p_survey_id:survey.id,p_question_ids:ids});if(error)throw error;RP_REPORT_CROSS_ANALYSIS_CACHE[crossing.id]={surveyId:survey.id,ids,rows:data||[]};}}
 }
-async function reportsCreatePdfBlob(){
-  const payload=reportsDocPayload();if(!payload.surveyId)throw new Error('Selecione uma pesquisa válida.');
-  await reportsEnsurePdfData(payload);await loadLocalAsset('jspdf');const jsPDF=window.jspdf?.jsPDF;if(!jsPDF)throw new Error('Gerador PDF indisponível.');
-  const doc=new jsPDF({unit:'mm',format:'a4'}),survey=reportsCurrentSurvey(),client=reportsClientsForSurvey(survey).find(c=>c.id===payload.clientId);const W=210,M=16,bodyW=178;
-  doc.setFillColor(15,42,86);doc.rect(0,0,W,297,'F');doc.setFillColor(37,99,235);doc.roundedRect(16,28,62,8,4,4,'F');doc.setTextColor(255,255,255);doc.setFont('helvetica','bold');doc.setFontSize(13);doc.text('PesquisaPro',47,33.5,{align:'center'});doc.setFontSize(27);doc.text(payload.title||'Relatório de resultados',16,75,{maxWidth:178});doc.setFont('helvetica','normal');doc.setFontSize(13);doc.text(payload.subtitle||'Resultados e análise',16,104,{maxWidth:170});doc.setDrawColor(96,165,250);doc.line(16,117,194,117);doc.setFontSize(10);doc.text('Cliente: '+(client?.company||client?.name||'—'),16,132);doc.text('Pesquisa: '+(survey.name||'—'),16,140);if(payload.period)doc.text('Período: '+payload.period,16,148);doc.setTextColor(191,219,254);doc.setFontSize(9);doc.text('Relatório preparado na plataforma de pesquisa e coleta de campo PesquisaPro',16,270,{maxWidth:170});
+function reportsPdfWriteCrossing(doc,crossing,payload,M,bodyW){
+  const ids=reportsCrossingQuestionIds(crossing),cached=RP_REPORT_CROSS_ANALYSIS_CACHE[crossing.id]||{rows:[]},rows=cached.rows||[];
+  doc.addPage();let y=reportsPdfHeader(doc,crossing.title||'Cruzamento',payload.title);doc.setTextColor(51,65,85);doc.setFont('helvetica','normal');doc.setFontSize(9);y=reportsPdfLines(doc,ids.map((id,index)=>(index+1)+'. '+reportsQuestionLabel(id)).join(' · '),M,y,bodyW,4.5)+8;
+  const cols=[...ids.map(id=>reportsQuestionLabel(id)),'Entrevistas','% da base'],widths=ids.length===1?[104,30,34]:ids.length===2?[55,55,24,24]:[42,42,42,24,24];let x=M;doc.setFillColor(15,42,86);doc.setTextColor(255,255,255);doc.setFont('helvetica','bold');doc.setFontSize(7.5);cols.forEach((c,index)=>{doc.rect(x,y,widths[index],9,'F');doc.text(String(c).slice(0,28),x+2,y+5.8,{maxWidth:widths[index]-4});x+=widths[index];});y+=9;
+  const total=Number(rows[0]?.valid_base)||0;doc.setFont('helvetica','normal');rows.slice(0,42).forEach((row,rowIndex)=>{if(y>270){doc.addPage();y=reportsPdfHeader(doc,crossing.title||'Cruzamento',payload.title);y+=4;}x=M;const vals=[row.variable_1,row.variable_2,row.variable_3].slice(0,ids.length),cells=[...vals,Number(row.cnt||0).toLocaleString('pt-BR'),(total?Math.round(Number(row.cnt||0)/total*100):0)+'%'];cells.forEach((cell,index)=>{doc.setFillColor(rowIndex%2?248:241,245,249);doc.setTextColor(51,65,85);doc.rect(x,y,widths[index],8,'F');doc.text(String(cell||'—').slice(0,30),x+2,y+5.2,{maxWidth:widths[index]-4});x+=widths[index];});y+=8;});
+}
+async function reportsCreateMultiCrossPdfBlob(payload){
+  await loadLocalAsset('jspdf');const jsPDF=window.jspdf?.jsPDF;if(!jsPDF)throw new Error('Gerador PDF indisponível.');
+  const doc=new jsPDF({unit:'mm',format:'a4'}),survey=reportsCurrentSurvey(),client=reportsClientsForSurvey(survey).find(c=>c.id===payload.clientId),W=210,M=16,bodyW=178;
+  doc.setFillColor(15,42,86);doc.rect(0,0,W,297,'F');doc.setFillColor(37,99,235);doc.roundedRect(16,28,62,8,4,4,'F');doc.setTextColor(255,255,255);doc.setFont('helvetica','bold');doc.setFontSize(13);doc.text('PesquisaPro',47,33.5,{align:'center'});doc.setFontSize(27);doc.text(payload.title||'Relatório de resultados',16,75,{maxWidth:178});doc.setFont('helvetica','normal');doc.setFontSize(13);doc.text(payload.subtitle||'Resultados e análise',16,104,{maxWidth:170});doc.setDrawColor(96,165,250);doc.line(16,117,194,117);doc.setFontSize(10);doc.text('Cliente: '+(client?.company||client?.name||'—'),16,132);doc.text('Pesquisa: '+(survey?.name||'—'),16,140);if(payload.period)doc.text('Período: '+payload.period,16,148);doc.setTextColor(191,219,254);doc.setFontSize(9);doc.text('Relatório preparado na plataforma de pesquisa e coleta de campo PesquisaPro',16,270,{maxWidth:170});
   let y=reportsPdfHeader(doc,payload.title,payload.subtitle);
   if(payload.presentation){doc.setFont('helvetica','bold');doc.setFontSize(15);doc.text('Apresentação',M,y);y+=9;doc.setFont('helvetica','normal');doc.setFontSize(10);doc.setTextColor(51,65,85);y=reportsPdfLines(doc,payload.presentation,M,y,bodyW,5)+8;}
   if(payload.sections.includeMethodology){doc.setFont('helvetica','bold');doc.setFontSize(15);doc.setTextColor(15,42,86);doc.text('Ficha técnica e metodologia',M,y);y+=9;doc.setFont('helvetica','normal');doc.setFontSize(10);doc.setTextColor(51,65,85);y=reportsPdfLines(doc,payload.methodology,M,y,bodyW,5)+8;}
   if(payload.sections.includeSummary&&payload.executiveSummary){doc.setFillColor(239,246,255);doc.roundedRect(M,y,bodyW,34,3,3,'F');doc.setTextColor(15,42,86);doc.setFont('helvetica','bold');doc.setFontSize(12);doc.text('Síntese executiva',M+6,y+9);doc.setFont('helvetica','normal');doc.setTextColor(51,65,85);doc.setFontSize(9.5);reportsPdfLines(doc,payload.executiveSummary,M+6,y+17,bodyW-12,4.8);y+=45;}
-  if(payload.sections.includeOverview){doc.addPage();y=reportsPdfHeader(doc,'Resultados por pergunta',payload.title);const byQ={};(RP_REPORT_ANALYSIS_CACHE.overviewRows||[]).forEach(r=>(byQ[r.question_id]||(byQ[r.question_id]=[])).push(r));for(const [qi,q] of reportsCurrentQuestions().entries()){const rows=byQ[q.dbId]||[];if(!rows.length)continue;if(y>250){doc.addPage();y=reportsPdfHeader(doc,'Resultados por pergunta',payload.title);}doc.setTextColor(15,42,86);doc.setFont('helvetica','bold');doc.setFontSize(11);y=reportsPdfLines(doc,(qi+1)+'. '+q.text,M,y,bodyW,5)+3;const base=Number(rows[0]?.valid_base)||rows.reduce((a,r)=>a+Number(r.cnt||0),0);for(const r of rows){const cnt=Number(r.cnt||0),pct=base?Math.round(cnt/base*100):0;doc.setTextColor(51,65,85);doc.setFont('helvetica','normal');doc.setFontSize(9);doc.text(String(r.value_label||'(sem resposta)'),M,y);doc.text(cnt.toLocaleString('pt-BR')+' · '+pct+'%',194,y,{align:'right'});doc.setFillColor(226,232,240);doc.roundedRect(M,y+2,bodyW,3,1,1,'F');doc.setFillColor(37,99,235);doc.roundedRect(M,y+2,Math.max(1,bodyW*Math.min(100,pct)/100),3,1,1,'F');y+=11;}y+=7;}}
-  if(payload.sections.includeCross&&payload.sections.crossQuestionIds?.length){doc.addPage();y=reportsPdfHeader(doc,payload.sections.crossTitle||'Cruzamentos selecionados',payload.title);const ids=payload.sections.crossQuestionIds;doc.setTextColor(51,65,85);doc.setFont('helvetica','normal');doc.setFontSize(9);y=reportsPdfLines(doc,ids.map((id,i)=>(i+1)+'. '+reportsQuestionLabel(id)).join(' · '),M,y,bodyW,4.5)+8;const rows=RP_REPORT_ANALYSIS_CACHE.crossRows||[];const cols=[...ids.map((id)=>reportsQuestionLabel(id)),'Entrevistas','% da base'];const widths=ids.length===1?[104,30,34]:ids.length===2?[55,55,24,24]:[42,42,42,24,24];let x=M;doc.setFillColor(15,42,86);doc.setTextColor(255,255,255);doc.setFont('helvetica','bold');doc.setFontSize(7.5);cols.forEach((c,i)=>{doc.rect(x,y,widths[i],9,'F');doc.text(String(c).slice(0,28),x+2,y+5.8,{maxWidth:widths[i]-4});x+=widths[i];});y+=9;const total=Number(rows[0]?.valid_base)||0;doc.setFont('helvetica','normal');rows.slice(0,42).forEach((r,ri)=>{if(y>270){doc.addPage();y=reportsPdfHeader(doc,payload.sections.crossTitle||'Cruzamentos selecionados',payload.title);y+=4;}x=M;const vals=[r.variable_1,r.variable_2,r.variable_3].slice(0,ids.length);const cells=[...vals,Number(r.cnt||0).toLocaleString('pt-BR'),(total?Math.round(Number(r.cnt||0)/total*100):0)+'%'];cells.forEach((c,i)=>{doc.setFillColor(ri%2?248:241,245,249);doc.setTextColor(51,65,85);doc.rect(x,y,widths[i],8,'F');doc.text(String(c||'—').slice(0,30),x+2,y+5.2,{maxWidth:widths[i]-4});x+=widths[i];});y+=8;});}
-  reportsPdfFooter(doc);return {blob:doc.output('blob'),payload};
+  if(payload.sections.includeOverview){doc.addPage();y=reportsPdfHeader(doc,'Resultados por pergunta',payload.title);const byQ={};(RP_REPORT_ANALYSIS_CACHE.overviewRows||[]).forEach(row=>(byQ[row.question_id]||(byQ[row.question_id]=[])).push(row));for(const [qi,q] of reportsCurrentQuestions().entries()){const rows=byQ[q.dbId]||[];if(!rows.length)continue;if(y>250){doc.addPage();y=reportsPdfHeader(doc,'Resultados por pergunta',payload.title);}doc.setTextColor(15,42,86);doc.setFont('helvetica','bold');doc.setFontSize(11);y=reportsPdfLines(doc,(qi+1)+'. '+q.text,M,y,bodyW,5)+3;const base=Number(rows[0]?.valid_base)||rows.reduce((sum,row)=>sum+Number(row.cnt||0),0);for(const row of rows){const cnt=Number(row.cnt||0),pct=base?Math.round(cnt/base*100):0;doc.setTextColor(51,65,85);doc.setFont('helvetica','normal');doc.setFontSize(9);doc.text(String(row.value_label||'(sem resposta)'),M,y);doc.text(cnt.toLocaleString('pt-BR')+' · '+pct+'%',194,y,{align:'right'});doc.setFillColor(226,232,240);doc.roundedRect(M,y+2,bodyW,3,1,1,'F');doc.setFillColor(37,99,235);doc.roundedRect(M,y+2,Math.max(1,bodyW*Math.min(100,pct)/100),3,1,1,'F');y+=11;}y+=7;}}
+  const crossings=payload.sections.includeCross?(payload.sections.crossings||[]).filter(crossing=>crossing.include!==false&&reportsCrossingQuestionIds(crossing).length):[];crossings.forEach(crossing=>reportsPdfWriteCrossing(doc,crossing,payload,M,bodyW));reportsPdfFooter(doc);return {blob:doc.output('blob'),payload};
+}
+async function reportsCreatePdfBlob(){
+  const payload=reportsDocPayload();if(!payload.surveyId)throw new Error('Selecione uma pesquisa válida.');
+  await reportsEnsurePdfData(payload);return reportsCreateMultiCrossPdfBlob(payload);
 }
 async function reportsGeneratePdf(){
   reportsDocFeedback('Gerando PDF com os blocos selecionados…');try{const id=await reportsSaveDraft(true);if(!id)throw new Error('Salve uma estrutura com cliente e título antes de gerar.');const result=await reportsCreatePdfBlob();const url=URL.createObjectURL(result.blob);const a=document.createElement('a');a.href=url;a.download='relatorio-pesquisapro-'+new Date().toISOString().slice(0,10)+'.pdf';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);reportsDocFeedback('PDF gerado e baixado. Revise o arquivo antes de publicar ao cliente.','ok');}catch(ex){reportsDocFeedback(ex.message||String(ex),'warn');}}

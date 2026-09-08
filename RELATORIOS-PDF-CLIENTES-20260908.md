@@ -65,3 +65,9 @@ O perfil do cliente consulta apenas documentos com status `published` e vinculad
 A migration `deploy/relatorios-pdf-clientes.sql` já foi aplicada no Supabase e continua sendo a base do recurso. **Não há migration SQL adicional para o padrão matricial**, porque os dados brutos do cruzamento já são retornados pela RPC existente e a transformação para percentuais, matriz e totais é feita no front-end e no gerador de PDF.
 
 Antes da migration, o editor visual continua carregando, mas salvar, carregar rascunhos, publicar e listar PDFs retornará uma orientação para executar o SQL. Depois da aplicação, o rascunho passa a incluir `crossings` junto com os demais blocos editoriais.
+
+## Visão completa de resultados no cliente
+
+Quando a gestão libera os resultados para o cliente vinculado à pesquisa, a aba **Resultados** deixa de mostrar apenas uma pergunta por vez e passa a apresentar a estrutura analítica completa: título e subtítulo do relatório publicado, apresentação, todas as perguntas com distribuição, contagens, percentuais e barras comparativas, síntese executiva e as matrizes de cruzamento incluídas no relatório publicado. Os cruzamentos respeitam o limite de até três variáveis, os totais por linha e coluna e a base total de entrevistas válidas.
+
+A leitura utiliza as RPCs agregadas de `deploy/relatorios-resultados-clientes.sql`. Elas não retornam respostas individuais e verificam, no banco, se o usuário autenticado é o cliente vinculado e se o resultado está liberado no vínculo `survey_clients` ou no campo legado `profiles.results_released`. A migration deve ser executada no Supabase antes de usar a nova visão completa do cliente.

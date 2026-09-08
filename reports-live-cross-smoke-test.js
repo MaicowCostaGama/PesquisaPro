@@ -20,5 +20,5 @@ assert(/question_count > 3/.test(sql),'Limite de três variáveis não está pro
 assert(/ce\.status = 'valid'/.test(sql)&&/ce\.is_calibration = false/.test(sql),'Filtros de respostas válidas ausentes');
 assert(/public\.is_staff\(\)/.test(sql),'Restrição à gestão ausente');
 assert(/reports-question-card/.test(css)&&/reports-builder-grid/.test(css)&&/max-width:760px/.test(css),'Layout responsivo dos relatórios ausente');
-assert(html.includes('app.js?v=20260908180000'),'Cache do painel não atualizado');
+assert(html.includes('app.js?v=20260908190000'),'Cache do painel não atualizado');
 console.log('reports-live-cross-smoke-test: PASS');

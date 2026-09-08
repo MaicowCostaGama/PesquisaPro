@@ -705,46 +705,46 @@ function reportsQuestionsForSurvey(s){
 }
 function clientPublishedReportsMarkup(){return `<div class="card mb client-published-reports" id="client-published-reports"><div class="card-t">Relatórios finais</div><div class="card-d">Documentos revisados e disponibilizados pela equipe PesquisaPro.</div><div id="client-published-reports-list"><div class="empty" style="padding:16px 0">Carregando relatórios…</div></div></div>`;}
 let CR_QUESTION_DBID=null;
+let CR_CLIENT_REPORT_CACHE={surveyId:null,overviewRows:[],crossRowsById:{},document:null};
+let CR_CLIENT_REPORT_LOADING=false;
 PAGES['client-results']=()=>{
   if(!SURVEYS_LOADED)loadSurveysIfNeeded();
   const c=clientSelf(),s=clientSelfSurvey();
-  if(!c||!s){
-    return head('Resultados','Resultados da sua pesquisa')+`<div class="card"><div class="empty">Nenhuma pesquisa vinculada à sua conta no momento.</div></div>`;
-  }
+  if(!c||!s)return head('Resultados','Resultados da sua pesquisa')+`<div class="card"><div class="empty">Nenhuma pesquisa vinculada à sua conta no momento.</div></div>`;
   if(!clientResultsReleasedForSurvey(c,s)){
-    /* obs.: a contagem "coletado até agora" aqui usa s.collected (o total
-       gravado na própria pesquisa) e não a Coleta de campo (collection_events)
-       — o cliente não tem (e não deve ter) permissão para ler coletas
-       individuais no banco, só o resumo por pergunta liberado via RPC depois
-       que os resultados são publicados. */
-    const sample=surveySample(s);
-    const pct=sample?Math.min(100,Math.round(s.collected/sample*100)):0;
-    return head('Resultados',s.name)+`
-    <div class="card" style="text-align:center;padding:52px 24px">
-      <div style="width:56px;height:56px;border-radius:16px;background:var(--amber-l);color:var(--amber);font-size:26px;display:flex;align-items:center;justify-content:center;margin:0 auto 16px">🔒</div>
-      <div style="font-weight:800;font-size:18px">Resultados ainda não liberados</div>
-      <p style="color:var(--ink3);font-size:13.5px;margin-top:8px;max-width:440px;margin-left:auto;margin-right:auto;line-height:1.6">
-        A coleta está em <b>${pct}%</b> da meta. Assim que os dados forem validados, a equipe do PesquisaPro libera os resultados aqui — você recebe um aviso por e-mail e WhatsApp.
-      </p>
-      <button class="btn btn-out" style="margin-top:20px" onclick="go('client-progress')">← Ver andamento da coleta</button>
-    </div>`;
+    const sample=surveySample(s),pct=sample?Math.min(100,Math.round(s.collected/sample*100)):0;
+    return head('Resultados',s.name)+`<div class="card" style="text-align:center;padding:52px 24px"><div style="width:56px;height:56px;border-radius:16px;background:var(--amber-l);color:var(--amber);font-size:26px;display:flex;align-items:center;justify-content:center;margin:0 auto 16px">🔒</div><div style="font-weight:800;font-size:18px">Resultados ainda não liberados</div><p style="color:var(--ink3);font-size:13.5px;margin-top:8px;max-width:440px;margin-left:auto;margin-right:auto;line-height:1.6">A coleta está em <b>${pct}%</b> da meta. Assim que os dados forem validados, a equipe do PesquisaPro libera o relatório nesta área.</p><button class="btn btn-out" style="margin-top:20px" onclick="go('client-progress')">← Ver andamento da coleta</button></div>`;
   }
-  const qs=reportsQuestionsForSurvey(s);
-  if(!qs.length){
-    return head('Resultados',s.name)+`<div class="card"><div class="empty">Esta pesquisa ainda não tem perguntas de múltipla escolha, escala ou número configuradas para gerar resultados.</div></div>`;
-  }
-  if(CR_QUESTION_DBID==null||!qs.some(q=>q.dbId===CR_QUESTION_DBID))CR_QUESTION_DBID=qs[0].dbId;
-  return head('Resultados',s.name)+`
-  <div class="card mb">
-    <label class="lbl">Pergunta</label>
-    <select class="inp" id="cr-question" onchange="clientResultsPickQuestion(this.value)">
-      ${qs.map(q=>`<option value="${q.dbId}" ${q.dbId===CR_QUESTION_DBID?'selected':''}>${esc(q.text||'(pergunta sem texto)')}</option>`).join('')}
-    </select>
-  </div>
-  <div id="cr-output"><div class="empty" style="padding:20px 0">Carregando…</div></div>
-  <div class="callout mb" style="margin-top:16px">Os resultados mostram a distribuição real de respostas de cada pergunta, calculada a partir das entrevistas válidas (excluindo coletas de calibração e reprovadas). Cruzamento entre duas ou mais perguntas ao mesmo tempo (ex.: voto × idade) ainda não está disponível — cada pergunta é mostrada separadamente.</div>`;
+  return head('Resultados',s.name)+`<div id="cr-client-report"><div class="empty" style="padding:28px 0">Carregando relatório de resultados…</div></div>${clientPublishedReportsMarkup()}<div class="callout mb" style="margin-top:16px">Os resultados são calculados sobre entrevistas válidas, excluindo coletas reprovadas e de calibração. Os cruzamentos aparecem somente quando foram incluídos em um relatório final publicado para esta pesquisa.</div>`;
 };
 function clientResultsPickQuestion(id){CR_QUESTION_DBID=id;clientResultsLoadAndRender();}
+function clientReportQuestionLabel(qs,id){return qs.find(q=>q.dbId===id)?.text||'(variável sem texto)';}
+function clientReportCrossOptionLabels(qs,qid){return (qs.find(q=>q.dbId===qid)?.opts||[]).map(v=>String(v||'').trim()).filter(Boolean);}
+function clientReportCrossOrderedValues(rows,index,qid,qs){const values=[],seen=new Set();(rows||[]).forEach(row=>{const value=reportsCrossValue([row.variable_1,row.variable_2,row.variable_3][index]);if(!seen.has(value)){seen.add(value);values.push(value);}});const preferred=clientReportCrossOptionLabels(qs,qid);return [...preferred.filter(v=>seen.has(v)),...values.filter(v=>!preferred.includes(v))];}
+function clientReportCrossMatrixModel(rows,ids,thirdValue,qs){const base=Number(rows[0]?.valid_base)||0,filtered=thirdValue==null?rows:rows.filter(row=>reportsCrossValue(row.variable_3)===thirdValue),rowValues=clientReportCrossOrderedValues(filtered,0,ids[0],qs),colValues=ids.length>1?clientReportCrossOrderedValues(filtered,1,ids[1],qs):['% da base'],counts=new Map(),rowTotals=new Map(),colTotals=new Map();filtered.forEach(row=>{const rowValue=reportsCrossValue(row.variable_1),colValue=ids.length>1?reportsCrossValue(row.variable_2):'% da base',count=Number(row.cnt||0);counts.set(rowValue+'\u0000'+colValue,(counts.get(rowValue+'\u0000'+colValue)||0)+count);rowTotals.set(rowValue,(rowTotals.get(rowValue)||0)+count);colTotals.set(colValue,(colTotals.get(colValue)||0)+count);});return {base,rowValues,colValues,counts,rowTotals,colTotals};}
+function clientReportCrossMatrixMarkup(model,ids,qs,title=''){const headers=model.colValues.map(v=>`<th>${esc(v)}</th>`).join(''),body=model.rowValues.map(rowValue=>{const cells=model.colValues.map(colValue=>`<td>${reportsCrossPct(model.counts.get(rowValue+'\u0000'+colValue)||0,model.base)}</td>`).join('');return `<tr><th scope="row">${esc(rowValue)}</th>${cells}<td class="cross-total-cell"><strong>${reportsCrossPct(model.rowTotals.get(rowValue)||0,model.base)}</strong></td></tr>`;}).join(''),totals=model.colValues.map(colValue=>`<td class="cross-total-cell"><strong>${reportsCrossPct(model.colTotals.get(colValue)||0,model.base)}</strong></td>`).join('');return `<div class="reports-cross-matrix-wrap">${title?`<h3>${esc(title)}</h3>`:''}<div class="reports-cross-scroll"><table class="reports-cross-matrix"><thead><tr><th>${esc(clientReportQuestionLabel(qs,ids[0]))}</th>${headers}<th>TOTAL</th></tr></thead><tbody>${body||`<tr><td colspan="${model.colValues.length+2}" class="empty">Nenhuma combinação encontrada.</td></tr>`}<tr class="cross-total-row"><th>TOTAL</th>${totals}<td class="cross-total-cell"><strong>${reportsCrossPct([...model.rowTotals.values()].reduce((sum,value)=>sum+value,0),model.base)}</strong></td></tr></tbody></table></div></div>`;}
+function clientPublishedCrossings(document,qs){const sec=typeof document?.sections==='string'?JSON.parse(document.sections||'{}'):document?.sections||{};const valid=new Set(qs.map(q=>q.dbId));return reportsNormalizeCrossings(sec).filter(c=>c.include!==false&&reportsCrossingQuestionIds(c).length&&reportsCrossingQuestionIds(c).every(id=>valid.has(id)));}
+async function clientLoadReportOverview(){
+  const out=document.getElementById('cr-client-report');if(!out||CR_CLIENT_REPORT_LOADING)return;
+  const c=clientSelf(),s=clientSelfSurvey(),qs=reportsQuestionsForSurvey(s||{});if(!c||!s||!qs.length)return;
+  if(!clientResultsReleasedForSurvey(c,s)){out.innerHTML='<div class="card"><div class="empty">Os resultados ainda não foram liberados.</div></div>';return;}
+  CR_CLIENT_REPORT_LOADING=true;out.innerHTML='<div class="empty" style="padding:28px 0">Carregando resultados agregados…</div>';
+  try{
+    const {data:docs,error:docError}=await sb.from('report_documents').select('id,title,subtitle,presentation,methodology,executive_summary,sections,status,published_at').eq('survey_id',s.id).eq('client_id',CURRENT_PROFILE?.id||c.id).eq('status','published').order('published_at',{ascending:false}).limit(1);
+    if(docError)throw docError;
+    const publishedDocument=docs?.[0]||null;
+    const {data:overviewRows,error:overviewError}=await sb.rpc('client_report_all_questions',{p_survey_id:s.id});
+    if(overviewError)throw overviewError;
+    const crossings=clientPublishedCrossings(publishedDocument,qs),crossRowsById={};
+    for(const crossing of crossings){const ids=reportsCrossingQuestionIds(crossing);const {data,error}=await sb.rpc('client_report_cross_tab',{p_survey_id:s.id,p_question_ids:ids});if(error)throw error;crossRowsById[crossing.id]=data||[];}
+    CR_CLIENT_REPORT_CACHE={surveyId:s.id,overviewRows:overviewRows||[],crossRowsById,document:publishedDocument};
+    clientRenderReportOverview(out,s,qs,overviewRows||[],publishedDocument,crossings);
+  }catch(ex){
+    out.innerHTML='<div class="callout warn"><b>Não foi possível carregar o relatório completo.</b><br>Verifique se a migration de resultados para clientes foi executada no Supabase. Detalhe: '+esc(ex?.message||ex)+'</div>';
+  }finally{CR_CLIENT_REPORT_LOADING=false;}
+}
+function clientRenderReportOverview(out,survey,qs,rows,document,crossings){const byQ={};(rows||[]).forEach(r=>(byQ[r.question_id]||(byQ[r.question_id]=[])).push(r));const cards=qs.map((q,qi)=>{const data=byQ[q.dbId]||[],base=Number(data[0]?.valid_base)||0,total=data.reduce((sum,r)=>sum+Number(r.cnt||0),0),max=Math.max(1,...data.map(r=>Number(r.cnt||0)));const lines=data.length?data.map(r=>{const cnt=Number(r.cnt||0),pct=reportPercent(cnt,base||total);return `<div class="reports-answer-row"><div class="reports-answer-head"><span>${esc(r.value_label||'(sem resposta)')}</span><strong>${cnt.toLocaleString('pt-BR')} · ${pct}%</strong></div><div class="reports-answer-bar"><i style="width:${Math.min(100,Math.round((cnt/max)*100))}%"></i></div></div>`;}).join(''):'<div class="empty" style="padding:16px 0">Ainda não há respostas válidas.</div>';return `<article class="card reports-question-card"><div class="reports-question-head"><div><span class="reports-question-number">${String(qi+1).padStart(2,'0')}</span><h3>${esc(q.text||'(pergunta sem texto)')}</h3></div><span class="pill pill-blue">${base.toLocaleString('pt-BR')} válidas</span></div><div class="reports-question-meta">${esc(Q_TYPES[q.type]||q.type||'Pergunta')}</div>${lines}</article>`;}).join('');let html=`<div class="reports-overview-head"><div><h2>${esc(document?.title||'Resultados da pesquisa')}</h2><p>${esc(document?.subtitle||'Distribuição atualizada das respostas válidas, pergunta a pergunta.')}</p></div><span class="reports-count-pill">${qs.length} pergunta${qs.length===1?'':'s'}</span></div>`;if(document?.presentation)html+=`<article class="card reports-client-intro"><div class="card-t">Apresentação</div><p>${esc(document.presentation)}</p></article>`;html+=`<div class="reports-question-list">${cards}</div>`;if(document?.executive_summary)html+=`<article class="card reports-client-summary"><div class="card-t">Síntese executiva</div><p>${esc(document.executive_summary)}</p></article>`;if(crossings.length){html+=`<div class="reports-overview-head" style="margin-top:24px"><div><h2>Cruzamentos do relatório</h2><p>Matrizes percentuais sobre a base total de entrevistas válidas.</p></div><span class="reports-count-pill">${crossings.length} análise${crossings.length===1?'':'s'}</span></div>`;crossings.forEach(c=>{const rowsFor=CR_CLIENT_REPORT_CACHE.crossRowsById[c.id]||[],ids=reportsCrossingQuestionIds(c),thirdValues=ids.length>=3?clientReportCrossOrderedValues(rowsFor,2,ids[2],qs):[null];html+=`<article class="card reports-client-crossing"><div class="card-t">${esc(c.title)}</div><div class="card-d">${ids.map((id,i)=>(i+1)+'. '+esc(clientReportQuestionLabel(qs,id))).join(' · ')}</div>${thirdValues.map(tv=>clientReportCrossMatrixMarkup(clientReportCrossMatrixModel(rowsFor,ids,tv,qs),ids,qs,tv==null?'':clientReportQuestionLabel(qs,ids[2])+': '+tv)).join('')}</article>`;});}out.innerHTML=html;}
+
 async function clientLoadPublishedReports(){
   const wrap=document.getElementById('client-published-reports-list');if(!wrap||!sb?.rpc)return;
   const s=clientSelfSurvey();if(!s){wrap.innerHTML='<div class="empty" style="padding:14px 0">Nenhum relatório disponível.</div>';return;}
@@ -5895,7 +5895,7 @@ window._afterRender=function(key){
   }
   if(key==='dashboard')drawDash();
   if(key==='app-collect'&&MY_CONTRACT)initGeoCollect(); /* só inicia GPS/coleta se o contrato já estiver assinado — ver PAGES['app-collect'] */
-  if(key==='client-results'){clientResultsLoadAndRender();clientLoadPublishedReports();}
+  if(key==='client-results'){clientLoadReportOverview();clientLoadPublishedReports();}
   if(key==='reports'){reportsLoadAndRender();reportsStartLive();reportsLoadDraft();}
   if(key==='my-earnings')renderMyRejected();
   if(key==='sample'){calcSample();}

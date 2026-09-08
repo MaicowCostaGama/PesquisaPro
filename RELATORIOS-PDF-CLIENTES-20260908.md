@@ -14,7 +14,7 @@ As tabelas seguem o padrão de matriz apresentado para o relatório. A primeira 
 
 As categorias são ordenadas conforme as opções cadastradas na pesquisa. Categorias que não estejam mais cadastradas, mas ainda apareçam nos dados, são adicionadas ao final para não ocultar respostas existentes. Valores ausentes aparecem como `sem resposta`. Quando o cruzamento possui uma terceira variável, a tabela é separada em uma matriz para cada categoria da terceira variável, mantendo o mesmo padrão de totais.
 
-No PDF, as matrizes são geradas em páginas horizontais para acomodar cabeçalhos extensos, como faixas de renda, sem perder legibilidade. A prévia do painel utiliza rolagem horizontal responsiva em telas menores.
+No PDF, as matrizes são geradas em páginas horizontais para acomodar cabeçalhos extensos, como faixas de renda, sem perder legibilidade. Cada célula da linha superior recebe o fundo azul e o texto branco, garantindo que todas as categorias das colunas e o `TOTAL` permaneçam visíveis. A prévia do painel utiliza rolagem horizontal responsiva em telas menores.
 
 | Elemento | Padrão aplicado |
 | --- | --- |

@@ -24,6 +24,7 @@ const checks=[
   ['PDF percorre todos os cruzamentos',app.includes('reportsCreateMultiCrossPdfBlob')&&app.includes('reportsPdfWriteCrossing')&&app.includes('payload.sections.crossings')],
   ['matriz percentual com totais',app.includes('reportsCrossMatrixModel')&&app.includes('reportsCrossPct')&&app.includes('cross-total-row')&&app.includes('<th>TOTAL</th>')],
   ['matriz horizontal no PDF',app.includes("doc.addPage('a4','landscape')")&&app.includes('reportsCrossMatrixMarkup')],
+  ['cabeçalho completo da matriz',app.includes("doc.setFillColor(15,42,86);doc.setTextColor(255,255,255);doc.rect(x,y,widths[index],headerH,'F')")],
   ['finalização e publicação',app.includes('reportsFinalizeAndPublish')&&app.includes('report_document_publish')],
   ['biblioteca do cliente',app.includes('clientPublishedReportsMarkup')&&app.includes('client_published_reports')],
   ['bucket privado',sql.includes("'client-reports'")&&sql.includes('public = false')],

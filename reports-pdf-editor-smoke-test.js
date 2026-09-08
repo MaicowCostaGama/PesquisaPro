@@ -18,6 +18,7 @@ const checks=[
   ['payload lista cruzamentos',app.includes('crossings}}')&&app.includes('questionIds:reportsCrossingQuestionIds')],
   ['reidratação completa',app.includes('reportsNormalizeCrossings')&&app.includes('reportsFillDraft')&&app.includes('reportsLoadDraft')&&app.includes('data-crossing-question')],
   ['geração local PDF',app.includes('loadLocalAsset(\'jspdf\')')&&app.includes('reportsCreatePdfBlob')],
+  ['capa dedicada e legível',app.includes('function reportsPdfCover')&&app.includes('reportsPdfCover(doc,payload,survey,client)')&&app.includes('reportsPdfCover(doc,payload,survey,client);doc.addPage();')],
   ['PDF percorre todos os cruzamentos',app.includes('reportsCreateMultiCrossPdfBlob')&&app.includes('reportsPdfWriteCrossing')&&app.includes('payload.sections.crossings')],
   ['matriz percentual com totais',app.includes('reportsCrossMatrixModel')&&app.includes('reportsCrossPct')&&app.includes('cross-total-row')&&app.includes('<th>TOTAL</th>')],
   ['matriz horizontal no PDF',app.includes("doc.addPage('a4','landscape')")&&app.includes('reportsCrossMatrixMarkup')],
@@ -27,7 +28,7 @@ const checks=[
   ['RLS de gestão',sql.includes('public.is_staff()')&&sql.includes('staff manages report documents')],
   ['RLS do cliente',sql.includes('client sees published report documents')&&sql.includes('rd.client_id = auth.uid()')],
   ['cliente recebe apenas publicados',sql.includes("rd.status='published'")&&sql.includes('client_published_reports')],
-  ['cache atualizado',html.includes('20260908150000')],
+  ['cache atualizado',html.includes('20260908160000')],
   ['estilos responsivos',css.includes('.reports-document-editor')&&css.includes('.reports-crossing-card')&&css.includes('.reports-cross-matrix')&&css.includes('@media(max-width:760px)')],
   ['jsPDF local',fs.existsSync(jspdf)&&fs.statSync(jspdf).size>100000],
 ];

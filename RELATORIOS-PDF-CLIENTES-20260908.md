@@ -6,7 +6,7 @@ A central de **Relatórios** possui um editor de estrutura para a gestão montar
 
 O editor permite informar o cliente destinatário, título, subtítulo, período, apresentação, metodologia e síntese executiva. Também permite escolher os blocos que entrarão no documento: ficha técnica, resultados de todas as perguntas, cruzamentos selecionados e síntese executiva.
 
-A capa usa a identidade visual PesquisaPro, com azul institucional, hierarquia editorial, identificação do cliente e da pesquisa. As páginas internas apresentam resultados por pergunta com contagens, percentuais e barras comparativas. Cada cruzamento incluído apresenta sua própria seção, título analítico e tabela matricial.
+A capa usa a identidade visual PesquisaPro, com azul institucional, hierarquia editorial, identificação do cliente e da pesquisa. O selo, o título, o subtítulo e os metadados ficam em áreas independentes, com espaçamento dinâmico para evitar sobreposição mesmo quando o título ou a descrição são longos. As páginas internas apresentam resultados por pergunta com contagens, percentuais e barras comparativas. Cada cruzamento incluído apresenta sua própria seção, título analítico e tabela matricial.
 
 ## Padrão das tabelas de cruzamento
 

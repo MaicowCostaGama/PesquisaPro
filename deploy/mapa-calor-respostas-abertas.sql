@@ -1,4 +1,4 @@
--- PesquisaPro — mapas de calor por resposta de pergunta aberta
+-- PesquisaPro — mapas de calor por resposta selecionada
 -- Master: qualquer pesquisa autorizada pela gestão.
 -- Cliente: somente pesquisa vinculada com resultado liberado.
 -- Retorna apenas agregações; coordenadas arredondadas e sem identificação pessoal.
@@ -31,9 +31,9 @@ begin
   end if;
   if not exists (
     select 1 from public.survey_questions q
-    where q.id=p_question_id and q.survey_id=p_survey_id and q.type='open'
+    where q.id=p_question_id and q.survey_id=p_survey_id and q.type<>'date'
   ) then
-    raise exception 'question must be open and belong to this survey';
+    raise exception 'question must be answerable and belong to this survey';
   end if;
 
   return query
@@ -68,9 +68,9 @@ begin
   end if;
   if not exists (
     select 1 from public.survey_questions q
-    where q.id=p_question_id and q.survey_id=p_survey_id and q.type='open'
+    where q.id=p_question_id and q.survey_id=p_survey_id and q.type<>'date'
   ) then
-    raise exception 'question must be open and belong to this survey';
+    raise exception 'question must be answerable and belong to this survey';
   end if;
 
   return query
@@ -100,8 +100,8 @@ grant execute on function public.survey_response_values(uuid,uuid) to authentica
 grant execute on function public.survey_response_heatmap(uuid,uuid,text) to authenticated;
 
 comment on function public.survey_response_values(uuid,uuid) is
-  'Lista respostas agregadas de pergunta aberta para seleção do mapa de calor.';
+  'Lista respostas agregadas de pergunta para seleção do mapa de calor.';
 comment on function public.survey_response_heatmap(uuid,uuid,text) is
-  'Mapa de calor agregado de uma resposta aberta, com coordenadas arredondadas.';
+  'Mapa de calor agregado de uma resposta selecionada, com coordenadas arredondadas.';
 
 commit;

@@ -7,14 +7,14 @@ const sql = fs.readFileSync(path.join(root,'deploy','mapa-calor-respostas-aberta
 const css = fs.readFileSync(path.join(root,'style.css'),'utf8');
 const html = fs.readFileSync(path.join(root,'app.html'),'utf8');
 const checks = [
-  ['perguntas abertas disponíveis', app.includes("q.type==='open'") && app.includes('openQuestionsForSurvey')],
+  ['perguntas respondíveis disponíveis', app.includes('heatmapQuestionsForSurvey') && app.includes("q.type!=='date'")],
   ['seleção de pergunta no master', app.includes('reportsHeatmapPickQuestion') && app.includes("responseHeatmapPanelMarkup('rp'")],
   ['seleção de resposta no master', app.includes('reportsHeatmapPickValue') && app.includes("responseHeatmapPanelMarkup('rp'")],
   ['seleção de pergunta no cliente', app.includes('clientHeatmapPickQuestion') && app.includes("responseHeatmapPanelMarkup('cr'")],
   ['seleção de resposta no cliente', app.includes('clientHeatmapPickValue') && app.includes("responseHeatmapPanelMarkup('cr'")],
   ['RPC de valores de resposta', app.includes("sb.rpc('survey_response_values'") && sql.includes('survey_response_values')],
   ['RPC de pontos do mapa', app.includes("sb.rpc('survey_response_heatmap'") && sql.includes('survey_response_heatmap')],
-  ['validação de pergunta aberta', sql.includes("q.type='open'") && sql.includes('question must be open')],
+  ['validação de pergunta respondível', sql.includes("q.type<>'date'") && sql.includes('question must be answerable')],
   ['autorização master ou cliente liberado', sql.includes('public.is_staff() or public.client_results_released')],
   ['respostas somente válidas', sql.includes("ce.status='valid'") && sql.includes('ce.is_calibration=false')],
   ['coordenadas arredondadas', sql.includes('round(ce.lat::numeric,3)') && sql.includes('round(ce.lng::numeric,3)')],
@@ -22,7 +22,7 @@ const checks = [
   ['legenda de intensidade', app.includes('Menor concentração') && app.includes('Maior concentração')],
   ['cliente protegido antes da RPC', app.includes('clientResultsReleasedForSurvey(clientSelf(),clientSelfSurvey())')],
   ['estilos responsivos', css.includes('.response-heatmap-controls') && css.includes('.response-heatmap-map') && css.includes('@media(max-width:760px)')],
-  ['cache atualizado', html.includes('app.js?v=20260908210000')]
+  ['cache atualizado', html.includes('app.js?v=20260908220000')]
 ];
 for (const [label, ok] of checks) { assert.ok(ok, label); console.log('PASS — '+label); }
 console.log('response-heatmap-smoke-test: PASS');

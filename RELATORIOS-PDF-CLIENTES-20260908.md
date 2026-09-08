@@ -78,8 +78,8 @@ A aba **Resultados** do cliente também inclui um painel de acompanhamento georr
 
 Por segurança, o cliente não recebe nome, telefone, CPF, e-mail, rota do pesquisador, motivo de reprovação ou coordenada exata. A migration `deploy/georreferenciamento-clientes.sql` arredonda latitude e longitude para três casas decimais, agrega pontos por área aproximada e valida no banco se o cliente está vinculado e liberado para a pesquisa. A aplicação usa Leaflet localmente e mostra os marcadores numerados com indicação da situação agregada da área.
 
-## Mapa de calor por resposta aberta
+## Mapa de calor por resposta selecionada
 
-A central de resultados e a aba **Resultados** do cliente passam a oferecer um mapa de calor por resposta. A pessoa escolhe uma pergunta aberta, seleciona uma resposta agregada e o sistema desenha círculos proporcionais à concentração geográfica daquela resposta.
+A central de resultados e a aba **Resultados** do cliente passam a oferecer um mapa de calor por resposta. A pessoa escolhe uma pergunta respondível, seleciona uma resposta agregada e o sistema desenha círculos proporcionais à concentração geográfica daquela resposta. O painel também funciona para perguntas de escolha, escala e número; perguntas de data não são usadas como categorias geográficas.
 
 A migration `deploy/mapa-calor-respostas-abertas.sql` cria as RPCs `survey_response_values` e `survey_response_heatmap`. O master pode consultar as pesquisas autorizadas; o cliente só consulta a pesquisa vinculada quando o resultado estiver liberado. As respostas consideradas são de entrevistas válidas, excluindo reprovações e calibrações. As coordenadas são arredondadas para três casas decimais e a interface não exibe pesquisador, telefone, CPF, e-mail ou coordenada exata.

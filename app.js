@@ -8,7 +8,7 @@ const ROLES={
   gerente:{name:'Rafael Dias',role:'Gerente',initials:'RD',
     nav:['dashboard','commercial','sample','reports','finance']},
   pesq:{name:'João Pereira',role:'Pesquisador',initials:'JP',
-    nav:['dashboard-pesq','researcher-guide','app-collect','my-earnings','my-contract','support']},
+    nav:['dashboard-pesq','researcher-guide','app-collect','researcher-badge','my-earnings','my-contract','support']},
   cliente:{name:'Prefeitura de Uberlândia',role:'Cliente',initials:'PU',
     nav:['client-progress','client-results']},
 };
@@ -23,6 +23,7 @@ const NAV_META={
   collect:{ico:'⬇',label:'Coleta e campo',group:'Pesquisa'},
   'app-collect':{ico:'▶',label:'Coletar (app)',group:'Campo'},
   'researcher-guide':{ico:'▣',label:'Orientações para coleta',group:'Campo'},
+  'researcher-badge':{ico:'▤',label:'Crachá virtual',group:'Meu perfil'},
   support:{ico:'☎',label:'Suporte',group:'Ajuda'},
   reports:{ico:'◫',label:'Relatórios',group:'Análise'},
   users:{ico:'☺',label:'Usuários',group:'Administração'},
@@ -44,6 +45,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
+let RESEARCHER_BADGE_UPLOADING=false;
 let PASSWORD_RECOVERY_MODE=false;
 
 function showLoginError(message){
@@ -93,7 +95,7 @@ const ROLE_NAV={
   admin:['dashboard','commercial','recruitment','new-survey','surveys','surveys-done','sample','collect','reports','users','permissions','finance','contracts','contract-template','company'],
   coord:['dashboard','commercial','surveys','surveys-done','collect','reports','finance'],
   gerente:['dashboard','commercial','sample','reports','finance'],
-  pesq:['dashboard-pesq','researcher-guide','app-collect','my-earnings','my-contract','support'],
+  pesq:['dashboard-pesq','researcher-guide','app-collect','researcher-badge','my-earnings','my-contract','support'],
   cliente:['client-progress','client-results'],
   admpro:['dashboard','commercial','recruitment','new-survey','surveys','surveys-done','sample','collect','reports','users','permissions','finance','contracts','contract-template','company'],
   vendedor:['commercial'],
@@ -148,7 +150,13 @@ async function requestOwnPasswordReset(){
 }
 
 async function afterLogin(user){
-  const {data:profile,error}=await sb.from('profiles').select('id,name,email,phone,role,status,cpf,cpf_cnpj,pf_pj,birth,cidade,rua,numero,cep,contact_person,doc_url,doc_foto_url,doc_comprovante_url,pix_key,pix_doc,pix_bank,pix_ag,pix_acc,results_released,approved_at,commission_rate,commission_rate_with_indicator,recruiter_code,recruiter_capture_value').eq('id',user.id).single();
+  const profileFields='id,name,email,phone,role,status,cpf,cpf_cnpj,pf_pj,birth,cidade,rua,numero,cep,contact_person,doc_url,doc_foto_url,doc_comprovante_url,pix_key,pix_doc,pix_bank,pix_ag,pix_acc,results_released,approved_at,commission_rate,commission_rate_with_indicator,recruiter_code,recruiter_capture_value,badge_public_token,badge_photo_path';
+  let {data:profile,error}=await sb.from('profiles').select(profileFields).eq('id',user.id).single();
+  if(error && /badge_public_token|badge_photo_path|column/i.test(error.message||'')){
+    const fallbackFields=profileFields.replace(',badge_public_token,badge_photo_path','');
+    const fallback=await sb.from('profiles').select(fallbackFields).eq('id',user.id).single();
+    profile=fallback.data;error=fallback.error;
+  }
   if(error||!profile){
     const errEl=document.getElementById('li-error');
     errEl.textContent='Login feito, mas não encontramos seu perfil no sistema. Fale com o administrador.';
@@ -414,6 +422,81 @@ async function loadDashQuotasIfNeeded(){
   const onKey=document.querySelector('.nav-item.on');
   if(onKey&&onKey.dataset.key==='dashboard-pesq')go('dashboard-pesq');
 }
+function researcherBadgePublicUrl(){
+  const token=CURRENT_PROFILE?.badge_public_token||CURRENT_PROFILE?.badgePublicToken;
+  if(!token)return '';
+  const url=new URL('cracha.html',window.location.href);
+  url.searchParams.set('codigo',token);
+  return url.href;
+}
+function researcherBadgePhotoUrl(){
+  const path=CURRENT_PROFILE?.badge_photo_path||CURRENT_PROFILE?.badgePhotoPath;
+  if(!path)return '';
+  if(/^https?:\/\//i.test(path))return path;
+  return sb.storage.from('researcher-badge-photos').getPublicUrl(path).data?.publicUrl||'';
+}
+function renderResearcherBadgeQr(){
+  const box=document.getElementById('researcher-badge-qr');
+  const url=researcherBadgePublicUrl();
+  if(!box||!url)return;
+  const draw=()=>{
+    box.innerHTML='';
+    try{new QRCode(box,{text:url,width:190,height:190,colorDark:'#102a56',colorLight:'#ffffff'});return true;}catch(e){return false;}
+  };
+  if(typeof window.QRCode!=='undefined'&&draw())return;
+  box.innerHTML='<div class="qr-fallback" role="img" aria-label="QR Code carregando">QR<br>Code<div style="font-size:9px;margin-top:4px;font-weight:400">carregando…</div></div>';
+  loadLocalAsset('qrcode').then(()=>{if(document.getElementById('researcher-badge-qr')===box&&!draw())throw new Error('QR Code inválido');})
+    .catch(()=>{if(document.getElementById('researcher-badge-qr')===box)box.innerHTML='<div class="qr-fallback" role="img" aria-label="QR Code indisponível">QR<br>Code<div style="font-size:9px;margin-top:4px;font-weight:400">indisponível</div></div>';});
+}
+async function uploadResearcherBadgePhoto(input){
+  const file=input?.files?.[0];
+  if(!file||!CURRENT_PROFILE?.id)return;
+  if(!/^image\/(jpeg|png|webp)$/i.test(file.type)){alert('Escolha uma foto JPG, PNG ou WebP.');input.value='';return;}
+  if(file.size>5*1024*1024){alert('A foto deve ter no máximo 5 MB.');input.value='';return;}
+  RESEARCHER_BADGE_UPLOADING=true;
+  const currentKey=document.querySelector('[data-badge-upload-label]');
+  if(currentKey)currentKey.textContent='Enviando foto…';
+  try{
+    const ext=(file.type.split('/')[1]||'jpg').replace('jpeg','jpg');
+    const random=window.crypto?.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.random().toString(16).slice(2);
+    const path='profiles/'+CURRENT_PROFILE.id+'/'+random+'.'+ext;
+    const {error:uploadError}=await sb.storage.from('researcher-badge-photos').upload(path,file,{contentType:file.type,upsert:false});
+    if(uploadError)throw new Error(uploadError.message);
+    const {data,error:updateError}=await sb.from('profiles').update({badge_photo_path:path}).eq('id',CURRENT_PROFILE.id).select('badge_photo_path').single();
+    if(updateError)throw new Error(updateError.message);
+    CURRENT_PROFILE.badge_photo_path=data?.badge_photo_path||path;
+    CURRENT_PROFILE.badgePhotoPath=CURRENT_PROFILE.badge_photo_path;
+    alert('Foto do crachá atualizada.');
+    go('researcher-badge');
+  }catch(ex){console.error(ex);alert('Não foi possível enviar a foto agora. Confira sua conexão e tente novamente.');}
+  finally{RESEARCHER_BADGE_UPLOADING=false;if(input)input.value='';}
+}
+function downloadResearcherBadgeQr(){
+  const canvas=document.querySelector('#researcher-badge-qr canvas');
+  if(!canvas){alert('Aguarde o QR Code carregar.');return;}
+  const a=document.createElement('a');a.href=canvas.toDataURL('image/png');a.download='cracha-pesquisapro-qr.png';a.click();
+}
+PAGES['researcher-badge']=()=>{
+  if(CURRENT_PROFILE?.role!=='pesq')return head('Crachá virtual','Área disponível apenas para pesquisadores')+'<div class="empty">Este recurso está disponível no perfil de pesquisador.</div>';
+  const name=esc(CURRENT_PROFILE.name||'Pesquisador');
+  const photo=researcherBadgePhotoUrl();
+  const publicUrl=researcherBadgePublicUrl();
+  setTimeout(renderResearcherBadgeQr,0);
+  return head('Crachá virtual','Mostre que você faz parte da rede de pesquisadores do PesquisaPro')+`<div class="researcher-badge-page">
+    <div class="card researcher-badge-intro mb"><div><span class="eyebrow">IDENTIFICAÇÃO DE CAMPO</span><h2>Seu crachá digital</h2><p>Compartilhe o QR Code com a pessoa entrevistada. Ela poderá confirmar seu nome e seu vínculo ativo com o PesquisaPro, sem acessar seus dados pessoais.</p></div><span class="researcher-badge-status">✓ Perfil verificável</span></div>
+    <div class="grid g2 researcher-badge-layout mb">
+      <section class="card researcher-badge-card" aria-label="Prévia do crachá">
+        <div class="researcher-badge-card-head"><span class="researcher-badge-brand">▣ PesquisaPro</span><span class="researcher-badge-check">PESQUISADOR</span></div>
+        <div class="researcher-badge-main"><div class="researcher-badge-photo-wrap">${photo?`<img src="${esc(photo)}" alt="Foto de ${name}">`:'<span class="researcher-badge-photo-empty">Foto</span>'}</div><div><h3>${name}</h3><p>Pesquisador de campo</p><strong>✓ Vínculo ativo</strong></div></div>
+        <div class="researcher-badge-card-foot"><span>Valide pelo QR Code</span><span>PesquisaPro</span></div>
+      </section>
+      <section class="card researcher-badge-qr-card"><div class="card-t">QR Code de verificação</div><div class="card-d">Aponte a câmera do celular para abrir a página pública de validação.</div><div id="researcher-badge-qr" class="researcher-badge-qr" aria-live="polite"></div><div class="researcher-badge-url">${publicUrl?esc(publicUrl):'Execute a migration do crachá para gerar o código público.'}</div><div class="researcher-badge-actions"><button class="btn btn-accent" onclick="downloadResearcherBadgeQr()">Baixar QR Code</button>${publicUrl?`<a class="btn btn-ghost" href="${esc(publicUrl)}" target="_blank" rel="noopener">Abrir verificação</a>`:''}</div></section>
+    </div>
+    <section class="card researcher-badge-photo-panel mb"><div><div class="card-t">Sua foto</div><div class="card-d">Use uma foto frontal, nítida e atualizada. Ela será exibida somente na página pública de validação do seu crachá.</div></div><label class="btn btn-ghost researcher-badge-upload" data-badge-upload-label="">${RESEARCHER_BADGE_UPLOADING?'Enviando foto…':'Escolher foto'}<input type="file" accept="image/jpeg,image/png,image/webp" onchange="uploadResearcherBadgePhoto(this)" hidden></label><small>JPG, PNG ou WebP · máximo 5 MB</small></section>
+    <div class="researcher-badge-privacy"><strong>Privacidade:</strong> o QR Code não mostra CPF, e-mail, telefone, endereço, documentos ou dados financeiros. Ele serve apenas para confirmar que o crachá pertence a um pesquisador ativo do PesquisaPro.</div>
+  </div>`;
+};
+
 PAGES['researcher-guide']=()=>{
   const primeiroNome=(CURRENT_PROFILE&&CURRENT_PROFILE.name)?CURRENT_PROFILE.name.trim().split(' ')[0]:'';
   return head('Orientações para coleta',primeiroNome?('Olá '+primeiroNome+' — aprenda a coletar com segurança e qualidade'):'Aprenda a coletar com segurança e qualidade')+`

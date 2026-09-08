@@ -1,0 +1,20 @@
+const fs=require('fs');
+const app=fs.readFileSync('/home/ubuntu/PesquisaPro-remoto/app.js','utf8');
+const page=fs.readFileSync('/home/ubuntu/PesquisaPro-remoto/cracha.html','utf8');
+const css=fs.readFileSync('/home/ubuntu/PesquisaPro-remoto/cracha.css','utf8');
+const sql=fs.readFileSync('/home/ubuntu/PesquisaPro-remoto/deploy/cracha-pesquisador.sql','utf8');
+function assert(ok,msg){if(!ok)throw new Error(msg);}
+assert(/researcher-badge/.test(app),'Página do crachá não foi registrada');
+assert(/researcher-badge.*my-earnings/.test(app),'Crachá não está no menu do pesquisador');
+assert(/badge_public_token,badge_photo_path/.test(app),'Campos do crachá não são carregados no perfil');
+assert(/uploadResearcherBadgePhoto/.test(app),'Upload da foto não foi implementado');
+assert(/researcher-badge-photos/.test(app),'Bucket da foto não foi referenciado');
+assert(/QRCode/.test(app),'QR Code não foi implementado');
+assert(/cracha\.html/.test(app),'URL pública do crachá não foi implementada');
+assert(/verify_researcher_badge/.test(page),'Página pública não chama a RPC de verificação');
+assert(/CPF|cpf|e-mail|email|telefone|phone|endereço|address|PIX|pix/.test(page)===false,'Página pública contém referência a campo sensível');
+assert(/badge_public_token/.test(sql)&&/badge_photo_path/.test(sql),'Migration não cria os campos do crachá');
+assert(/verify_researcher_badge/.test(sql)&&/grant execute.*anon/.test(sql.replace(/\n/g,' ')),'RPC pública limitada não foi liberada para anon');
+assert(/researcher-badge-photos/.test(sql)&&/public = true/.test(sql),'Bucket de foto não foi configurado');
+assert(/verify-card/.test(css)&&/max-width:420px/.test(css),'Estilos responsivos do crachá não foram criados');
+console.log('researcher-badge-smoke-test: PASS');

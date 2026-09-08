@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#102a56">
+  <title>Verificação de crachá — PesquisaPro</title>
+  <link rel="icon" type="image/png" sizes="64x64" href="assets/favicon-64.png">
+  <link rel="stylesheet" href="cracha.css?v=20260904200000">
+</head>
+<body>
+  <main class="verify-shell">
+    <section class="verify-card" aria-live="polite">
+      <div class="verify-brand"><span class="verify-brand-mark">▣</span> PesquisaPro</div>
+      <div id="verify-content" class="verify-content">
+        <div class="verify-loading"><span class="verify-spinner"></span><strong>Validando crachá…</strong><span>Consulte o vínculo no sistema PesquisaPro.</span></div>
+      </div>
+      <footer class="verify-footer">Esta página mostra somente informações necessárias para confirmar a identidade profissional no campo.</footer>
+    </section>
+  </main>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="supabase-client.js"></script>
+  <script>
+    const content=document.getElementById('verify-content');
+    const token=new URLSearchParams(window.location.search).get('codigo')||'';
+    function esc(value){return String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+    function photoUrl(path){
+      if(!path)return '';
+      if(/^https?:\/\//i.test(path))return path;
+      return sb.storage.from('researcher-badge-photos').getPublicUrl(path).data?.publicUrl||'';
+    }
+    function renderInvalid(title,text){
+      content.innerHTML='<div class="verify-state verify-state-error"><div class="verify-state-icon">!</div><h1>'+esc(title)+'</h1><p>'+esc(text)+'</p><a class="verify-back" href="/">Ir para o site PesquisaPro</a></div>';
+    }
+    async function verify(){
+      if(!token){renderInvalid('Crachá não encontrado','O QR Code não contém um código de verificação válido.');return;}
+      try{
+        const {data,error}=await sb.rpc('verify_researcher_badge',{p_badge_token:token});
+        if(error)throw error;
+        const row=Array.isArray(data)?data[0]:data;
+        if(!row){renderInvalid('Crachá não localizado','Este código não corresponde a um pesquisador cadastrado no PesquisaPro.');return;}
+        const ativo=row.badge_status==='ativo';
+        const photo=photoUrl(row.photo_path);
+        content.innerHTML='<div class="verify-kicker">VERIFICAÇÃO DE IDENTIDADE</div>'+
+          '<div class="verify-photo">'+(photo?'<img src="'+esc(photo)+'" alt="Foto de '+esc(row.display_name)+'">':'<span class="verify-photo-empty">Sem foto</span>')+'</div>'+
+          '<h1>'+esc(row.display_name||'Pesquisador PesquisaPro')+'</h1>'+
+          '<div class="verify-status '+(ativo?'verify-status-active':'verify-status-inactive')+'"><span class="verify-status-dot"></span>'+(ativo?'Pesquisador ativo no PesquisaPro':'Vínculo não está ativo')+'</div>'+
+          '<div class="verify-proof"><strong>✓ Crachá reconhecido</strong><span>Este cadastro foi localizado no sistema oficial do PesquisaPro.</span></div>'+
+          '<p class="verify-instruction">Você está falando com um pesquisador do PesquisaPro. Em caso de dúvida sobre a abordagem ou sobre a pesquisa, confirme as informações com a equipe responsável antes de responder.</p>'+
+          '<div class="verify-date">Verificação realizada em '+new Date().toLocaleDateString('pt-BR')+'</div>';
+      }catch(error){console.error(error);renderInvalid('Não foi possível validar agora','Verifique sua conexão e tente novamente em alguns instantes.');}
+    }
+    verify();
+  </script>
+</body>
+</html>

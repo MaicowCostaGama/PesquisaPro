@@ -14,7 +14,8 @@ const context = {
   head: () => '',
   stat: (label, value) => `<stat>${label}:${value}</stat>`,
   brl: value => `R$ ${Number(value).toFixed(2)}`,
-  esc: value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]))
+  esc: value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])),
+  conversationButton: () => ''
 };
 vm.createContext(context);
 vm.runInContext(`${source}\nCOMM_OPPORTUNITIES=[{id:'opp-1',company:'Instituto Horizonte',client_name:'Ana Souza',email:'ana@example.com',stage:'novo',source:'Indicação',seller_id:'seller-1',expected_value:10000}];\nCOMM_PROPOSALS=[];\nthis.__board=commercialBoard();`, context);

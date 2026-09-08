@@ -1,0 +1,21 @@
+const fs=require('fs');
+const app=fs.readFileSync('/home/ubuntu/PesquisaPro-remoto/app.js','utf8');
+const sql=fs.readFileSync('/home/ubuntu/PesquisaPro-remoto/deploy/relatorios-tempo-real-cruzamentos.sql','utf8');
+const css=fs.readFileSync('/home/ubuntu/PesquisaPro-remoto/style.css','utf8');
+const html=fs.readFileSync('/home/ubuntu/PesquisaPro-remoto/app.html','utf8');
+function assert(ok,msg){if(!ok)throw new Error(msg);}
+assert(/PAGES\.reports=/.test(app),'Página de relatórios não encontrada');
+assert(/Todas as perguntas/.test(app),'Modo de todas as perguntas ausente');
+assert(/Montar relatório/.test(app),'Montador de relatórios ausente');
+assert(/survey_report_all_questions/.test(app),'RPC de todas as perguntas ausente');
+assert(/survey_report_cross_tab/.test(app),'RPC de cruzamento ausente');
+assert(/slice\(0,3\)/.test(app),'Limite de três variáveis não está protegido no navegador');
+assert(/reportsStartLive/.test(app)&&/postgres_changes/.test(app)&&/setInterval\(\(\)=>reportsLoadAndRender\(true\),15000\)/.test(app),'Atualização automática não está configurada');
+assert(/reportsExportCurrent/.test(app),'Exportação CSV não encontrada');
+assert(/survey_report_all_questions/.test(sql)&&/survey_report_cross_tab/.test(sql),'Migration das RPCs ausente');
+assert(/question_count > 3/.test(sql),'Limite de três variáveis não está protegido no banco');
+assert(/ce\.status = 'valid'/.test(sql)&&/ce\.is_calibration = false/.test(sql),'Filtros de respostas válidas ausentes');
+assert(/public\.is_staff\(\)/.test(sql),'Restrição à gestão ausente');
+assert(/reports-question-card/.test(css)&&/reports-builder-grid/.test(css)&&/max-width:760px/.test(css),'Layout responsivo dos relatórios ausente');
+assert(html.includes('app.js?v=20260905010000'),'Cache do painel não atualizado');
+console.log('reports-live-cross-smoke-test: PASS');

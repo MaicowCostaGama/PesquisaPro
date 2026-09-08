@@ -18,7 +18,7 @@ assert(app.includes('responda à confirmação final se aparecer'),'orientação
 assert(app.includes('não altere respostas para atingir a meta'),'orientação de integridade não encontrada');
 assert(css.includes('.researcher-guide-page'),'estilos da página de orientações não encontrados');
 assert(css.includes('@media(max-width:760px)'), 'regras móveis do guia não encontradas');
-assert(html.includes('app.js?v=20260904170000'),'cache do app não atualizado');
+assert(html.includes('app.js?v=20260905010000'),'cache do app não atualizado');
 assert(fs.existsSync(video)&&fs.statSync(video).size>100000,'vídeo tutorial ausente ou vazio');
 assert(fs.existsSync(poster)&&fs.statSync(poster).size>10000,'pôster do tutorial ausente ou vazio');
 console.log('researcher-guide-smoke-test: PASS');

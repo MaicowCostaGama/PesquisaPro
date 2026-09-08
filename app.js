@@ -3588,56 +3588,113 @@ function renderGeoLog(){
 }
 
 /* ============ REPORTS ============ */
-let RP_SURVEY_ID=null,RP_QUESTION_DBID=null;
-function reportsAvailableSurveys(){
-  return SURVEYS.filter(s=>reportsQuestionsForSurvey(s).length>0);
+let RP_SURVEY_ID=null;
+let RP_REPORT_MODE='overview';
+let RP_CROSS_QUESTION_IDS=[];
+let RP_REPORT_LIVE_TIMER=null;
+let RP_REPORT_CHANNEL=null;
+let RP_REPORT_LOADING=false;
+function reportsAvailableSurveys(){return SURVEYS.filter(s=>reportsQuestionsForSurvey(s).length>0);}
+function reportsCurrentSurvey(){return SURVEYS.find(s=>s.id===RP_SURVEY_ID)||null;}
+function reportsCurrentQuestions(){return reportsQuestionsForSurvey(reportsCurrentSurvey()||{});}
+function reportsEnsureCrossSelection(qs){
+  const valid=new Set(qs.map(q=>q.dbId));
+  RP_CROSS_QUESTION_IDS=RP_CROSS_QUESTION_IDS.filter(id=>valid.has(id)).slice(0,3);
+  if(!RP_CROSS_QUESTION_IDS.length&&qs[0])RP_CROSS_QUESTION_IDS=[qs[0].dbId];
+}
+function reportsQuestionLabel(id){return reportsCurrentQuestions().find(q=>q.dbId===id)?.text||'(variável sem texto)';}
+function reportsModeButton(mode,label,icon){return `<button class="reports-mode-btn ${RP_REPORT_MODE===mode?'on':''}" onclick="reportsSetMode('${mode}')"><span>${icon}</span>${label}</button>`;}
+function reportsCrossQuestionSelect(index,qs){
+  const selected=RP_CROSS_QUESTION_IDS[index]||'';
+  return `<div class="reports-variable-control"><label class="lbl">Variável ${index+1}${index===0?'':' (opcional)'}</label><select class="inp" onchange="reportsPickCrossQuestion(${index},this.value)"><option value="">${index===0?'Escolha uma pergunta':'Não usar'}</option>${qs.map(q=>`<option value="${q.dbId}" ${q.dbId===selected?'selected':''}>${esc(q.text||'(pergunta sem texto)')}</option>`).join('')}</select></div>`;
 }
 PAGES.reports=()=>{
   if(!SURVEYS_LOADED)loadSurveysIfNeeded();
   if(!COLLECT_EVENTS_LOADED)loadCollectEventsIfNeeded();
   const surveys=reportsAvailableSurveys();
-  if(!surveys.length){
-    return head('Relatórios','Distribuição real das respostas, pergunta a pergunta')+
-      `<div class="card"><div class="empty">Nenhuma pesquisa com perguntas configuradas ainda.</div></div>`;
-  }
+  if(!surveys.length)return head('Relatórios','Resultados em tempo real e análises cruzadas')+'<div class="card"><div class="empty">Nenhuma pesquisa com perguntas configuradas ainda.</div></div>';
   if(RP_SURVEY_ID==null||!surveys.some(s=>s.id===RP_SURVEY_ID))RP_SURVEY_ID=surveys[0].id;
-  const survey=surveys.find(s=>s.id===RP_SURVEY_ID);
+  const survey=reportsCurrentSurvey()||surveys[0];
   const qs=reportsQuestionsForSurvey(survey);
-  if(RP_QUESTION_DBID==null||!qs.some(q=>q.dbId===RP_QUESTION_DBID))RP_QUESTION_DBID=qs[0].dbId;
-  return head('Relatórios','Distribuição real das respostas, pergunta a pergunta')+`
-  <div class="card mb">
-    <div class="field-row" style="grid-template-columns:1fr 1fr">
-      <div><label class="lbl">Pesquisa</label>
-        <select class="inp" id="rp-survey" onchange="reportsPickSurvey(this.value)">
-          ${surveys.map(s=>`<option value="${s.id}" ${s.id===RP_SURVEY_ID?'selected':''}>${esc(s.name)}</option>`).join('')}
-        </select></div>
-      <div><label class="lbl">Pergunta</label>
-        <select class="inp" id="rp-question" onchange="reportsPickQuestion(this.value)">
-          ${qs.map(q=>`<option value="${q.dbId}" ${q.dbId===RP_QUESTION_DBID?'selected':''}>${esc(q.text||'(pergunta sem texto)')}</option>`).join('')}
-        </select></div>
-    </div>
+  reportsEnsureCrossSelection(qs);
+  return head('Relatórios','Resultados em tempo real e análises cruzadas')+`
+  <div class="card reports-toolbar mb">
+    <div class="reports-toolbar-top"><div><div class="reports-eyebrow">CENTRAL DE ANÁLISE</div><h2>Resultados da pesquisa</h2><p>Veja todas as perguntas e monte cruzamentos com até três variáveis.</p></div><span id="rp-live-status" class="reports-live-badge"><i></i>Atualizando automaticamente</span></div>
+    <div class="reports-toolbar-grid"><div><label class="lbl">Pesquisa</label><select class="inp" id="rp-survey" onchange="reportsPickSurvey(this.value)">${surveys.map(s=>`<option value="${s.id}" ${s.id===RP_SURVEY_ID?'selected':''}>${esc(s.name)}</option>`).join('')}</select></div><div class="reports-mode-switch" role="tablist" aria-label="Modo de relatório">${reportsModeButton('overview','Todas as perguntas','▦')}${reportsModeButton('builder','Montar relatório','⚒')}</div></div>
+    ${RP_REPORT_MODE==='builder'?`<div class="reports-builder-grid">${[0,1,2].map(i=>reportsCrossQuestionSelect(i,qs)).join('')}</div><div class="reports-builder-note">Selecione de uma a três perguntas. Para perguntas de múltipla escolha, as opções marcadas na mesma entrevista aparecem agrupadas.</div>`:''}
   </div>
-  <div id="rp-output"><div class="empty" style="padding:20px 0">Carregando…</div></div>
-  <div class="callout" style="margin-top:16px"><b>Distribuição real por pergunta:</b> o gráfico e a tabela mostram, para a pergunta escolhida, quantas e qual % das entrevistas válidas responderam cada opção (coletas reprovadas e de calibração não entram na conta). Perguntas de resposta aberta (texto livre) não aparecem aqui. Cruzamento entre duas ou mais perguntas ao mesmo tempo (ex.: voto × idade × sexo) ainda não está disponível — é a próxima etapa planejada.</div>`;
+  <div id="rp-output"><div class="empty" style="padding:28px 0">Carregando resultados reais…</div></div>
+  <div class="callout reports-footnote"><b>Base de análise:</b> entrevistas válidas, excluindo coletas reprovadas e de calibração. Os dados são atualizados automaticamente enquanto esta aba estiver aberta.</div>`;
 };
-function reportsPickSurvey(id){RP_SURVEY_ID=id;RP_QUESTION_DBID=null;go('reports');}
-function reportsPickQuestion(id){RP_QUESTION_DBID=id;reportsLoadAndRender();}
-let _reportChart;
-async function reportsLoadAndRender(){
-  const out=document.getElementById('rp-output');
-  if(!out)return;
-  if(!RP_SURVEY_ID||!RP_QUESTION_DBID){out.innerHTML='';return;}
-  out.innerHTML='<div class="empty" style="padding:20px 0">Carregando…</div>';
-  let rows;
+function reportsPickSurvey(id){RP_SURVEY_ID=id;RP_CROSS_QUESTION_IDS=[];go('reports');}
+function reportsSetMode(mode){RP_REPORT_MODE=mode;go('reports');}
+function reportsPickCrossQuestion(index,id){
+  const next=RP_CROSS_QUESTION_IDS.slice(0,3);next[index]=id||null;
+  RP_CROSS_QUESTION_IDS=next.filter(Boolean).slice(0,3);
+  reportsLoadAndRender();
+}
+function reportsSetLiveStatus(text,kind='live'){
+  const el=document.getElementById('rp-live-status');if(!el)return;
+  el.className='reports-live-badge '+kind;el.innerHTML=`<i></i>${esc(text)}`;
+}
+function reportsStartLive(){
+  reportsStopLive();
+  RP_REPORT_LIVE_TIMER=setInterval(()=>reportsLoadAndRender(true),15000);
   try{
-    const {data,error}=await sb.rpc('survey_answer_distribution',{p_survey_id:RP_SURVEY_ID,p_question_id:RP_QUESTION_DBID});
-    if(error)throw new Error(error.message);
-    rows=data||[];
+    RP_REPORT_CHANNEL=sb.channel('reports-live-'+Date.now())
+      .on('postgres_changes',{event:'*',schema:'public',table:'collection_events'},()=>reportsLoadAndRender(true))
+      .on('postgres_changes',{event:'*',schema:'public',table:'collection_answers'},()=>reportsLoadAndRender(true));
+    RP_REPORT_CHANNEL.subscribe();
+  }catch(ex){RP_REPORT_CHANNEL=null;}
+}
+function reportsStopLive(){
+  if(RP_REPORT_LIVE_TIMER){clearInterval(RP_REPORT_LIVE_TIMER);RP_REPORT_LIVE_TIMER=null;}
+  if(RP_REPORT_CHANNEL&&sb.removeChannel){try{sb.removeChannel(RP_REPORT_CHANNEL);}catch(ex){}}
+  RP_REPORT_CHANNEL=null;
+}
+async function reportsLoadAndRender(isLive=false){
+  const out=document.getElementById('rp-output');if(!out||RP_REPORT_LOADING)return;
+  const survey=reportsCurrentSurvey();const qs=reportsCurrentQuestions();if(!survey||!qs.length)return;
+  RP_REPORT_LOADING=true;if(!isLive)out.innerHTML='<div class="empty" style="padding:28px 0">Carregando resultados reais…</div>';reportsSetLiveStatus(isLive?'Atualizado agora':'Carregando dados…',isLive?'live':'loading');
+  try{
+    if(RP_REPORT_MODE==='overview'){
+      const {data,error}=await sb.rpc('survey_report_all_questions',{p_survey_id:survey.id});
+      if(error)throw error;
+      renderReportsOverview(out,data||[],qs);
+    }else{
+      const ids=RP_CROSS_QUESTION_IDS.filter(Boolean).slice(0,3);
+      if(!ids.length){out.innerHTML='<div class="card"><div class="empty">Escolha pelo menos uma variável para montar o relatório.</div></div>';return;}
+      const {data,error}=await sb.rpc('survey_report_cross_tab',{p_survey_id:survey.id,p_question_ids:ids});
+      if(error)throw error;
+      renderReportsCross(out,data||[],ids,qs);
+    }
+    reportsSetLiveStatus(isLive?'Atualizado agora':'Atualização automática ativa','live');
   }catch(ex){
-    out.innerHTML='<div class="callout">Não foi possível carregar a distribuição agora ('+esc(ex.message)+').</div>';
-    return;
-  }
-  renderDistributionOutput(out,rows,'rp-canvas',c=>{_reportChart=c;},_reportChart);
+    const msg=String(ex?.message||ex);
+    out.innerHTML=`<div class="callout warn"><b>O relatório avançado ainda não está disponível.</b><br>Execute a migration <code>deploy/relatorios-tempo-real-cruzamentos.sql</code> no Supabase. Detalhe técnico: ${esc(msg)}</div>`;
+    reportsSetLiveStatus('Aguardando configuração','warn');
+  }finally{RP_REPORT_LOADING=false;}
+}
+function reportPercent(cnt,total){return total?Math.round((Number(cnt)/Number(total))*100):0;}
+function renderReportsOverview(out,rows,qs){
+  const byQ={};(rows||[]).forEach(r=>(byQ[r.question_id]||(byQ[r.question_id]=[])).push(r));
+  const cards=qs.map((q,qi)=>{
+    const data=byQ[q.dbId]||[];const base=Number(data[0]?.valid_base)||0;const total=data.reduce((sum,r)=>sum+Number(r.cnt||0),0);const max=Math.max(1,...data.map(r=>Number(r.cnt||0)));
+    const lines=data.length?data.map((r,i)=>{const cnt=Number(r.cnt||0),pct=reportPercent(cnt,base||total);return `<div class="reports-answer-row"><div class="reports-answer-head"><span>${esc(r.value_label||'(sem resposta)')}</span><strong>${cnt.toLocaleString('pt-BR')} · ${pct}%</strong></div><div class="reports-answer-bar"><i style="width:${Math.min(100,Math.round((cnt/max)*100))}%"></i></div></div>`;}).join(''):'<div class="empty" style="padding:16px 0">Ainda não há respostas válidas.</div>';
+    return `<article class="card reports-question-card"><div class="reports-question-head"><div><span class="reports-question-number">${String(qi+1).padStart(2,'0')}</span><h3>${esc(q.text||'(pergunta sem texto)')}</h3></div><span class="pill pill-blue">${base.toLocaleString('pt-BR')} válidas</span></div><div class="reports-question-meta">${esc(Q_TYPES[q.type]||q.type||'Pergunta')}</div>${lines}</article>`;
+  }).join('');
+  out.innerHTML=`<div class="reports-overview-head"><div><h2>Todas as perguntas</h2><p>Distribuição atualizada das respostas válidas, pergunta a pergunta.</p></div><span class="reports-count-pill">${qs.length} pergunta${qs.length===1?'':'s'}</span></div><div class="reports-question-list">${cards}</div>`;
+}
+function renderReportsCross(out,rows,ids,qs){
+  const first=rows[0];const total=Number(first?.valid_base)||0;const headers=ids.map(id=>reportsQuestionLabel(id));
+  const head=headers.map(h=>`<th>${esc(h)}</th>`).join('');
+  const body=(rows||[]).map(r=>{const vals=[r.variable_1,r.variable_2,r.variable_3].slice(0,ids.length);const pct=reportPercent(Number(r.cnt||0),total);return `<tr>${vals.map(v=>`<td>${esc(v||'(sem resposta)')}</td>`).join('')}<td><strong>${Number(r.cnt||0).toLocaleString('pt-BR')}</strong></td><td><b>${pct}%</b></td></tr>`;}).join('');
+  out.innerHTML=`<div class="reports-cross-head"><div><h2>Relatório montado</h2><p>${ids.length} variável${ids.length===1?'':'is'} cruzada${ids.length===1?'':'s'} sobre ${total.toLocaleString('pt-BR')} entrevistas válidas.</p></div><button class="btn btn-out" onclick="reportsExportCurrent()">↧ Exportar CSV</button></div><div class="card reports-cross-card"><div class="reports-cross-scroll"><table><thead><tr>${head}<th>Entrevistas</th><th>% da base</th></tr></thead><tbody>${body||'<tr><td colspan="'+(ids.length+2)+'" class="empty">Nenhuma combinação encontrada.</td></tr>'}</tbody></table></div></div>`;
+}
+function reportsExportCurrent(){
+  const table=document.querySelector('#rp-output table');if(!table){alert('Gere um relatório antes de exportar.');return;}
+  const lines=[...table.querySelectorAll('tr')].map(tr=>[...tr.children].map(cell=>'"'+String(cell.textContent||'').replace(/"/g,'""').trim()+'"').join(';'));
+  const blob=new Blob(['\ufeff'+lines.join('\n')],{type:'text/csv;charset=utf-8'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='relatorio-pesquisa-'+new Date().toISOString().slice(0,10)+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 
 /* ============ USERS (todos os perfis: pesquisador, cliente, adm, vendedor, indicador) ============ */
@@ -5641,6 +5698,7 @@ window._beforeRender=function(key){
 window._afterRender=function(key){
   if(key!=='collect'){stopCollectLive();}
   if(key!=='app-collect'){stopAcollectQuotaLive();}
+  if(key!=='reports'){reportsStopLive();}
   if(key!=='dashboard'&&key!=='finance')disposeDashboardCharts();
   if(key==='collect'){
     if(COLLECT_IDX!=null){initCollectLive(COLLECT_IDX);}else{stopCollectLive();}
@@ -5654,10 +5712,10 @@ window._afterRender=function(key){
   if(key==='dashboard')drawDash();
   if(key==='app-collect'&&MY_CONTRACT)initGeoCollect(); /* só inicia GPS/coleta se o contrato já estiver assinado — ver PAGES['app-collect'] */
   if(key==='client-results')clientResultsLoadAndRender();
+  if(key==='reports'){reportsLoadAndRender();reportsStartLive();}
   if(key==='my-earnings')renderMyRejected();
   if(key==='sample'){calcSample();}
   if(key==='quotas'){quotaSeg(document.querySelector('#quotaSeg button'),'sexo');}
-  if(key==='reports'){reportsLoadAndRender();}
   if(key==='permissions'){drawPerms();}
   if(key==='finance'){
     drawFin();

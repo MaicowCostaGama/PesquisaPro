@@ -626,6 +626,12 @@ function clientSelfSurvey(){
   }
   return SURVEYS.find(s=>s.name===(c.surveys||[])[0])||null;
 }
+function clientResultsReleasedForSurvey(client,survey){
+  if(!client||!survey)return false;
+  const clientId=CURRENT_PROFILE?.id||client.id;
+  const bySurvey=survey.clientReleaseById||{};
+  return !!client.resultsReleased||!!(clientId&&bySurvey[clientId]===true);
+}
 PAGES['client-progress']=()=>{
   if(!SURVEYS_LOADED)loadSurveysIfNeeded();
   const c=clientSelf(),s=clientSelfSurvey();
@@ -634,8 +640,8 @@ PAGES['client-progress']=()=>{
   }
   const sample=surveySample(s);
   const pct=sample?Math.min(100,Math.round(s.collected/sample*100)):0;
-  if(!c.resultsReleased){
-    return head(s.name,'Andamento da coleta · '+c.company)+clientPublishedReportsMarkup()+`
+  if(!clientResultsReleasedForSurvey(c,s)){
+    return head(s.name,'Andamento da coleta · '+c.company)+`
     <div class="card mb">
       <div class="card-t">Progresso geral da coleta</div>
       <div class="card-d">Percentual coletado até o momento</div>
@@ -705,7 +711,7 @@ PAGES['client-results']=()=>{
   if(!c||!s){
     return head('Resultados','Resultados da sua pesquisa')+`<div class="card"><div class="empty">Nenhuma pesquisa vinculada à sua conta no momento.</div></div>`;
   }
-  if(!c.resultsReleased){
+  if(!clientResultsReleasedForSurvey(c,s)){
     /* obs.: a contagem "coletado até agora" aqui usa s.collected (o total
        gravado na própria pesquisa) e não a Coleta de campo (collection_events)
        — o cliente não tem (e não deve ter) permissão para ler coletas
@@ -760,6 +766,7 @@ async function clientResultsLoadAndRender(){
   out.innerHTML='<div class="empty" style="padding:20px 0">Carregando…</div>';
   let rows;
   try{
+    if(!clientResultsReleasedForSurvey(clientSelf(),s)){out.innerHTML='<div class="callout">Os resultados ainda não foram liberados para esta pesquisa.</div>';return;}
     const {data,error}=await sb.rpc('survey_answer_distribution',{p_survey_id:s.id,p_question_id:CR_QUESTION_DBID});
     if(error)throw new Error(error.message);
     rows=data||[];
@@ -806,7 +813,7 @@ function renderDistributionOutput(out,rows,canvasId,setChart,prevChart){
 const WIZ={step:1,total:7,editIndex:null,
   data:{name:'',tipo:'Eleitoral / intenção de voto',dataIni:'',dataFim:'',abrangencia:'estadual',estados:[],cidades:{},
     pop:1000000,err:'0.03',conf:'1.96',prop:50,price:5,priceRemote:8,clientPrice:12,clientes:[],
-    formStarted:false,questions:[],quotas:{},quotaOff:{},remote:{}}};
+    formStarted:false,questions:[],quotas:{},quotaOff:{},remote:{},clientReleaseById:{}}};
 let WIZ_QID=1;
 const Q_TYPES={single:'Escolha única',multi:'Múltipla escolha',scale:'Escala 1–5',scale10:'Escala 1–10',nps:'NPS 0–10',open:'Resposta aberta',number:'Número',date:'Data'};
 const Q_HAS_OPTS=t=>t==='single'||t==='multi';
@@ -831,7 +838,7 @@ const ABRANGENCIA_CFG={
 function blankSurveyData(){
   return {name:'',tipo:'Eleitoral / intenção de voto',dataIni:'',dataFim:'',abrangencia:'estadual',estados:[],cidades:{},
     pop:1000000,err:'0.03',conf:'1.96',prop:50,price:5,priceRemote:8,clientPrice:12,clientes:[],
-    formStarted:false,questions:[],quotas:{},quotaOff:{},remote:{}};
+    formStarted:false,questions:[],quotas:{},quotaOff:{},remote:{},clientReleaseById:{}};
 }
 
 /* store de pesquisas — carregado do Supabase (ver bloco "PESQUISAS — carregamento
@@ -883,6 +890,7 @@ function surveyRowToSnapshot(row,questionRows,clientCompanyNames,teamNames){
     price:row.price||0,priceRemote:row.price_remote||0,clientPrice:row.client_price||0,
     clientes:clientCompanyNames||[],
     clientIds:(row.survey_clients||[]).map(sc=>sc.client_id), /* ids reais dos clientes vinculados — usado para o cliente logado achar sua própria pesquisa sem depender de nome/USERS carregado */
+    clientReleaseById:Object.fromEntries((row.survey_clients||[]).filter(sc=>sc.client_id).map(sc=>[sc.client_id,!!sc.results_released])),
     formStarted:!!row.form_started,questions,quotas,quotaOff,remote,
     collected:row.collected||0,status:row.status||'rascunho',
     created:fmtRelativo(row.created_at),
@@ -937,14 +945,18 @@ async function syncSurveyQuestionsAndOptions(surveyId,d){
 }
 /* apaga e recria os vínculos com clientes (a lista `d.clientes` guarda nomes
    de empresa — resolvidos aqui para o id real do perfil do cliente) */
-async function syncSurveyClients(surveyId,companyNames){
-  await sb.from('survey_clients').delete().eq('survey_id',surveyId);
+async function syncSurveyClients(surveyId,companyNames,requestedReleaseById={}){
+  const {data:existing,error:existingError}=await sb.from('survey_clients').select('client_id,results_released').eq('survey_id',surveyId);
+  if(existingError)throw new Error('Não foi possível ler os acessos atuais: '+existingError.message);
+  const releaseById=Object.fromEntries((existing||[]).map(row=>[row.client_id,!!row.results_released]));
+  const {error:deleteError}=await sb.from('survey_clients').delete().eq('survey_id',surveyId);
+  if(deleteError)throw new Error('Não foi possível atualizar os clientes vinculados: '+deleteError.message);
   const ids=(companyNames||[]).map(name=>{
     const c=clienteUsers().find(x=>x.company===name);
     return c&&c.id;
   }).filter(Boolean);
   if(ids.length){
-    const {error}=await sb.from('survey_clients').insert(ids.map(id=>({survey_id:surveyId,client_id:id})));
+    const {error}=await sb.from('survey_clients').insert(ids.map(id=>({survey_id:surveyId,client_id:id,results_released:requestedReleaseById[id]===true||releaseById[id]===true})));
     if(error)throw new Error('Não foi possível vincular os clientes: '+error.message);
   }
 }
@@ -961,7 +973,7 @@ async function syncSurveyTeam(surveyId,researcherNames){
     if(error)throw new Error('Não foi possível salvar a equipe: '+error.message);
   }
 }
-const SURVEY_JOIN_SELECT='*, survey_questions(*, survey_question_options(*)), survey_clients(client_id), survey_team(researcher_id)';
+const SURVEY_JOIN_SELECT='*, survey_questions(*, survey_question_options(*)), survey_clients(client_id, results_released), survey_team(researcher_id)';
 function idsToClientCompanies(ids){return ids.map(id=>{const c=USERS.find(u=>u.id===id);return c?(c.company||c.name):null;}).filter(Boolean);}
 function idsToResearcherNames(ids){return ids.map(id=>{const u=USERS.find(x=>x.id===id);return u?u.name:null;}).filter(Boolean);}
 async function reloadSurveySnapshot(surveyId){
@@ -1475,8 +1487,10 @@ WIZ_BODY[6]=()=>{
     const on=sel.includes(c.company);
     const safeCompany=jsArg(c.company);
     const statusPill=c.status==='ativo'?'pill-green':c.status==='prospecto'?'pill-amber':'pill-gray';
+    const relationReleased=!!(WIZ.data.clientReleaseById?.[c.id]|| (WIZ.editIndex!=null&&SURVEYS[WIZ.editIndex]?.clientReleaseById?.[c.id]));
+    const accessReleased=!!c.resultsReleased||relationReleased;
     const accessBtn=on
-      ?`<button type="button" class="client-access-btn ${c.resultsReleased?'on':''}" title="Liberar ou não acesso total (andamento em tempo real + resultados) para este cliente" onclick="wizToggleClientAccess(${safeCompany})">${c.resultsReleased?'✓ acesso liberado':'🔒 liberar acesso'}</button>`
+      ?`<button type="button" class="client-access-btn ${accessReleased?'on':''}" title="Liberar ou não os resultados desta pesquisa para este cliente" onclick="wizToggleClientAccess(${safeCompany})">${accessReleased?'✓ resultado liberado':'🔒 liberar resultado'}</button>`
       :'';
     const searchKey=esc((c.company+' '+(c.contact||'')+' '+(c.email||'')).toLowerCase());
     return `<div class="client-link-row ${on?'on':''}" data-name="${searchKey}">
@@ -1516,6 +1530,7 @@ function wizFilterClientes(q){
   const empty=document.getElementById('client-search-empty');
   if(empty)empty.style.display=visible===0?'':'none';
 }
+function wizEditingSurveyId(){return WIZ.editIndex!=null?SURVEYS[WIZ.editIndex]?.id:null;}
 function wizClientsRerender(){
   const searchEl=document.getElementById('client-search');
   const q=searchEl?searchEl.value:'';
@@ -1533,11 +1548,22 @@ function wizToggleCliente(company){
 async function wizToggleClientAccess(company){
   const c=clienteUsers().find(x=>x.company===company);
   if(!c)return;
-  const next=!c.resultsReleased;
+  const surveyId=wizEditingSurveyId();
+  const relationReleased=!!(surveyId&&SURVEYS[WIZ.editIndex]?.clientReleaseById?.[c.id]);
+  const next=!(c.resultsReleased||relationReleased);
   try{
     if(c.id){
       const {error}=await sb.from('profiles').update({results_released:next}).eq('id',c.id);
       if(error)throw new Error(error.message);
+      if(surveyId){
+        const {error:linkError}=await sb.from('survey_clients').update({results_released:next}).eq('survey_id',surveyId).eq('client_id',c.id);
+        if(linkError)throw new Error(linkError.message);
+        SURVEYS[WIZ.editIndex].clientReleaseById=SURVEYS[WIZ.editIndex].clientReleaseById||{};
+        SURVEYS[WIZ.editIndex].clientReleaseById[c.id]=next;
+        WIZ.data.clientReleaseById=WIZ.data.clientReleaseById||{};WIZ.data.clientReleaseById[c.id]=next;
+      }else{
+        WIZ.data.clientReleaseById=WIZ.data.clientReleaseById||{};WIZ.data.clientReleaseById[c.id]=next;
+      }
     }
   }catch(ex){alert('Não foi possível salvar: '+ex.message);return;}
   c.resultsReleased=next;
@@ -1720,7 +1746,7 @@ async function wizCreate(){
       if(error)throw new Error(error.message);
     }
     await syncSurveyQuestionsAndOptions(surveyId,d);
-    await syncSurveyClients(surveyId,d.clientes||[]);
+    await syncSurveyClients(surveyId,d.clientes||[],d.clientReleaseById||{});
     const snapshot=await reloadSurveySnapshot(surveyId);
     if(isNew){
       snapshot.isNew=true;
@@ -1924,7 +1950,7 @@ function surveyEdit(idx){
     tipo:s.tipo||'Eleitoral / intenção de voto',dataIni:s.dataIni||'',dataFim:s.dataFim||'',
     abrangencia:s.abrangencia||'estadual',estados:s.estados||[],cidades:s.cidades||{},
     pop:s.pop,err:s.err,conf:s.conf,prop:s.prop,price:s.price,priceRemote:s.priceRemote,clientes:linkedClientes,
-    formStarted:s.formStarted!==false,questions:s.questions||[],clientPrice:s.clientPrice!=null?s.clientPrice:12,quotas:s.quotas||{},quotaOff:s.quotaOff||{},remote:s.remote||{}
+    formStarted:s.formStarted!==false,questions:s.questions||[],clientPrice:s.clientPrice!=null?s.clientPrice:12,quotas:s.quotas||{},quotaOff:s.quotaOff||{},remote:s.remote||{},clientReleaseById:s.clientReleaseById||{}
   }));
   WIZ_QID=(WIZ.data.questions.reduce((m,q)=>Math.max(m,q.id),0)||0)+1;
   go('new-survey');

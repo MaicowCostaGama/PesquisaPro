@@ -102,3 +102,9 @@ As metas de cota são calculadas a partir da configuração da própria pesquisa
 ## Layout compacto da aba Resultados
 
 A aba **Resultados** recebeu um layout mais compacto para permitir a visualização de mais informações na mesma tela. Os gráficos de distribuição usam altura reduzida, os mapas de calor e de georreferenciamento passaram a usar áreas menores no desktop e no celular, e os cartões de perguntas e cruzamentos tiveram espaçamento otimizado. Os controles, tabelas, legendas, zoom e tela cheia permanecem disponíveis; a redução é apenas visual e não altera contagens ou percentuais.
+
+## Pesquisador no georreferenciamento do cliente
+
+O georreferenciamento liberado ao cliente passou a agrupar, em cada área aproximada, os nomes dos pesquisadores responsáveis pelas entrevistas daquela área. O nome é exibido ao passar o mouse sobre o marcador no desktop e ao tocar ou clicar no marcador em dispositivos móveis. Telefones, e-mails, CPF, documentos, rotas e coordenadas exatas continuam ocultos. Os marcadores do cliente usam um ícone moderno em formato de balão, com cor indicando o estado agregado da área.
+
+A migration `deploy/georreferenciamento-cliente-pesquisador.sql` atualiza a RPC `client_collection_geo_summary` e deve ser executada depois de `deploy/georreferenciamento-clientes.sql`.

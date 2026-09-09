@@ -6,6 +6,7 @@ const schema=fs.readFileSync(path.join(root,'deploy','schema.sql'),'utf8');
 const clientSql=fs.readFileSync(path.join(root,'deploy','relatorios-resultados-clientes.sql'),'utf8');
 const css=fs.readFileSync(path.join(root,'style.css'),'utf8');
 const geoSql=fs.readFileSync(path.join(root,'deploy','georreferenciamento-clientes.sql'),'utf8');
+const geoResearcherSql=fs.readFileSync(path.join(root,'deploy','georreferenciamento-cliente-pesquisador.sql'),'utf8');
 const html=fs.readFileSync(path.join(root,'app.html'),'utf8');
 const checks=[
   ['cliente localiza pesquisa pelo vínculo real',app.includes("SURVEYS.find(s=>(s.clientIds||[]).includes(CURRENT_PROFILE.id))")],
@@ -25,12 +26,18 @@ const checks=[
   ['coordenadas aproximadas',geoSql.includes('round(ce.lat::numeric, 3)')&&geoSql.includes('round(ce.lng::numeric, 3)')],
   ['sem dados pessoais no mapa',geoSql.includes('quota_label text')&&geoSql.includes('accuracy_m numeric')&&!geoSql.includes('researcher_id text')],
   ['estilos do mapa cliente',css.includes('.client-geo-map-canvas')&&css.includes('.client-geo-marker')],
+  ['nome agregado do pesquisador no ponto',app.includes('researcher_names')&&app.includes('researcherNames')],
+  ['nome do pesquisador no popup do cliente',app.includes('Pesquisador${point.researcherNames.includes')],
+  ['hover abre informação do ponto',app.includes("marker.addListener('mouseover'")],
+  ['clique continua disponível no celular',app.includes("marker.addListener('click'")],
+  ['marcador cliente em formato de balão',app.includes('googleBalloonIcon(color)')],
+  ['migration de pesquisador georreferenciado',geoResearcherSql.includes('researcher_names')&&geoResearcherSql.includes('left join public.profiles')],
   ['consulta protegida novamente antes da RPC',app.includes('Os resultados ainda não foram liberados para esta pesquisa.')],
   ['RPC autoriza cliente vinculado',schema.includes("exists (select 1 from public.survey_clients sc where sc.survey_id = p_survey_id and sc.client_id = auth.uid())")],
   ['permissão de perguntas do cliente',schema.includes('cliente vê perguntas das suas pesquisas')&&schema.includes('survey_questions')],
   ['vínculo traz estado de liberação',app.includes('survey_clients(client_id, results_released)')],
   ['toggle do master grava vínculo da pesquisa',app.includes("from('survey_clients').update({results_released:next})")],
-  ['cache atualizado',html.includes('20260908250000')],
+  ['cache atualizado',html.includes('20260908260000')],
 ];
 let failed=0;for(const [label,ok] of checks){console.log(`${ok?'PASS':'FAIL'} — ${label}`);if(!ok)failed++;}
 if(failed)process.exit(1);

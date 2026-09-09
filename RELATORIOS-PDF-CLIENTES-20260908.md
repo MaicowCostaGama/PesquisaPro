@@ -90,3 +90,10 @@ A migration `deploy/mapa-calor-respostas-abertas.sql` cria as RPCs `survey_respo
 Os mapas de coletas do master, o georreferenciamento do cliente e o mapa de calor por resposta usam a **Maps JavaScript API**, com controles nativos de mapa de rua, satélite, zoom e tela cheia. A configuração da chave fica isolada em `google-maps-config.js`; a chave deve ser restrita no Google Cloud ao domínio `https://www.pesquisa-pro.com/*` e somente à Maps JavaScript API. O arquivo não deve conter tokens Supabase, `service_role` ou credenciais privadas.
 
 Os mapas continuam exibindo apenas dados agregados ou áreas aproximadas. O perfil master mantém filtros e abertura da auditoria; o cliente vê somente a pesquisa vinculada e liberada; e o mapa de calor mantém círculos de concentração baseados em respostas selecionadas, sem coordenadas exatas ou identificação de pesquisadores.
+
+
+## Andamento real no perfil do cliente
+
+A tela **Andamento** não usa mais cotas, regionais ou contagens de demonstração. Quando o resultado está liberado, ela consulta as RPCs `client_collection_progress` e `client_collection_quota_progress`, criadas por `deploy/progresso-clientes-real.sql`. O resumo mostra entrevistas válidas, total de eventos, reprovações, pesquisadores identificados nos eventos e a última atividade real.
+
+As metas de cota são calculadas a partir da configuração da própria pesquisa e as contagens vêm de `collection_events`, considerando o mesmo critério de entrevistas válidas usado nos resultados. Se não houver cotas configuradas, a tela mostra um estado vazio explícito. A atualização acontece automaticamente a cada 20 segundos e as RPCs validam o vínculo do cliente e a liberação do resultado antes de retornar agregados.

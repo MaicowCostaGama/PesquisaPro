@@ -23,7 +23,7 @@ const checks = [
   ['cliente protegido antes da RPC', app.includes('clientResultsReleasedForSurvey(clientSelf(),clientSelfSurvey())')],
   ['estilos responsivos', css.includes('.response-heatmap-controls') && css.includes('.response-heatmap-map') && css.includes('@media(max-width:760px)')],
   ['Google Maps configurado separadamente', app.includes('loadGoogleMaps') && fs.existsSync(require('path').join(__dirname,'google-maps-config.js'))],
-  ['cache atualizado', html.includes('app.js?v=20260908230000') && html.includes('google-maps-config.js?v=20260908230000')]
+  ['cache atualizado', html.includes('app.js?v=20260908240000') && html.includes('google-maps-config.js?v=20260908240000')]
 ];
 for (const [label, ok] of checks) { assert.ok(ok, label); console.log('PASS — '+label); }
 console.log('response-heatmap-smoke-test: PASS');

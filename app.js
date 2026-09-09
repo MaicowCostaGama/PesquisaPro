@@ -650,67 +650,65 @@ function clientResultsReleasedForSurvey(client,survey){
   const bySurvey=survey.clientReleaseById||{};
   return !!client.resultsReleased||!!(clientId&&bySurvey[clientId]===true);
 }
+let CLIENT_PROGRESS_CACHE={surveyId:null,summary:null,quotas:[]};
+let CLIENT_PROGRESS_LOADING=false,CLIENT_PROGRESS_TIMER=null;
+function clientProgressStatus(done,target){
+  const d=Number(done)||0,t=Number(target)||0;
+  if(!t)return '<span class="pill pill-gray">Sem meta</span>';
+  if(d>=t)return '<span class="pill pill-green">● Meta atingida</span>';
+  if(d/t<0.5)return '<span class="pill pill-red">● Atenção</span>';
+  return '<span class="pill pill-amber">● Em andamento</span>';
+}
+function clientProgressQuotaRows(s){
+  const rows=CLIENT_PROGRESS_CACHE.quotas||[];
+  if(!rows.length)return '<div class="empty" style="padding:15px 0">A pesquisa não possui cotas configuradas para exibição.</div>';
+  const colors=['#2563eb','#059669','#ea580c','#7c3aed','#0891b2','#d97706'];
+  return rows.map((row,i)=>quota(row.quotaLabel,Number(row.validCount)||0,Number(row.targetCount)||0,colors[i%colors.length])).join('');
+}
+function clientProgressCoverageRows(s){
+  const rows=CLIENT_PROGRESS_CACHE.quotas||[];
+  if(!rows.length)return '<tr><td colspan="4" class="empty">Nenhuma meta de cota real foi encontrada.</td></tr>';
+  return rows.map(row=>`<tr><td><b>${esc(row.quotaLabel||'Sem cota')}</b><small style="display:block;color:var(--ink3);margin-top:3px">${esc(row.questionText||'Cota da pesquisa')}</small></td><td>${Number(row.validCount||0).toLocaleString('pt-BR')}</td><td>${Number(row.targetCount||0).toLocaleString('pt-BR')}</td><td>${clientProgressStatus(row.validCount,row.targetCount)}</td></tr>`).join('');
+}
+function clientProgressRender(s,c){
+  const host=document.getElementById('client-progress-live');if(!host)return;
+  const summary=CLIENT_PROGRESS_CACHE.summary||{};
+  const valid=Number(summary.validCount)||0,total=Number(summary.totalCount)||0,rejected=Number(summary.rejectedCount)||0,researchers=Number(summary.researcherCount)||0,sample=surveySample(s),pct=sample?Math.min(100,Math.round(valid/sample*100)):0;
+  const last=summary.lastOccurredAt?new Date(summary.lastOccurredAt).toLocaleString('pt-BR'):'Ainda não há entrevistas registradas';
+  host.innerHTML=`${clientPublishedReportsMarkup()}<div class="grid g4" style="margin-bottom:18px">
+    ${stat('Entrevistas válidas',valid.toLocaleString('pt-BR'),'de '+sample.toLocaleString('pt-BR')+' · '+pct+'%','✓','#2563eb')}
+    ${stat('Pesquisadores com coleta',researchers.toLocaleString('pt-BR'),'identificados nos eventos reais','☺','#059669')}
+    ${stat('Status',STATUS_LABEL[s.status]||'Sem status',last,'◷','#d97706')}
+    ${stat('Margem de erro prevista',s.err?('± '+Math.round(+s.err*100)+'%'):'—','nível de confiança '+(s.conf==='1.96'?'95%':s.conf||'não informado'),'∑','#7c3aed')}
+  </div>
+  <div class="card mb"><div class="card-t">Progresso geral da coleta</div><div class="card-d">Dados reais de entrevistas registrados no banco, atualizados automaticamente.</div><div class="bar" style="height:14px"><span style="width:${pct}%"></span></div><div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:8px;font-size:12px;color:var(--ink3);font-weight:600"><span>${valid.toLocaleString('pt-BR')} válidas</span><span>${pct}% da meta</span><span>${sample.toLocaleString('pt-BR')} entrevistas estimadas</span></div><div class="card-d" style="margin-top:10px">Total de eventos registrados: ${total.toLocaleString('pt-BR')} · Reprovadas: ${rejected.toLocaleString('pt-BR')}.</div></div>
+  <div class="grid g2"><div class="card"><div class="card-t">Progresso por cota</div><div class="card-d">Metas e contagens retornadas das cotas reais da pesquisa.</div>${clientProgressQuotaRows(s)}</div><div class="card"><div class="card-t">Cobertura por cota/região</div><div class="card-d">Somente categorias com meta configurada na pesquisa.</div><div class="table-scroll"><table><thead><tr><th>Categoria</th><th>Válidas</th><th>Meta</th><th>Status</th></tr></thead><tbody>${clientProgressCoverageRows(s)}</tbody></table></div></div></div>
+  <div class="callout mb" style="margin-top:16px">Os dados acima são agregados da pesquisa vinculada. Última atividade consultada: <b>${esc(last)}</b>. O acesso aos resultados continua condicionado à liberação da gestão.</div>`;
+}
+async function clientProgressLoad(){
+  const host=document.getElementById('client-progress-live');if(!host||CLIENT_PROGRESS_LOADING)return;
+  const c=clientSelf(),s=clientSelfSurvey();if(!c||!s||!clientResultsReleasedForSurvey(c,s))return;
+  CLIENT_PROGRESS_LOADING=true;host.innerHTML='<div class="card"><div class="empty" style="padding:28px 0">Carregando dados reais da coleta…</div></div>';
+  try{
+    const [{data:summary,error:summaryError},{data:quotas,error:quotaError}]=await Promise.all([
+      sb.rpc('client_collection_progress',{p_survey_id:s.id}),
+      sb.rpc('client_collection_quota_progress',{p_survey_id:s.id})
+    ]);
+    if(summaryError)throw summaryError;if(quotaError)throw quotaError;
+    const row=summary?.[0]||{};
+    CLIENT_PROGRESS_CACHE={surveyId:s.id,summary:{validCount:row.valid_count,totalCount:row.total_count,rejectedCount:row.rejected_count,researcherCount:row.researcher_count,lastOccurredAt:row.last_occurred_at},quotas:(quotas||[]).map(r=>({questionId:r.question_id,questionText:r.question_text,quotaLabel:r.quota_label,validCount:r.valid_count,targetCount:r.target_count}))};
+    clientProgressRender(s,c);
+  }catch(ex){host.innerHTML='<div class="card"><div class="callout warn"><b>Não foi possível carregar o andamento real.</b><br>Execute a migration <code>deploy/progresso-clientes-real.sql</code> no Supabase e atualize a página. Detalhe: '+esc(ex?.message||ex)+'</div></div>';
+  }finally{CLIENT_PROGRESS_LOADING=false;}
+}
+function clientProgressStartLive(){if(CLIENT_PROGRESS_TIMER)clearInterval(CLIENT_PROGRESS_TIMER);clientProgressLoad();CLIENT_PROGRESS_TIMER=setInterval(()=>{if(document.querySelector('.nav-item.on')?.dataset.key==='client-progress')clientProgressLoad();},20000);}
+function clientProgressStopLive(){if(CLIENT_PROGRESS_TIMER){clearInterval(CLIENT_PROGRESS_TIMER);CLIENT_PROGRESS_TIMER=null;}}
 PAGES['client-progress']=()=>{
   if(!SURVEYS_LOADED)loadSurveysIfNeeded();
   const c=clientSelf(),s=clientSelfSurvey();
-  if(!c||!s){
-    return head('Minha pesquisa','Acompanhe o andamento da coleta')+`<div class="card"><div class="empty">Nenhuma pesquisa vinculada à sua conta no momento.</div></div>`;
-  }
-  const sample=surveySample(s);
-  const pct=sample?Math.min(100,Math.round(s.collected/sample*100)):0;
-  if(!clientResultsReleasedForSurvey(c,s)){
-    return head(s.name,'Andamento da coleta · '+c.company)+`
-    <div class="card mb">
-      <div class="card-t">Progresso geral da coleta</div>
-      <div class="card-d">Percentual coletado até o momento</div>
-      <div class="bar" style="height:14px"><span style="width:${pct}%"></span></div>
-      <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:12px;color:var(--ink3);font-weight:600">
-        <span>${pct}% da meta</span><span>Status: ${STATUS_LABEL[s.status]||s.status}</span>
-      </div>
-    </div>
-    <div class="callout" style="margin-top:6px">🔒 Acesso completo ainda não liberado. Assim que confirmarmos o pagamento, você passa a acompanhar aqui o andamento detalhado em tempo real (equipe em campo, progresso por cota, cobertura por região) e também os resultados da pesquisa.</div>`;
-  }
-  return head(s.name,'Andamento da coleta em tempo real · '+c.company,
-    '<button class="btn btn-fill" onclick="go(\'client-results\')">Ver resultados →</button>')+clientPublishedReportsMarkup()+`
-  <div class="grid g4" style="margin-bottom:18px">
-    ${stat('Coletado',s.collected.toLocaleString('pt-BR'),'de '+sample.toLocaleString('pt-BR')+' · '+pct+'%','✓','#2563eb')}
-    ${stat('Pesquisadores em campo',String((s.team||[]).length),'atuando nesta pesquisa','☺','#059669')}
-    ${stat('Status',STATUS_LABEL[s.status]||s.status,s.created,'◷','#d97706')}
-    ${stat('Margem de erro prevista',s.err?('± '+Math.round(+s.err*100)+'%'):'—','nível de confiança '+(s.conf==='1.96'?'95%':s.conf),'∑','#7c3aed')}
-  </div>
-  <div class="card mb">
-    <div class="card-t">Progresso geral da coleta</div>
-    <div class="card-d">Atualizado conforme os pesquisadores enviam novas entrevistas</div>
-    <div class="bar" style="height:14px"><span style="width:${pct}%"></span></div>
-    <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:12px;color:var(--ink3);font-weight:600">
-      <span>${s.collected.toLocaleString('pt-BR')} coletadas</span><span>${pct}% da meta</span><span>${sample.toLocaleString('pt-BR')} entrevistas</span>
-    </div>
-  </div>
-  <div class="grid g2">
-    <div class="card">
-      <div class="card-t">Progresso por cota</div>
-      <div class="card-d">Proporções definidas no plano amostral</div>
-      ${quota('Homens 16–24',180,260,'#2563eb')}
-      ${quota('Mulheres 16–24',210,275,'#2563eb')}
-      ${quota('Homens 25–44',390,520,'#059669')}
-      ${quota('Mulheres 25–44',440,545,'#059669')}
-      ${quota('Homens 45+',300,410,'#ea580c')}
-      ${quota('Mulheres 45+',280,430,'#ea580c')}
-    </div>
-    <div class="card">
-      <div class="card-t">Cobertura por região</div>
-      <div class="card-d">Regiões com coleta em andamento</div>
-      <table><thead><tr><th>Regional</th><th>Coletado</th><th>Meta</th><th>Status</th></tr></thead>
-      <tbody>
-        <tr><td><b>Vale do Mucuri</b></td><td>62</td><td>140</td><td><span class="pill pill-red">● Crítico</span></td></tr>
-        <tr><td><b>Jequitinhonha</b></td><td>71</td><td>150</td><td><span class="pill pill-red">● Crítico</span></td></tr>
-        <tr><td><b>Noroeste</b></td><td>88</td><td>160</td><td><span class="pill pill-amber">● Atenção</span></td></tr>
-        <tr><td><b>Norte</b></td><td>210</td><td>320</td><td><span class="pill pill-amber">● Atenção</span></td></tr>
-        <tr><td><b>Triângulo</b></td><td>340</td><td>410</td><td><span class="pill pill-green">● No prazo</span></td></tr>
-      </tbody></table>
-    </div>
-  </div>
-  <div class="callout mb" style="margin-top:16px">🔒 Os resultados (intenção de voto, avaliação e demais respostas) ficam disponíveis na aba <b>Resultados</b> assim que a coleta for concluída e o administrador liberar a visualização.</div>`;
+  if(!c||!s)return head('Minha pesquisa','Acompanhe o andamento da coleta')+`<div class="card"><div class="empty">Nenhuma pesquisa vinculada à sua conta no momento.</div></div>`;
+  if(!clientResultsReleasedForSurvey(c,s))return head(s.name,'Andamento da coleta · '+c.company)+`<div class="card" style="text-align:center;padding:44px 24px"><div style="font-weight:800;font-size:18px">Resultados e andamento detalhado ainda não liberados</div><p style="color:var(--ink3);font-size:13.5px;margin-top:8px;line-height:1.6">A equipe PesquisaPro libera os dados agregados nesta área após a validação da pesquisa.</p></div>`;
+  return head(s.name,'Andamento da coleta em tempo real · '+c.company,'<button class="btn btn-fill" onclick="go(\'client-results\')">Ver resultados →</button>')+`<section id="client-progress-live"><div class="card"><div class="empty" style="padding:28px 0">Carregando dados reais da coleta…</div></div></section>`;
 };
 
 const STATUS_LABEL={campo:'Em campo',rascunho:'Rascunho',encerrada:'Concluída'};
@@ -5902,7 +5900,7 @@ window._beforeRender=function(key){
 };
 
 window._afterRender=function(key){
-  if(key!=='collect'){stopCollectLive();}if(key!=='client-results'){clientGeoStopLive();}
+  if(key!=='collect'){stopCollectLive();}if(key!=='client-results'){clientGeoStopLive();}if(key!=='client-progress'){clientProgressStopLive();}
   if(key!=='app-collect'){stopAcollectQuotaLive();}
   if(key!=='reports'){reportsStopLive();}
   if(key!=='dashboard'&&key!=='finance')disposeDashboardCharts();
@@ -5917,6 +5915,7 @@ window._afterRender=function(key){
   }
   if(key==='dashboard')drawDash();
   if(key==='app-collect'&&MY_CONTRACT)initGeoCollect(); /* só inicia GPS/coleta se o contrato já estiver assinado — ver PAGES['app-collect'] */
+  if(key==='client-progress'){clientProgressStartLive();}
   if(key==='client-results'){clientLoadReportOverview();clientLoadPublishedReports();clientGeoStartLive();responseHeatmapLoad('client');}
   if(key==='reports'){reportsLoadAndRender();reportsStartLive();reportsLoadDraft();responseHeatmapLoad('master');}
   if(key==='my-earnings')renderMyRejected();

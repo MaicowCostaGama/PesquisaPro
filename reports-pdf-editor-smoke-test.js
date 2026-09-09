@@ -31,7 +31,7 @@ const checks=[
   ['RLS de gestão',sql.includes('public.is_staff()')&&sql.includes('staff manages report documents')],
   ['RLS do cliente',sql.includes('client sees published report documents')&&sql.includes('rd.client_id = auth.uid()')],
   ['cliente recebe apenas publicados',sql.includes("rd.status='published'")&&sql.includes('client_published_reports')],
-  ['cache atualizado',html.includes('20260908240000')],
+  ['cache atualizado',html.includes('20260908250000')],
   ['estilos responsivos',css.includes('.reports-document-editor')&&css.includes('.reports-crossing-card')&&css.includes('.reports-cross-matrix')&&css.includes('@media(max-width:760px)')],
   ['jsPDF local',fs.existsSync(jspdf)&&fs.statSync(jspdf).size>100000],
 ];

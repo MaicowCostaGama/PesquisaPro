@@ -97,3 +97,8 @@ Os mapas continuam exibindo apenas dados agregados ou áreas aproximadas. O perf
 A tela **Andamento** não usa mais cotas, regionais ou contagens de demonstração. Quando o resultado está liberado, ela consulta as RPCs `client_collection_progress` e `client_collection_quota_progress`, criadas por `deploy/progresso-clientes-real.sql`. O resumo mostra entrevistas válidas, total de eventos, reprovações, pesquisadores identificados nos eventos e a última atividade real.
 
 As metas de cota são calculadas a partir da configuração da própria pesquisa e as contagens vêm de `collection_events`, considerando o mesmo critério de entrevistas válidas usado nos resultados. Se não houver cotas configuradas, a tela mostra um estado vazio explícito. A atualização acontece automaticamente a cada 20 segundos e as RPCs validam o vínculo do cliente e a liberação do resultado antes de retornar agregados.
+
+
+## Layout compacto da aba Resultados
+
+A aba **Resultados** recebeu um layout mais compacto para permitir a visualização de mais informações na mesma tela. Os gráficos de distribuição usam altura reduzida, os mapas de calor e de georreferenciamento passaram a usar áreas menores no desktop e no celular, e os cartões de perguntas e cruzamentos tiveram espaçamento otimizado. Os controles, tabelas, legendas, zoom e tela cheia permanecem disponíveis; a redução é apenas visual e não altera contagens ou percentuais.

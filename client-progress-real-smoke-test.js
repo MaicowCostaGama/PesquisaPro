@@ -17,7 +17,7 @@ const checks=[
   ['atualização automática',app.includes('clientProgressStartLive')&&app.includes('CLIENT_PROGRESS_TIMER')],
   ['estados de erro e vazio',clientBlock.includes('Não foi possível carregar o andamento real')&&clientBlock.includes('A pesquisa não possui cotas configuradas')],
   ['sem cotas fictícias no bloco cliente',!clientBlock.includes('Homens 16–24')&&!clientBlock.includes('Vale do Mucuri')&&!clientBlock.includes('Jequitinhonha')],
-  ['cache atualizado',html.includes('20260908240000')]
+  ['cache atualizado',html.includes('20260908250000')]
 ];
 let failed=0;for(const [label,ok] of checks){console.log(`${ok?'PASS':'FAIL'} — ${label}`);if(!ok)failed++;}
 if(failed)process.exit(1);

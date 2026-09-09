@@ -884,7 +884,7 @@ function renderDistributionOutput(out,rows,canvasId,setChart,prevChart){
     '</tbody></table>';
   out.innerHTML=`<div class="grid g2">
     <div class="card"><div class="card-t">Gráfico</div><div class="card-d">Base: ${total.toLocaleString('pt-BR')} entrevistas válidas</div>
-      <div style="position:relative;height:270px"><canvas id="${canvasId}" role="img" aria-label="Gráfico de distribuição de respostas"></canvas></div></div>
+      <div class="reports-distribution-chart"><canvas id="${canvasId}" role="img" aria-label="Gráfico de distribuição de respostas"></canvas></div></div>
     <div class="card"><div class="card-t">Tabela</div><div class="card-d">Percentual sobre o total de respostas válidas</div>${tbl}</div>
   </div>`;
   const cv=document.getElementById(canvasId);

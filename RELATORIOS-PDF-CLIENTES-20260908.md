@@ -83,3 +83,10 @@ Por segurança, o cliente não recebe nome, telefone, CPF, e-mail, rota do pesqu
 A central de resultados e a aba **Resultados** do cliente passam a oferecer um mapa de calor por resposta. A pessoa escolhe uma pergunta respondível, seleciona uma resposta agregada e o sistema desenha círculos proporcionais à concentração geográfica daquela resposta. O painel também funciona para perguntas de escolha, escala e número; perguntas de data não são usadas como categorias geográficas.
 
 A migration `deploy/mapa-calor-respostas-abertas.sql` cria as RPCs `survey_response_values` e `survey_response_heatmap`. O master pode consultar as pesquisas autorizadas; o cliente só consulta a pesquisa vinculada quando o resultado estiver liberado. As respostas consideradas são de entrevistas válidas, excluindo reprovações e calibrações. As coordenadas são arredondadas para três casas decimais e a interface não exibe pesquisador, telefone, CPF, e-mail ou coordenada exata.
+
+
+## Google Maps nos painéis
+
+Os mapas de coletas do master, o georreferenciamento do cliente e o mapa de calor por resposta usam a **Maps JavaScript API**, com controles nativos de mapa de rua, satélite, zoom e tela cheia. A configuração da chave fica isolada em `google-maps-config.js`; a chave deve ser restrita no Google Cloud ao domínio `https://www.pesquisa-pro.com/*` e somente à Maps JavaScript API. O arquivo não deve conter tokens Supabase, `service_role` ou credenciais privadas.
+
+Os mapas continuam exibindo apenas dados agregados ou áreas aproximadas. O perfil master mantém filtros e abertura da auditoria; o cliente vê somente a pesquisa vinculada e liberada; e o mapa de calor mantém círculos de concentração baseados em respostas selecionadas, sem coordenadas exatas ou identificação de pesquisadores.

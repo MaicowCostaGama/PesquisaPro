@@ -278,6 +278,24 @@ const LOCAL_ASSETS={
   jspdf:{src:'vendor/jspdf.umd.min.js',ready:()=>typeof window.jspdf!=='undefined'}
 };
 const LOCAL_ASSET_PROMISES={};
+let GOOGLE_MAPS_PROMISE=null;
+function loadGoogleMaps(){
+  if(window.google?.maps?.Map&&window.google?.maps?.visualization)return Promise.resolve();
+  if(GOOGLE_MAPS_PROMISE)return GOOGLE_MAPS_PROMISE;
+  const key=String(window.PESQUISAPRO_GOOGLE_MAPS_API_KEY||'').trim();
+  if(!key||key.includes('__INSIRA'))return Promise.reject(new Error('Chave do Google Maps não configurada.'));
+  GOOGLE_MAPS_PROMISE=new Promise((resolve,reject)=>{
+    const callback='__pesquisaproGoogleMapsReady_'+Date.now();
+    const timeout=setTimeout(()=>{delete window[callback];reject(new Error('Tempo esgotado ao carregar o Google Maps.'));},15000);
+    window[callback]=()=>{clearTimeout(timeout);delete window[callback];resolve();};
+    const script=document.createElement('script');
+    script.src='https://maps.googleapis.com/maps/api/js?key='+encodeURIComponent(key)+'&libraries=visualization&loading=async&callback='+callback;
+    script.async=true;script.defer=true;script.dataset.ppGoogleMaps='1';
+    script.onerror=()=>{clearTimeout(timeout);delete window[callback];reject(new Error('Não foi possível carregar o Google Maps.'));};
+    document.head.appendChild(script);
+  }).catch(error=>{GOOGLE_MAPS_PROMISE=null;throw error;});
+  return GOOGLE_MAPS_PROMISE;
+}
 function loadLocalAsset(name){
   const asset=LOCAL_ASSETS[name];
   if(!asset)return Promise.reject(new Error('Ativo desconhecido: '+name));
@@ -707,17 +725,21 @@ function heatmapQuestionsForSurvey(s){return (s?.questions||[]).filter(q=>q.dbId
 function openQuestionsForSurvey(s){return heatmapQuestionsForSurvey(s);}
 let RESPONSE_HEATMAP_MAPS={};
 function responseHeatmapColor(ratio){if(ratio>=.75)return'#dc2626';if(ratio>=.5)return'#f97316';if(ratio>=.25)return'#facc15';return'#22c55e';}
-function destroyResponseHeatmapMap(owner){const map=RESPONSE_HEATMAP_MAPS[owner];if(map){try{map.remove();}catch(e){}}delete RESPONSE_HEATMAP_MAPS[owner];}
+function googleMapErrorText(error){const message=String(error?.message||error||'');return message.includes('Chave do Google Maps')?'Mapa Google não configurado: insira a chave restrita em google-maps-config.js.':'Não foi possível carregar o Google Maps. Verifique a chave, as APIs habilitadas e as restrições do domínio.';}
+function googleMarkerIcon(color,scale=9){return {path:google.maps.SymbolPath.CIRCLE,scale,fillColor:color,fillOpacity:1,strokeColor:'#ffffff',strokeWeight:2};}
+function destroyResponseHeatmapMap(owner){const state=RESPONSE_HEATMAP_MAPS[owner];if(state){(state.overlays||[]).forEach(overlay=>overlay.setMap(null));}delete RESPONSE_HEATMAP_MAPS[owner];}
 function renderResponseHeatmapMap(owner,elementId,points){
   const mapEl=document.getElementById(elementId);if(!mapEl)return;
-  if(typeof L==='undefined'){mapEl.innerHTML='<div class="map-loading" style="display:flex">Preparando mapa de calor…</div>';loadLocalAsset('leaflet').then(()=>{if(document.getElementById(elementId)===mapEl)renderResponseHeatmapMap(owner,elementId,points);}).catch(()=>{mapEl.innerHTML='<div class="map-loading" style="display:flex">Mapa indisponível no momento.</div>';});return;}
-  let map=RESPONSE_HEATMAP_MAPS[owner];
-  if(!map||map._container!==mapEl){destroyResponseHeatmapMap(owner);map=L.map(mapEl,{scrollWheelZoom:true,zoomControl:true,maxZoom:16}).setView([-18.5,-44.9],6);L.tileLayer(COLLECT_MAP_LAYERS.street.url,COLLECT_MAP_LAYERS.street.opts).addTo(map);map._ppHeatLayer=L.layerGroup().addTo(map);RESPONSE_HEATMAP_MAPS[owner]=map;}
-  map._ppHeatLayer.clearLayers();const valid=(points||[]).filter(p=>Number.isFinite(Number(p.lat))&&Number.isFinite(Number(p.lng)));const max=Math.max(1,...valid.map(p=>Number(p.point_count)||0));
-  valid.forEach(p=>{const count=Number(p.point_count)||0,ratio=count/max,color=responseHeatmapColor(ratio),radius=Math.min(1200,180+Math.sqrt(Math.max(1,count)/max)*900);const circle=L.circle([Number(p.lat),Number(p.lng)],{radius,color,fillColor:color,fillOpacity:.3,weight:2}).addTo(map._ppHeatLayer);circle.bindTooltip(`${count.toLocaleString('pt-BR')} resposta${count===1?'':'s'} nesta área`,{direction:'top',sticky:true});circle.bindPopup(`<div class="map-popup"><div class="map-popup-title">Concentração da resposta</div><div class="map-popup-meta"><b>${count.toLocaleString('pt-BR')}</b> resposta${count===1?'':'s'}<br>Área aproximada<br>Última ocorrência: ${p.last_occurred_at?new Date(p.last_occurred_at).toLocaleString('pt-BR'):'—'}</div></div>`);});
-  if(valid.length){try{const bounds=L.latLngBounds(valid.map(p=>[Number(p.lat),Number(p.lng)]));if(bounds.isValid())map.fitBounds(bounds,{padding:[50,50],maxZoom:13});}catch(e){}}
-  setTimeout(()=>{try{map.invalidateSize();}catch(e){}},40);
+  if(!window.google?.maps?.Map){mapEl.innerHTML='<div class="map-loading" style="display:flex">Preparando Google Maps…</div>';loadGoogleMaps().then(()=>{if(document.getElementById(elementId)===mapEl)renderResponseHeatmapMap(owner,elementId,points);}).catch(error=>{mapEl.innerHTML='<div class="map-loading" style="display:flex">'+esc(googleMapErrorText(error))+'</div>';});return;}
+  let state=RESPONSE_HEATMAP_MAPS[owner];
+  if(!state||state.element!==mapEl){destroyResponseHeatmapMap(owner);state={element:mapEl,map:new google.maps.Map(mapEl,{center:{lat:-18.5,lng:-44.9},zoom:6,mapTypeId:'roadmap',mapTypeControl:true,fullscreenControl:true,streetViewControl:false,gestureHandling:'greedy'}),overlays:[]};RESPONSE_HEATMAP_MAPS[owner]=state;}
+  state.overlays.forEach(overlay=>overlay.setMap(null));state.overlays=[];
+  const valid=(points||[]).filter(point=>Number.isFinite(Number(point.lat))&&Number.isFinite(Number(point.lng)));const max=Math.max(1,...valid.map(point=>Number(point.point_count)||0));const bounds=new google.maps.LatLngBounds();
+  valid.forEach(point=>{const count=Number(point.point_count)||0,ratio=count/max,color=responseHeatmapColor(ratio),radius=Math.min(1200,180+Math.sqrt(Math.max(1,count)/max)*900),position={lat:Number(point.lat),lng:Number(point.lng)};const circle=new google.maps.Circle({map:state.map,center:position,radius,strokeColor:color,strokeOpacity:.9,strokeWeight:2,fillColor:color,fillOpacity:.3});const info=new google.maps.InfoWindow({content:`<div class="map-popup"><div class="map-popup-title">Concentração da resposta</div><div class="map-popup-meta"><b>${count.toLocaleString('pt-BR')}</b> resposta${count===1?'':'s'} nesta área<br>Área aproximada<br>Última ocorrência: ${point.last_occurred_at?new Date(point.last_occurred_at).toLocaleString('pt-BR'):'—'}</div></div>`});circle.addListener('click',()=>info.open({map:state.map,position}));state.overlays.push(circle);bounds.extend(position);});
+  if(valid.length){if(valid.length===1){state.map.setCenter(bounds.getCenter());state.map.setZoom(13);}else{state.map.fitBounds(bounds,{top:50,right:50,bottom:50,left:50});}}
+  setTimeout(()=>{try{google.maps.event.trigger(state.map,'resize');}catch(e){}},40);
 }
+
 function clientPublishedReportsMarkup(){return `<div class="card mb client-published-reports" id="client-published-reports"><div class="card-t">Relatórios finais</div><div class="card-d">Documentos revisados e disponibilizados pela equipe PesquisaPro.</div><div id="client-published-reports-list"><div class="empty" style="padding:16px 0">Carregando relatórios…</div></div></div>`;}
 let CR_QUESTION_DBID=null;
 let CR_CLIENT_REPORT_CACHE={surveyId:null,overviewRows:[],crossRowsById:{},document:null};
@@ -725,7 +747,7 @@ let CR_CLIENT_REPORT_LOADING=false;
 let CR_CLIENT_GEO_CACHE={surveyId:null,points:[],feed:[]};
 let CR_CLIENT_GEO_LOADING=false;
 let CR_CLIENT_GEO_TIMER=null;
-let _clientGeoMap=null,_clientGeoTileLayer=null,_clientGeoMarkerLayer=null,_clientGeoDidFit=false;
+let _clientGeoMap=null,_clientGeoTileLayer=null,_clientGeoMarkerLayer=[],_clientGeoInfoWindow=null,_clientGeoDidFit=false;
 let CR_CLIENT_GEO_FILTER='all';
 PAGES['client-results']=()=>{
   if(!SURVEYS_LOADED)loadSurveysIfNeeded();
@@ -743,7 +765,7 @@ function clientGeoFilteredPoints(){return CR_CLIENT_GEO_CACHE.points.filter(p=>{
 function clientGeoStatusPill(status,calibration){if(calibration)return '<span class="pill pill-blue">◎ Calibração</span>';if(status==='rejected')return '<span class="pill pill-red">✕ Reprovada</span>';if(status==='valid')return '<span class="pill pill-green">✓ Válida</span>';return '<span class="pill pill-amber">Pendente</span>';}
 function clientGeoApplyFilter(){CR_CLIENT_GEO_FILTER=document.getElementById('clientGeoFilter')?.value||'all';_clientGeoDidFit=false;clientGeoRender();}
 function clientGeoRefresh(){clientGeoLoad(true);}
-function clientGeoStopLive(){if(CR_CLIENT_GEO_TIMER){clearInterval(CR_CLIENT_GEO_TIMER);CR_CLIENT_GEO_TIMER=null;}if(_clientGeoMap){try{_clientGeoMap.remove();}catch(e){}_clientGeoMap=null;_clientGeoTileLayer=null;_clientGeoMarkerLayer=null;_clientGeoDidFit=false;}}
+function clientGeoStopLive(){if(CR_CLIENT_GEO_TIMER){clearInterval(CR_CLIENT_GEO_TIMER);CR_CLIENT_GEO_TIMER=null;}if(_clientGeoMarkerLayer){_clientGeoMarkerLayer.forEach(marker=>marker.setMap(null));}_clientGeoMarkerLayer=[];_clientGeoMap=null;_clientGeoTileLayer=null;_clientGeoDidFit=false;}
 function clientGeoStartLive(){clientGeoStopLive();clientGeoLoad();CR_CLIENT_GEO_TIMER=setInterval(()=>clientGeoLoad(true),20000);}
 async function clientGeoLoad(isLive=false){
   const wrap=document.getElementById('cr-client-geo');if(!wrap||CR_CLIENT_GEO_LOADING)return;
@@ -757,29 +779,23 @@ async function clientGeoLoad(isLive=false){
     if(pointError)throw pointError;if(feedError)throw feedError;
     CR_CLIENT_GEO_CACHE={surveyId:s.id,points:(pointRows||[]).map(clientGeoNormalizePoint),feed:(feedRows||[]).map(r=>({quotaLabel:r.quota_label||'Sem cota',status:r.status||'valid',isCalibration:!!r.is_calibration,occurredAt:r.occurred_at||null,synced:r.synced!==false,accuracyM:Number(r.accuracy_m)||0}))};
     clientGeoRender();
-  }catch(ex){
-    wrap.innerHTML='<div class="card"><div class="callout warn"><b>Não foi possível carregar o georreferenciamento.</b><br>Verifique se a migration de georreferenciamento para clientes foi executada no Supabase. Detalhe: '+esc(ex?.message||ex)+'</div></div>';
+  }catch(ex){wrap.innerHTML='<div class="card"><div class="callout warn"><b>Não foi possível carregar o georreferenciamento.</b><br>Verifique se a migration de georreferenciamento para clientes foi executada no Supabase. Detalhe: '+esc(ex?.message||ex)+'</div></div>';
   }finally{CR_CLIENT_GEO_LOADING=false;}
 }
 function clientGeoRender(){
   const wrap=document.getElementById('cr-client-geo');if(!wrap)return;
   const points=clientGeoFilteredPoints(),all=CR_CLIENT_GEO_CACHE.points;
   const total=all.reduce((sum,p)=>sum+p.pointCount,0),valid=all.reduce((sum,p)=>sum+p.validCount,0),rejected=all.reduce((sum,p)=>sum+p.rejectedCount,0),calibration=all.reduce((sum,p)=>sum+p.calibrationCount,0);
-  wrap.innerHTML=`<div class="card client-geo-card"><div class="map-panel-head"><div><div class="map-eyebrow">MONITORAMENTO DA COLETA</div><div class="card-t">Georreferenciamento em tempo real</div><div class="card-d" id="clientGeoSummary">${points.length} área${points.length===1?'':'s'} aproximada${points.length===1?'':'s'} · ${total.toLocaleString('pt-BR')} entrevista${total===1?'':'s'}</div></div><div class="map-panel-actions"><button class="btn btn-out" onclick="clientGeoRefresh()">↻ Atualizar</button></div></div><div class="grid g4 client-geo-stats"><div class="stat"> <div class="s-top"><span class="s-label">Entrevistas</span></div><div class="s-val">${total.toLocaleString('pt-BR')}</div><div class="s-sub">com localização</div></div><div class="stat"><div class="s-top"><span class="s-label">Válidas</span></div><div class="s-val" style="color:var(--teal)">${valid.toLocaleString('pt-BR')}</div><div class="s-sub">consideradas nos resultados</div></div><div class="stat"><div class="s-top"><span class="s-label">Reprovadas</span></div><div class="s-val" style="color:var(--red)">${rejected.toLocaleString('pt-BR')}</div><div class="s-sub">fora dos resultados</div></div><div class="stat"><div class="s-top"><span class="s-label">Calibração</span></div><div class="s-val" style="color:var(--brand)">${calibration.toLocaleString('pt-BR')}</div><div class="s-sub">fora dos resultados</div></div></div><div class="map-toolbar client-geo-toolbar"><label class="map-filter"><span>Exibir no mapa</span><select id="clientGeoFilter" onchange="clientGeoApplyFilter()"><option value="all" ${CR_CLIENT_GEO_FILTER==='all'?'selected':''}>Todas as áreas</option><option value="valid" ${CR_CLIENT_GEO_FILTER==='valid'?'selected':''}>Com entrevistas válidas</option><option value="rejected" ${CR_CLIENT_GEO_FILTER==='rejected'?'selected':''}>Com reprovações</option><option value="calibration" ${CR_CLIENT_GEO_FILTER==='calibration'?'selected':''}>Com calibração</option></select></label><span class="client-geo-privacy-note">Pontos aproximados, sem identificação de pesquisadores.</span></div><div class="map-canvas-wrap"><div id="clientGeoMap" class="collect-map-canvas client-geo-map-canvas" role="application" aria-label="Mapa de áreas aproximadas da coleta"></div><div id="clientGeoMapLoading" class="map-loading" aria-live="polite">Preparando mapa…</div></div><div class="map-panel-foot"><div class="map-legend"><span><i class="map-dot map-dot-latest"></i>Área com coleta</span><span><i class="map-dot map-dot-rejected"></i>Com reprovação</span><span><i class="map-dot map-dot-calibration"></i>Com calibração</span></div><div class="map-note">A localização é arredondada para proteger a privacidade de campo.</div></div></div><div class="card client-geo-feed-card"><div class="card-t">Atividade recente da coleta</div><div class="card-d">Últimas movimentações agregadas, atualizadas automaticamente a cada 20 segundos.</div><div id="clientGeoFeed">${clientGeoFeedMarkup()}</div></div>`;
+  wrap.innerHTML=`<div class="card client-geo-card"><div class="map-panel-head"><div><div class="map-eyebrow">MONITORAMENTO DA COLETA</div><div class="card-t">Georreferenciamento em tempo real</div><div class="card-d" id="clientGeoSummary">${points.length} área${points.length===1?'':'s'} aproximada${points.length===1?'':'s'} · ${total.toLocaleString('pt-BR')} entrevista${total===1?'':'s'}</div></div><div class="map-panel-actions"><button class="btn btn-out" onclick="clientGeoRefresh()">↻ Atualizar</button></div></div><div class="grid g4 client-geo-stats"><div class="stat"><div class="s-top"><span class="s-label">Entrevistas</span></div><div class="s-val">${total.toLocaleString('pt-BR')}</div><div class="s-sub">com localização</div></div><div class="stat"><div class="s-top"><span class="s-label">Válidas</span></div><div class="s-val" style="color:var(--teal)">${valid.toLocaleString('pt-BR')}</div><div class="s-sub">consideradas nos resultados</div></div><div class="stat"><div class="s-top"><span class="s-label">Reprovadas</span></div><div class="s-val" style="color:var(--red)">${rejected.toLocaleString('pt-BR')}</div><div class="s-sub">fora dos resultados</div></div><div class="stat"><div class="s-top"><span class="s-label">Calibração</span></div><div class="s-val" style="color:var(--brand)">${calibration.toLocaleString('pt-BR')}</div><div class="s-sub">fora dos resultados</div></div></div><div class="map-toolbar client-geo-toolbar"><label class="map-filter"><span>Exibir no mapa</span><select id="clientGeoFilter" onchange="clientGeoApplyFilter()"><option value="all" ${CR_CLIENT_GEO_FILTER==='all'?'selected':''}>Todas as áreas</option><option value="valid" ${CR_CLIENT_GEO_FILTER==='valid'?'selected':''}>Com entrevistas válidas</option><option value="rejected" ${CR_CLIENT_GEO_FILTER==='rejected'?'selected':''}>Com reprovações</option><option value="calibration" ${CR_CLIENT_GEO_FILTER==='calibration'?'selected':''}>Com calibração</option></select></label><span class="client-geo-privacy-note">Pontos aproximados, sem identificação de pesquisadores.</span></div><div class="map-canvas-wrap"><div id="clientGeoMap" class="collect-map-canvas client-geo-map-canvas" role="application" aria-label="Mapa de áreas aproximadas da coleta"></div><div id="clientGeoMapLoading" class="map-loading" aria-live="polite">Preparando Google Maps…</div></div><div class="map-panel-foot"><div class="map-legend"><span><i class="map-dot map-dot-latest"></i>Área com coleta</span><span><i class="map-dot map-dot-rejected"></i>Com reprovação</span><span><i class="map-dot map-dot-calibration"></i>Com calibração</span></div><div class="map-note">A localização é arredondada para proteger a privacidade de campo.</div></div></div><div class="card client-geo-feed-card"><div class="card-t">Atividade recente da coleta</div><div class="card-d">Últimas movimentações agregadas, atualizadas automaticamente a cada 20 segundos.</div><div id="clientGeoFeed">${clientGeoFeedMarkup()}</div></div>`;
   clientGeoRenderMap();
 }
 function clientGeoFeedMarkup(){const rows=CR_CLIENT_GEO_CACHE.feed||[];const filtered=CR_CLIENT_GEO_FILTER==='all'?rows:rows.filter(r=>CR_CLIENT_GEO_FILTER==='calibration'?r.isCalibration:CR_CLIENT_GEO_FILTER==='rejected'?r.status==='rejected':r.status==='valid'&&!r.isCalibration);return filtered.slice(0,12).map(r=>`<div class="client-geo-feed-row"><span class="client-geo-feed-icon">📍</span><div><b>${esc(r.quotaLabel||'Sem cota')}</b><span>${r.occurredAt?new Date(r.occurredAt).toLocaleString('pt-BR'):'—'} · precisão informada ${r.accuracyM?`±${Math.round(r.accuracyM)}m`:'—'}</span></div><div>${clientGeoStatusPill(r.status,r.isCalibration)}</div></div>`).join('')||'<div class="empty" style="padding:14px 0">Nenhuma atividade corresponde ao filtro.</div>';}
 function clientGeoRenderMap(){
-  const mapEl=document.getElementById('clientGeoMap');if(!mapEl)return;
-  const loading=document.getElementById('clientGeoMapLoading');
-  if(typeof L==='undefined'){if(loading){loading.style.display='flex';loading.textContent='Preparando mapa…';}loadLocalAsset('leaflet').then(()=>{if(document.getElementById('clientGeoMap')===mapEl)clientGeoRenderMap();}).catch(()=>{if(loading){loading.style.display='flex';loading.textContent='Mapa indisponível no momento.';}});return;}
-  if(loading)loading.style.display='none';
-  if(!_clientGeoMap||_clientGeoMap._container!==mapEl){if(_clientGeoMap){try{_clientGeoMap.remove();}catch(e){}}_clientGeoMap=L.map(mapEl,{scrollWheelZoom:true,zoomControl:true,maxZoom:16}).setView([-18.5,-44.9],6);_clientGeoTileLayer=L.tileLayer(COLLECT_MAP_LAYERS.street.url,COLLECT_MAP_LAYERS.street.opts).addTo(_clientGeoMap);_clientGeoMarkerLayer=L.layerGroup().addTo(_clientGeoMap);}
-  _clientGeoMarkerLayer.clearLayers();const points=clientGeoFilteredPoints();
-  points.forEach(p=>{if(!Number.isFinite(p.lat)||!Number.isFinite(p.lng))return;const color=p.rejectedCount>0?'#dc2626':p.calibrationCount>0?'#2563eb':'#059669';const icon=L.divIcon({html:`<span class="client-geo-marker" style="--marker-color:${color}"><b>${p.pointCount}</b></span>`,className:'client-geo-marker-wrap',iconSize:[42,42],iconAnchor:[21,21]});const marker=L.marker([p.lat,p.lng],{icon}).addTo(_clientGeoMarkerLayer);marker.bindTooltip(`${p.pointCount} entrevista${p.pointCount===1?'':'s'} · área aproximada`,{direction:'top',sticky:true});marker.bindPopup(`<div class="map-popup"><div class="map-popup-title">Área aproximada</div><div class="map-popup-meta"><b>${p.pointCount.toLocaleString('pt-BR')}</b> entrevista${p.pointCount===1?'':'s'}<br>Última atualização: ${p.lastAt?new Date(p.lastAt).toLocaleString('pt-BR'):'—'}</div><div class="map-popup-status"><span class="pill pill-green">${p.validCount} válidas</span> ${p.rejectedCount?`<span class="pill pill-red">${p.rejectedCount} reprovadas</span>`:''} ${p.calibrationCount?`<span class="pill pill-blue">${p.calibrationCount} calibração</span>`:''}</div></div>`);});
-  if(points.length&&!_clientGeoDidFit){try{const bounds=L.latLngBounds(points.filter(p=>Number.isFinite(p.lat)&&Number.isFinite(p.lng)).map(p=>[p.lat,p.lng]));if(bounds.isValid())_clientGeoMap.fitBounds(bounds,{padding:[50,50],maxZoom:13});_clientGeoDidFit=true;}catch(e){}}
+  const mapEl=document.getElementById('clientGeoMap');if(!mapEl)return;const loading=document.getElementById('clientGeoMapLoading');
+  if(!window.google?.maps?.Map){if(loading){loading.style.display='flex';loading.textContent='Preparando Google Maps…';}loadGoogleMaps().then(()=>{if(document.getElementById('clientGeoMap')===mapEl)clientGeoRenderMap();}).catch(error=>{if(loading){loading.style.display='flex';loading.textContent=googleMapErrorText(error);}});return;}
+  if(loading)loading.style.display='none';if(!_clientGeoMap||_clientGeoMap._ppElement!==mapEl){if(_clientGeoMarkerLayer){_clientGeoMarkerLayer.forEach(marker=>marker.setMap(null));}_clientGeoMarkerLayer=[];_clientGeoMap=new google.maps.Map(mapEl,{center:{lat:-18.5,lng:-44.9},zoom:6,mapTypeId:'roadmap',mapTypeControl:true,fullscreenControl:true,streetViewControl:false,gestureHandling:'greedy'});_clientGeoMap._ppElement=mapEl;_clientGeoInfoWindow=new google.maps.InfoWindow();}
+  _clientGeoMarkerLayer.forEach(marker=>marker.setMap(null));_clientGeoMarkerLayer=[];const points=clientGeoFilteredPoints();points.forEach(point=>{if(!Number.isFinite(point.lat)||!Number.isFinite(point.lng))return;const color=point.rejectedCount>0?'#dc2626':point.calibrationCount>0?'#2563eb':'#059669',marker=new google.maps.Marker({map:_clientGeoMap,position:{lat:point.lat,lng:point.lng},icon:googleMarkerIcon(color,10),label:{text:String(point.pointCount),color:'#ffffff',fontWeight:'700'},title:`${point.pointCount} entrevistas · área aproximada`});marker.addListener('click',()=>{_clientGeoInfoWindow.setContent(`<div class="map-popup"><div class="map-popup-title">Área aproximada</div><div class="map-popup-meta"><b>${point.pointCount.toLocaleString('pt-BR')}</b> entrevista${point.pointCount===1?'':'s'}<br>Última atualização: ${point.lastAt?new Date(point.lastAt).toLocaleString('pt-BR'):'—'}</div><div class="map-popup-status"><span class="pill pill-green">${point.validCount} válidas</span> ${point.rejectedCount?`<span class="pill pill-red">${point.rejectedCount} reprovadas</span>`:''} ${point.calibrationCount?`<span class="pill pill-blue">${point.calibrationCount} calibração</span>`:''}</div></div>`);_clientGeoInfoWindow.open({map:_clientGeoMap,anchor:marker});});_clientGeoMarkerLayer.push(marker);});if(points.length&&!_clientGeoDidFit){try{const bounds=new google.maps.LatLngBounds();points.filter(point=>Number.isFinite(point.lat)&&Number.isFinite(point.lng)).forEach(point=>bounds.extend({lat:point.lat,lng:point.lng}));if(!bounds.isEmpty()){_clientGeoMap.fitBounds(bounds,{top:50,right:50,bottom:50,left:50});_clientGeoDidFit=true;}}catch(e){}}
 }
-
 let RP_HEATMAP_QUESTION_ID=null,RP_HEATMAP_VALUE='',RP_HEATMAP_ROWS=[],RP_HEATMAP_LOADING=false;
 let CR_HEATMAP_QUESTION_ID=null,CR_HEATMAP_VALUE='',CR_HEATMAP_ROWS=[],CR_HEATMAP_LOADING=false;
 function heatmapQuestionOptions(qs,selected){return qs.map(q=>`<option value="${q.dbId}" ${q.dbId===selected?'selected':''}>${esc(q.text||'(pergunta sem texto)')}</option>`).join('');}
@@ -2601,11 +2617,9 @@ function stopCollectLive(){
 
 const COLLECT_MAP_MAX_POINTS=120; /* cada coleta fica registrada no mapa (não só a mais recente); limite só por desempenho/legibilidade */
 /* dois estilos de fundo: "rua" (mapa vetorial moderno, sem key) e "satélite" (imagem de satélite) */
-const COLLECT_MAP_LAYERS={
-  street:{url:'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',opts:{maxZoom:19,subdomains:'abcd',attribution:'© OpenStreetMap, © CARTO'}},
-  sat:{url:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',opts:{maxZoom:19,attribution:'© Esri, Maxar, Earthstar Geographics'}}
-};
+const COLLECT_MAP_LAYERS={street:'roadmap',sat:'satellite'};
 let _collectMapKind='street',_collectMapTileLayer=null;
+let _collectMapMarkerLayer=[],_collectMapInfoWindow=null;
 let _collectMapDidFit=false;
 let _collectMapFilters={researcher:'all',status:'all',latest:false};
 function collectMapReadFilters(){
@@ -2642,16 +2656,7 @@ function collectMapRefresh(){
   if(COLLECT_IDX==null)return;
   pollCollectEvents(COLLECT_IDX);
 }
-function setCollectMapLayer(kind){
-  if(!_collectMap||!COLLECT_MAP_LAYERS[kind])return;
-  _collectMapKind=kind;
-  if(_collectMapTileLayer){try{_collectMap.removeLayer(_collectMapTileLayer);}catch(e){}}
-  const cfg=COLLECT_MAP_LAYERS[kind];
-  _collectMapTileLayer=L.tileLayer(cfg.url,cfg.opts).addTo(_collectMap);
-  _collectMapTileLayer.bringToBack();
-  const wrap=document.getElementById('collectMapLayerToggle');
-  if(wrap)wrap.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.layer===kind));
-}
+function setCollectMapLayer(kind){if(!_collectMap||!window.google?.maps)return;_collectMapKind=kind==='sat'?'sat':'street';_collectMap.setMapTypeId(COLLECT_MAP_LAYERS[_collectMapKind]);}
 function mapDisplayPoint(e,events){
   const key=x=>`${x.lat.toFixed(4)},${x.lng.toFixed(4)}`;
   const same=events.filter(x=>key(x)===key(e));
@@ -2664,74 +2669,13 @@ function mapDisplayPoint(e,events){
   return [e.lat+latOffset,e.lng+lngOffset];
 }
 function renderCollectMap(idx){
-  const mapEl=document.getElementById('collectMap');
-  if(!mapEl)return;
-  const mapLoading=document.getElementById('collectMapLoading');
-  if(typeof L==='undefined'){
-    mapEl.innerHTML='';
-    if(mapLoading){mapLoading.textContent='Preparando mapa…';mapLoading.style.display='flex';}
-    loadLocalAsset('leaflet').then(()=>{if(document.getElementById('collectMap')===mapEl)renderCollectMap(idx);})
-      .catch(()=>{if(document.getElementById('collectMap')===mapEl&&mapLoading){mapLoading.textContent='Mapa indisponível — não foi possível carregar o mapa local.';mapLoading.style.display='flex';}});
-    return;
-  }
+  const mapEl=document.getElementById('collectMap');if(!mapEl)return;const mapLoading=document.getElementById('collectMapLoading');
+  if(!window.google?.maps?.Map){if(mapLoading){mapLoading.textContent='Preparando Google Maps…';mapLoading.style.display='flex';}loadGoogleMaps().then(()=>{if(document.getElementById('collectMap')===mapEl)renderCollectMap(idx);}).catch(error=>{if(mapLoading){mapLoading.textContent=googleMapErrorText(error);mapLoading.style.display='flex';}});return;}
   if(mapLoading)mapLoading.style.display='none';
-  if(!_collectMap||_collectMap._container!==mapEl){
-    if(_collectMap){try{_collectMap.remove();}catch(e){}}
-    _collectMapTileLayer=null;
-    _collectMapDidFit=false;
-    _collectMap=L.map(mapEl,{scrollWheelZoom:true,zoomControl:true}).setView([-18.5,-44.9],6);
-    setCollectMapLayer(_collectMapKind);
-    _collectMarkerLayer=L.layerGroup().addTo(_collectMap);
-    const LayerToggle=L.Control.extend({
-      options:{position:'topright'},
-      onAdd:function(){
-        const div=L.DomUtil.create('div','map-layer-toggle');
-        div.id='collectMapLayerToggle';
-        div.innerHTML=`<button data-layer="street" class="${_collectMapKind==='street'?'on':''}">Mapa</button><button data-layer="sat" class="${_collectMapKind==='sat'?'on':''}">Satélite</button>`;
-        L.DomEvent.disableClickPropagation(div);
-        div.querySelectorAll('button').forEach(b=>{b.onclick=()=>setCollectMapLayer(b.dataset.layer);});
-        return div;
-      }
-    });
-    new LayerToggle().addTo(_collectMap);
-  }
-  _collectMarkerLayer.clearLayers();
-  const s=SURVEYS[idx];if(!s)return;
-  const team=s.team||[];
-  const colorFor=name=>COLLECT_COLORS[team.indexOf(name)%COLLECT_COLORS.length]||'#2563eb';
-  const allEvents=eventsForSurveyIdx(idx).filter(e=>Number.isFinite(e.lat)&&Number.isFinite(e.lng));
-  const filtered=collectMapFilterEvents(allEvents);
-  const events=filtered.slice(0,COLLECT_MAP_MAX_POINTS);
-  const shown=events.length;
-  const total=filtered.length;
-  const latestTsByName={},latestIdByName={};
-  allEvents.forEach(e=>{
-    if(!(e.name in latestTsByName)||e.ts>latestTsByName[e.name]){latestTsByName[e.name]=e.ts;latestIdByName[e.name]=e.id;}
-  });
-  events.forEach(e=>{
-    const color=colorFor(e.name);
-    const isLatest=latestIdByName[e.name]===e.id;
-    const markerState=e.status==='rejected'?'is-rejected':e.calibration?'is-calibration':isLatest?'is-latest':'is-history';
-    const icon=L.divIcon({
-      html:`<span class="map-marker ${markerState}" style="--marker-color:${color}"><i></i></span>`,
-      className:'map-marker-wrap',iconSize:[36,42],iconAnchor:[18,38]});
-    const marker=L.marker(mapDisplayPoint(e,events),{icon}).addTo(_collectMarkerLayer);
-    marker.bindTooltip(buildMapTooltip(e,isLatest),{direction:'top',offset:[0,-18],sticky:true,className:'map-hover-tooltip'});
-    marker.bindPopup(buildMapPopup(e,isLatest));
-    marker.on('click',()=>goToAuditFromMap(e.id));
-    marker.on('mouseover',()=>marker.openTooltip());
-  });
-  const researchers=new Set(events.map(e=>e.name));
-  const summary=document.getElementById('collectMapSummary');
-  if(summary)summary.textContent=shown?`${shown} ponto${shown===1?'':'s'} visível${shown===1?'':'is'} · ${researchers.size} pesquisador${researchers.size===1?'':'es'}${shown<total?' · limite de visualização aplicado':''}`:'Nenhum ponto corresponde aos filtros atuais.';
-  const note=document.getElementById('collectMapNote');
-  if(note)note.textContent=shown<total?`Mostrando ${shown} de ${total} coletas após os filtros. Clique em um ponto para abrir a auditoria.`:'Clique em um ponto para abrir a coleta na auditoria.';
-  const pts=events.map(e=>mapDisplayPoint(e,events));
-  if(pts.length&&!_collectMapDidFit){try{
-    if(pts.length===1)_collectMap.setView(pts[0],17,{animate:false});
-    else _collectMap.fitBounds(pts,{padding:[70,70],maxZoom:18});
-    _collectMapDidFit=true;
-  }catch(e){}}
+  if(!_collectMap||_collectMap._ppElement!==mapEl){if(_collectMapMarkerLayer){_collectMapMarkerLayer.forEach(marker=>marker.setMap(null));}_collectMapMarkerLayer=[];_collectMapDidFit=false;_collectMap=new google.maps.Map(mapEl,{center:{lat:-18.5,lng:-44.9},zoom:6,mapTypeId:COLLECT_MAP_LAYERS[_collectMapKind],mapTypeControl:true,fullscreenControl:true,streetViewControl:false,gestureHandling:'greedy'});_collectMap._ppElement=mapEl;_collectMapInfoWindow=new google.maps.InfoWindow();}
+  _collectMapMarkerLayer.forEach(marker=>marker.setMap(null));_collectMapMarkerLayer=[];const s=SURVEYS[idx];if(!s)return;const team=s.team||[];const colorFor=name=>COLLECT_COLORS[team.indexOf(name)%COLLECT_COLORS.length]||'#2563eb';const allEvents=eventsForSurveyIdx(idx).filter(e=>Number.isFinite(e.lat)&&Number.isFinite(e.lng));const filtered=collectMapFilterEvents(allEvents);const events=filtered.slice(0,COLLECT_MAP_MAX_POINTS);const shown=events.length,total=filtered.length,latestTsByName={},latestIdByName={};allEvents.forEach(e=>{if(!(e.name in latestTsByName)||e.ts>latestTsByName[e.name]){latestTsByName[e.name]=e.ts;latestIdByName[e.name]=e.id;}});
+  events.forEach(e=>{const color=colorFor(e.name),isLatest=latestIdByName[e.name]===e.id,markerState=e.status==='rejected'?'is-rejected':e.calibration?'is-calibration':isLatest?'is-latest':'is-history',position=mapDisplayPoint(e,events),marker=new google.maps.Marker({map:_collectMap,position:{lat:position[0],lng:position[1]},icon:googleMarkerIcon(color,markerState==='is-latest'?10:8),title:`${e.name} · ${e.cota||'Sem cota'}`});marker.addListener('click',()=>goToAuditFromMap(e.id));marker.addListener('mouseover',()=>{_collectMapInfoWindow.setContent(buildMapPopup(e,isLatest));_collectMapInfoWindow.open({map:_collectMap,anchor:marker});});_collectMapMarkerLayer.push(marker);});
+  const researchers=new Set(events.map(e=>e.name));const summary=document.getElementById('collectMapSummary');if(summary)summary.textContent=shown?`${shown} ponto${shown===1?'':'s'} visível${shown===1?'':'is'} · ${researchers.size} pesquisador${researchers.size===1?'':'es'}${shown<total?' · limite de visualização aplicado':''}`:'Nenhum ponto corresponde aos filtros atuais.';const note=document.getElementById('collectMapNote');if(note)note.textContent=shown<total?`Mostrando ${shown} de ${total} coletas após os filtros. Clique em um ponto para abrir a coleta na auditoria.`:'Clique em um ponto para abrir a coleta na auditoria.';const pts=events.map(e=>{const point=mapDisplayPoint(e,events);return {lat:point[0],lng:point[1]};});if(pts.length&&!_collectMapDidFit){try{const bounds=new google.maps.LatLngBounds();pts.forEach(point=>bounds.extend(point));if(pts.length===1){_collectMap.setCenter(pts[0]);_collectMap.setZoom(17);}else _collectMap.fitBounds(bounds,{top:70,right:70,bottom:70,left:70});_collectMapDidFit=true;}catch(e){}}
 }
 function buildMapTooltip(e,isLatest){
   const state=e.status==='rejected'?'Reprovada':e.calibration?'Calibração':isLatest?'Última coleta':'Coleta registrada';

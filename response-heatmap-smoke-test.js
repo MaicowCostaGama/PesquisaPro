@@ -18,11 +18,12 @@ const checks = [
   ['autorização master ou cliente liberado', sql.includes('public.is_staff() or public.client_results_released')],
   ['respostas somente válidas', sql.includes("ce.status='valid'") && sql.includes('ce.is_calibration=false')],
   ['coordenadas arredondadas', sql.includes('round(ce.lat::numeric,3)') && sql.includes('round(ce.lng::numeric,3)')],
-  ['círculos ponderados por intensidade', app.includes('L.circle') && app.includes('responseHeatmapColor') && app.includes('point_count')],
+  ['círculos Google ponderados por intensidade', app.includes('google.maps.Circle') && app.includes('responseHeatmapColor') && app.includes('point_count')],
   ['legenda de intensidade', app.includes('Menor concentração') && app.includes('Maior concentração')],
   ['cliente protegido antes da RPC', app.includes('clientResultsReleasedForSurvey(clientSelf(),clientSelfSurvey())')],
   ['estilos responsivos', css.includes('.response-heatmap-controls') && css.includes('.response-heatmap-map') && css.includes('@media(max-width:760px)')],
-  ['cache atualizado', html.includes('app.js?v=20260908220000')]
+  ['Google Maps configurado separadamente', app.includes('loadGoogleMaps') && fs.existsSync(require('path').join(__dirname,'google-maps-config.js'))],
+  ['cache atualizado', html.includes('app.js?v=20260908230000') && html.includes('google-maps-config.js?v=20260908230000')]
 ];
 for (const [label, ok] of checks) { assert.ok(ok, label); console.log('PASS — '+label); }
 console.log('response-heatmap-smoke-test: PASS');

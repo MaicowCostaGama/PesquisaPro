@@ -138,7 +138,31 @@ async function doLogin(){
 }
 
 function passwordResetRedirect(){
-  return window.location.origin+window.location.pathname+'?redefinir-senha=1';
+  const origin=window.location.origin;
+  return origin+'/app.html?redefinir-senha=1';
+}
+function passwordRecoveryLinkPresent(){
+  const params=new URLSearchParams(window.location.search);
+  const hash=new URLSearchParams(String(window.location.hash||'').replace(/^#/,''));
+  return params.get('redefinir-senha')==='1'||params.get('code')||hash.get('type')==='recovery'||(hash.get('access_token')&&hash.get('refresh_token'));
+}
+async function preparePasswordRecoverySession(){
+  if(!passwordRecoveryLinkPresent())return false;
+  const params=new URLSearchParams(window.location.search);
+  const hash=new URLSearchParams(String(window.location.hash||'').replace(/^#/,''));
+  try{
+    const code=params.get('code');
+    if(code){const {error}=await sb.auth.exchangeCodeForSession(code);if(error)throw error;}
+    const accessToken=hash.get('access_token'),refreshToken=hash.get('refresh_token');
+    if(accessToken&&refreshToken){const {error}=await sb.auth.setSession({access_token:accessToken,refresh_token:refreshToken});if(error)throw error;}
+    openPasswordRecovery();
+    return true;
+  }catch(ex){
+    console.error('Falha ao preparar recuperação de senha:',ex);
+    const errEl=document.getElementById('li-error');
+    if(errEl){errEl.textContent='O link de recuperação expirou ou não está autorizado. Solicite um novo link e abra-o no mesmo navegador.';errEl.style.display='block';}
+    return false;
+  }
 }
 async function requestOwnPasswordReset(){
   const email=(document.getElementById('li-email')?.value||'').trim();
@@ -192,9 +216,7 @@ async function logout(){
   document.getElementById('li-pass').value='';
 }
 
-function isPasswordRecoveryLink(){
-  return new URLSearchParams(window.location.search).get('redefinir-senha')==='1'||window.location.hash.includes('type=recovery');
-}
+function isPasswordRecoveryLink(){return passwordRecoveryLinkPresent();}
 sb.auth.onAuthStateChange((event)=>{
   if(event==='PASSWORD_RECOVERY')openPasswordRecovery();
 });
@@ -203,13 +225,11 @@ sb.auth.onAuthStateChange((event)=>{
    links de recuperação ficam na tela própria para o usuário definir a nova senha. */
 (async function checkExistingSession(){
   try{
-    if(isPasswordRecoveryLink())openPasswordRecovery();
+    const recovery=await preparePasswordRecoverySession();
     const {data}=await sb.auth.getSession();
-    if(data&&data.session&&data.session.user){
-      if(isPasswordRecoveryLink()){openPasswordRecovery();return;}
-      await afterLogin(data.session.user);
-    }
-  }catch(ex){ /* sem sessão anterior ou sem conexão — fica na tela de login normalmente */ }
+    if(recovery||isPasswordRecoveryLink()){openPasswordRecovery();return;}
+    if(data&&data.session&&data.session.user)await afterLogin(data.session.user);
+  }catch(ex){console.error('Falha ao inicializar sessão:',ex);}
 })();
 
 function buildSidebar(){

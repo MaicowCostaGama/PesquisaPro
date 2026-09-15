@@ -4000,6 +4000,8 @@ function profileRowToUser(row){
     pixKey:row.pix_key||'',pixDoc:row.pix_doc||'',pixBank:row.pix_bank||'',pixAg:row.pix_ag||'',pixAcc:row.pix_acc||''};
   return {...base,cpf:row.cpf||'',cidade:row.cidade||''}; // admpro, vendedor, indicador
 }
+function isValidUuid(value){return typeof value==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);}
+function userIdForEdit(index){const id=USERS[index]?.id;if(!isValidUuid(id)){alert('Este cadastro não possui um identificador válido no banco. Nenhum dado foi alterado. Recarregue a lista ou peça a reconciliação do cadastro antes de editar.');return null;}return id;}
 function userToProfileRow(rec,role){
   const row={role,status:rec.status||'ativo',name:rec.name,email:rec.email||null,phone:rec.phone||null};
   if(staffRoleOf(role)){row.cpf=rec.cpf||null;row.birth=rec.birth||null;row.cidade=rec.addr||null;row.doc_url=rec.doc||null;}
@@ -4067,15 +4069,48 @@ const SIGNUP_PILL={
 };
 let SIGNUPS_LOADED=false;
 let SIGNUPS_LOAD_PROMISE=null;
-function signupRowToLocal(row){return {id:row.id,name:row.name||'',cpf:row.cpf||'',birth:row.birth||'',email:row.email||'',phone:row.phone||'',cidade:row.cidade||'',rua:row.rua||'',numero:row.numero||'',cep:row.cep||'',cidadesAtuacao:(row.signup_cidades_atuacao||[]).map(c=>c.cidade),role:'pesq',docFoto:row.doc_foto_url||'',docComprovante:row.doc_comprovante_url||'',pixKey:row.pix_key||'',pixDoc:row.pix_doc||'',pixBank:row.pix_bank||'',pixAg:row.pix_ag||'',pixAcc:row.pix_acc||'',status:row.status||'novo',note:row.note||'',sent:row.sent_at?new Date(row.sent_at).toLocaleString('pt-BR'):'agora',recruiterId:row.recruiter_id||null,recruiterCode:row.recruiter_code||'',recruiterCaptureValue:Number(row.recruiter_capture_value)||0};}
+function signupRowToLocal(row){return {id:row.id,name:row.name||'',cpf:row.cpf||'',birth:row.birth||'',email:row.email||'',phone:row.phone||'',cidade:row.cidade||'',rua:row.rua||'',numero:row.numero||'',cep:row.cep||'',cidadesAtuacao:(row.signup_cidades_atuacao||[]).map(c=>c.cidade),role:'pesq',docFoto:row.doc_foto_url||'',docComprovante:row.doc_comprovante_url||'',pixKey:row.pix_key||'',pixDoc:row.pix_doc||'',pixBank:row.pix_bank||'',pixAg:row.pix_ag||'',pixAcc:row.pix_acc||'',status:row.status||'novo',note:row.note||'',sent:row.sent_at?new Date(row.sent_at).toLocaleString('pt-BR'):'agora',recruiterId:row.recruiter_id||null,recruiterCode:row.recruiter_code||'',recruiterCaptureValue:Number(row.recruiter_capture_value)||0,approvedProfileId:row.approved_profile_id||null};}
+function signupPendingRows(){return SIGNUPS.filter(s=>['novo','diligencia'].includes(s.status));}
+function signupOrphanRows(){return SIGNUPS.filter(s=>s.status==='aprovado'&&!isValidUuid(s.approvedProfileId));}
+function signupApprovalRecord(s){return {name:s.name,cpf:s.cpf,birth:s.birth,email:s.email,phone:s.phone,cidade:s.cidade,rua:s.rua||'',numero:s.numero||'',cep:s.cep||'',role:'pesq',status:'ativo',docFoto:s.docFoto,docComprovante:s.docComprovante,cidadesAtuacao:s.cidadesAtuacao||[],pixKey:s.pixKey||'',pixDoc:s.pixDoc||'',pixBank:s.pixBank||'',pixAg:s.pixAg||'',pixAcc:s.pixAcc||''};}
+function signupTemporaryPassword(){return 'Pp-'+crypto.randomUUID()+'-9a';}
+async function signupEnsureApprovedProfile(i){
+  const s=SIGNUPS[i];
+  if(!s||!isValidUuid(s.id))throw new Error('Cadastro sem ID UUID válido; nenhum dado foi alterado.');
+  if(!s.email)throw new Error('O cadastro não possui e-mail; informe um e-mail antes de aprovar.');
+  const rec=signupApprovalRecord(s);
+  let profile=null,newProfile=false,resetSent=false;
+  const {data:existing,error:findError}=await sb.from('profiles').select('id').eq('email',s.email).eq('role','pesq').maybeSingle();
+  if(findError)throw new Error('Não foi possível verificar se o pesquisador já possui perfil: '+findError.message);
+  if(existing?.id){
+    const {data:updated,error:updateError}=await sb.from('profiles').update(userToProfileRow(rec,'pesq')).eq('id',existing.id).select().single();
+    if(updateError)throw new Error('Não foi possível atualizar o perfil existente: '+updateError.message);
+    profile=updated;
+    await syncPesqCidades(profile.id,rec.cidadesAtuacao);
+  }else{
+    profile=await createLoginAndProfile(s.email,signupTemporaryPassword(),'pesq',rec);
+    newProfile=true;
+    await syncPesqCidades(profile.id,rec.cidadesAtuacao);
+    const {error:resetError}=await sb.auth.resetPasswordForEmail(s.email,{redirectTo:passwordResetRedirect()});
+    resetSent=!resetError;
+  }
+  const {error:approvalError}=await sb.from('signups').update({status:'aprovado',approved_profile_id:profile.id,approved_at:new Date().toISOString()}).eq('id',s.id);
+  if(approvalError)throw new Error('Perfil criado, mas não foi possível vincular o cadastro aprovado: '+approvalError.message);
+  const local=profileRowToUser({...profile,profile_cidades_atuacao:(rec.cidadesAtuacao||[]).map(cidade=>({cidade}))});
+  const existingIndex=USERS.findIndex(u=>u.id===profile.id);
+  if(existingIndex>=0)USERS[existingIndex]=local;else USERS.unshift(local);
+  s.status='aprovado';s.approvedProfileId=profile.id;
+  return {newProfile,resetSent};
+}
 function loadSignupsIfNeeded(){
   if(SIGNUPS_LOADED)return Promise.resolve();
   if(SIGNUPS_LOAD_PROMISE)return SIGNUPS_LOAD_PROMISE;
   SIGNUPS_LOAD_PROMISE=(async()=>{
     try{
-      const {data,error}=await sb.from('signups').select('id,name,cpf,birth,email,phone,cidade,rua,numero,cep,doc_foto_url,doc_comprovante_url,pix_key,pix_doc,pix_bank,pix_ag,pix_acc,status,note,sent_at,recruiter_id,recruiter_code,recruiter_capture_value,signup_cidades_atuacao(cidade)').in('status',['novo','diligencia']).order('sent_at',{ascending:false});
-      if(error)throw new Error(error.message);
-      SIGNUPS=(data||[]).map(signupRowToLocal);SIGNUPS_LOADED=true;
+      let result=await sb.from('signups').select('id,name,cpf,birth,email,phone,cidade,rua,numero,cep,doc_foto_url,doc_comprovante_url,pix_key,pix_doc,pix_bank,pix_ag,pix_acc,status,note,sent_at,recruiter_id,recruiter_code,recruiter_capture_value,approved_profile_id,signup_cidades_atuacao(cidade)').in('status',['novo','diligencia','aprovado']).order('sent_at',{ascending:false});
+      if(result.error&&/approved_profile_id|column/i.test(result.error.message||''))result=await sb.from('signups').select('id,name,cpf,birth,email,phone,cidade,rua,numero,cep,doc_foto_url,doc_comprovante_url,pix_key,pix_doc,pix_bank,pix_ag,pix_acc,status,note,sent_at,recruiter_id,recruiter_code,recruiter_capture_value,signup_cidades_atuacao(cidade)').in('status',['novo','diligencia','aprovado']).order('sent_at',{ascending:false});
+      if(result.error)throw new Error(result.error.message);
+      SIGNUPS=(result.data||[]).map(signupRowToLocal);SIGNUPS_LOADED=true;
     }catch(ex){console.warn('Fila de cadastros ainda não disponível:',ex.message);}
     SIGNUPS_LOAD_PROMISE=null;
     const key=document.querySelector('.nav-item.on')?.dataset.key;
@@ -4087,9 +4122,9 @@ function loadSignupsIfNeeded(){
 const CLIENT_STATUS={ativo:'<span class="pill pill-green">● Ativo</span>',prospecto:'<span class="pill pill-amber">● Prospecto</span>',encerrado:'<span class="pill pill-gray">● Encerrado</span>'};
 const USER_TAB_NEW_LABEL={pesq:'pesquisador',cliente:'cliente',admpro:'ADM PesquisaPro',vendedor:'vendedor',indicador:'indicador de clientes',recrutador:'recrutador',staff:'usuário administrativo'};
 PAGES.users=()=>{
-  if(selectedRole!=='admin'){
+  if(!['admin','admpro'].includes(selectedRole)){
     return head('Usuários','Gestão de usuários')+`
-      <div class="callout warn">Apenas usuários com perfil <b>Administrador</b> podem cadastrar e gerenciar usuários. Você está conectado como <b>${ROLE_LABEL[selectedRole]}</b>.</div>`;
+      <div class="callout warn">Apenas o <b>Administrador master</b> e o <b>ADM PesquisaPro</b> podem cadastrar e gerenciar usuários. Você está conectado como <b>${ROLE_LABEL[selectedRole]}</b>.</div>`;
   }
   if(!USERS_LOADED){
     loadUsersIfNeeded();
@@ -4225,11 +4260,12 @@ function userList(){
   <div class="card mb" style="margin-top:16px">
     <div style="display:flex;align-items:center;gap:8px">
       <div class="card-t" style="margin:0">Novos cadastros aguardando aprovação</div>
-      <span class="pill pill-amber" style="margin-left:auto">${SIGNUPS.length}</span>
+      <span class="pill pill-amber" style="margin-left:auto">${signupPendingRows().length}</span>
     </div>
     <div class="card-d">Cadastros feitos pelo próprio pesquisador via link/QR Code de autocadastro. Aprove, diligencie (devolve para correção) ou reprove.</div>
     <div id="signup-list">${signupRows()}</div>
   </div>
+  ${signupOrphanRowsMarkup()}
   <div class="card" style="margin-top:16px">
     <div style="display:flex;align-items:center;gap:10px;cursor:pointer" onclick="userSignupToggle()">
       <div class="card-t" style="margin:0">🔗 Autocadastro — link e QR Code</div>
@@ -4267,8 +4303,9 @@ function userList(){
   </div>${extras}</div>`;
 }
 function signupRows(){
-  if(SIGNUPS.length===0)return '<div class="empty">Nenhum cadastro pendente.</div>';
-  return SIGNUPS.map((s,i)=>{
+  const pending=SIGNUPS.map((s,i)=>({s,i})).filter(({s})=>['novo','diligencia'].includes(s.status));
+  if(pending.length===0)return '<div class="empty">Nenhum cadastro pendente.</div>';
+  return pending.map(({s,i})=>{
     const initials=s.name.split(' ').map(n=>n[0]).slice(0,2).join('');
     const docsOk=s.docFoto&&s.docComprovante;
     const docCount=(s.docFoto?1:0)+(s.docComprovante?1:0);
@@ -4297,8 +4334,14 @@ function signupRows(){
     </div>`;
   }).join('');
 }
+function signupOrphanRowsMarkup(){
+  const orphan=SIGNUPS.map((s,i)=>({s,i})).filter(({s})=>s.status==='aprovado'&&!isValidUuid(s.approvedProfileId));
+  if(!orphan.length)return '';
+  return `<div class="card mb" style="margin-top:16px;border-color:var(--amber,#d97706)"><div style="display:flex;align-items:center;gap:8px"><div class="card-t" style="margin:0">Aprovados aguardando reconciliação</div><span class="pill pill-amber" style="margin-left:auto">${orphan.length}</span></div><div class="card-d">Estes cadastros foram marcados como aprovados, mas ainda não têm perfil vinculado. Nenhum dado será apagado; reconcilie para criar ou localizar o perfil real.</div><div>${orphan.map(({s,i})=>`<div class="signup-row"><div class="signup-top"><div class="avatar" style="width:30px;height:30px;font-size:11px;background:var(--teal)">${initialsOf(s.name)}</div><div style="flex:1"><div style="font-weight:600;font-size:13px">${esc(s.name)} ${SIGNUP_PILL.aprovado}</div><div style="font-size:11px;color:var(--ink3)">${esc(s.cpf)} · ${esc(s.email)} · ${s.sent}</div></div><button class="btn-ghost" onclick="signupView(${i})">Ver dados</button></div><div class="signup-actions"><span class="pill pill-amber">● perfil não vinculado</span><button class="btn-ghost" style="margin-left:auto;color:var(--teal)" onclick="signupReconcileApproved(${i})">Reconciliar perfil</button></div></div>`).join('')}</div></div>`;
+}
 function refreshSignups(){
   const el=document.getElementById('signup-list');if(el)el.innerHTML=signupRows();
+  const orphan= document.querySelector('.signup-orphan-placeholder');if(orphan)orphan.outerHTML=signupOrphanRowsMarkup();
 }
 function renderSignupQR(){
   const box=document.getElementById('signup-qr');if(!box)return;
@@ -4344,15 +4387,25 @@ function signupView(i){
 }
 async function signupApprove(i){
   const s=SIGNUPS[i];
+  if(!s||s.status==='aprovado'){return signupReconcileApproved(i);}
   if(!s.docFoto||!s.docComprovante){alert('Não é possível aprovar: faltam documentos (documento com foto e/ou comprovante de residência). Use "Diligenciar" para solicitar o envio.');return;}
-  if(!confirm('Aprovar o cadastro de '+s.name+'? A pessoa será criada como pesquisador ativo e poderá ser vinculada a pesquisas.'))return;
-  if(s.id){const {error}=await sb.from('signups').update({status:'aprovado',approved_at:new Date().toISOString()}).eq('id',s.id);if(error){alert('Não foi possível registrar a aprovação: '+error.message);return;}}
-  USERS.unshift({name:s.name,cpf:s.cpf,birth:s.birth,email:s.email,phone:s.phone,cidade:s.cidade,rua:s.rua||'',numero:s.numero||'',cep:s.cep||'',
-    role:'pesq',docFoto:s.docFoto,docComprovante:s.docComprovante,cidadesAtuacao:s.cidadesAtuacao||[],status:'ativo',
-    pixKey:s.pixKey||'',pixDoc:s.pixDoc||'',pixBank:s.pixBank||'',pixAg:s.pixAg||'',pixAcc:s.pixAcc||''});
-  SIGNUPS.splice(i,1);
-  alert('Cadastro aprovado. Pesquisador ativo. A captação foi reconhecida para o recrutador.');
-  go('users');
+  if(!confirm('Aprovar o cadastro de '+s.name+'? Será criado um perfil real de pesquisador, vinculado ao cadastro e enviado um link de redefinição de senha para o e-mail informado.'))return;
+  try{
+    const result=await signupEnsureApprovedProfile(i);
+    SIGNUPS.splice(i,1);
+    alert(result.resetSent?'Cadastro aprovado e perfil criado. Um link para definir a senha foi enviado ao e-mail.':'Cadastro aprovado e perfil criado. Oriente o pesquisador a usar a recuperação de senha no primeiro acesso.');
+    go('users');
+  }catch(ex){alert('Não foi possível aprovar sem risco de inconsistência: '+ex.message);console.error(ex);}
+}
+async function signupReconcileApproved(i){
+  const s=SIGNUPS[i];if(!s||s.status!=='aprovado')return;
+  if(!confirm('Este cadastro foi aprovado, mas não possui perfil vinculado. Criar ou localizar o perfil real agora?'))return;
+  try{
+    const result=await signupEnsureApprovedProfile(i);
+    SIGNUPS.splice(i,1);
+    alert(result.newProfile?'Perfil reconciliado e link de senha enviado ao e-mail.':'Perfil existente reconciliado com o cadastro aprovado.');
+    go('users');
+  }catch(ex){alert('Não foi possível reconciliar este cadastro sem risco de inconsistência: '+ex.message);console.error(ex);}
 }
 async function signupDiligence(i){
   const motivo=prompt('O que precisa ser corrigido/complementado? (a pessoa recebe esta mensagem)','Reenvie a foto do documento legível');
@@ -4586,20 +4639,23 @@ function userViewCliente(u,idx){
     </div>
   </div></div>`;
 }
-function approvePesqCommon(i){
+async function approvePesqCommon(i){
   const u=USERS[i];
-  if(!u.docFoto||!u.docComprovante){alert('Não é possível aprovar: faltam documentos (documento com foto e/ou comprovante de residência). Edite o cadastro para anexá-los.');return false;}
+  if(!u||!userIdForEdit(i))return false;
+  if(!u.docFoto||!u.docComprovante){alert('Não é possível aprovar: faltam documentos (documento com foto e/ou comprovante). Edite o cadastro para anexá-los.');return false;}
   if(!confirm('Aprovar o cadastro de '+u.name+'? O pesquisador passará a ficar ativo e poderá ser vinculado a pesquisas.'))return false;
+  const {error}=await sb.from('profiles').update({status:'ativo'}).eq('id',u.id);
+  if(error){alert('Não foi possível registrar a aprovação: '+error.message);return false;}
   u.status='ativo';
-  alert('Cadastro aprovado. Pesquisador ativo.');
+  alert('Cadastro aprovado. Pesquisador ativo e salvo no banco.');
   return true;
 }
-function userPesqApprove(i){
-  if(!approvePesqCommon(i))return;
+async function userPesqApprove(i){
+  if(!await approvePesqCommon(i))return;
   USER_VIEW=i;USER_ARMED=true;go('users');
 }
-function userPesqApproveList(i){
-  if(!approvePesqCommon(i))return;
+async function userPesqApproveList(i){
+  if(!await approvePesqCommon(i))return;
   go('users');
 }
 async function userClienteToggleAccess(i){
@@ -4921,6 +4977,7 @@ function userDocClear(which){
 }
 function userSave(){
   const isNew=USER_EDIT==='new';
+  if(!isNew&&!userIdForEdit(USER_EDIT))return;
   const role=isNew?USER_NEW_ROLE:USERS[USER_EDIT].role;
   if(role==='cliente')return userSaveCliente(isNew);
   if(role==='pesq')return userSavePesq(isNew);

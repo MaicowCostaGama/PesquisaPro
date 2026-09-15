@@ -18,6 +18,7 @@ assert(migration.includes('from auth.users u'),'validação do usuário Auth aus
 assert(migration.includes('create or replace function public.submit_recruiter_signup'),'RPC de senha ausente');
 assert(migration.includes('drop function if exists public.submit_recruiter_signup(text,text,text,date,text,text,text,text,text,text,text[])'),'RPC antiga sem autenticação não é removida');
 assert(migration.includes('p_auth_user_id uuid')&&!migration.includes('p_auth_user_id uuid default null'),'UUID Auth deve ser obrigatório na nova RPC');
+assert(migration.includes('submit_recruiter_signup(text,uuid,text,text,date,text,text,text,text,text,text,text[],text,text)'),'assinatura corrigida da RPC não encontrada');
 assert(app.includes('requestOwnPasswordReset'),'recuperação por e-mail ausente');
 assert(app.includes('completePasswordReset'),'definição de nova senha ausente');
 assert(app.includes('resetPasswordForEmail'),'reset oficial do Supabase ausente');

@@ -8,7 +8,7 @@ const ROLES={
   gerente:{name:'Rafael Dias',role:'Gerente',initials:'RD',
     nav:['dashboard','commercial','sample','reports','finance']},
   pesq:{name:'João Pereira',role:'Pesquisador',initials:'JP',
-    nav:['dashboard-pesq','researcher-guide','app-collect','researcher-badge','my-earnings','my-contract','support']},
+    nav:['dashboard-pesq','researcher-profile','researcher-guide','app-collect','researcher-badge','my-earnings','my-contract','support']},
   cliente:{name:'Prefeitura de Uberlândia',role:'Cliente',initials:'PU',
     nav:['client-progress','client-results']},
 };
@@ -23,6 +23,7 @@ const NAV_META={
   collect:{ico:'⬇',label:'Coleta e campo',group:'Pesquisa'},
   'app-collect':{ico:'▶',label:'Coletar (app)',group:'Campo'},
   'researcher-guide':{ico:'▣',label:'Orientações para coleta',group:'Campo'},
+  'researcher-profile':{ico:'☺',label:'Meus dados',group:'Meu perfil'},
   'researcher-badge':{ico:'▤',label:'Crachá virtual',group:'Meu perfil'},
   support:{ico:'☎',label:'Suporte',group:'Ajuda'},
   reports:{ico:'◫',label:'Relatórios',group:'Análise'},
@@ -45,6 +46,11 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
+let RESEARCHER_PROFILE_CITIES=[];
+let RESEARCHER_PROFILE_CITIES_DRAFT=[];
+let RESEARCHER_PROFILE_CITIES_LOADED=false;
+let RESEARCHER_PROFILE_CITIES_LOADING=false;
+let RESEARCHER_PROFILE_SAVING=false;
 let RESEARCHER_BADGE_UPLOADING=false;
 let PASSWORD_RECOVERY_MODE=false;
 
@@ -179,6 +185,7 @@ async function afterLogin(user){
 
 async function logout(){
   await sb.auth.signOut();
+  RESEARCHER_PROFILE_CITIES=[];RESEARCHER_PROFILE_CITIES_DRAFT=[];RESEARCHER_PROFILE_CITIES_LOADED=false;
   CURRENT_PROFILE=null;
   document.getElementById('app').classList.remove('show');
   document.getElementById('login').style.display='flex';
@@ -440,6 +447,91 @@ async function loadDashQuotasIfNeeded(){
   DASH_QUOTA_LOADED=true;DASH_QUOTA_LOADING=false;
   const onKey=document.querySelector('.nav-item.on');
   if(onKey&&onKey.dataset.key==='dashboard-pesq')go('dashboard-pesq');
+}
+async function loadResearcherProfileCities(){
+  if(!CURRENT_PROFILE?.id||CURRENT_PROFILE.role!=='pesq'||RESEARCHER_PROFILE_CITIES_LOADED||RESEARCHER_PROFILE_CITIES_LOADING)return;
+  RESEARCHER_PROFILE_CITIES_LOADING=true;
+  try{
+    const {data,error}=await sb.from('profile_cidades_atuacao').select('cidade').eq('profile_id',CURRENT_PROFILE.id).order('cidade',{ascending:true});
+    if(error)throw new Error(error.message);
+    RESEARCHER_PROFILE_CITIES=(data||[]).map(row=>row.cidade).filter(Boolean).slice(0,5);
+    RESEARCHER_PROFILE_CITIES_DRAFT=RESEARCHER_PROFILE_CITIES.slice();
+    CURRENT_PROFILE.cidadesAtuacao=RESEARCHER_PROFILE_CITIES.slice();
+  }catch(ex){console.error('Não foi possível carregar cidades do pesquisador:',ex);}
+  finally{
+    RESEARCHER_PROFILE_CITIES_LOADED=true;RESEARCHER_PROFILE_CITIES_LOADING=false;
+    const key=document.querySelector('.nav-item.on')?.dataset.key;
+    if(key==='researcher-profile')go(key);
+  }
+}
+function researcherProfileCityKey(value){return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();}
+function researcherProfileCitiesMarkup(){
+  const selected=RESEARCHER_PROFILE_CITIES_DRAFT||[];
+  const chips=selected.map(city=>`<span class="chip on" style="margin:2px">${esc(city)} <button type="button" class="chip-remove" aria-label="Remover ${esc(city)}" onclick="researcherProfileCityRemove('${esc(city).replace(/'/g,'&#39;')}')">×</button></span>`).join('')||'<span style="color:var(--ink3);font-size:12.5px">Nenhuma cidade selecionada.</span>';
+  if(selected.length>=5)return `<div style="margin-bottom:8px">${chips}</div><div class="callout warn" style="font-size:12px">Limite de 5 cidades atingido. Remova uma para adicionar outra.</div>`;
+  return `<div style="margin-bottom:8px">${chips}</div><input class="inp" id="researcher-profile-city-search" placeholder="Buscar cidade…" oninput="researcherProfileCitySearch(this.value)" autocomplete="off"><div id="researcher-profile-city-suggest" class="geo-box" style="display:none;margin-top:6px;max-height:170px"></div>`;
+}
+function researcherProfileCitySearch(query){
+  const box=document.getElementById('researcher-profile-city-suggest');if(!box)return;
+  const q=researcherProfileCityKey(String(query||'').trim());
+  if(q.length<2){box.style.display='none';box.innerHTML='';return;}
+  const all=Array.isArray(window.PP_PUBLIC_CITIES)?window.PP_PUBLIC_CITIES:[];
+  const found=all.filter(city=>!RESEARCHER_PROFILE_CITIES_DRAFT.includes(city)&&researcherProfileCityKey(city).includes(q)).slice(0,8);
+  box.innerHTML=found.length?found.map(city=>`<div class="geo-city-row" onclick="researcherProfileCityAdd('${esc(city).replace(/'/g,'&#39;')}')">${esc(city)}</div>`).join(''):'<div class="geo-city-row" style="cursor:default;color:var(--ink3)">Nenhuma cidade encontrada</div>';
+  box.style.display='';
+}
+function researcherProfileCityAdd(city){
+  if(!city||RESEARCHER_PROFILE_CITIES_DRAFT.includes(city))return;
+  if(RESEARCHER_PROFILE_CITIES_DRAFT.length>=5){alert('Você pode escolher no máximo cinco cidades de atuação.');return;}
+  RESEARCHER_PROFILE_CITIES_DRAFT.push(city);
+  const wrap=document.getElementById('researcher-profile-cities-wrap');if(wrap)wrap.innerHTML=researcherProfileCitiesMarkup();
+}
+function researcherProfileCityRemove(city){
+  RESEARCHER_PROFILE_CITIES_DRAFT=RESEARCHER_PROFILE_CITIES_DRAFT.filter(item=>item!==city);
+  const wrap=document.getElementById('researcher-profile-cities-wrap');if(wrap)wrap.innerHTML=researcherProfileCitiesMarkup();
+}
+PAGES['researcher-profile']=()=>{
+  if(CURRENT_PROFILE?.role!=='pesq')return head('Meus dados','Área disponível apenas para pesquisadores')+'<div class="empty">Este recurso está disponível no perfil de pesquisador.</div>';
+  if(!RESEARCHER_PROFILE_CITIES_LOADED){loadResearcherProfileCities();return head('Meus dados','Carregando seus dados cadastrais…')+'<div class="empty">Carregando…</div>';}
+  const p=CURRENT_PROFILE||{};
+  return head('Meus dados','Corrija seus dados cadastrais e mantenha suas cidades de atuação atualizadas')+`<div class="researcher-profile-page">
+    <div class="callout mb"><strong>Você pode corrigir seus dados pessoais e de contato.</strong> CPF, e-mail, status, aprovação e documentos oficiais permanecem protegidos e são atualizados somente pela gestão. O PIX é opcional e pode ser informado depois.</div>
+    <div class="grid g2">
+      <section class="card"><div class="card-t">Dados pessoais</div><div class="card-d">Atualize as informações usadas para contato e identificação.</div>
+        <div class="field-row mb"><div><label class="lbl">Nome completo *</label><input class="inp" id="researcher-profile-name" value="${esc(p.name||'')}" autocomplete="name"></div><div><label class="lbl">Data de nascimento</label><input class="inp" id="researcher-profile-birth" type="date" value="${esc(p.birth||'')}"></div></div>
+        <div class="field-row mb"><div><label class="lbl">CPF</label><input class="inp" value="${esc(p.cpf||'')}" disabled></div><div><label class="lbl">E-mail</label><input class="inp" value="${esc(p.email||'')}" disabled></div></div>
+        <div><label class="lbl">Celular / WhatsApp *</label><input class="inp" id="researcher-profile-phone" value="${esc(p.phone||'')}" autocomplete="tel"></div>
+      </section>
+      <section class="card"><div class="card-t">Endereço</div><div class="card-d">Corrija o local onde você mora para manter seu cadastro atualizado.</div>
+        <div class="mb"><label class="lbl">Cidade onde mora *</label><input class="inp" id="researcher-profile-cidade" value="${esc(p.cidade||'')}" placeholder="Cidade/UF"></div>
+        <div class="field-row mb"><div><label class="lbl">Rua</label><input class="inp" id="researcher-profile-rua" value="${esc(p.rua||'')}"></div><div><label class="lbl">Número</label><input class="inp" id="researcher-profile-numero" value="${esc(p.numero||'')}"></div></div>
+        <div><label class="lbl">CEP</label><input class="inp" id="researcher-profile-cep" value="${esc(p.cep||'')}" inputmode="numeric"></div>
+      </section>
+    </div>
+    <section class="card mb"><div class="card-t">Cidades em que pode atuar *</div><div class="card-d">Escolha de uma a cinco cidades. Essas informações ajudam a equipe a encontrar pesquisas compatíveis.</div><div id="researcher-profile-cities-wrap">${researcherProfileCitiesMarkup()}</div></section>
+    <section class="card mb"><div class="card-t">Dados de pagamento <span class="pill pill-gray">Opcional</span></div><div class="card-d">Você pode informar ou corrigir o PIX agora ou depois. Ele será usado somente para repasses aprovados.</div>
+      <div class="field-row mb"><div><label class="lbl">Chave PIX</label><input class="inp" id="researcher-profile-pix-key" value="${esc(p.pix_key||'')}" placeholder="CPF, e-mail, celular ou chave aleatória"></div><div><label class="lbl">Banco</label><input class="inp" id="researcher-profile-pix-bank" value="${esc(p.pix_bank||'')}"></div></div>
+      <div class="field-row"><div><label class="lbl">CPF/CNPJ do titular</label><input class="inp" id="researcher-profile-pix-doc" value="${esc(p.pix_doc||'')}"></div><div><label class="lbl">Agência / conta</label><input class="inp" id="researcher-profile-pix-account" value="${esc([p.pix_ag,p.pix_acc].filter(Boolean).join(' / '))}"></div></div>
+    </section>
+    <div class="researcher-profile-actions"><button class="btn btn-fill" onclick="saveResearcherOwnProfile()" ${RESEARCHER_PROFILE_SAVING?'disabled':''}>${RESEARCHER_PROFILE_SAVING?'Salvando…':'Salvar meus dados'}</button><button class="btn btn-out" onclick="go('dashboard-pesq')">Cancelar</button></div>
+  </div>`;
+};
+async function saveResearcherOwnProfile(){
+  if(RESEARCHER_PROFILE_SAVING||!CURRENT_PROFILE?.id||CURRENT_PROFILE.role!=='pesq')return;
+  const get=id=>(document.getElementById(id)?.value||'').trim();
+  const name=get('researcher-profile-name'),birth=get('researcher-profile-birth'),phone=get('researcher-profile-phone'),cidade=get('researcher-profile-cidade'),rua=get('researcher-profile-rua'),numero=get('researcher-profile-numero'),cep=get('researcher-profile-cep');
+  const cities=(RESEARCHER_PROFILE_CITIES_DRAFT||[]).filter(Boolean).slice(0,5);
+  if(!name||!phone||!cidade){alert('Preencha nome completo, celular e cidade onde mora.');return;}
+  if(!cities.length){alert('Escolha pelo menos uma cidade em que pode atuar.');return;}
+  RESEARCHER_PROFILE_SAVING=true;go('researcher-profile');
+  try{
+    const account=(get('researcher-profile-pix-account')||'').split('/').map(v=>v.trim());
+    const {error}=await sb.rpc('update_my_researcher_profile',{p_name:name,p_birth:birth||null,p_phone:phone,p_cidade:cidade,p_rua:rua||null,p_numero:numero||null,p_cep:cep||null,p_pix_key:get('researcher-profile-pix-key')||null,p_pix_doc:get('researcher-profile-pix-doc')||null,p_pix_bank:get('researcher-profile-pix-bank')||null,p_pix_ag:account[0]||null,p_pix_acc:account.slice(1).join(' / ')||null,p_cidades: cities});
+    if(error)throw new Error(error.message);
+    CURRENT_PROFILE.name=name;CURRENT_PROFILE.birth=birth;CURRENT_PROFILE.phone=phone;CURRENT_PROFILE.cidade=cidade;CURRENT_PROFILE.rua=rua;CURRENT_PROFILE.numero=numero;CURRENT_PROFILE.cep=cep;CURRENT_PROFILE.pix_key=get('researcher-profile-pix-key');CURRENT_PROFILE.pix_doc=get('researcher-profile-pix-doc');CURRENT_PROFILE.pix_bank=get('researcher-profile-pix-bank');CURRENT_PROFILE.pix_ag=account[0]||'';CURRENT_PROFILE.pix_acc=account.slice(1).join(' / ');RESEARCHER_PROFILE_CITIES=cities.slice();RESEARCHER_PROFILE_CITIES_DRAFT=cities.slice();
+    document.getElementById('tbName').textContent=name;document.getElementById('tbAvatar').textContent=initialsOf(name);alert('Seus dados foram atualizados.');
+  }catch(ex){alert('Não foi possível salvar seus dados agora: '+ex.message);}
+  finally{RESEARCHER_PROFILE_SAVING=false;go('researcher-profile');}
 }
 function researcherBadgePublicUrl(){
   const token=CURRENT_PROFILE?.badge_public_token||CURRENT_PROFILE?.badgePublicToken;
@@ -4579,7 +4671,7 @@ function userViewPesq(u,idx){
         ${docRow('Comprovante de residência',u.docComprovante)}
       </div>
       <div class="card">
-        <div class="card-t">Dados para pagamento (PIX)</div>
+        <div class="card-t">Dados para pagamento (PIX) <span class="pill pill-gray">Opcional</span></div>
         <table style="margin-top:6px">
           ${row('Chave PIX',esc(u.pixKey))}
           ${row('CPF/CNPJ do titular',esc(u.pixDoc))}
@@ -4858,7 +4950,7 @@ function userFormPesq(isNew){
         <div><label class="lbl">Número *</label><input class="inp" id="u-numero" value="${esc(u.numero)}"></div>
       </div>
       ${isNew?`<div class="mb"><label class="lbl">Senha provisória *</label><input class="inp" id="u-password" type="text" placeholder="Defina uma senha (mín. 6 caracteres) — repasse para o pesquisador"></div>`:''}
-      <div class="mb"><label class="lbl">Chave PIX *</label><input class="inp" id="u-pix-key" value="${esc(u.pixKey||'')}" placeholder="CPF, e-mail, telefone ou aleatória"></div>
+      <div class="mb"><label class="lbl">Chave PIX (opcional)</label><input class="inp" id="u-pix-key" value="${esc(u.pixKey||'')}" placeholder="CPF, e-mail, telefone ou aleatória"></div>
       <div class="field-row mb">
         <div><label class="lbl">CPF/CNPJ do titular</label><input class="inp" id="u-pix-doc" value="${esc(u.pixDoc||'')}" placeholder="000.000.000-00"></div>
         <div><label class="lbl">Banco</label><input class="inp" id="u-pix-bank" value="${esc(u.pixBank||'')}" placeholder="Ex.: Banco do Brasil"></div>
@@ -5095,8 +5187,7 @@ async function userSavePesq(isNew){
   if(!name)missing.push('Nome completo');if(!cpf)missing.push('CPF');if(!birth)missing.push('Data de nascimento');
   if(!email)missing.push('E-mail');if(!phone)missing.push('Celular');
   if(!cidade)missing.push('Cidade');if(!cep)missing.push('CEP');if(!rua)missing.push('Rua');if(!numero)missing.push('Número');
-  if(!pixKey)missing.push('Chave PIX');
-  if(!_pesqCidadesDraft.length)missing.push('Cidades em que pode atuar (pelo menos 1)');
+    if(!_pesqCidadesDraft.length)missing.push('Cidades em que pode atuar (pelo menos 1)');
   const existingFoto=isNew?'':(USERS[USER_EDIT]?USERS[USER_EDIT].docFoto:'');
   const existingComp=isNew?'':(USERS[USER_EDIT]?USERS[USER_EDIT].docComprovante:'');
   const docFoto=_docFotoDraft||existingFoto;

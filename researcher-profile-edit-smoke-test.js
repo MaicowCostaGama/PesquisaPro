@@ -1,0 +1,23 @@
+const fs=require('fs');
+const app=fs.readFileSync(__dirname+'/app.js','utf8');
+const html=fs.readFileSync(__dirname+'/app.html','utf8');
+const migration=fs.readFileSync(__dirname+'/deploy/perfil-pesquisador-edicao.sql','utf8');
+const publicCities=fs.existsSync(__dirname+'/public-cities.js');
+function assert(condition,message){if(!condition)throw new Error(message);}
+assert(app.includes("'researcher-profile'"),'item Meus dados ausente no menu');
+assert(app.includes("PAGES['researcher-profile']"),'página própria do pesquisador ausente');
+assert(app.includes('saveResearcherOwnProfile'),'handler de salvamento próprio ausente');
+assert(app.includes('Escolha pelo menos uma cidade em que pode atuar'),'validação de pelo menos uma cidade ausente');
+assert(app.includes('slice(0,5)'),'limite de cinco cidades ausente');
+assert(app.includes('p_pix_key:get(\'researcher-profile-pix-key\')||null'),'PIX deve ser opcional no payload próprio');
+assert(!app.includes("missing.push('Chave PIX')"),'PIX ainda aparece como obrigatório');
+assert(app.includes('CPF</label><input class="inp" value="${esc(p.cpf||\'\')}" disabled'),'CPF não está protegido como somente leitura');
+assert(app.includes('E-mail</label><input class="inp" value="${esc(p.email||\'\')}" disabled'),'e-mail não está protegido como somente leitura');
+assert(migration.includes('update_my_researcher_profile'),'RPC de edição própria ausente');
+assert(migration.includes("role = 'pesq'"),'RPC não restringe ao papel pesquisador');
+assert(migration.includes('v_city_count < 1 or v_city_count > 5'),'RPC não valida de uma a cinco cidades');
+assert(migration.includes('auth.uid() = profile_id'),'RLS das cidades não restringe ao próprio perfil');
+assert(migration.includes('grant execute on function public.update_my_researcher_profile'),'RPC não foi liberada apenas para authenticated');
+assert(html.includes('public-cities.js?v=20260908290000'),'lista pública de cidades não está carregada no painel');
+assert(publicCities,'public-cities.js não está presente no projeto');
+console.log('researcher-profile-edit-smoke-test: PASS');

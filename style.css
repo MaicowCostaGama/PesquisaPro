@@ -889,3 +889,15 @@ body.lp{background:#f8faff;color:var(--ink)}
   .reports-question-card{padding:14px 13px}
   .reports-client-crossing{padding:13px 12px}
 }
+
+/* PERFIL DO PESQUISADOR — edição própria */
+.researcher-profile-page{max-width:1120px}
+.researcher-profile-page .card{min-width:0}
+.researcher-profile-page .chip-remove{border:0;background:transparent;color:inherit;cursor:pointer;padding:0 2px;font-weight:900}
+.researcher-profile-page .researcher-profile-actions{display:flex;gap:10px;justify-content:flex-end;align-items:center;margin:16px 0 28px}
+.researcher-profile-page .pill-gray{vertical-align:middle;margin-left:6px}
+@media(max-width:760px){
+  .researcher-profile-page .field-row{grid-template-columns:1fr}
+  .researcher-profile-page .researcher-profile-actions{display:grid;grid-template-columns:1fr}
+  .researcher-profile-page .researcher-profile-actions .btn{width:100%}
+}

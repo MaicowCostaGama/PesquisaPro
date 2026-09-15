@@ -4069,7 +4069,7 @@ const SIGNUP_PILL={
 };
 let SIGNUPS_LOADED=false;
 let SIGNUPS_LOAD_PROMISE=null;
-function signupRowToLocal(row){return {id:row.id,name:row.name||'',cpf:row.cpf||'',birth:row.birth||'',email:row.email||'',phone:row.phone||'',cidade:row.cidade||'',rua:row.rua||'',numero:row.numero||'',cep:row.cep||'',cidadesAtuacao:(row.signup_cidades_atuacao||[]).map(c=>c.cidade),role:'pesq',docFoto:row.doc_foto_url||'',docComprovante:row.doc_comprovante_url||'',pixKey:row.pix_key||'',pixDoc:row.pix_doc||'',pixBank:row.pix_bank||'',pixAg:row.pix_ag||'',pixAcc:row.pix_acc||'',status:row.status||'novo',note:row.note||'',sent:row.sent_at?new Date(row.sent_at).toLocaleString('pt-BR'):'agora',recruiterId:row.recruiter_id||null,recruiterCode:row.recruiter_code||'',recruiterCaptureValue:Number(row.recruiter_capture_value)||0,approvedProfileId:row.approved_profile_id||null};}
+function signupRowToLocal(row){return {id:row.id,name:row.name||'',cpf:row.cpf||'',birth:row.birth||'',email:row.email||'',phone:row.phone||'',cidade:row.cidade||'',rua:row.rua||'',numero:row.numero||'',cep:row.cep||'',cidadesAtuacao:(row.signup_cidades_atuacao||[]).map(c=>c.cidade),role:'pesq',docFoto:row.doc_foto_url||'',docComprovante:row.doc_comprovante_url||'',pixKey:row.pix_key||'',pixDoc:row.pix_doc||'',pixBank:row.pix_bank||'',pixAg:row.pix_ag||'',pixAcc:row.pix_acc||'',status:row.status||'novo',note:row.note||'',sent:row.sent_at?new Date(row.sent_at).toLocaleString('pt-BR'):'agora',recruiterId:row.recruiter_id||null,recruiterCode:row.recruiter_code||'',recruiterCaptureValue:Number(row.recruiter_capture_value)||0,approvedProfileId:row.approved_profile_id||null,authUserId:row.auth_user_id||null};}
 function signupPendingRows(){return SIGNUPS.filter(s=>['novo','diligencia'].includes(s.status));}
 function signupOrphanRows(){return SIGNUPS.filter(s=>s.status==='aprovado'&&!isValidUuid(s.approvedProfileId));}
 function signupApprovalRecord(s){return {name:s.name,cpf:s.cpf,birth:s.birth,email:s.email,phone:s.phone,cidade:s.cidade,rua:s.rua||'',numero:s.numero||'',cep:s.cep||'',role:'pesq',status:'ativo',docFoto:s.docFoto,docComprovante:s.docComprovante,cidadesAtuacao:s.cidadesAtuacao||[],pixKey:s.pixKey||'',pixDoc:s.pixDoc||'',pixBank:s.pixBank||'',pixAg:s.pixAg||'',pixAcc:s.pixAcc||''};}
@@ -4087,6 +4087,13 @@ async function signupEnsureApprovedProfile(i){
     if(updateError)throw new Error('Não foi possível atualizar o perfil existente: '+updateError.message);
     profile=updated;
     await syncPesqCidades(profile.id,rec.cidadesAtuacao);
+  }else if(isValidUuid(s.authUserId)){
+    const row=userToProfileRow(rec,'pesq');row.id=s.authUserId;
+    const {data:inserted,error:insertError}=await sb.from('profiles').insert(row).select().single();
+    if(insertError)throw new Error('Não foi possível criar o perfil vinculado à conta de acesso: '+insertError.message);
+    profile=inserted;
+    await syncPesqCidades(profile.id,rec.cidadesAtuacao);
+    newProfile=true;
   }else{
     profile=await createLoginAndProfile(s.email,signupTemporaryPassword(),'pesq',rec);
     newProfile=true;
@@ -4107,8 +4114,8 @@ function loadSignupsIfNeeded(){
   if(SIGNUPS_LOAD_PROMISE)return SIGNUPS_LOAD_PROMISE;
   SIGNUPS_LOAD_PROMISE=(async()=>{
     try{
-      let result=await sb.from('signups').select('id,name,cpf,birth,email,phone,cidade,rua,numero,cep,doc_foto_url,doc_comprovante_url,pix_key,pix_doc,pix_bank,pix_ag,pix_acc,status,note,sent_at,recruiter_id,recruiter_code,recruiter_capture_value,approved_profile_id,signup_cidades_atuacao(cidade)').in('status',['novo','diligencia','aprovado']).order('sent_at',{ascending:false});
-      if(result.error&&/approved_profile_id|column/i.test(result.error.message||''))result=await sb.from('signups').select('id,name,cpf,birth,email,phone,cidade,rua,numero,cep,doc_foto_url,doc_comprovante_url,pix_key,pix_doc,pix_bank,pix_ag,pix_acc,status,note,sent_at,recruiter_id,recruiter_code,recruiter_capture_value,signup_cidades_atuacao(cidade)').in('status',['novo','diligencia','aprovado']).order('sent_at',{ascending:false});
+      let result=await sb.from('signups').select('id,name,cpf,birth,email,phone,cidade,rua,numero,cep,doc_foto_url,doc_comprovante_url,pix_key,pix_doc,pix_bank,pix_ag,pix_acc,status,note,sent_at,recruiter_id,recruiter_code,recruiter_capture_value,approved_profile_id,auth_user_id,signup_cidades_atuacao(cidade)').in('status',['novo','diligencia','aprovado']).order('sent_at',{ascending:false});
+      if(result.error&&/approved_profile_id|column/i.test(result.error.message||''))result=await sb.from('signups').select('id,name,cpf,birth,email,phone,cidade,rua,numero,cep,doc_foto_url,doc_comprovante_url,pix_key,pix_doc,pix_bank,pix_ag,pix_acc,status,note,sent_at,recruiter_id,recruiter_code,recruiter_capture_value,auth_user_id,signup_cidades_atuacao(cidade)').in('status',['novo','diligencia','aprovado']).order('sent_at',{ascending:false});
       if(result.error)throw new Error(result.error.message);
       SIGNUPS=(result.data||[]).map(signupRowToLocal);SIGNUPS_LOADED=true;
     }catch(ex){console.warn('Fila de cadastros ainda não disponível:',ex.message);}

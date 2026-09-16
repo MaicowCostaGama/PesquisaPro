@@ -17,3 +17,7 @@ A função é `security definer`, não armazena senha e não permite a alteraç�
 ## Implantação
 
 Execute a migration no SQL Editor do Supabase depois do código publicado. O resultado esperado é **“Success. No rows returned”**. Em seguida, atualize o painel com `Ctrl + Shift + R`, entre no perfil de pesquisador e abra **Meus dados**.
+
+## Edição administrativa
+
+Na tela **Usuários → Pesquisadores**, ao criar ou editar um cadastro, a gestão pode pesquisar, adicionar e remover cidades no cartão **Cidades em que pode atuar**. O widget aceita de uma a cinco cidades e grava a seleção no perfil correto em `profile_cidades_atuacao`. A lista administrativa usa a mesma fonte nacional de municípios do autocadastro e mantém compatibilidade com a estrutura `BR_MUNICIPIOS` usada por outros formulários do painel.

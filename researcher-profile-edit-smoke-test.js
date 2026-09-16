@@ -1,4 +1,5 @@
 const fs=require('fs');
+const path=require('path');
 const app=fs.readFileSync(__dirname+'/app.js','utf8');
 const html=fs.readFileSync(__dirname+'/app.html','utf8');
 const migration=fs.readFileSync(__dirname+'/deploy/perfil-pesquisador-edicao.sql','utf8');
@@ -18,6 +19,9 @@ assert(migration.includes("role = 'pesq'"),'RPC não restringe ao papel pesquisa
 assert(migration.includes('v_city_count < 1 or v_city_count > 5'),'RPC não valida de uma a cinco cidades');
 assert(migration.includes('auth.uid() = profile_id'),'RLS das cidades não restringe ao próprio perfil');
 assert(migration.includes('grant execute on function public.update_my_researcher_profile'),'RPC não foi liberada apenas para authenticated');
-assert(html.includes('public-cities.js?v=20260908300000'),'lista pública de cidades não está carregada no painel');
+assert(html.includes('public-cities.js?v=20260908310000'),'lista pública de cidades não está carregada no painel');
 assert(publicCities,'public-cities.js não está presente no projeto');
+const citiesJs=fs.readFileSync(path.join(__dirname,'public-cities.js'),'utf8');
+assert(citiesJs.includes('window.PP_PUBLIC_CITIES'),'lista nacional PP_PUBLIC_CITIES ausente');
+assert(citiesJs.includes('window.BR_MUNICIPIOS'),'compatibilidade BR_MUNICIPIOS ausente');
 console.log('researcher-profile-edit-smoke-test: PASS');

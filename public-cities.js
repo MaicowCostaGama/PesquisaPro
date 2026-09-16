@@ -5574,3 +5574,12 @@ window.PP_PUBLIC_CITIES = [
   "Zé Doca/MA",
   "Zortéa/SC"
 ];
+
+/* Compatibilidade com widgets administrativos legados que usam BR_MUNICIPIOS. */
+window.BR_MUNICIPIOS=window.BR_MUNICIPIOS||window.PP_PUBLIC_CITIES.reduce((groups,label)=>{
+  const parts=String(label).split('/');
+  const uf=parts.pop()||'';
+  const cidade=parts.join('/');
+  (groups[uf]||(groups[uf]=[])).push(cidade);
+  return groups;
+},{});

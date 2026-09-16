@@ -1,0 +1,21 @@
+const assert=require('assert');
+const fs=require('fs');
+const root=__dirname;
+const app=fs.readFileSync(root+'/app.js','utf8');
+const html=fs.readFileSync(root+'/app.html','utf8');
+const migration=fs.readFileSync(root+'/deploy/contratos-assinatura-admin.sql','utf8');
+function ok(condition,message){assert(condition,message);}
+ok(app.includes('signCompanyContract'),'handler da assinatura administrativa ausente');
+ok(app.includes('Assinar todos os contratos pela CONTRATANTE'),'ação de assinatura em lote não está visível');
+ok(app.includes("sb.rpc('sign_company_contract'"),'assinatura não usa RPC protegida');
+ok(app.includes('p_contract_version:CONTRACT_VERSION'),'versão do contrato não enviada');
+ok(app.includes('p_signer_name:nome'),'nome do signatário não enviado');
+ok(app.includes('p_signer_role:cargo'),'cargo do signatário não enviado');
+ok(app.includes("selectedRole==='admin'||selectedRole==='admpro'"),'permissão administrativa ausente');
+ok(app.includes('Esta única assinatura vale para todos os contratos desta versão'),'escopo da assinatura em lote não está explícito');
+ok(migration.includes('create or replace function public.sign_company_contract'),'RPC protegida ausente');
+ok(migration.includes('not public.is_admin()'),'RPC não bloqueia perfis não administrativos');
+ok(migration.includes('on conflict (contract_version) do nothing'),'proteção contra assinatura duplicada ausente');
+ok(migration.includes('auth.uid()'),'RPC não vincula a assinatura ao administrador autenticado');
+ok(html.includes('app.js?v=20260908320000'),'cache do contrato não atualizado');
+console.log('company-contract-signature-smoke-test: PASS');

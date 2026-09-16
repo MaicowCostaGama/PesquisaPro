@@ -5545,7 +5545,7 @@ PAGES.contracts=()=>{
     </div>`:(isAdmin?`
     <div class="card">
       <div class="card-t">Assinatura eletrônica da CONTRATANTE</div>
-      <div class="card-d">Assine uma única vez em nome do PesquisaPro — vale para a versão atual do contrato (${esc(CONTRACT_VERSION)}) e para todos os pesquisadores que assinarem a partir de agora.</div>
+      <div class="card-d">Assine uma única vez em nome do PesquisaPro — esta ação libera a assinatura da CONTRATANTE para todos os contratos desta versão (${esc(CONTRACT_VERSION)}). Não é necessário assinar pesquisador por pesquisador.</div>
       ${companySignPadHtml()}
       <div class="field-row mb" style="margin-top:10px">
         <div><label class="lbl">Seu nome (quem assina)</label><input class="inp" id="company-signer-name" value="${esc(nome)}"></div>
@@ -5556,12 +5556,12 @@ PAGES.contracts=()=>{
         <span>Confirmo que estou autorizado(a) a assinar este contrato em nome da CONTRATANTE, e que esta assinatura vale para todos os pesquisadores que aceitarem este contrato a partir de agora.</span>
       </label>
       <div id="companySignMsg"></div>
-      <button class="btn btn-accent" id="companySignBtn" onclick="signCompanyContract()">✎ Assinar pela CONTRATANTE</button>
+      <button class="btn btn-accent" id="companySignBtn" onclick="signCompanyContract()">✎ Assinar todos os contratos pela CONTRATANTE</button>
     </div>`:`
     <div class="card">
       <div class="card-t">Assinatura da CONTRATANTE (PesquisaPro)</div>
       ${companySignPadHtml()}
-      <div class="card-d" style="margin-top:6px">Apenas um administrador pode assinar pela empresa.</div>
+      <div class="card-d" style="margin-top:6px">Apenas um administrador pode assinar pela empresa. A assinatura registrada vale para todos os contratos desta versão.</div>
     </div>`);
   return head('Contratos','Assinatura eletrônica do contrato de prestação de serviços')+`
   <div class="grid g4" style="margin-bottom:16px">
@@ -5590,35 +5590,35 @@ async function signCompanyContract(){
     if(msgEl)msgEl.innerHTML='<div class="callout" style="margin:10px 0 0;border-color:var(--red)">Marque a caixa de confirmação acima antes de assinar.</div>';
     return;
   }
-  const nome=(document.getElementById('company-signer-name').value||'').trim();
-  const cargo=(document.getElementById('company-signer-role').value||'').trim();
+  const nome=(document.getElementById('company-signer-name')?.value||'').trim();
+  const cargo=(document.getElementById('company-signer-role')?.value||'').trim();
   if(!nome||!cargo){
     if(msgEl)msgEl.innerHTML='<div class="callout" style="margin:10px 0 0;border-color:var(--red)">Preencha seu nome e o cargo/função antes de assinar.</div>';
     return;
   }
-  if(!confirm('Confirma a assinatura eletrônica deste contrato em nome da CONTRATANTE, como '+nome+' ('+cargo+')?\n\nEsta ação vale para todos os pesquisadores que assinarem esta versão do contrato, registra data, hora e (quando disponível) o IP do dispositivo, e não pode ser desfeita.'))return;
+  if(!confirm('Confirma a assinatura eletrônica em nome da CONTRATANTE, como '+nome+' ('+cargo+')?\n\nEsta única assinatura vale para todos os contratos desta versão ('+CONTRACT_VERSION+'), registra data, hora e, quando disponível, o IP do dispositivo, e não pode ser desfeita.'))return;
   const btn=document.getElementById('companySignBtn');
-  if(btn){btn.disabled=true;btn.textContent='Assinando…';}
+  if(btn){btn.disabled=true;btn.textContent='Assinando todos…';}
   const text=contractPlainText('[nome do pesquisador]','[CPF]','');
   let hash='';
   try{hash=await sha256Hex(text);}catch(ex){hash='';}
   const ip=await fetchClientIp();
   try{
-    const {data:inserted,error}=await sb.from('company_contract_signatures').insert({
-      contract_version:CONTRACT_VERSION,
-      signed_by:CURRENT_PROFILE.id,
-      signer_name:nome,
-      signer_role:cargo,
-      content_hash:hash||'indisponível neste navegador',
-      ip_address:ip,
-      user_agent:(navigator&&navigator.userAgent)||null,
-    }).select().single();
+    const {data:inserted,error}=await sb.rpc('sign_company_contract',{
+      p_contract_version:CONTRACT_VERSION,
+      p_signer_name:nome,
+      p_signer_role:cargo,
+      p_content_hash:hash||'indisponível neste navegador',
+      p_ip_address:ip,
+      p_user_agent:(navigator&&navigator.userAgent)||null,
+    });
     if(error)throw new Error(error.message);
+    if(!inserted)throw new Error('A assinatura foi processada, mas não retornou registro. Atualize a tela e tente novamente.');
     COMPANY_SIGNATURE=companySignatureRowToEntry(inserted);
     COMPANY_SIGNATURE_LOADED=true;
   }catch(ex){
-    alert('Não foi possível registrar a assinatura agora: '+ex.message);
-    if(btn){btn.disabled=false;btn.textContent='✎ Assinar pela CONTRATANTE';}
+    alert('Não foi possível registrar a assinatura da CONTRATANTE: '+ex.message+'\n\nSe a migration de contratos ainda não foi aplicada, execute-a no Supabase e tente novamente.');
+    if(btn){btn.disabled=false;btn.textContent='✎ Assinar todos os contratos pela CONTRATANTE';}
     return;
   }
   go('contracts');

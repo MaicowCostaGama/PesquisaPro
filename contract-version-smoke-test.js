@@ -1,0 +1,21 @@
+const assert=require('assert');
+const fs=require('fs');
+const root=__dirname;
+const app=fs.readFileSync(root+'/app.js','utf8');
+const html=fs.readFileSync(root+'/app.html','utf8');
+const migration=fs.readFileSync(root+'/deploy/contratos-versoes.sql','utf8');
+function ok(condition,message){assert(condition,message);}
+ok(app.includes('let CONTRACT_VERSION='),'versão do contrato não é mutável');
+ok(app.includes('loadContractSettingsIfNeeded'),'carregamento persistente da versão ausente');
+ok(app.includes("sb.rpc('get_current_contract_version'"),'RPC de leitura da versão ausente');
+ok(app.includes("sb.rpc('create_contract_version'"),'RPC de criação de versão ausente');
+ok(app.includes('Criar nova versão para assinatura'),'ação administrativa de nova versão ausente');
+ok(app.includes('resetContractCachesForVersion'),'cache não é reiniciado após nova versão');
+ok(app.includes('preservada no histórico'),'preservação do histórico não está informada');
+ok(migration.includes('create table if not exists public.contract_settings'),'tabela de configurações de contrato ausente');
+ok(migration.includes('create or replace function public.get_current_contract_version'),'RPC de leitura não existe');
+ok(migration.includes('create or replace function public.create_contract_version'),'RPC de criação não existe');
+ok(migration.includes('public.is_admin()'),'RPC de nova versão não protege administrador');
+ok(migration.includes("values (1,'v1-2026')"),'versão inicial não é preservada');
+ok(html.includes('app.js?v=20260908330000'),'cache de versão do contrato não atualizado');
+console.log('contract-version-smoke-test: PASS');

@@ -409,6 +409,7 @@ function quota(label,done,total,color){
 
 /* ============ DASHBOARD (admin/coord/gerente) ============ */
 PAGES.dashboard=()=>{
+  if(!CONTRACT_SETTINGS_LOADED){loadContractSettingsIfNeeded();return head('Painel geral','Visão consolidada da pesquisa eleitoral · Minas Gerais 2026')+'<div class="empty">Carregando a versão vigente do contrato…</div>';}
   if(!USERS_LOADED)loadUsersIfNeeded();
   if(['admin','admpro'].includes(selectedRole)&&!SIGNUPS_LOADED)loadSignupsIfNeeded();
   if(!SURVEYS_LOADED)loadSurveysIfNeeded();
@@ -668,6 +669,7 @@ PAGES['researcher-guide']=()=>{
 };
 
 PAGES['dashboard-pesq']=()=>{
+  if(!CONTRACT_SETTINGS_LOADED){loadContractSettingsIfNeeded();return head('Meu painel','Acompanhe suas metas e ganhos')+'<div class="empty">Carregando a versão vigente do contrato…</div>';}
   if(!SURVEYS_LOADED)loadSurveysIfNeeded();
   if(!COLLECT_EVENTS_LOADED)loadCollectEventsIfNeeded();
   if(!PAYMENTS_LOADED)loadPaymentsIfNeeded();
@@ -3032,6 +3034,7 @@ async function auditToggleCalibration(id){
    link para "Meu contrato" em vez do formulário de coleta. */
 PAGES['app-collect']=()=>{
   if(!CURRENT_PROFILE)return head('Coletar (app)','Georreferenciamento obrigatório · envio direto ao servidor')+'<div class="empty">Faça login para coletar.</div>';
+  if(!CONTRACT_SETTINGS_LOADED){loadContractSettingsIfNeeded();return head('Coletar (app)','Georreferenciamento obrigatório · envio direto ao servidor')+'<div class="empty">Verificando a versão do contrato…</div>'; }
   if(!MY_CONTRACT_LOADED){
     loadMyContractIfNeeded();
     return head('Coletar (app)','Georreferenciamento obrigatório · envio direto ao servidor')+'<div class="empty">Verificando seu contrato…</div>';
@@ -5519,6 +5522,7 @@ async function loadAllContractsIfNeeded(){
   if(k==='contracts'||k==='dashboard')go(k);
 }
 PAGES.contracts=()=>{
+  if(!CONTRACT_SETTINGS_LOADED){loadContractSettingsIfNeeded();return head('Contratos','Assinatura eletrônica do contrato de prestação de serviços')+'<div class="empty">Carregando a versão vigente…</div>';}
   if(!USERS_LOADED)loadUsersIfNeeded();
   if(!ALL_CONTRACTS_LOADED)loadAllContractsIfNeeded();
   if(!COMPANY_SIGNATURE_LOADED)loadCompanySignatureIfNeeded();
@@ -5542,6 +5546,7 @@ PAGES.contracts=()=>{
     <div class="card">
       <div class="card-t">Assinatura da CONTRATANTE (PesquisaPro)</div>
       ${companySignPadHtml()}
+      ${isAdmin?'<button class="btn btn-out" style="margin-top:10px" onclick="createContractVersion()">＋ Criar nova versão para assinatura</button>':''}
     </div>`:(isAdmin?`
     <div class="card">
       <div class="card-t">Assinatura eletrônica da CONTRATANTE</div>
@@ -5762,7 +5767,44 @@ function renderTplPreview(){
    precisar assinar a nova versão antes de conseguir coletar de novo; a
    assinatura da versão antiga continua guardada, intacta, para histórico.
 */
-const CONTRACT_VERSION='v1-2026';
+let CONTRACT_VERSION='v1-2026';
+let CONTRACT_SETTINGS_LOADED=false,CONTRACT_SETTINGS_LOADING=false;
+async function loadContractSettingsIfNeeded(){
+  if(CONTRACT_SETTINGS_LOADED||CONTRACT_SETTINGS_LOADING)return;
+  CONTRACT_SETTINGS_LOADING=true;
+  try{
+    const {data,error}=await sb.rpc('get_current_contract_version');
+    if(!error&&data){CONTRACT_VERSION=typeof data==='string'?data:(data.current_version||data[0]?.current_version||CONTRACT_VERSION);}
+    else if(error)console.warn('Versão persistente indisponível; usando a versão local:',error.message);
+  }catch(ex){console.warn('Não foi possível carregar a versão vigente:',ex.message);}
+  CONTRACT_SETTINGS_LOADED=true;CONTRACT_SETTINGS_LOADING=false;
+  const k=document.querySelector('.nav-item.on')?.dataset.key;
+  if(k==='contracts'||k==='my-contract'||k==='app-collect'||k==='dashboard'||k==='dashboard-pesq')go(k);
+}
+function resetContractCachesForVersion(){
+  ALL_CONTRACTS=[];ALL_CONTRACTS_LOADED=false;ALL_CONTRACTS_LOADING=false;
+  COMPANY_SIGNATURE=null;COMPANY_SIGNATURE_LOADED=false;COMPANY_SIGNATURE_LOADING=false;
+  MY_CONTRACT=null;MY_CONTRACT_LOADED=false;MY_CONTRACT_LOADING=false;
+}
+async function createContractVersion(){
+  if(!CURRENT_PROFILE||!['admin','admpro'].includes(selectedRole)){alert('Apenas um administrador pode criar uma nova versão.');return;}
+  const suggestion=(CONTRACT_VERSION.match(/^v(\\d+)/)?.[1]||'1');
+  const next=prompt('Informe a nova versão do contrato. Exemplo: v'+(Number(suggestion)+1)+'-2026', 'v'+(Number(suggestion)+1)+'-2026');
+  if(next===null)return;
+  const version=next.trim();
+  if(!/^v\\d+-\\d{4}([.-][A-Za-z0-9_-]+)?$/.test(version)){alert('Use um formato como v2-2026.');return;}
+  if(version===CONTRACT_VERSION){alert('Essa versão já é a versão vigente.');return;}
+  if(!confirm('Criar a versão '+version+'? A versão '+CONTRACT_VERSION+' será preservada no histórico e a nova versão ficará pendente de assinatura da CONTRATANTE e dos pesquisadores.'))return;
+  try{
+    const {data,error}=await sb.rpc('create_contract_version',{p_new_version:version});
+    if(error)throw new Error(error.message);
+    CONTRACT_VERSION=typeof data==='string'?data:version;
+    resetContractCachesForVersion();
+    CONTRACT_SETTINGS_LOADED=true;
+    alert('Nova versão '+CONTRACT_VERSION+' criada. O formulário de assinatura está disponível nesta tela.');
+    go('contracts');
+  }catch(ex){alert('Não foi possível criar a nova versão: '+ex.message+'\\n\\nExecute a migration contratos-versoes.sql no Supabase e tente novamente.');}
+}
 const EMPRESA_CONTRATO={
   razao:'[RAZÃO SOCIAL DA CONTRATANTE LTDA.]',
   cnpj:'[00.000.000/0001-00]',
@@ -5939,6 +5981,7 @@ async function openSurveyInviteFromUrl(){
 }
 PAGES['my-contract']=()=>{
   if(!CURRENT_PROFILE)return head('Meu contrato','Seu contrato de prestação de serviços')+'<div class="empty">Faça login para ver seu contrato.</div>';
+  if(!CONTRACT_SETTINGS_LOADED){loadContractSettingsIfNeeded();return head('Meu contrato','Seu contrato de prestação de serviços')+'<div class="empty">Carregando a versão vigente…</div>'; }
   if(!MY_CONTRACT_LOADED)loadMyContractIfNeeded();
   if(!COMPANY_SIGNATURE_LOADED)loadCompanySignatureIfNeeded();
   if(!MY_CONTRACT_LOADED||!COMPANY_SIGNATURE_LOADED){

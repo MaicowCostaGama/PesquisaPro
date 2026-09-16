@@ -5530,17 +5530,18 @@ PAGES.contracts=()=>{
     return head('Contratos','Assinatura eletrônica do contrato de prestação de serviços')+'<div class="empty">Carregando…</div>';
   }
   const pesqs=USERS.filter(u=>u.role==='pesq'&&u.status==='ativo');
+  const isAdmin=selectedRole==='admin'||selectedRole==='admpro';
   const signedMap={};
   ALL_CONTRACTS.forEach(c=>{signedMap[c.researcher_id]=c;});
   const assinados=pesqs.filter(u=>signedMap[u.id]).length;
   const pendentes=pesqs.length-assinados;
   const rows=pesqs.length?pesqs.map(u=>{
     const c=signedMap[u.id];
+    const action=!c&&isAdmin?`<button class="btn-ghost" style="color:var(--teal);white-space:nowrap" data-admin-sign="${esc(u.id)}" data-admin-sign-name="${esc(u.name)}" onclick="adminSignResearcherContract(this.dataset.adminSign,this.dataset.adminSignName)">Assinar</button>`:(c?'<span style="font-size:11px;color:var(--ink3)">—</span>':'');
     return `<tr><td>${esc(u.name)}</td><td>${esc(u.cidade||'—')}</td>
       <td>${c?'<span class="pill pill-green">● Assinado</span>':'<span class="pill pill-amber">● Aguardando assinatura</span>'}</td>
-      <td>${c?esc(new Date(c.accepted_at).toLocaleString('pt-BR')):'—'}</td></tr>`;
-  }).join(''):'<tr><td colspan="4" class="empty">Nenhum pesquisador ativo cadastrado ainda.</td></tr>';
-  const isAdmin=selectedRole==='admin'||selectedRole==='admpro';
+      <td>${c?esc(new Date(c.accepted_at).toLocaleString('pt-BR')):'—'}</td><td>${action}</td></tr>`;
+  }).join(''):'<tr><td colspan="5" class="empty">Nenhum pesquisador ativo cadastrado ainda.</td></tr>';
   const nome=CURRENT_PROFILE?CURRENT_PROFILE.name:'';
   const companyPanel=COMPANY_SIGNATURE?`
     <div class="card">
@@ -5579,12 +5580,36 @@ PAGES.contracts=()=>{
   <div class="card mb" style="margin-top:16px">
     <div class="card-t">Pesquisadores</div>
     <div class="card-d">Status de assinatura do contrato-quadro (versão ${esc(CONTRACT_VERSION)}) por pesquisador ativo.</div>
-    <table style="margin-top:6px"><thead><tr><th>Pesquisador</th><th>Cidade</th><th>Status</th><th>Assinado em</th></tr></thead>
+    <table style="margin-top:6px"><thead><tr><th>Pesquisador</th><th>Cidade</th><th>Status</th><th>Assinado em</th><th>Ação</th></tr></thead>
     <tbody>${rows}</tbody></table>
   </div>
   <div class="sec-title">Pré-visualização do contrato</div>
   <div class="contract-doc">${contractHtml('[nome do pesquisador]','[CPF]','')}</div>`;
 };
+async function adminSignResearcherContract(researcherId,researcherName){
+  if(!CURRENT_PROFILE||!['admin','admpro'].includes(selectedRole)){alert('Apenas um administrador pode assinar pelo pesquisador.');return;}
+  if(!researcherId||researcherId==='undefined'){alert('Pesquisador inválido. Atualize a lista e tente novamente.');return;}
+  if(!confirm('Confirma registrar a assinatura administrativa para '+researcherName+' na versão '+CONTRACT_VERSION+'?\\n\\nEsta ação ficará registrada com seu usuário, data, hora e versão do contrato.'))return;
+  const text=contractPlainText(researcherName,'','');
+  let hash='';try{hash=await sha256Hex(text);}catch(ex){hash='';}
+  try{
+    const {data,error}=await sb.rpc('admin_sign_researcher_contract',{
+      p_researcher_id:researcherId,
+      p_contract_version:CONTRACT_VERSION,
+      p_content_hash:hash||'indisponível neste navegador',
+      p_ip_address:await fetchClientIp(),
+      p_user_agent:(navigator&&navigator.userAgent)||null,
+    });
+    if(error)throw new Error(error.message);
+    if(!data)throw new Error('A assinatura não retornou registro.');
+    ALL_CONTRACTS_LOADED=false;
+    await loadAllContractsIfNeeded();
+    go('contracts');
+  }catch(ex){
+    alert('Não foi possível assinar este cadastro: '+ex.message+'\\n\\nVerifique se a migration assinatura-admin-pesquisador.sql foi aplicada no Supabase.');
+  }
+}
+
 async function signCompanyContract(){
   if(!CURRENT_PROFILE)return;
   const isAdmin=selectedRole==='admin'||selectedRole==='admpro';

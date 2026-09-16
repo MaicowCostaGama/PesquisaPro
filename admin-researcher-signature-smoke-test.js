@@ -1,0 +1,21 @@
+const assert=require('assert');
+const fs=require('fs');
+const root=__dirname;
+const app=fs.readFileSync(root+'/app.js','utf8');
+const html=fs.readFileSync(root+'/app.html','utf8');
+const migration=fs.readFileSync(root+'/deploy/assinatura-admin-pesquisador.sql','utf8');
+function ok(condition,message){assert(condition,message);}
+ok(app.includes('adminSignResearcherContract'),'handler individual não existe');
+ok(app.includes('data-admin-sign'),'botão não carrega o ID do pesquisador com segurança');
+ok(app.includes('Assinar</button>'),'botão Assinar não está na linha');
+ok(app.includes("sb.rpc('admin_sign_researcher_contract'"),'assinatura individual não usa RPC protegida');
+ok(app.includes("selectedRole==='admin'||selectedRole==='admpro'"),'restrição administrativa ausente');
+ok(app.includes("researcherId==='undefined'"),'proteção contra UUID indefinido ausente');
+ok(app.includes('Ação</th>'),'coluna de ação ausente');
+ok(migration.includes('create or replace function public.admin_sign_researcher_contract'),'RPC administrativa ausente');
+ok(migration.includes('signature_origin'),'origem da assinatura não auditada');
+ok(migration.includes('signed_by_admin'),'administrador não é registrado');
+ok(migration.includes('on conflict (researcher_id,contract_version) do nothing'),'proteção contra duplicidade ausente');
+ok(migration.includes('public.is_admin()'),'migration não limita a administradores');
+ok(html.includes('app.js?v=20260908340000'),'cache do botão administrativo não atualizado');
+console.log('admin-researcher-signature-smoke-test: PASS');

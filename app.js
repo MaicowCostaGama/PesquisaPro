@@ -1053,6 +1053,7 @@ function blankSurveyData(){
 let SURVEYS=[];
 let SURVEYS_LOADED=false;
 let SURVEYS_LOADING=false;
+let SURVEY_END_CONDITION_SCHEMA_MISSING=false;
 
 function fmtRelativo(iso){
   if(!iso)return 'agora';
@@ -1083,7 +1084,7 @@ function surveyRowToSnapshot(row,questionRows,clientCompanyNames,teamNames){
         if(o.is_remote)remote[oi]=true;
       });
     }
-    return {id:localId,dbId:q.id,text:q.text||'',type:q.type||'single',opts:opts.map(o=>o.label||''),isRegion:!!q.is_region};
+    return {id:localId,dbId:q.id,text:q.text||'',type:q.type||'single',opts:opts.map(o=>o.label||''),endsInterview:opts.map(o=>!!o.ends_interview),isRegion:!!q.is_region};
   });
   return {
     id:row.id,
@@ -1116,13 +1117,16 @@ function snapshotToSurveyRow(d){
    (mesma lógica de "substituir tudo" usada em syncPesqCidades, para não ter
    que calcular um diff pergunta a pergunta) */
 async function syncSurveyQuestionsAndOptions(surveyId,d){
+  SURVEY_END_CONDITION_SCHEMA_MISSING=false;
   await sb.from('survey_questions').delete().eq('survey_id',surveyId);
   const questions=d.questions||[];
   for(let i=0;i<questions.length;i++){
     const q=questions[i];
-    const {data:qRow,error:qErr}=await sb.from('survey_questions').insert({
+    const questionPayload={
       survey_id:surveyId,position:i,text:q.text||'',type:q.type||'single',is_region:!!q.isRegion,
-    }).select().single();
+    };
+    const questionInsert=await sb.from('survey_questions').insert(questionPayload).select().single();
+    const {data:qRow,error:qErr}=questionInsert;
     if(qErr)throw new Error('Não foi possível salvar as perguntas: '+qErr.message);
     if(Q_HAS_OPTS(q.type)&&q.opts&&q.opts.length){
       const off=!!(d.quotaOff&&d.quotaOff[q.id]);
@@ -1142,9 +1146,17 @@ async function syncSurveyQuestionsAndOptions(surveyId,d){
           is_remote:q.isRegion?!!(d.remote&&d.remote[oi]):false,
           quota_pct:pct,
           quota_enabled:!off,
+          ends_interview:!!(q.endsInterview&&q.endsInterview[oi]),
         };
       });
-      const {error:oErr}=await sb.from('survey_question_options').insert(optRows);
+      let optionInsert=await sb.from('survey_question_options').insert(optRows);
+      const optionSchemaMissing=optionInsert.error&&/ends_interview|schema cache|column .* does not exist/i.test(optionInsert.error.message||'');
+      if(optionSchemaMissing){
+        SURVEY_END_CONDITION_SCHEMA_MISSING=true;
+        const legacyOptRows=optRows.map(({ends_interview,...row})=>row);
+        optionInsert=await sb.from('survey_question_options').insert(legacyOptRows);
+      }
+      const {error:oErr}=optionInsert;
       if(oErr)throw new Error('Não foi possível salvar as opções: '+oErr.message);
     }
   }
@@ -1453,6 +1465,7 @@ WIZ_BODY[2]=()=>{
     <button class="btn btn-out" onclick="qClear()">Limpar tudo</button></div>
   <div class="card-d" style="margin-top:6px">Crie as perguntas desta pesquisa. As variáveis aqui ficam disponíveis para cotas e cruzamentos.</div>
   <div class="q-order-hint"><span aria-hidden="true">⠿</span> Arraste a alça pontilhada para mudar a ordem. Se preferir, use as setas em cada pergunta.</div>
+  <div class="q-condition-hint"><span aria-hidden="true">!</span> Nas perguntas de escolha, marque <b>encerrar</b> ao lado de uma resposta para avisar o pesquisador e encerrar a entrevista quando ela for selecionada.</div>
   <div id="q-list"></div>
   <div class="add-q">
     <span style="font-size:12px;font-weight:600;color:var(--ink2)">Adicionar pergunta:</span>
@@ -1590,6 +1603,7 @@ function qRender(){
       body=`<div class="q-opts">`+q.opts.map((o,oi)=>
         `<div class="opt-edit"><span class="${q.type==='single'?'opt-dot':'opt-sq'}"></span>
           <input class="opt-inp" value="${esc(o)}" oninput="qOpt(${q.id},${oi},this.value)" placeholder="Opção ${oi+1}">
+          <label class="opt-end" title="Se o entrevistado escolher esta resposta, a entrevista será encerrada"><input type="checkbox" ${q.endsInterview&&q.endsInterview[oi]?'checked':''} ${o&&o.trim()?'':'disabled'} onchange="qEndToggle(${q.id},${oi},this.checked)"> encerrar</label>
           <button class="opt-del" title="Remover opção" onclick="qOptDel(${q.id},${oi})">✕</button></div>`).join('')
         +`<button class="opt-add" onclick="qOptAdd(${q.id})">+ adicionar opção</button></div>`;
     } else if(q.type==='scale'){
@@ -1651,16 +1665,17 @@ function fmtDataBR(iso){
 }
 function qFind(id){return WIZ.data.questions.find(q=>q.id===id);}
 function qAdd(type){
-  const q={id:WIZ_QID++,text:'',type,opts:Q_HAS_OPTS(type)?['',''] :[]};
+  const q={id:WIZ_QID++,text:'',type,opts:Q_HAS_OPTS(type)?['',''] :[],endsInterview:Q_HAS_OPTS(type)?[false,false]:[]};
   WIZ.data.questions.push(q);qRender();
   setTimeout(()=>{const inputs=document.querySelectorAll('.q-text-inp');if(inputs.length)inputs[inputs.length-1].focus();},30);
 }
 function qDel(id){WIZ.data.questions=WIZ.data.questions.filter(q=>q.id!==id);qRender();}
 function qText(id,v){const q=qFind(id);if(q)q.text=v;}
-function qType(id,v){const q=qFind(id);if(!q)return;q.type=v;if(Q_HAS_OPTS(v)&&q.opts.length===0)q.opts=['',''];if(!Q_HAS_OPTS(v)||v!=='single')q.isRegion=false;qRender();}
-function qOpt(id,oi,v){const q=qFind(id);if(q)q.opts[oi]=v;}
-function qOptAdd(id){const q=qFind(id);if(q){q.opts.push('');qRender();}}
-function qOptDel(id,oi){const q=qFind(id);if(q&&q.opts.length>1){q.opts.splice(oi,1);qRender();}}
+function qType(id,v){const q=qFind(id);if(!q)return;q.type=v;if(Q_HAS_OPTS(v)&&q.opts.length===0){q.opts=['',''];q.endsInterview=[false,false];}if(!Q_HAS_OPTS(v)||v!=='single')q.isRegion=false;qRender();}
+function qOpt(id,oi,v){const q=qFind(id);if(q){q.opts[oi]=v;if(!String(v||'').trim()&&q.endsInterview)q.endsInterview[oi]=false;}}
+function qOptAdd(id){const q=qFind(id);if(q){q.opts.push('');q.endsInterview=q.endsInterview||[];q.endsInterview.push(false);qRender();}}
+function qOptDel(id,oi){const q=qFind(id);if(q&&q.opts.length>1){q.opts.splice(oi,1);if(q.endsInterview)q.endsInterview.splice(oi,1);qRender();}}
+function qEndToggle(id,oi,checked){const q=qFind(id);if(!q)return;q.endsInterview=q.endsInterview||[];q.endsInterview[oi]=checked===true;qRender();}
 function qToggleQuota(id){
   const off=!!(WIZ.data.quotaOff&&WIZ.data.quotaOff[id]);
   quotaToggle(id,off); // off vira o novo "active": alterna o estado atual
@@ -2060,7 +2075,8 @@ async function wizCreate(){
       SURVEYS[WIZ.editIndex]=snapshot;
     }
     refreshClientSurveyLinks();
-    alert(isNew?'Pesquisa criada! Agora atribua a equipe em Minhas pesquisas.':'Alterações salvas.');
+    const savedMessage=isNew?'Pesquisa criada! Agora atribua a equipe em Minhas pesquisas.':'Alterações salvas.';
+    alert(savedMessage+(SURVEY_END_CONDITION_SCHEMA_MISSING?'\n\nAtenção: as condicionantes de encerramento ainda não foram gravadas porque falta aplicar deploy/condicionante-encerramento-resposta.sql no Supabase. As demais alterações foram salvas.':''));
   }catch(ex){
     if(busyBtn)busyBtn.disabled=false;
     alert('Não foi possível salvar a pesquisa: '+ex.message);
@@ -3287,6 +3303,7 @@ async function acollectPickSurvey(id){
   if(ACOLLECT_IN_PROGRESS){alert('Termine ou cancele a entrevista em andamento antes de trocar de pesquisa.');renderAcollectSurveyPicker();return;}
   ACOLLECT_SURVEY_ID=id;
   ACOLLECT_SELECTED_QUOTA=null;
+  acollectClearTerminationNotice();
   acollectResetRecordingState();
   renderAcollectSurveyPicker();
   await acollectLoadQuotasForCurrent();
@@ -3356,11 +3373,48 @@ function acollectSelectQuotaIdx(qi){
   renderAcollectQuotas();
 }
 
+function acollectClearTerminationNotice(){
+  const el=document.getElementById('acollectMsg');
+  if(el)el.innerHTML='';
+}
+function acollectConditionLabels(qDbId,value,optionIndex){
+  const s=SURVEYS.find(x=>x.id===ACOLLECT_SURVEY_ID);
+  const q=(s?.questions||[]).find(item=>item.dbId===qDbId);
+  if(!q||!['single','multi'].includes(q.type))return[];
+  if(optionIndex!=null)return q.endsInterview&&q.endsInterview[optionIndex]===true?[Array.isArray(value)?value[0]:value]:[];
+  const values=Array.isArray(value)?value:[value];
+  return values.filter(v=>v!==''&&v!=null).filter(v=>{
+    const oi=(q.opts||[]).indexOf(v);
+    return oi>=0&&q.endsInterview&&q.endsInterview[oi]===true;
+  });
+}
+function acollectEndByCondition(qDbId,value,optionIndex){
+  const labels=acollectConditionLabels(qDbId,value,optionIndex);
+  if(!labels.length)return false;
+  const labelText=labels.map(label=>'“'+label+'”').join(' e ');
+  ACOLLECT_IN_PROGRESS=false;
+  ACOLLECT_SUBMITTING=false;
+  ACOLLECT_STARTED_AT=null;
+  ACOLLECT_SELECTED_QUOTA=null;
+  ACOLLECT_ANSWERS={};
+  acollectResetRecordingState();
+  if(ACOLLECT_TICK){clearInterval(ACOLLECT_TICK);ACOLLECT_TICK=null;}
+  const formEl=document.getElementById('acollectForm');
+  if(formEl)formEl.innerHTML='';
+  const msgEl=document.getElementById('acollectMsg');
+  if(msgEl)msgEl.innerHTML=`<div class="collect-termination-card" role="alert" aria-live="assertive"><strong>Mensagem para o entrevistado</strong><span>“Não continue esta entrevista, esta resposta é uma condicionante necessária para o perfil de entrevistado”</span><small>Resposta selecionada: ${labelText}. A entrevista não foi enviada como coleta válida.</small></div>`;
+  renderAcollectRecording();
+  renderAcollectQuotas();
+  renderAcollectActionState();
+  alert('Não continue esta entrevista, esta resposta é uma condicionante necessária para o perfil de entrevistado');
+  return true;
+}
+
 /* ---- questionário de verdade: uma vez iniciada a entrevista, o pesquisador
    responde as perguntas reais desta pesquisa (a pergunta correspondente à
    cota escolhida já vem pré-preenchida e travada, para não haver contradição
    entre a cota escolhida e a resposta) ---- */
-function acollectSetAnswer(qDbId,value,rerenderForm){
+function acollectSetAnswer(qDbId,value,rerenderForm,optionIndex){
   ACOLLECT_ANSWERS[qDbId]={...(ACOLLECT_ANSWERS[qDbId]||{}),value};
   /* botões de escala precisam de um novo render para mostrar qual ficou
      marcado; campos de texto/número/data NÃO são re-renderizados aqui para
@@ -3368,13 +3422,15 @@ function acollectSetAnswer(qDbId,value,rerenderForm){
      mostra o que foi digitado sozinho */
   if(rerenderForm)renderAcollectForm();
   renderAcollectActionState();
+  acollectEndByCondition(qDbId,value,optionIndex);
 }
-function acollectToggleMultiAnswer(qDbId,label){
+function acollectToggleMultiAnswer(qDbId,label,optionIndex){
   const cur=(ACOLLECT_ANSWERS[qDbId]&&Array.isArray(ACOLLECT_ANSWERS[qDbId].value))?ACOLLECT_ANSWERS[qDbId].value.slice():[];
   const i=cur.indexOf(label);
   if(i>=0)cur.splice(i,1);else cur.push(label);
   ACOLLECT_ANSWERS[qDbId]={value:cur};
   renderAcollectActionState();
+  acollectEndByCondition(qDbId,label,optionIndex);
 }
 function acollectResetRecordingState(){
   if(ACOLLECT_RECORDING_STOP_TIMER){clearTimeout(ACOLLECT_RECORDING_STOP_TIMER);ACOLLECT_RECORDING_STOP_TIMER=null;}
@@ -3542,12 +3598,12 @@ function renderAcollectForm(){
       let body='';
       if(q.type==='single'){
         body=(q.opts||[]).map(opt=>`<label style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:12px;${locked?'opacity:.7':''}">
-          <input type="radio" name="acq-${q.dbId}" ${a&&a.value===opt?'checked':''} ${locked?'disabled':''} onchange="acollectSetAnswer('${q.dbId}',${jsArg(opt)})"> ${esc(opt)}</label>`).join('');
+          <input type="radio" name="acq-${q.dbId}" ${a&&a.value===opt?'checked':''} ${locked?'disabled':''} onchange="acollectSetAnswer('${q.dbId}',${jsArg(opt)},false,${oi})"> ${esc(opt)}</label>`).join('');
       }else if(q.type==='multi'){
         body=(q.opts||[]).map(opt=>{
           const checked=a&&Array.isArray(a.value)&&a.value.includes(opt);
           return `<label style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:12px">
-          <input type="checkbox" ${checked?'checked':''} onchange="acollectToggleMultiAnswer('${q.dbId}',${jsArg(opt)})"> ${esc(opt)}</label>`;
+          <input type="checkbox" ${checked?'checked':''} onchange="acollectToggleMultiAnswer('${q.dbId}',${jsArg(opt)},${oi})"> ${esc(opt)}</label>`;
         }).join('');
       }else if(q.type==='scale'||q.type==='scale10'||q.type==='nps'){
         const max=ACOLLECT_SCALE_MAX[q.type]||5;
@@ -3652,6 +3708,7 @@ async function acollectStart(){
   acollectResetRecordingState();
   await acollectReserveRecording();
   ACOLLECT_IN_PROGRESS=true;
+  acollectClearTerminationNotice();
   ACOLLECT_STARTED_AT=Date.now();
   ACOLLECT_ANSWERS={};
   if(quotaEntry&&quotaEntry.questionDbId){
@@ -3666,6 +3723,7 @@ function acollectCancel(){
   ACOLLECT_STARTED_AT=null;
   ACOLLECT_SUBMITTING=false;
   ACOLLECT_ANSWERS={};
+  acollectClearTerminationNotice();
   acollectResetRecordingState();
   if(ACOLLECT_TICK){clearInterval(ACOLLECT_TICK);ACOLLECT_TICK=null;}
   const formEl=document.getElementById('acollectForm');

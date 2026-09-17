@@ -1452,6 +1452,7 @@ WIZ_BODY[2]=()=>{
     <button class="btn btn-out" style="margin-left:auto" onclick="qLoadExample()">Carregar exemplo</button>
     <button class="btn btn-out" onclick="qClear()">Limpar tudo</button></div>
   <div class="card-d" style="margin-top:6px">Crie as perguntas desta pesquisa. As variáveis aqui ficam disponíveis para cotas e cruzamentos.</div>
+  <div class="q-order-hint"><span aria-hidden="true">⠿</span> Arraste a alça pontilhada para mudar a ordem. Se preferir, use as setas em cada pergunta.</div>
   <div id="q-list"></div>
   <div class="add-q">
     <span style="font-size:12px;font-weight:600;color:var(--ink2)">Adicionar pergunta:</span>
@@ -1486,6 +1487,98 @@ function qStart(withExample){
 }
 
 /* ---- question builder behaviour ---- */
+let Q_DRAG_ID=null;
+let Q_DRAG_DROP_BEFORE=true;
+let Q_POINTER_DRAG=null;
+
+function qCardAtPoint(x,y){
+  const el=document.elementFromPoint(x,y);
+  return el&&el.closest?el.closest('.q-card'):null;
+}
+function qClearDropMarkers(){
+  document.querySelectorAll('.q-card.q-drop-before,.q-card.q-drop-after,.q-card.is-dragging').forEach(card=>{
+    card.classList.remove('q-drop-before','q-drop-after','is-dragging');
+  });
+}
+function qDragStart(ev,id){
+  Q_DRAG_ID=id;Q_DRAG_DROP_BEFORE=true;
+  if(ev&&ev.dataTransfer){
+    ev.dataTransfer.effectAllowed='move';
+    ev.dataTransfer.setData('text/plain',String(id));
+  }
+  const card=document.querySelector('.q-card[data-qid="'+id+'"]');
+  if(card)card.classList.add('is-dragging');
+}
+function qDragPosition(ev,id){
+  if(Q_DRAG_ID==null||id===Q_DRAG_ID)return;
+  const target=document.querySelector('.q-card[data-qid="'+id+'"]');
+  if(!target)return;
+  if(ev&&ev.preventDefault)ev.preventDefault();
+  if(ev&&ev.dataTransfer)ev.dataTransfer.dropEffect='move';
+  const rect=target.getBoundingClientRect();
+  Q_DRAG_DROP_BEFORE=(ev.clientY||0)<rect.top+rect.height/2;
+  qClearDropMarkers();
+  target.classList.add(Q_DRAG_DROP_BEFORE?'q-drop-before':'q-drop-after');
+  const dragged=document.querySelector('.q-card[data-qid="'+Q_DRAG_ID+'"]');
+  if(dragged)dragged.classList.add('is-dragging');
+}
+function qDragOver(ev,id){qDragPosition(ev,id);}
+function qDrop(ev,targetId){
+  if(ev&&ev.preventDefault)ev.preventDefault();
+  if(Q_DRAG_ID==null||targetId===Q_DRAG_ID){qDragEnd();return;}
+  const qs=WIZ.data.questions;
+  const from=qs.findIndex(q=>q.id===Q_DRAG_ID);
+  const targetIndex=qs.findIndex(q=>q.id===targetId);
+  if(from<0||targetIndex<0){qDragEnd();return;}
+  let insertAt=targetIndex+(Q_DRAG_DROP_BEFORE?0:1);
+  const [moved]=qs.splice(from,1);
+  if(from<insertAt)insertAt--;
+  qs.splice(insertAt,0,moved);
+  qRender();
+  qDragEnd();
+}
+function qDragEnd(){
+  qClearDropMarkers();
+  Q_DRAG_ID=null;Q_DRAG_DROP_BEFORE=true;
+}
+function qMove(id,delta){
+  const qs=WIZ.data.questions;
+  const from=qs.findIndex(q=>q.id===id);const to=from+delta;
+  if(from<0||to<0||to>=qs.length)return;
+  [qs[from],qs[to]]=[qs[to],qs[from]];
+  qRender();
+}
+function qPointerDown(ev,id){
+  if(!ev||ev.pointerType==='mouse'||Q_POINTER_DRAG||Q_DRAG_ID!=null)return;
+  ev.preventDefault();
+  Q_POINTER_DRAG={pointerId:ev.pointerId};
+  qDragStart(ev,id);
+  document.addEventListener('pointermove',qPointerMove,{passive:false});
+  document.addEventListener('pointerup',qPointerUp,{once:true});
+  document.addEventListener('pointercancel',qPointerCancel,{once:true});
+}
+function qPointerMove(ev){
+  if(!Q_POINTER_DRAG||ev.pointerId!==Q_POINTER_DRAG.pointerId)return;
+  ev.preventDefault();
+  const card=qCardAtPoint(ev.clientX,ev.clientY);
+  if(card)qDragPosition(ev,Number(card.dataset.qid));
+}
+function qPointerUp(ev){
+  if(!Q_POINTER_DRAG||ev.pointerId!==Q_POINTER_DRAG.pointerId)return;
+  qPointerMove(ev);
+  const card=qCardAtPoint(ev.clientX,ev.clientY);
+  if(card)qDrop(ev,Number(card.dataset.qid));else qDragEnd();
+  qPointerCleanup();
+}
+function qPointerCancel(){
+  if(!Q_POINTER_DRAG)return;
+  qPointerCleanup();qDragEnd();
+}
+function qPointerCleanup(){
+  document.removeEventListener('pointermove',qPointerMove);
+  document.removeEventListener('pointercancel',qPointerCancel);
+  Q_POINTER_DRAG=null;
+}
 function qRender(){
   const wrap=document.getElementById('q-list');if(!wrap)return;
   const qs=WIZ.data.questions;
@@ -1525,13 +1618,18 @@ function qRender(){
     const quotaCtl=canQuota
       ?`<button class="q-quota-btn ${quotaOn?'on':''}" title="Definir se esta pergunta terá cota controlada na amostra (ajustável em detalhe no passo Cotas)" onclick="qToggleQuota(${q.id})">${quotaOn?'✓ cota':'sem cota'}</button>`
       :'';
-    return `<div class="q-card ${q.isRegion?'is-region':''}">
+    return `<div class="q-card ${q.isRegion?'is-region':''}" data-qid="${q.id}" ondragover="qDragOver(event,${q.id})" ondrop="qDrop(event,${q.id})">
       <div class="qc-head">
         <span class="q-num">${i+1}</span>
         <input class="q-text-inp" value="${esc(q.text)}" oninput="qText(${q.id},this.value)" placeholder="Digite o enunciado da pergunta">
         ${regionCtl}
         ${quotaCtl}
         ${typeCtl}
+        <div class="q-order-controls" aria-label="Ordenar pergunta ${i+1}">
+          <button type="button" class="q-order-btn" ${i===0?'disabled':''} onclick="qMove(${q.id},-1)" title="Mover para cima" aria-label="Mover pergunta ${i+1} para cima">↑</button>
+          <button type="button" class="q-order-btn" ${i===qs.length-1?'disabled':''} onclick="qMove(${q.id},1)" title="Mover para baixo" aria-label="Mover pergunta ${i+1} para baixo">↓</button>
+        </div>
+        <button type="button" class="q-drag-handle" draggable="true" ondragstart="qDragStart(event,${q.id})" ondragend="qDragEnd()" onpointerdown="qPointerDown(event,${q.id})" title="Arraste para reordenar" aria-label="Arrastar pergunta ${i+1}">⠿</button>
         ${delBtn}
       </div>
       ${body}

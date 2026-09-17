@@ -50,14 +50,18 @@ begin
     ), grouped as (
       select
         a.question_id,
-        coalesce(nullif(trim(a.value_text), ''), a.value_number::text, '(sem resposta)') as label,
+        case when a.field_id is not null then coalesce(f.label,'Resposta')||': ' else '' end||
+          case when q.type='ranking' and a.value_number is not null then a.value_number::int||'º — ' else '' end||
+          coalesce(nullif(trim(a.value_text), ''), a.value_number::text, '(sem resposta)') as label,
         count(distinct a.collection_event_id)::bigint as amount
       from public.collection_answers a
       join public.collection_events ce on ce.id = a.collection_event_id
+      join public.survey_questions q on q.id = a.question_id
+      left join public.survey_question_fields f on f.id = a.field_id
       where ce.survey_id = p_survey_id
         and ce.status = 'valid'
         and ce.is_calibration = false
-      group by a.question_id, coalesce(nullif(trim(a.value_text), ''), a.value_number::text, '(sem resposta)')
+      group by a.question_id, q.type, a.field_id, f.label, a.value_number, a.value_text
     )
     select g.question_id,g.label,g.amount,b.total
     from grouped g cross join valid_base b
@@ -98,7 +102,7 @@ begin
     select 1 from public.survey_questions q
     where q.id = selected.id
       and q.survey_id = p_survey_id
-      and q.type <> 'open'
+      and q.type not in ('open','ranking','pair')
   );
   if invalid_count > 0 then
     raise exception 'one or more variables are invalid for this survey';

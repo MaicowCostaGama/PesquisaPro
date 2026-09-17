@@ -132,8 +132,9 @@ create table public.survey_questions (
   survey_id uuid not null references public.surveys(id) on delete cascade,
   position integer not null,
   text text not null,
-  type text not null check (type in ('single','multi','scale','scale10','nps','open','number','date')),
-  is_region boolean not null default false
+  type text not null check (type in ('single','multi','ranking','pair','scale','scale10','nps','open','number','date')),
+  is_region boolean not null default false,
+  is_active boolean not null default true
 );
 
 -- Opções de resposta (só para perguntas do tipo single/multi), com cota e
@@ -146,6 +147,18 @@ create table public.survey_question_options (
   is_remote boolean not null default false,
   quota_pct numeric,
   quota_enabled boolean not null default true
+);
+
+-- Subcampos opcionais da pergunta composta "Duas respostas". Para campos
+-- fechados, options_jsonb guarda as opções da variável.
+create table public.survey_question_fields (
+  id uuid primary key default gen_random_uuid(),
+  question_id uuid not null references public.survey_questions(id) on delete cascade,
+  position integer not null,
+  label text not null,
+  type text not null check (type in ('open','single','multi')),
+  options_jsonb jsonb not null default '[]'::jsonb,
+  unique (question_id, position)
 );
 
 -- Clientes vinculados a uma pesquisa (substitui SURVEYS.clientes + USERS.cliente.surveys)
@@ -195,6 +208,7 @@ create table public.collection_answers (
   id uuid primary key default gen_random_uuid(),
   collection_event_id uuid not null references public.collection_events(id) on delete cascade,
   question_id uuid not null references public.survey_questions(id) on delete cascade,
+  field_id uuid references public.survey_question_fields(id) on delete set null,
   value_text text,
   value_number numeric,
   created_at timestamptz not null default now()
@@ -363,6 +377,7 @@ create policy "admin edita dados da empresa"
 -- mesma regra de "só staff gerencia" usada na tabela surveys.
 alter table public.survey_questions enable row level security;
 alter table public.survey_question_options enable row level security;
+alter table public.survey_question_fields enable row level security;
 alter table public.survey_clients enable row level security;
 
 create policy "staff gerencia perguntas"
@@ -371,6 +386,10 @@ create policy "staff gerencia perguntas"
 
 create policy "staff gerencia opções de pergunta"
   on public.survey_question_options for all
+  using (public.is_staff());
+
+create policy "staff gerencia campos de perguntas"
+  on public.survey_question_fields for all
   using (public.is_staff());
 
 create policy "staff gerencia vínculos com clientes"
@@ -476,6 +495,18 @@ create policy "pesquisador vê opções das pesquisas da sua equipe"
     )
   );
 
+create policy "pesquisador vê campos das pesquisas da sua equipe"
+  on public.survey_question_fields for select
+  using (
+    exists (
+      select 1
+      from public.survey_questions q
+      join public.survey_team st on st.survey_id = q.survey_id
+      where q.id = survey_question_fields.question_id
+        and st.researcher_id = auth.uid()
+    )
+  );
+
 -- cliente também precisa enxergar as perguntas da própria pesquisa (para
 -- escolher, na tela "Resultados", qual pergunta ver a distribuição de
 -- respostas) — antes só staff e pesquisador tinham policy de leitura em
@@ -487,6 +518,18 @@ create policy "cliente vê perguntas das suas pesquisas"
     exists (
       select 1 from public.survey_clients sc
       where sc.survey_id = survey_questions.survey_id and sc.client_id = auth.uid()
+    )
+  );
+
+create policy "cliente vê campos das suas pesquisas"
+  on public.survey_question_fields for select
+  using (
+    exists (
+      select 1
+      from public.survey_questions q
+      join public.survey_clients sc on sc.survey_id = q.survey_id
+      where q.id = survey_question_fields.question_id
+        and sc.client_id = auth.uid()
     )
   );
 
@@ -555,6 +598,14 @@ create policy "pesquisador registra respostas das próprias coletas"
       select 1 from public.collection_events ce
       where ce.id = collection_answers.collection_event_id and ce.researcher_id = auth.uid()
     )
+    and (
+      collection_answers.field_id is null
+      or exists (
+        select 1 from public.survey_question_fields f
+        where f.id = collection_answers.field_id
+          and f.question_id = collection_answers.question_id
+      )
+    )
   );
 
 -- tabulação real de uma pergunta (Relatórios do staff e Resultados do
@@ -581,14 +632,20 @@ begin
   end if;
 
   return query
-    select coalesce(a.value_text, a.value_number::text) as value_label, count(*)::bigint as cnt
+    select
+      case when a.field_id is not null then coalesce(f.label,'Resposta')||': ' else '' end||
+        case when q.type='ranking' and a.value_number is not null then a.value_number::int||'º — ' else '' end||
+        coalesce(a.value_text, a.value_number::text) as value_label,
+      count(distinct a.collection_event_id)::bigint as cnt
     from public.collection_answers a
     join public.collection_events ce on ce.id = a.collection_event_id
+    join public.survey_questions q on q.id = a.question_id
+    left join public.survey_question_fields f on f.id = a.field_id
     where ce.survey_id = p_survey_id
       and a.question_id = p_question_id
       and ce.status = 'valid'
       and ce.is_calibration = false
-    group by coalesce(a.value_text, a.value_number::text)
+    group by q.type, a.field_id, f.label, a.value_text, a.value_number
     order by cnt desc;
 end;
 $$;

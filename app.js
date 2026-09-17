@@ -833,6 +833,9 @@ const STATUS_LABEL={campo:'Em campo',rascunho:'Rascunho',encerrada:'Concluída'}
 function reportsQuestionsForSurvey(s){
   return (s.questions||[]).filter(q=>q.dbId&&q.type!=='open');
 }
+function reportsCrossQuestionsForSurvey(s){
+  return reportsQuestionsForSurvey(s).filter(q=>q.type!=='pair'&&q.type!=='ranking');
+}
 function heatmapQuestionsForSurvey(s){return (s?.questions||[]).filter(q=>q.dbId&&q.type!=='date');}
 function openQuestionsForSurvey(s){return heatmapQuestionsForSurvey(s);}
 let RESPONSE_HEATMAP_MAPS={};
@@ -932,7 +935,7 @@ function clientReportCrossMatrixMarkup(model,ids,qs,title=''){const headers=mode
 function clientPublishedCrossings(document,qs){const sec=typeof document?.sections==='string'?JSON.parse(document.sections||'{}'):document?.sections||{};const valid=new Set(qs.map(q=>q.dbId));return reportsNormalizeCrossings(sec).filter(c=>c.include!==false&&reportsCrossingQuestionIds(c).length&&reportsCrossingQuestionIds(c).every(id=>valid.has(id)));}
 async function clientLoadReportOverview(){
   const out=document.getElementById('cr-client-report');if(!out||CR_CLIENT_REPORT_LOADING)return;
-  const c=clientSelf(),s=clientSelfSurvey(),qs=reportsQuestionsForSurvey(s||{});if(!c||!s||!qs.length)return;
+  const c=clientSelf(),s=clientSelfSurvey(),qs=reportsQuestionsForSurvey(s||{}),crossQs=reportsCrossQuestionsForSurvey(s||{});if(!c||!s||!qs.length)return;
   if(!clientResultsReleasedForSurvey(c,s)){out.innerHTML='<div class="card"><div class="empty">Os resultados ainda não foram liberados.</div></div>';return;}
   CR_CLIENT_REPORT_LOADING=true;out.innerHTML='<div class="empty" style="padding:28px 0">Carregando resultados agregados…</div>';
   try{
@@ -941,7 +944,7 @@ async function clientLoadReportOverview(){
     const publishedDocument=docs?.[0]||null;
     const {data:overviewRows,error:overviewError}=await sb.rpc('client_report_all_questions',{p_survey_id:s.id});
     if(overviewError)throw overviewError;
-    const crossings=clientPublishedCrossings(publishedDocument,qs),crossRowsById={};
+    const crossings=clientPublishedCrossings(publishedDocument,crossQs),crossRowsById={};
     for(const crossing of crossings){const ids=reportsCrossingQuestionIds(crossing);const {data,error}=await sb.rpc('client_report_cross_tab',{p_survey_id:s.id,p_question_ids:ids});if(error)throw error;crossRowsById[crossing.id]=data||[];}
     CR_CLIENT_REPORT_CACHE={surveyId:s.id,overviewRows:overviewRows||[],crossRowsById,document:publishedDocument};
     clientRenderReportOverview(out,s,qs,overviewRows||[],publishedDocument,crossings);
@@ -1021,8 +1024,14 @@ const WIZ={step:1,total:7,editIndex:null,
     pop:1000000,err:'0.03',conf:'1.96',prop:50,price:5,priceRemote:8,clientPrice:12,clientes:[],
     formStarted:false,questions:[],quotas:{},quotaOff:{},remote:{},clientReleaseById:{}}};
 let WIZ_QID=1;
-const Q_TYPES={single:'Escolha única',multi:'Múltipla escolha',scale:'Escala 1–5',scale10:'Escala 1–10',nps:'NPS 0–10',open:'Resposta aberta',number:'Número',date:'Data'};
-const Q_HAS_OPTS=t=>t==='single'||t==='multi';
+const Q_TYPES={single:'Escolha única',multi:'Múltipla escolha',ranking:'Ranking de preferências',pair:'Duas respostas',scale:'Escala 1–5',scale10:'Escala 1–10',nps:'NPS 0–10',open:'Resposta aberta',number:'Número',date:'Data'};
+const Q_HAS_OPTS=t=>t==='single'||t==='multi'||t==='ranking';
+const Q_HAS_QUOTA_OPTS=t=>t==='single'||t==='multi';
+const Q_CLOSED_FIELD_TYPES=['single','multi'];
+const DEFAULT_PAIR_FIELDS=()=>[
+  {label:'Resposta 1',type:'open',options:[]},
+  {label:'Resposta 2',type:'open',options:[]},
+];
 const WIZ_STEPS=['Pesquisa','Formulário','Amostra','Cotas','Preço','Cliente','Revisão'];
 
 /* abrangência geográfica da pesquisa */
@@ -1054,6 +1063,7 @@ let SURVEYS=[];
 let SURVEYS_LOADED=false;
 let SURVEYS_LOADING=false;
 let SURVEY_END_CONDITION_SCHEMA_MISSING=false;
+let SURVEY_NEW_FORMAT_SCHEMA_MISSING=false;
 
 function fmtRelativo(iso){
   if(!iso)return 'agora';
@@ -1074,7 +1084,7 @@ function fmtRelativo(iso){
    telas de pesquisa sempre usaram — assim o resto do código não muda. */
 function surveyRowToSnapshot(row,questionRows,clientCompanyNames,teamNames){
   const quotas={},quotaOff={},remote={};
-  const questions=(questionRows||[]).map((q,qi)=>{
+  const questions=(questionRows||[]).filter(q=>q.is_active!==false).map((q,qi)=>{
     const localId=qi+1;
     const opts=(q.survey_question_options||[]).slice().sort((a,b)=>a.position-b.position);
     if(opts.length){
@@ -1084,7 +1094,12 @@ function surveyRowToSnapshot(row,questionRows,clientCompanyNames,teamNames){
         if(o.is_remote)remote[oi]=true;
       });
     }
-    return {id:localId,dbId:q.id,text:q.text||'',type:q.type||'single',opts:opts.map(o=>o.label||''),endsInterview:opts.map(o=>!!o.ends_interview),isRegion:!!q.is_region};
+    const fields=(q.survey_question_fields||[]).slice().sort((a,b)=>a.position-b.position).map(field=>{
+      let options=field.options_jsonb;
+      if(typeof options==='string'){try{options=JSON.parse(options);}catch(ex){options=[];}}
+      return {id:field.id,label:field.label||'',type:field.type||'open',options:Array.isArray(options)?options.map(v=>String(v??'')):[]};
+    });
+    return {id:localId,dbId:q.id,text:q.text||'',type:q.type||'single',opts:opts.map(o=>o.label||''),endsInterview:opts.map(o=>!!o.ends_interview),fields:fields.length===2?fields:DEFAULT_PAIR_FIELDS(),isRegion:!!q.is_region};
   });
   return {
     id:row.id,
@@ -1113,21 +1128,48 @@ function snapshotToSurveyRow(d){
     form_started:!!d.formStarted,status:d.status||'rascunho',
   };
 }
-/* apaga e recria as perguntas/opções da pesquisa a partir do que está em `d`
-   (mesma lógica de "substituir tudo" usada em syncPesqCidades, para não ter
-   que calcular um diff pergunta a pergunta) */
+/* atualiza perguntas/opções sem apagar perguntas que já possuem respostas.
+   Perguntas removidas do editor ficam inativas quando a migration nova está
+   aplicada; assim o histórico continua preservado sem aparecer no formulário. */
 async function syncSurveyQuestionsAndOptions(surveyId,d){
   SURVEY_END_CONDITION_SCHEMA_MISSING=false;
-  await sb.from('survey_questions').delete().eq('survey_id',surveyId);
+  let activeColumnAvailable=true;
+  const existingResult=await sb.from('survey_questions').select('id').eq('survey_id',surveyId);
+  if(existingResult.error)throw new Error('Não foi possível ler as perguntas atuais: '+existingResult.error.message);
+  const existingIds=(existingResult.data||[]).map(row=>row.id);
   const questions=d.questions||[];
+  const keptIds=new Set(questions.map(q=>q.dbId).filter(Boolean));
+  const removedIds=existingIds.filter(id=>!keptIds.has(id));
+  if(removedIds.length){
+    let inactiveResult=await sb.from('survey_questions').update({is_active:false}).eq('survey_id',surveyId).in('id',removedIds);
+    if(inactiveResult.error&&/is_active|schema cache|column .* does not exist/i.test(inactiveResult.error.message||''))activeColumnAvailable=false;
+    else if(inactiveResult.error)throw new Error('Não foi possível preservar perguntas removidas: '+inactiveResult.error.message);
+  }
   for(let i=0;i<questions.length;i++){
     const q=questions[i];
-    const questionPayload={
+    const baseQuestionPayload={
       survey_id:surveyId,position:i,text:q.text||'',type:q.type||'single',is_region:!!q.isRegion,
     };
-    const questionInsert=await sb.from('survey_questions').insert(questionPayload).select().single();
-    const {data:qRow,error:qErr}=questionInsert;
+    let questionResult;
+    if(q.dbId&&existingIds.includes(q.dbId)){
+      const updatePayload=activeColumnAvailable?{...baseQuestionPayload,is_active:true}:baseQuestionPayload;
+      questionResult=await sb.from('survey_questions').update(updatePayload).eq('id',q.dbId).eq('survey_id',surveyId).select().single();
+      if(questionResult.error&&activeColumnAvailable&&/is_active|schema cache|column .* does not exist/i.test(questionResult.error.message||'')){
+        activeColumnAvailable=false;
+        questionResult=await sb.from('survey_questions').update(baseQuestionPayload).eq('id',q.dbId).eq('survey_id',surveyId).select().single();
+      }
+    }else{
+      questionResult=await sb.from('survey_questions').insert(baseQuestionPayload).select().single();
+    }
+    const {data:qRow,error:qErr}=questionResult;
     if(qErr)throw new Error('Não foi possível salvar as perguntas: '+qErr.message);
+    q.dbId=qRow.id;
+    const {error:oldOptionsError}=await sb.from('survey_question_options').delete().eq('question_id',qRow.id);
+    if(oldOptionsError)throw new Error('Não foi possível atualizar as opções: '+oldOptionsError.message);
+    const fieldsResult=await sb.from('survey_question_fields').select('id,position').eq('question_id',qRow.id).order('position');
+    const fieldsTableMissing=fieldsResult.error&&/survey_question_fields|schema cache|relation .* does not exist/i.test(fieldsResult.error.message||'');
+    if(fieldsResult.error&&!fieldsTableMissing)throw new Error('Não foi possível ler os dois subcampos: '+fieldsResult.error.message);
+    const existingFieldRows=fieldsResult.data||[];
     if(Q_HAS_OPTS(q.type)&&q.opts&&q.opts.length){
       const off=!!(d.quotaOff&&d.quotaOff[q.id]);
       const localQuotas=(d.quotas&&d.quotas[q.id])||{};
@@ -1158,6 +1200,26 @@ async function syncSurveyQuestionsAndOptions(surveyId,d){
       }
       const {error:oErr}=optionInsert;
       if(oErr)throw new Error('Não foi possível salvar as opções: '+oErr.message);
+    }
+    if(q.type==='pair'){
+      if(fieldsTableMissing)throw new Error('Para usar “Duas respostas”, execute a migration deploy/perguntas-ranking-duas-respostas.sql no Supabase.');
+      const fields=(q.fields&&q.fields.length===2?q.fields:DEFAULT_PAIR_FIELDS()).map((field,fieldIndex)=>({
+        question_id:qRow.id,position:fieldIndex,label:String(field.label||'Resposta '+(fieldIndex+1)).trim()||'Resposta '+(fieldIndex+1),type:Q_CLOSED_FIELD_TYPES.includes(field.type)?field.type:'open',options_jsonb:Q_CLOSED_FIELD_TYPES.includes(field.type)?(field.options||[]).filter(v=>String(v||'').trim()):[],
+      }));
+      const keptFieldIds=[];
+      for(let fieldIndex=0;fieldIndex<fields.length;fieldIndex++){
+        const current=existingFieldRows[fieldIndex];let fieldResult;
+        if(current)fieldResult=await sb.from('survey_question_fields').update(fields[fieldIndex]).eq('id',current.id).eq('question_id',qRow.id).select().single();
+        else fieldResult=await sb.from('survey_question_fields').insert(fields[fieldIndex]).select().single();
+        if(fieldResult.error)throw new Error('Não foi possível salvar os dois subcampos: '+fieldResult.error.message);
+        keptFieldIds.push(fieldResult.data.id);
+        if(q.fields?.[fieldIndex])q.fields[fieldIndex].id=fieldResult.data.id;
+      }
+      const staleFieldIds=existingFieldRows.map(field=>field.id).filter(id=>!keptFieldIds.includes(id));
+      if(staleFieldIds.length){const {error:staleError}=await sb.from('survey_question_fields').delete().in('id',staleFieldIds);if(staleError)throw new Error('Não foi possível remover subcampos antigos: '+staleError.message);}
+    }else if(!fieldsTableMissing&&existingFieldRows.length){
+      const {error:staleError}=await sb.from('survey_question_fields').delete().in('id',existingFieldRows.map(field=>field.id));
+      if(staleError)throw new Error('Não foi possível desassociar subcampos antigos: '+staleError.message);
     }
   }
 }
@@ -1191,11 +1253,17 @@ async function syncSurveyTeam(surveyId,researcherNames){
     if(error)throw new Error('Não foi possível salvar a equipe: '+error.message);
   }
 }
-const SURVEY_JOIN_SELECT='*, survey_questions(*, survey_question_options(*)), survey_clients(client_id, results_released), survey_team(researcher_id)';
+const SURVEY_JOIN_SELECT_LEGACY='*, survey_questions(*, survey_question_options(*)), survey_clients(client_id, results_released), survey_team(researcher_id)';
+const SURVEY_JOIN_SELECT='*, survey_questions(*, survey_question_options(*), survey_question_fields(*)), survey_clients(client_id, results_released), survey_team(researcher_id)';
 function idsToClientCompanies(ids){return ids.map(id=>{const c=USERS.find(u=>u.id===id);return c?(c.company||c.name):null;}).filter(Boolean);}
 function idsToResearcherNames(ids){return ids.map(id=>{const u=USERS.find(x=>x.id===id);return u?u.name:null;}).filter(Boolean);}
 async function reloadSurveySnapshot(surveyId){
-  const {data,error}=await sb.from('surveys').select(SURVEY_JOIN_SELECT).eq('id',surveyId).single();
+  let result=await sb.from('surveys').select(SURVEY_JOIN_SELECT).eq('id',surveyId).single();
+  if(result.error&&/survey_question_fields|schema cache|relation .* does not exist/i.test(result.error.message||'')){
+    SURVEY_NEW_FORMAT_SCHEMA_MISSING=true;
+    result=await sb.from('surveys').select(SURVEY_JOIN_SELECT_LEGACY).eq('id',surveyId).single();
+  }
+  const {data,error}=result;
   if(error||!data)throw new Error(error?error.message:'Pesquisa não encontrada depois de salvar.');
   const qRows=(data.survey_questions||[]).slice().sort((a,b)=>a.position-b.position);
   const companyNames=idsToClientCompanies((data.survey_clients||[]).map(sc=>sc.client_id));
@@ -1207,7 +1275,12 @@ async function loadSurveysIfNeeded(){
   SURVEYS_LOADING=true;
   await loadUsersIfNeeded(); // precisa dos nomes reais para resolver clientes/equipe vinculados
   try{
-    const {data,error}=await sb.from('surveys').select(SURVEY_JOIN_SELECT).order('created_at',{ascending:false});
+    let result=await sb.from('surveys').select(SURVEY_JOIN_SELECT).order('created_at',{ascending:false});
+    if(result.error&&/survey_question_fields|schema cache|relation .* does not exist/i.test(result.error.message||'')){
+      SURVEY_NEW_FORMAT_SCHEMA_MISSING=true;
+      result=await sb.from('surveys').select(SURVEY_JOIN_SELECT_LEGACY).order('created_at',{ascending:false});
+    }
+    const {data,error}=result;
     if(!error){
       SURVEYS=(data||[]).map(row=>{
         const qRows=(row.survey_questions||[]).slice().sort((a,b)=>a.position-b.position);
@@ -1466,6 +1539,7 @@ WIZ_BODY[2]=()=>{
   <div class="card-d" style="margin-top:6px">Crie as perguntas desta pesquisa. As variáveis aqui ficam disponíveis para cotas e cruzamentos.</div>
   <div class="q-order-hint"><span aria-hidden="true">⠿</span> Arraste a alça pontilhada para mudar a ordem. Se preferir, use as setas em cada pergunta.</div>
   <div class="q-condition-hint"><span aria-hidden="true">!</span> Nas perguntas de escolha, marque <b>encerrar</b> ao lado de uma resposta para avisar o pesquisador e encerrar a entrevista quando ela for selecionada.</div>
+  <div class="q-format-hint"><span aria-hidden="true">↕</span> <b>Ranking de preferências</b> registra a ordem completa das opções. <b>Duas respostas</b> cria dois subcampos independentes, abertos ou fechados.</div>
   <div id="q-list"></div>
   <div class="add-q">
     <span style="font-size:12px;font-weight:600;color:var(--ink2)">Adicionar pergunta:</span>
@@ -1599,13 +1673,21 @@ function qRender(){
   if(qs.length===0){wrap.innerHTML='<div class="empty">Nenhuma pergunta ainda. Adicione abaixo.</div>';return;}
   wrap.innerHTML=qs.map((q,i)=>{
     let body='';
-    if(Q_HAS_OPTS(q.type)){
+    if(q.type==='pair'){
+      qEnsurePairFields(q);
+      body=`<div class="q-pair-editor">${q.fields.map((field,fi)=>{
+        const closed=Q_CLOSED_FIELD_TYPES.includes(field.type);
+        const opts=closed?`<div class="q-opts q-pair-options">${field.options.map((option,oi)=>`<div class="opt-edit"><span class="${field.type==='single'?'opt-dot':'opt-sq'}"></span><input class="opt-inp" value="${esc(option)}" oninput="qPairOpt(${q.id},${fi},${oi},this.value)" placeholder="Opção ${oi+1}"><button class="opt-del" title="Remover opção" onclick="qPairOptDel(${q.id},${fi},${oi})">✕</button></div>`).join('')}<button class="opt-add" onclick="qPairOptAdd(${q.id},${fi})">+ adicionar opção</button></div>`:'';
+        return `<div class="q-pair-field-editor"><div class="q-pair-field-head"><span class="q-pair-field-number">${fi+1}</span><input class="inp q-pair-label" value="${esc(field.label)}" oninput="qPairFieldLabel(${q.id},${fi},this.value)" placeholder="Nome da variável ${fi+1}"><select class="inp q-pair-type" onchange="qPairFieldType(${q.id},${fi},this.value)">${[['open','Aberta'],['single','Escolha única'],['multi','Múltipla escolha']].map(([type,label])=>`<option value="${type}" ${field.type===type?'selected':''}>${label}</option>`).join('')}</select></div>${opts}</div>`;
+      }).join('')}</div><div class="q-pair-hint">Os dois subcampos serão respondidos na mesma entrevista e aparecerão como variáveis separadas nos resultados.</div>`;
+    }else if(Q_HAS_OPTS(q.type)){
       body=`<div class="q-opts">`+q.opts.map((o,oi)=>
         `<div class="opt-edit"><span class="${q.type==='single'?'opt-dot':'opt-sq'}"></span>
           <input class="opt-inp" value="${esc(o)}" oninput="qOpt(${q.id},${oi},this.value)" placeholder="Opção ${oi+1}">
-          <label class="opt-end" title="Se o entrevistado escolher esta resposta, a entrevista será encerrada"><input type="checkbox" ${q.endsInterview&&q.endsInterview[oi]?'checked':''} ${o&&o.trim()?'':'disabled'} onchange="qEndToggle(${q.id},${oi},this.checked)"> encerrar</label>
+          ${q.type==='ranking'?'':`<label class="opt-end" title="Se o entrevistado escolher esta resposta, a entrevista será encerrada"><input type="checkbox" ${q.endsInterview&&q.endsInterview[oi]?'checked':''} ${o&&o.trim()?'':'disabled'} onchange="qEndToggle(${q.id},${oi},this.checked)"> encerrar</label>`}
           <button class="opt-del" title="Remover opção" onclick="qOptDel(${q.id},${oi})">✕</button></div>`).join('')
         +`<button class="opt-add" onclick="qOptAdd(${q.id})">+ adicionar opção</button></div>`;
+      if(q.type==='ranking')body+=`<div class="q-ranking-hint">O entrevistado vai arrastar todas as opções da mais preferida para a menos preferida.</div>`;
     } else if(q.type==='scale'){
       body=`<div class="opt-line" style="padding-top:4px">Péssima &nbsp;①②③④⑤&nbsp; Ótima</div>`;
     } else if(q.type==='scale10'){
@@ -1627,7 +1709,7 @@ function qRender(){
     const regionCtl=canBeRegion
       ?`<button class="q-region-btn ${q.isRegion?'on':''}" title="Marcar esta pergunta como a pergunta de bairro/região (usada para definir coletas remotas no preço) — você escolhe qual pergunta é essa" onclick="qSetRegion(${q.id})">${q.isRegion?'★ região':'☆ região'}</button>`
       :'';
-    const canQuota=Q_HAS_OPTS(q.type)&&q.opts.some(o=>o&&o.trim());
+    const canQuota=Q_HAS_QUOTA_OPTS(q.type)&&q.opts.some(o=>o&&o.trim());
     const quotaOn=canQuota&&!(WIZ.data.quotaOff&&WIZ.data.quotaOff[q.id]);
     const quotaCtl=canQuota
       ?`<button class="q-quota-btn ${quotaOn?'on':''}" title="Definir se esta pergunta terá cota controlada na amostra (ajustável em detalhe no passo Cotas)" onclick="qToggleQuota(${q.id})">${quotaOn?'✓ cota':'sem cota'}</button>`
@@ -1665,17 +1747,24 @@ function fmtDataBR(iso){
 }
 function qFind(id){return WIZ.data.questions.find(q=>q.id===id);}
 function qAdd(type){
-  const q={id:WIZ_QID++,text:'',type,opts:Q_HAS_OPTS(type)?['',''] :[],endsInterview:Q_HAS_OPTS(type)?[false,false]:[]};
+  const q={id:WIZ_QID++,text:'',type,opts:Q_HAS_OPTS(type)?['',''] :[],endsInterview:Q_HAS_OPTS(type)?[false,false]:[],fields:type==='pair'?DEFAULT_PAIR_FIELDS():[]};
   WIZ.data.questions.push(q);qRender();
   setTimeout(()=>{const inputs=document.querySelectorAll('.q-text-inp');if(inputs.length)inputs[inputs.length-1].focus();},30);
 }
 function qDel(id){WIZ.data.questions=WIZ.data.questions.filter(q=>q.id!==id);qRender();}
 function qText(id,v){const q=qFind(id);if(q)q.text=v;}
-function qType(id,v){const q=qFind(id);if(!q)return;q.type=v;if(Q_HAS_OPTS(v)&&q.opts.length===0){q.opts=['',''];q.endsInterview=[false,false];}if(!Q_HAS_OPTS(v)||v!=='single')q.isRegion=false;qRender();}
+function qEnsurePairFields(q){if(!q)return;const current=Array.isArray(q.fields)?q.fields:[];q.fields=[0,1].map(i=>{const f=current[i]||DEFAULT_PAIR_FIELDS()[i];return {label:String(f.label||'Resposta '+(i+1)),type:Q_CLOSED_FIELD_TYPES.includes(f.type)?f.type:'open',options:Array.isArray(f.options)?f.options.map(v=>String(v??'')):[]};});}
+function qType(id,v){const q=qFind(id);if(!q)return;q.type=v;if(Q_HAS_OPTS(v)&&q.opts.length===0){q.opts=['',''];q.endsInterview=[false,false];}if(v==='pair')qEnsurePairFields(q);if(!Q_HAS_OPTS(v)||v!=='single')q.isRegion=false;qRender();}
 function qOpt(id,oi,v){const q=qFind(id);if(q){q.opts[oi]=v;if(!String(v||'').trim()&&q.endsInterview)q.endsInterview[oi]=false;}}
 function qOptAdd(id){const q=qFind(id);if(q){q.opts.push('');q.endsInterview=q.endsInterview||[];q.endsInterview.push(false);qRender();}}
 function qOptDel(id,oi){const q=qFind(id);if(q&&q.opts.length>1){q.opts.splice(oi,1);if(q.endsInterview)q.endsInterview.splice(oi,1);qRender();}}
 function qEndToggle(id,oi,checked){const q=qFind(id);if(!q)return;q.endsInterview=q.endsInterview||[];q.endsInterview[oi]=checked===true;qRender();}
+function qPairField(qid,fieldIndex){const q=qFind(qid);if(!q||q.type!=='pair')return null;qEnsurePairFields(q);return q.fields[fieldIndex]||null;}
+function qPairFieldLabel(qid,fieldIndex,value){const field=qPairField(qid,fieldIndex);if(field)field.label=value;}
+function qPairFieldType(qid,fieldIndex,value){const field=qPairField(qid,fieldIndex);if(!field)return;field.type=Q_CLOSED_FIELD_TYPES.includes(value)?value:'open';if(field.type==='open')field.options=[];else if(!field.options.length)field.options=['',''];qRender();}
+function qPairOpt(qid,fieldIndex,optionIndex,value){const field=qPairField(qid,fieldIndex);if(field)field.options[optionIndex]=value;}
+function qPairOptAdd(qid,fieldIndex){const field=qPairField(qid,fieldIndex);if(field){field.options.push('');qRender();}}
+function qPairOptDel(qid,fieldIndex,optionIndex){const field=qPairField(qid,fieldIndex);if(field&&field.options.length>1){field.options.splice(optionIndex,1);qRender();}}
 function qToggleQuota(id){
   const off=!!(WIZ.data.quotaOff&&WIZ.data.quotaOff[id]);
   quotaToggle(id,off); // off vira o novo "active": alterna o estado atual
@@ -1899,7 +1988,7 @@ WIZ_BODY[7]=()=>`<div class="card" style="max-width:680px"><div class="card-t">R
 
 /* ---- cotas ---- */
 function quotaQuestions(){
-  return WIZ.data.questions.filter(q=>Q_HAS_OPTS(q.type)&&q.opts.some(o=>o&&o.trim()));
+  return WIZ.data.questions.filter(q=>Q_HAS_QUOTA_OPTS(q.type)&&q.opts.some(o=>o&&o.trim()));
 }
 function renderQuotas(){
   const area=document.getElementById('quotas-area');if(!area)return;
@@ -3218,6 +3307,7 @@ function surveyQuotas(s){
   const sample=surveySample(s);
   const out=[];
   (s.questions||[]).forEach(q=>{
+    if(!Q_HAS_QUOTA_OPTS(q.type))return;
     if(s.quotaOff&&s.quotaOff[q.id])return;
     const qQuotas=(s.quotas&&s.quotas[q.id])||{};
     Object.keys(qQuotas).forEach(oiStr=>{
@@ -3235,6 +3325,7 @@ let ACOLLECT_SURVEY_ID=null,ACOLLECT_QUOTA_COUNTS={},ACOLLECT_QUOTA_LIST=[];
 let ACOLLECT_SELECTED_QUOTA=null,ACOLLECT_IN_PROGRESS=false,ACOLLECT_SUBMITTING=false,ACOLLECT_STARTED_AT=null;
 let ACOLLECT_TICK=null;
 let ACOLLECT_ANSWERS={}; /* {questionDbId: {value, locked}} — respostas de verdade da entrevista em andamento */
+let ACOLLECT_RANKING_DRAG=null;
 let ACOLLECT_RECORDING_FEATURE_AVAILABLE=null;
 let ACOLLECT_RECORDING_RESERVATION_ID=null,ACOLLECT_RECORDING_REQUIRED=false,ACOLLECT_RECORDING_CONSENT=null;
 let ACOLLECT_RECORDING_STATUS='not_selected',ACOLLECT_RECORDING_BLOB=null,ACOLLECT_RECORDING_MIME='',ACOLLECT_RECORDING_DURATION_MS=null,ACOLLECT_RECORDING_STREAM=null,ACOLLECT_RECORDING_RECORDER=null,ACOLLECT_RECORDING_CHUNKS=[],ACOLLECT_RECORDING_PREVIEW_URL=null,ACOLLECT_RECORDING_STOP_TIMER=null,ACOLLECT_RECORDING_STARTED_AT=null,ACOLLECT_RECORDING_ERROR='';
@@ -3432,6 +3523,42 @@ function acollectToggleMultiAnswer(qDbId,label,optionIndex){
   renderAcollectActionState();
   acollectEndByCondition(qDbId,label,optionIndex);
 }
+function acollectPairField(qDbId,fieldIndex){
+  const current=ACOLLECT_ANSWERS[qDbId]||{};
+  const fields=Array.isArray(current.value)&&current.value.length===2?current.value.slice():[[],[]];
+  return {current,fields};
+}
+function acollectSetPairField(qDbId,fieldIndex,value){
+  const {current,fields}=acollectPairField(qDbId,fieldIndex);
+  fields[fieldIndex]=value;
+  ACOLLECT_ANSWERS[qDbId]={...current,value:fields};
+  renderAcollectActionState();
+}
+function acollectTogglePairMulti(qDbId,fieldIndex,label){
+  const {current,fields}=acollectPairField(qDbId,fieldIndex);
+  const values=Array.isArray(fields[fieldIndex])?fields[fieldIndex].slice():[];
+  const index=values.indexOf(label);if(index>=0)values.splice(index,1);else values.push(label);
+  fields[fieldIndex]=values;ACOLLECT_ANSWERS[qDbId]={...current,value:fields};
+  renderAcollectActionState();
+}
+function acollectRankingOptions(q){return (q?.opts||[]).map(value=>String(value||'').trim()).filter(Boolean);}
+function acollectRankingOrder(q,a){
+  const options=acollectRankingOptions(q),saved=Array.isArray(a?.value)?a.value:[];
+  return [...saved.filter(value=>options.includes(value)),...options.filter(value=>!saved.includes(value))];
+}
+function acollectRankingSetOrder(qDbId,order){
+  const current=ACOLLECT_ANSWERS[qDbId]||{};
+  ACOLLECT_ANSWERS[qDbId]={...current,value:order.slice()};
+  renderAcollectForm();renderAcollectActionState();
+}
+function acollectRankingMove(qDbId,from,to){
+  const s=SURVEYS.find(x=>x.id===ACOLLECT_SURVEY_ID),q=(s?.questions||[]).find(item=>item.dbId===qDbId);if(!q)return;
+  const order=acollectRankingOrder(q,ACOLLECT_ANSWERS[qDbId]);if(from<0||to<0||from>=order.length||to>=order.length)return;
+  [order[from],order[to]]=[order[to],order[from]];acollectRankingSetOrder(qDbId,order);
+}
+function acollectRankingDragStart(ev,qDbId,index){ACOLLECT_RANKING_DRAG={qDbId,index};if(ev?.dataTransfer){ev.dataTransfer.effectAllowed='move';ev.dataTransfer.setData('text/plain',String(index));}}
+function acollectRankingDrop(ev,qDbId,to){if(ev?.preventDefault)ev.preventDefault();const d=ACOLLECT_RANKING_DRAG;if(!d||d.qDbId!==qDbId){ACOLLECT_RANKING_DRAG=null;return;}const s=SURVEYS.find(x=>x.id===ACOLLECT_SURVEY_ID),q=(s?.questions||[]).find(item=>item.dbId===qDbId);if(q){const order=acollectRankingOrder(q,ACOLLECT_ANSWERS[qDbId]);const [moved]=order.splice(d.index,1);order.splice(Math.max(0,Math.min(to,order.length)),0,moved);acollectRankingSetOrder(qDbId,order);}ACOLLECT_RANKING_DRAG=null;}
+function acollectRankingDragEnd(){ACOLLECT_RANKING_DRAG=null;}
 function acollectResetRecordingState(){
   if(ACOLLECT_RECORDING_STOP_TIMER){clearTimeout(ACOLLECT_RECORDING_STOP_TIMER);ACOLLECT_RECORDING_STOP_TIMER=null;}
   const recorder=ACOLLECT_RECORDING_RECORDER;
@@ -3579,10 +3706,27 @@ function acollectMissingRequired(){
   return (s.questions||[]).filter(q=>q.type!=='open').filter(q=>{
     if(!q.dbId)return false; // pergunta sem id real (não deveria acontecer) — não trava o envio por ela
     const a=ACOLLECT_ANSWERS[q.dbId];
+    if(q.type==='pair'){
+      const fields=Array.isArray(a?.value)?a.value:[];
+      return (q.fields||DEFAULT_PAIR_FIELDS()).some((field,index)=>{
+        const value=fields[index];
+        return field.type==='multi'?( !Array.isArray(value)||value.length===0 ):String(value??'').trim()==='';
+      });
+    }
+    if(q.type==='ranking')return !a||!Array.isArray(a.value)||a.value.length!==acollectRankingOptions(q).length;
     if(!a)return true;
     if(Array.isArray(a.value))return a.value.length===0;
     return a.value===''||a.value==null;
   });
+}
+function acollectPairFieldBody(q,field,fieldIndex,value){
+  const name='acpair-'+q.dbId+'-'+fieldIndex;
+  if(field.type==='single')return (field.options||[]).map(option=>`<label class="collect-option"><input type="radio" name="${name}" ${value===option?'checked':''} onchange="acollectSetPairField('${q.dbId}',${fieldIndex},${jsArg(option)})"> ${esc(option)}</label>`).join('');
+  if(field.type==='multi'){
+    const values=Array.isArray(value)?value:[];
+    return (field.options||[]).map(option=>`<label class="collect-option"><input type="checkbox" ${values.includes(option)?'checked':''} onchange="acollectTogglePairMulti('${q.dbId}',${fieldIndex},${jsArg(option)})"> ${esc(option)}</label>`).join('');
+  }
+  return `<textarea class="inp collect-pair-open" rows="2" oninput="acollectSetPairField('${q.dbId}',${fieldIndex},this.value)">${esc(value||'')}</textarea>`;
 }
 function renderAcollectForm(){
   const el=document.getElementById('acollectForm');
@@ -3597,14 +3741,20 @@ function renderAcollectForm(){
       const locked=a&&a.locked;
       let body='';
       if(q.type==='single'){
-        body=(q.opts||[]).map(opt=>`<label style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:12px;${locked?'opacity:.7':''}">
+        body=(q.opts||[]).map((opt,oi)=>`<label style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:12px;${locked?'opacity:.7':''}">
           <input type="radio" name="acq-${q.dbId}" ${a&&a.value===opt?'checked':''} ${locked?'disabled':''} onchange="acollectSetAnswer('${q.dbId}',${jsArg(opt)},false,${oi})"> ${esc(opt)}</label>`).join('');
       }else if(q.type==='multi'){
-        body=(q.opts||[]).map(opt=>{
+        body=(q.opts||[]).map((opt,oi)=>{
           const checked=a&&Array.isArray(a.value)&&a.value.includes(opt);
           return `<label style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:12px">
           <input type="checkbox" ${checked?'checked':''} onchange="acollectToggleMultiAnswer('${q.dbId}',${jsArg(opt)},${oi})"> ${esc(opt)}</label>`;
         }).join('');
+      }else if(q.type==='ranking'){
+        const order=acollectRankingOrder(q,a);
+        body=`<div class="collect-ranking-note">Arraste para ordenar da mais preferida à menos preferida. No celular, use as setas.</div><div class="collect-ranking-list">${order.map((option,index)=>`<div class="collect-ranking-row" draggable="true" ondragstart="acollectRankingDragStart(event,'${q.dbId}',${index})" ondragover="event.preventDefault()" ondrop="acollectRankingDrop(event,'${q.dbId}',${index})" ondragend="acollectRankingDragEnd()"><span class="collect-ranking-position">${index+1}</span><span>${esc(option)}</span><span class="collect-ranking-controls"><button type="button" class="collect-ranking-move" ${index===0?'disabled':''} onclick="acollectRankingMove('${q.dbId}',${index},${index-1})" aria-label="Subir ${esc(option)}">↑</button><button type="button" class="collect-ranking-move" ${index===order.length-1?'disabled':''} onclick="acollectRankingMove('${q.dbId}',${index},${index+1})" aria-label="Descer ${esc(option)}">↓</button></span><span class="collect-ranking-grip" aria-hidden="true">⠿</span></div>`).join('')}</div>`;
+      }else if(q.type==='pair'){
+        const pairValues=Array.isArray(a?.value)?a.value:[];
+        body=`<div class="collect-pair-fields">${(q.fields||DEFAULT_PAIR_FIELDS()).map((field,fieldIndex)=>`<div class="collect-pair-field"><label class="lbl">${fieldIndex+1}. ${esc(field.label||'Resposta '+(fieldIndex+1))}</label>${acollectPairFieldBody(q,field,fieldIndex,pairValues[fieldIndex])}</div>`).join('')}</div>`;
       }else if(q.type==='scale'||q.type==='scale10'||q.type==='nps'){
         const max=ACOLLECT_SCALE_MAX[q.type]||5;
         const min=q.type==='nps'?0:1;
@@ -3737,8 +3887,9 @@ async function loadCollectEventsForced(){
   }catch(ex){ /* mantém os dados já carregados se a nova busca falhar */ }
 }
 /* monta as linhas de collection_answers a partir de ACOLLECT_ANSWERS —
-   múltipla escolha vira uma linha por opção marcada; escala/número usam
-   value_number; o resto (única escolha/data/aberta) usa value_text.
+   múltipla escolha vira uma linha por opção marcada; ranking vira uma linha
+   por opção com value_number = posição; perguntas compostas usam field_id;
+   escala/número usam value_number; o resto usa value_text.
    Perguntas abertas sem resposta simplesmente não geram linha (são opcionais). */
 function acollectBuildAnswerRows(eventId){
   const s=SURVEYS.find(x=>x.id===ACOLLECT_SURVEY_ID);
@@ -3749,6 +3900,15 @@ function acollectBuildAnswerRows(eventId){
     if(!a||a.value===''||a.value==null||(Array.isArray(a.value)&&a.value.length===0))return;
     if(q.type==='multi'){
       a.value.forEach(label=>rows.push({collection_event_id:eventId,question_id:q.dbId,value_text:label}));
+    }else if(q.type==='ranking'){
+      a.value.forEach((label,index)=>rows.push({collection_event_id:eventId,question_id:q.dbId,value_text:label,value_number:index+1}));
+    }else if(q.type==='pair'){
+      const fields=q.fields||DEFAULT_PAIR_FIELDS(),values=Array.isArray(a.value)?a.value:[];
+      fields.forEach((field,index)=>{
+        const fieldId=field.id,value=values[index];if(!fieldId||value===''||value==null||(Array.isArray(value)&&value.length===0))return;
+        if(field.type==='multi')value.forEach(label=>rows.push({collection_event_id:eventId,question_id:q.dbId,field_id:fieldId,value_text:label}));
+        else rows.push({collection_event_id:eventId,question_id:q.dbId,field_id:fieldId,...(field.type==='open'?{value_text:String(value)}:{value_text:String(value)})});
+      });
     }else if(q.type==='scale'||q.type==='scale10'||q.type==='nps'||q.type==='number'){
       rows.push({collection_event_id:eventId,question_id:q.dbId,value_number:a.value});
     }else{ // single, date, open
@@ -3996,13 +4156,13 @@ PAGES.reports=()=>{
   if(!surveys.length)return head('Relatórios','Resultados em tempo real e análises cruzadas')+'<div class="card"><div class="empty">Nenhuma pesquisa com perguntas configuradas ainda.</div></div>';
   if(RP_SURVEY_ID==null||!surveys.some(s=>s.id===RP_SURVEY_ID))RP_SURVEY_ID=surveys[0].id;
   const survey=reportsCurrentSurvey()||surveys[0];
-  const qs=reportsQuestionsForSurvey(survey);
-  reportsEnsureCrossSelection(qs);
+  const qs=reportsQuestionsForSurvey(survey),crossQs=reportsCrossQuestionsForSurvey(survey);
+  reportsEnsureCrossSelection(crossQs);
   return head('Relatórios','Resultados em tempo real e análises cruzadas')+`
   <div class="card reports-toolbar mb">
     <div class="reports-toolbar-top"><div><div class="reports-eyebrow">CENTRAL DE ANÁLISE</div><h2>Resultados da pesquisa</h2><p>Veja todas as perguntas e monte cruzamentos com até três variáveis.</p></div><span id="rp-live-status" class="reports-live-badge"><i></i>Atualizando automaticamente</span></div>
     <div class="reports-toolbar-grid"><div><label class="lbl">Pesquisa</label><select class="inp" id="rp-survey" onchange="reportsPickSurvey(this.value)">${surveys.map(s=>`<option value="${s.id}" ${s.id===RP_SURVEY_ID?'selected':''}>${esc(s.name)}</option>`).join('')}</select></div><div class="reports-mode-switch" role="tablist" aria-label="Modo de relatório">${reportsModeButton('overview','Todas as perguntas','▦')}${reportsModeButton('builder','Montar relatório','⚒')}</div></div>
-    ${RP_REPORT_MODE==='builder'?`<div class="reports-builder-note">Cada cartão abaixo representa um cruzamento independente. Cada cruzamento aceita de uma a três variáveis e pode ser incluído ou retirado do PDF separadamente.</div>${reportsCrossingsBuilderMarkup(qs)}`:''}
+    ${RP_REPORT_MODE==='builder'?`<div class="reports-builder-note">Cada cartão abaixo representa um cruzamento independente. Cada cruzamento aceita de uma a três variáveis e pode ser incluído ou retirado do PDF separadamente. Ranking e “Duas respostas” aparecem no resultado geral, mas não são escolhidos como uma única variável de cruzamento.</div>${reportsCrossingsBuilderMarkup(crossQs)}`:''}
   </div>
   ${reportsHeatmapMarkup(survey)}
   <div id="rp-output"><div class="empty" style="padding:28px 0">Carregando resultados reais…</div></div>

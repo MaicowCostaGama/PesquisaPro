@@ -4693,10 +4693,10 @@ function userTabStats(tab){
   </div>`;
 }
 function userTableHead(tab){
-  if(tab==='pesq')return '<tr><th>Nome</th><th>CPF</th><th>Cidade / estado</th><th>Escolaridade</th><th>Documentos</th><th>PIX</th><th>Status</th><th></th></tr>';
-  if(tab==='cliente')return '<tr><th>Cliente</th><th>CPF/CNPJ</th><th>Celular</th><th>Pesquisas</th><th>Status</th><th></th></tr>';
-  if(tab==='recrutador')return '<tr><th>Nome</th><th>CPF</th><th>Perfil</th><th>Celular</th><th>Valor por captação</th><th>Status</th><th></th></tr>';
-  return '<tr><th>Nome</th><th>CPF</th><th>Perfil</th><th>Celular</th><th>Comissão</th><th>Status</th><th></th></tr>';
+  if(tab==='pesq')return '<tr><th>Nome</th><th>CPF</th><th>Cidade / estado</th><th>Escolaridade</th><th>Documentos</th><th>PIX</th><th>Status</th><th class="user-actions-header">Ações</th></tr>';
+  if(tab==='cliente')return '<tr><th>Cliente</th><th>CPF/CNPJ</th><th>Celular</th><th>Pesquisas</th><th>Status</th><th class="user-actions-header">Ações</th></tr>';
+  if(tab==='recrutador')return '<tr><th>Nome</th><th>CPF</th><th>Perfil</th><th>Celular</th><th>Valor por captação</th><th>Status</th><th class="user-actions-header">Ações</th></tr>';
+  return '<tr><th>Nome</th><th>CPF</th><th>Perfil</th><th>Celular</th><th>Comissão</th><th>Status</th><th class="user-actions-header">Ações</th></tr>';
 }
 function userTableRows(tab){
   const items=usersInTab(tab);
@@ -4814,7 +4814,7 @@ function userList(){
   <div class="callout" style="margin-top:16px">Clientes são cadastrados manualmente por um administrador — não há autocadastro para este perfil.</div>`
   : `
   <div class="callout" style="margin-top:16px">Este perfil só pode ser incluído manualmente pelo Administrador master ou por um ADM PesquisaPro autorizado — não há autocadastro.</div>`;
-  const tableContent=currentCount?`<div class="user-table-scroll"><table><thead>${userTableHead(tab)}</thead><tbody>${userTableRows(tab)}</tbody></table></div>`:`<div class="users-empty-state"><div class="users-empty-icon">＋</div><div><h3>${USER_SEARCH?'Nenhum resultado encontrado':'Nenhum '+(USER_TAB_NEW_LABEL[tab]||'usuário')+' cadastrado'}</h3><p>${USER_SEARCH?'Tente outro nome, CPF ou e-mail.':'Comece adicionando o primeiro perfil nesta categoria para liberar o fluxo correspondente.'}</p>${USER_SEARCH?'<button class="btn btn-out" onclick="userClearSearch()">Limpar busca</button>':`<button class="btn btn-fill" onclick="userOpen('new')">Cadastrar ${USER_TAB_NEW_LABEL[tab]||'usuário'}</button>`}</div></div>`;
+  const tableContent=currentCount?`<div class="user-table-scroll" tabindex="0" aria-label="Tabela de usuários. Deslize horizontalmente para ver todas as informações."><div class="user-table-scroll-hint"><span aria-hidden="true">↔</span> Deslize horizontalmente para ver todos os dados. A coluna <b>Ações</b> permanece acessível à direita.</div><table class="user-data-table user-data-table-${tab}"><thead>${userTableHead(tab)}</thead><tbody>${userTableRows(tab)}</tbody></table></div>`:`<div class="users-empty-state"><div class="users-empty-icon">＋</div><div><h3>${USER_SEARCH?'Nenhum resultado encontrado':'Nenhum '+(USER_TAB_NEW_LABEL[tab]||'usuário')+' cadastrado'}</h3><p>${USER_SEARCH?'Tente outro nome, CPF ou e-mail.':'Comece adicionando o primeiro perfil nesta categoria para liberar o fluxo correspondente.'}</p>${USER_SEARCH?'<button class="btn btn-out" onclick="userClearSearch()">Limpar busca</button>':`<button class="btn btn-fill" onclick="userOpen('new')">Cadastrar ${USER_TAB_NEW_LABEL[tab]||'usuário'}</button>`}</div></div>`;
   const searchBar=`<div class="user-search-bar" role="search"><div class="user-search-main"><label class="sr-only" for="user-search">Buscar usuário</label><span class="user-search-icon">⌕</span><input id="user-search" class="inp" type="search" value="${esc(USER_SEARCH)}" placeholder="Buscar por nome, CPF ou e-mail…" autocomplete="off" oninput="userSearchInput(this.value)">${USER_SEARCH?'<button type="button" class="user-search-clear" title="Limpar busca" aria-label="Limpar busca" onclick="userClearSearch()">×</button>':''}</div><span class="user-search-hint">A busca vale para a aba atual e ignora acentos e pontuação.</span></div>`;
   const researcherFilters=tab==='pesq'?userResearcherFiltersMarkup(usersInTab('pesq')):'';
   return `<div class="users-page"><div class="users-context"><div><span class="eyebrow">${tabInfo[0]}</span><p>${tabInfo[1]}</p></div><span class="users-count-chip">${currentCount} ${currentCount===1?'perfil':'perfis'}</span></div>`+

@@ -35,6 +35,7 @@ create table public.profiles (
   cpf_cnpj text,           -- usado só no perfil "cliente" (pode ser CPF ou CNPJ)
   pf_pj text check (pf_pj in ('pf','pj')),  -- só para "cliente"
   birth date,
+  escolaridade text,       -- usado principalmente no perfil pesquisador
   cidade text,
   rua text,
   numero text,
@@ -78,6 +79,7 @@ create table public.signups (
   email text,
   phone text,
   cidade text,
+  escolaridade text,
   rua text,
   numero text,
   cep text,

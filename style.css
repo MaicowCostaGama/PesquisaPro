@@ -959,3 +959,10 @@ body.lp{background:#f8faff;color:var(--ink)}
   .researcher-profile-page .researcher-profile-actions{display:grid;grid-template-columns:1fr}
   .researcher-profile-page .researcher-profile-actions .btn{width:100%}
 }
+
+/* Filtros de disponibilidade de pesquisadores */
+.researcher-filter-panel,.team-filter-panel{margin:0 0 14px;padding:14px 15px;border:1px solid #d7e5f5;border-radius:14px;background:linear-gradient(135deg,#fafdff,#f3f8ff);box-shadow:0 5px 16px rgba(16,42,84,.05)}
+.researcher-filter-title,.team-filter-title{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:11px}.researcher-filter-title>div,.team-filter-title>div{display:flex;flex-direction:column;gap:3px}.researcher-filter-title b,.team-filter-title b{font-size:12.5px;color:var(--ink2)}.researcher-filter-title span:not(.pill),.team-filter-title span:not(.pill){font-size:11px;color:var(--ink3)}
+.researcher-filter-grid,.team-filter-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.researcher-filter-grid .btn,.team-filter-grid .btn{min-height:40px}.team-filter-grid{grid-template-columns:1.4fr repeat(3,minmax(0,1fr))}.team-filter-note{margin-top:9px;color:var(--ink3);font-size:11px;line-height:1.4}.t-pesq-row{transition:background .16s ease,opacity .16s ease}.t-pesq-row:hover{background:#f8fbff}
+@media(max-width:900px){.researcher-filter-grid,.team-filter-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:640px){.researcher-filter-title,.team-filter-title{align-items:flex-start;flex-direction:column;gap:8px}.researcher-filter-grid,.team-filter-grid{grid-template-columns:1fr}.researcher-filter-grid .btn,.team-filter-grid .btn{width:100%}}

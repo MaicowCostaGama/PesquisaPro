@@ -2387,7 +2387,7 @@ function pesqAreaMatch(u,targets){
   const cid=u.cidadesAtuacao||[];
   if(!cid.length)return {match:false,label:u.cidade||'cidade não informada'};
   if(targets.cities.size&&cid.some(c=>targets.cities.has(c)))return {match:true,label:cid.join(', ')};
-  if(!targets.cities.size&&targets.states.size&&cid.some(c=>targets.states.has(c.split('/')[1])))return {match:true,label:cid.join(', ')};
+  if(!targets.cities.size&&targets.states.size&&[...researcherStateSet(u)].some(state=>targets.states.has(state)))return {match:true,label:cid.join(', ')};
   return {match:false,label:cid.join(', ')};
 }
 /* ---- convite de pesquisador por WhatsApp (aceitar entra na equipe sozinho,
@@ -2425,7 +2425,7 @@ async function loadTeamInvitesIfNeeded(){
   // ".nav-item.on" que as outras telas usam pra saber se ainda estão na
   // tela certa antes de re-renderizar — em vez disso, confere se o próprio
   // conteúdo desta página ainda está no ar.
-  if(document.getElementById('team-picklist'))go('survey-team');
+  if(document.getElementById('team-picklist')){go('survey-team');setTimeout(teamFilterRows,0);}
 }
 /* cria o convite (ou reabre um que foi recusado) e abre o WhatsApp com a
    mensagem já pronta — o pesquisador só entra na equipe se ele aceitar
@@ -2459,6 +2459,20 @@ async function inviteResearcherWhatsapp(researcherId){
 }
 let TEAM_IDX=null;
 let TEAM_SHOW_OUT_OF_AREA=false; /* liga/desliga por pesquisa — reseta a cada entrada na tela */
+let TEAM_FILTERS={text:'',state:'',city:'',schooling:''};
+function teamFilterOptions(pesqs){
+  const states=new Set(),cities=new Map();
+  pesqs.forEach(({u})=>researcherLocations(u).forEach(part=>{if(part.uf)states.add(part.uf);if(part.city)cities.set(normalizeUserSearch(part.city),part.city+(part.uf?'/'+part.uf:''));}));
+  return {states:[...states].sort(),cities:[...cities.entries()].sort((a,b)=>a[1].localeCompare(b[1],'pt-BR'))};
+}
+function teamFilterMatches(user){
+  const states=researcherStateSet(user),cities=researcherCitySet(user),f=TEAM_FILTERS;
+  return (!f.state||states.has(f.state))&&(!f.city||cities.has(f.city))&&(!f.schooling||user.escolaridade===f.schooling);
+}
+function teamFiltersMarkup(pesqs,hasTarget){
+  const {states,cities}=teamFilterOptions(pesqs),f=TEAM_FILTERS;
+  return `<div class="team-filter-panel"><div class="team-filter-title"><div><b>Encontrar pesquisadores</b><span>Filtre por localização e escolaridade antes de convidar.</span></div><span class="pill pill-blue" id="team-available-count">— disponíveis</span></div><div class="team-filter-grid"><input class="inp" id="team-search" value="${esc(f.text)}" placeholder="Buscar por nome ou cidade…" oninput="teamSetFilter('text',this.value)"><select class="inp" aria-label="Filtrar equipe por estado" onchange="teamSetFilter('state',this.value)"><option value="">Todos os estados</option>${states.map(state=>`<option value="${esc(state)}" ${f.state===state?'selected':''}>${esc(state)}</option>`).join('')}</select><select class="inp" aria-label="Filtrar equipe por cidade" onchange="teamSetFilter('city',this.value)"><option value="">Todas as cidades</option>${cities.map(([value,label])=>`<option value="${esc(value)}" ${f.city===value?'selected':''}>${esc(label)}</option>`).join('')}</select><select class="inp" aria-label="Filtrar equipe por escolaridade" onchange="teamSetFilter('schooling',this.value)"><option value="">Todas as escolaridades</option>${SCHOOLING_OPTIONS.map(([value,label])=>`<option value="${value}" ${f.schooling===value?'selected':''}>${label}</option>`).join('')}</select></div><div class="team-filter-note">${hasTarget?'A contagem considera pesquisadores ativos, com documentos completos, cidade cadastrada e compatíveis com a área da pesquisa.':'A contagem considera pesquisadores ativos, com documentos completos e cidade cadastrada.'}</div></div>`;
+}
 PAGES['survey-team']=()=>{
   const s=SURVEYS[TEAM_IDX];if(!s)return '<div class="empty">Pesquisa não encontrada.</div>';
   if(!USERS_LOADED){
@@ -2485,11 +2499,11 @@ PAGES['survey-team']=()=>{
     const foraDaArea=hasTarget&&!area.match;
     const naoSelecionavel=foraDaArea&&!on; // fora da área e nunca esteve na equipe: não pode ser marcado
     const hidden=naoSelecionavel&&!TEAM_SHOW_OUT_OF_AREA;
-    const searchKey=esc((u.name+' '+area.label).toLowerCase());
+    const locations=researcherLocations(u),stateKey=[...researcherStateSet(u)].join('|'),cityKey=[...researcherCitySet(u)].join('|'),searchKey=esc(normalizeUserSearch([u.name,area.label,...locations.map(part=>part.city),...locations.map(part=>part.uf),schoolingLabel(u.escolaridade)].join(' '))),available=researcherIsAvailable(u)&&(!hasTarget||area.match);
     const inv=TEAM_INVITES.find(i=>i.researcher_id===u.id);
     // convite por WhatsApp: só faz sentido oferecer pra quem pode mesmo
     // entrar na equipe (não pend, não fora da área, ainda não está na equipe)
-    const podeConvidar=!on&&!pend&&!naoSelecionavel;
+    const podeConvidar=!on&&!pend&&!naoSelecionavel&&researcherIsAvailable(u);
     let inviteHtml='';
     if(podeConvidar){
       if(inv&&inv.status==='pendente'){
@@ -2500,14 +2514,15 @@ PAGES['survey-team']=()=>{
         inviteHtml=`<button class="btn-ghost" style="font-size:11px;padding:4px 8px;color:var(--teal)" onclick="event.preventDefault();inviteResearcherWhatsapp('${u.id}')">✉ Convidar por WhatsApp</button>`;
       }
     }
-    return `<label class="pick t-pesq-row" data-search="${searchKey}" data-fora="${naoSelecionavel?'1':'0'}" style="${(pend||foraDaArea)?'opacity:.7':''}${hidden?';display:none':''}">
-      <input type="checkbox" class="t-pesq" value="${esc(u.name)}" ${on?'checked':''} ${(pend||naoSelecionavel)?'disabled':''}>
+    return `<label class="pick t-pesq-row" data-search="${searchKey}" data-state="${esc(stateKey)}" data-city="${esc([...researcherCitySet(u)].join('|'))}" data-schooling="${esc(u.escolaridade||'')}" data-available="${available?'1':'0'}" data-fora="${naoSelecionavel?'1':'0'}" style="${(pend||foraDaArea||!researcherIsAvailable(u))?'opacity:.7':''}${hidden?';display:none':''}">
+      <input type="checkbox" class="t-pesq" value="${esc(u.name)}" ${on?'checked':''} ${(pend||naoSelecionavel||(!researcherIsAvailable(u)&&!on))?'disabled':''}>
       <div class="avatar" style="width:30px;height:30px;font-size:11px">${esc(u.name).split(' ').map(n=>n[0]).join('')}</div>
       <div style="flex:1"><div style="font-weight:600;font-size:13px">${esc(u.name)}</div>
-        <div style="font-size:11px;color:var(--ink3)">${esc(area.label)}</div></div>
+        <div style="font-size:11px;color:var(--ink3)">${esc(area.label)} · ${esc(schoolingLabel(u.escolaridade))}</div></div>
       ${area.match?'<span class="pill pill-green">● atua na área</span>':''}
       ${foraDaArea?`<span class="pill pill-gray">fora da área${on?' · já na equipe':''}</span>`:''}
       ${pend?'<span class="pill pill-amber">● aguardando aprovação</span>':''}
+      ${!pend&&(!u.docFoto||!u.docComprovante)?'<span class="pill pill-red">● docs pendentes</span>':''}
       ${conversationButton(u.phone,'Olá '+u.name+'! Podemos conversar sobre a pesquisa '+s.name+'?')}
       ${inviteHtml}</label>`;
   }).join(''):'<div class="empty">Nenhum pesquisador cadastrado ainda. Cadastre em Usuários → Pesquisadores.</div>';
@@ -2518,7 +2533,7 @@ PAGES['survey-team']=()=>{
       <div class="card-t">Pesquisadores cadastrados</div>
       <div class="card-d">${hasTarget?`Só é possível convidar quem tem, no cadastro, disponibilidade para ${esc(areaNote)} — pesquisadores de outras áreas ficam de fora da lista.`:`Marque quem vai trabalhar nesta pesquisa (${esc(areaNote)}, então não há restrição de área).`}</div>
       ${hasTarget&&foraCount?`<label class="pick" style="padding:6px 2px;margin-bottom:6px;cursor:pointer"><input type="checkbox" id="team-show-fora" ${TEAM_SHOW_OUT_OF_AREA?'checked':''} onchange="teamToggleShowFora(this.checked)"><span style="font-size:12px;color:var(--ink3)">Mostrar também os ${foraCount} pesquisador${foraCount>1?'es':''} fora da área (não poderão ser marcados — exceção só pelo cadastro dele)</span></label>`:''}
-      ${pesqs.length?`<input class="inp" placeholder="Buscar por nome ou cidade…" id="team-search" oninput="teamFilterRows(this.value)" style="margin-bottom:10px">`:''}
+      ${pesqs.length?teamFiltersMarkup(pesqs,hasTarget):''}
       <div class="picklist" id="team-picklist" style="grid-template-columns:1fr">${rows}</div>
       <div class="empty" id="team-no-match" style="display:none">Nenhum pesquisador encontrado para essa busca.</div>
     </div>
@@ -2537,32 +2552,36 @@ PAGES['survey-team']=()=>{
     </div>
   </div>`;
 };
-function surveyTeam(idx){TEAM_IDX=idx;TEAM_SHOW_OUT_OF_AREA=false;TEAM_INVITES=[];TEAM_INVITES_LOADED=false;go('survey-team');}
+function surveyTeam(idx){TEAM_IDX=idx;TEAM_SHOW_OUT_OF_AREA=false;TEAM_FILTERS={text:'',state:'',city:'',schooling:''};TEAM_INVITES=[];TEAM_INVITES_LOADED=false;go('survey-team');setTimeout(teamFilterRows,0);}
 /* liga/desliga a visibilidade de quem está fora da área, sem perder o que
    já foi marcado na tela (por isso mexe direto no DOM em vez de re-renderizar
    a página inteira) — quem está fora da área nunca fica marcável por aqui,
    só visível ou escondido. */
 function teamToggleShowFora(checked){
   TEAM_SHOW_OUT_OF_AREA=checked;
-  const qq=(document.getElementById('team-search')?.value||'').trim().toLowerCase();
-  teamFilterRows(qq);
+  teamFilterRows();
 }
-/* filtra a lista de pesquisadores por nome/cidade sem re-renderizar (senão
-   perderia o que já estava marcado enquanto a pessoa digita) — respeita
-   também o estado do toggle "mostrar fora da área". */
-function teamFilterRows(q){
-  const qq=(q||'').trim().toLowerCase();
+function teamSetFilter(key,value){TEAM_FILTERS[key]=value||'';teamFilterRows();}
+/* filtra a lista de pesquisadores sem re-renderizar (senão perderia o que já
+   estava marcado enquanto a pessoa digita) e atualiza a contagem disponível. */
+function teamFilterRows(){
+  const qq=normalizeUserSearch(TEAM_FILTERS.text);
   const rows=[...document.querySelectorAll('#team-picklist .t-pesq-row')];
-  let visible=0;
+  let visible=0,available=0;
   rows.forEach(row=>{
     const matchesSearch=!qq||(row.dataset.search||'').includes(qq);
+    const states=(row.dataset.state||'').split('|').filter(Boolean),cities=(row.dataset.city||'').split('|').filter(Boolean);
+    const matchesFilters=(!TEAM_FILTERS.state||states.includes(TEAM_FILTERS.state))&&(!TEAM_FILTERS.city||cities.includes(TEAM_FILTERS.city))&&(!TEAM_FILTERS.schooling||row.dataset.schooling===TEAM_FILTERS.schooling);
     const isFora=row.dataset.fora==='1';
-    const show=matchesSearch&&(!isFora||TEAM_SHOW_OUT_OF_AREA);
+    const show=matchesSearch&&matchesFilters&&(!isFora||TEAM_SHOW_OUT_OF_AREA);
     row.style.display=show?'':'none';
     if(show)visible++;
+    if(show&&row.dataset.available==='1')available++;
   });
   const noMatch=document.getElementById('team-no-match');
   if(noMatch)noMatch.style.display=visible?'none':'';
+  const count=document.getElementById('team-available-count');
+  if(count)count.textContent=available+' disponível'+(available===1?'':'is');
 }
 async function teamSave(){
   const s=SURVEYS[TEAM_IDX];if(!s)return;
@@ -4372,9 +4391,11 @@ const USER_TABS=[
 const USER_TAB_ROLES={pesq:['pesq'],cliente:['cliente'],admpro:['admpro'],vendedor:['vendedor'],indicador:['indicador'],recrutador:['recrutador'],staff:['admin','coord','gerente']};
 let USER_TAB='pesq';
 let USER_SEARCH='';
+let USER_RESEARCHER_FILTERS={state:'',city:'',schooling:''};
 function normalizeUserSearch(value){return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();}
 function compactUserSearch(value){return normalizeUserSearch(value).replace(/[^a-z0-9]/g,'');}
-function userSearchText(user){return [user.name,user.email,user.cpf,user.cpfCnpj,user.phone,user.contact,user.cidade,ROLE_LABEL[user.role]||user.role].filter(Boolean).join(' ');}
+function researcherIsAvailable(user){return user?.role==='pesq'&&user.status==='ativo'&&!!user.docFoto&&!!user.docComprovante&&researcherLocations(user).length>0;}
+function userSearchText(user){return [user.name,user.email,user.cpf,user.cpfCnpj,user.phone,user.contact,user.cidade,(user.cidadesAtuacao||[]).join(' '),schoolingLabel(user.escolaridade),ROLE_LABEL[user.role]||user.role].filter(Boolean).join(' ');}
 function userMatchesSearch(user){
   const query=normalizeUserSearch(USER_SEARCH);
   if(!query)return true;
@@ -4383,7 +4404,23 @@ function userMatchesSearch(user){
   const compactText=compactUserSearch(userSearchText(user));
   return text.includes(query)||(compactQuery&&compactText.includes(compactQuery));
 }
-function usersInTab(tab){const roles=USER_TAB_ROLES[tab]||[];return USERS.map((u,i)=>({u,i})).filter(x=>roles.includes(x.u.role)&&userMatchesSearch(x.u));}
+function userMatchesResearcherFilters(user){
+  if(USER_TAB!=='pesq'||user?.role!=='pesq')return true;
+  const filters=USER_RESEARCHER_FILTERS,states=researcherStateSet(user),cities=researcherCitySet(user);
+  return (!filters.state||states.has(filters.state))&&(!filters.city||cities.has(filters.city))&&(!filters.schooling||user.escolaridade===filters.schooling);
+}
+function usersInTab(tab){const roles=USER_TAB_ROLES[tab]||[];return USERS.map((u,i)=>({u,i})).filter(x=>roles.includes(x.u.role)&&userMatchesSearch(x.u)&&userMatchesResearcherFilters(x.u));}
+function userResearcherFilterOptions(){
+  const list=pesqUsers(),states=new Set(),cities=new Map();
+  list.forEach(user=>researcherLocations(user).forEach(part=>{if(part.uf)states.add(part.uf);if(part.city)cities.set(normalizeUserSearch(part.city),part.city+(part.uf?'/'+part.uf:''));}));
+  return {states:[...states].sort(),cities:[...cities.entries()].sort((a,b)=>a[1].localeCompare(b[1],'pt-BR'))};
+}
+function userResearcherFilterSet(key,value){USER_RESEARCHER_FILTERS[key]=value||'';go('users');}
+function userResearcherFilterClear(){USER_RESEARCHER_FILTERS={state:'',city:'',schooling:''};go('users');}
+function userResearcherFiltersMarkup(list){
+  const {states,cities}=userResearcherFilterOptions(),f=USER_RESEARCHER_FILTERS,available=list.filter(({u})=>researcherIsAvailable(u)).length,active=!!(f.state||f.city||f.schooling);
+  return `<div class="researcher-filter-panel"><div class="researcher-filter-title"><div><b>Filtrar disponibilidade</b><span>Refine por estado, cidade de atuação e escolaridade.</span></div><span class="pill pill-green">${available} disponível${available===1?'':'is'}</span></div><div class="researcher-filter-grid"><select class="inp" aria-label="Filtrar por estado" onchange="userResearcherFilterSet('state',this.value)"><option value="">Todos os estados</option>${states.map(state=>`<option value="${esc(state)}" ${f.state===state?'selected':''}>${esc(state)}</option>`).join('')}</select><select class="inp" aria-label="Filtrar por cidade" onchange="userResearcherFilterSet('city',this.value)"><option value="">Todas as cidades</option>${cities.map(([value,label])=>`<option value="${esc(value)}" ${f.city===value?'selected':''}>${esc(label)}</option>`).join('')}</select><select class="inp" aria-label="Filtrar por escolaridade" onchange="userResearcherFilterSet('schooling',this.value)"><option value="">Todas as escolaridades</option>${SCHOOLING_OPTIONS.map(([value,label])=>`<option value="${value}" ${f.schooling===value?'selected':''}>${label}</option>`).join('')}</select>${active?'<button class="btn btn-out" type="button" onclick="userResearcherFilterClear()">Limpar filtros</button>':''}</div></div>`;
+}
 function userSearchInput(value){
   USER_SEARCH=value||'';
   go('users');
@@ -4404,6 +4441,28 @@ async function userSendPasswordReset(idx){
 }
 function clienteUsers(){return USERS.filter(u=>u.role==='cliente');}
 function pesqUsers(){return USERS.filter(u=>u.role==='pesq');}
+const SCHOOLING_OPTIONS=[
+  ['fundamental_incompleto','Ensino fundamental incompleto'],
+  ['fundamental_completo','Ensino fundamental completo'],
+  ['medio_incompleto','Ensino médio incompleto'],
+  ['medio_completo','Ensino médio completo'],
+  ['superior_incompleto','Ensino superior incompleto'],
+  ['superior_completo','Ensino superior completo'],
+  ['pos_graduacao','Pós-graduação / especialização'],
+  ['mestrado','Mestrado'],
+  ['doutorado','Doutorado'],
+];
+const SCHOOLING_LABELS=Object.fromEntries(SCHOOLING_OPTIONS);
+function schoolingLabel(value){return SCHOOLING_LABELS[value]||String(value||'Não informada');}
+function locationParts(value){
+  const raw=String(value||'').trim();if(!raw)return null;
+  const match=raw.match(/(?:\/|,\s*|-\s*)([A-Za-z]{2})\s*$/);
+  if(!match)return {city:raw,uf:''};
+  return {city:raw.slice(0,match.index).trim().replace(/[,-]\s*$/,''),uf:match[1].toUpperCase()};
+}
+function researcherLocations(user){return [...new Set([user?.cidade,...(user?.cidadesAtuacao||[])].filter(Boolean).map(locationParts).filter(Boolean).map(part=>({city:part.city,uf:part.uf,raw:String(part.city)+(part.uf?'/'+part.uf:'')})))];}
+function researcherStateSet(user){return new Set(researcherLocations(user).map(part=>part.uf).filter(Boolean));}
+function researcherCitySet(user){return new Set(researcherLocations(user).map(part=>normalizeUserSearch(part.city)).filter(Boolean));}
 let USER_EDIT=null; // index sendo editado, ou 'new', ou null (lista)
 let USER_NEW_ROLE='pesq'; // perfil pré-selecionado ao clicar em "+ Novo" numa aba
 
@@ -4415,6 +4474,7 @@ let USER_NEW_ROLE='pesq'; // perfil pré-selecionado ao clicar em "+ Novo" numa 
    em profiles/auth.users), usado para localizar a linha certa ao salvar. */
 let USERS_LOADED=false;
 let USERS_LOADING=false;
+let PROFILE_SCHOOLING_SCHEMA_MISSING=false;
 
 function staffRoleOf(role){return ['admin','coord','gerente'].includes(role);}
 function lightRoleOf(role){return ['admpro','vendedor','indicador','recrutador'].includes(role);}
@@ -4425,7 +4485,7 @@ function profileRowToUser(row){
   if(row.role==='cliente')return {...base,company:row.name,cpfCnpj:row.cpf_cnpz||row.cpf_cnpj||'',pfpj:row.pf_pj||'pj',birth:row.birth||'',
     contact:row.contact_person||'',cidade:row.cidade||'',rua:row.rua||'',numero:row.numero||'',cep:row.cep||'',
     surveys:[],resultsReleased:!!row.results_released};
-  if(row.role==='pesq')return {...base,cpf:row.cpf||'',birth:row.birth||'',cidade:row.cidade||'',rua:row.rua||'',numero:row.numero||'',cep:row.cep||'',
+  if(row.role==='pesq')return {...base,cpf:row.cpf||'',birth:row.birth||'',escolaridade:row.escolaridade||'',cidade:row.cidade||'',rua:row.rua||'',numero:row.numero||'',cep:row.cep||'',
     docFoto:row.doc_foto_url||'',docComprovante:row.doc_comprovante_url||'',
     cidadesAtuacao:(row.profile_cidades_atuacao||[]).map(c=>c.cidade),
     pixKey:row.pix_key||'',pixDoc:row.pix_doc||'',pixBank:row.pix_bank||'',pixAg:row.pix_ag||'',pixAcc:row.pix_acc||''};
@@ -4438,11 +4498,28 @@ function userToProfileRow(rec,role){
   if(staffRoleOf(role)){row.cpf=rec.cpf||null;row.birth=rec.birth||null;row.cidade=rec.addr||null;row.doc_url=rec.doc||null;}
   else if(role==='cliente'){row.cpf_cnpj=rec.cpfCnpj||null;row.pf_pj=rec.pfpj||'pj';row.birth=rec.birth||null;row.contact_person=rec.contact||null;
     row.cidade=rec.cidade||null;row.rua=rec.rua||null;row.numero=rec.numero||null;row.cep=rec.cep||null;row.results_released=!!rec.resultsReleased;}
-  else if(role==='pesq'){row.cpf=rec.cpf||null;row.birth=rec.birth||null;row.cidade=rec.cidade||null;row.rua=rec.rua||null;row.numero=rec.numero||null;row.cep=rec.cep||null;
+  else if(role==='pesq'){row.cpf=rec.cpf||null;row.birth=rec.birth||null;row.escolaridade=rec.escolaridade||null;row.cidade=rec.cidade||null;row.rua=rec.rua||null;row.numero=rec.numero||null;row.cep=rec.cep||null;
     row.doc_foto_url=rec.docFoto||null;row.doc_comprovante_url=rec.docComprovante||null;
     row.pix_key=rec.pixKey||null;row.pix_doc=rec.pixDoc||null;row.pix_bank=rec.pixBank||null;row.pix_ag=rec.pixAg||null;row.pix_acc=rec.pixAcc||null;}
   else{row.cpf=rec.cpf||null;row.cidade=rec.cidade||null;row.commission_rate=Number(rec.commissionRate)||0;row.commission_rate_with_indicator=role==='vendedor'?(Number(rec.commissionRateWithIndicator)||0):0;row.recruiter_capture_value=role==='recrutador'?(Number(rec.recruiterCaptureValue)||0):0;row.recruiter_code=role==='recrutador'?(rec.recruiterCode||null):null;} // admpro, vendedor, indicador, recrutador
   return row;
+}
+function isSchoolingColumnError(error){return !!error&&/escolaridade|schema cache|column .* does not exist/i.test(error.message||'');}
+function profileRowWithoutSchooling(row){const copy={...row};delete copy.escolaridade;return copy;}
+async function insertProfileSafe(row){
+  let result=await sb.from('profiles').insert(row).select().single();
+  if(isSchoolingColumnError(result.error)){PROFILE_SCHOOLING_SCHEMA_MISSING=true;result=await sb.from('profiles').insert(profileRowWithoutSchooling(row)).select().single();}
+  return result;
+}
+async function updateProfileSafe(id,row){
+  let result=await sb.from('profiles').update(row).eq('id',id);
+  if(isSchoolingColumnError(result.error)){PROFILE_SCHOOLING_SCHEMA_MISSING=true;result=await sb.from('profiles').update(profileRowWithoutSchooling(row)).eq('id',id);}
+  return result;
+}
+async function updateProfileSafeSelect(id,row){
+  let result=await sb.from('profiles').update(row).eq('id',id).select().single();
+  if(isSchoolingColumnError(result.error)){PROFILE_SCHOOLING_SCHEMA_MISSING=true;result=await sb.from('profiles').update(profileRowWithoutSchooling(row)).eq('id',id).select().single();}
+  return result;
 }
 let _usersLoadPromise=null;
 /* `await`-ável de qualquer lugar: se já tem um carregamento em andamento
@@ -4455,7 +4532,12 @@ function loadUsersIfNeeded(){
   _usersLoadPromise=(async()=>{
     USERS_LOADING=true;
     try{
-      const {data,error}=await sb.from('profiles').select('id,name,email,phone,role,status,cpf,cpf_cnpj,pf_pj,birth,cidade,rua,numero,cep,contact_person,doc_url,doc_foto_url,doc_comprovante_url,pix_key,pix_doc,pix_bank,pix_ag,pix_acc,results_released,approved_at,commission_rate,commission_rate_with_indicator,recruiter_code,recruiter_capture_value,profile_cidades_atuacao(cidade)').order('created_at',{ascending:false});
+      let result=await sb.from('profiles').select('id,name,email,phone,role,status,cpf,cpf_cnpj,pf_pj,birth,escolaridade,cidade,rua,numero,cep,contact_person,doc_url,doc_foto_url,doc_comprovante_url,pix_key,pix_doc,pix_bank,pix_ag,pix_acc,results_released,approved_at,commission_rate,commission_rate_with_indicator,recruiter_code,recruiter_capture_value,profile_cidades_atuacao(cidade)').order('created_at',{ascending:false});
+      if(result.error&&/escolaridade|schema cache|column .* does not exist/i.test(result.error.message||'')){
+        PROFILE_SCHOOLING_SCHEMA_MISSING=true;
+        result=await sb.from('profiles').select('id,name,email,phone,role,status,cpf,cpf_cnpj,pf_pj,birth,cidade,rua,numero,cep,contact_person,doc_url,doc_foto_url,doc_comprovante_url,pix_key,pix_doc,pix_bank,pix_ag,pix_acc,results_released,approved_at,commission_rate,commission_rate_with_indicator,recruiter_code,recruiter_capture_value,profile_cidades_atuacao(cidade)').order('created_at',{ascending:false});
+      }
+      const {data,error}=result;
       if(!error){USERS=(data||[]).map(profileRowToUser);USERS_LOADED=true;}
       else console.error('Erro ao carregar usuários:',error);
     }catch(ex){console.error('Erro de conexão ao carregar usuários:',ex);}
@@ -4464,7 +4546,7 @@ function loadUsersIfNeeded(){
     refreshClientSurveyLinks();
     const onKey=document.querySelector('.nav-item.on');
     const k=onKey&&onKey.dataset.key;
-    if(k==='users'||k==='dashboard'||k==='survey-team'||k==='contracts'||k==='recruitment')go(k);
+    if(k==='users'||k==='dashboard'||k==='survey-team'||k==='contracts'||k==='recruitment'){go(k);if(k==='survey-team')setTimeout(teamFilterRows,0);}
   })();
   return _usersLoadPromise;
 }
@@ -4483,7 +4565,7 @@ async function createLoginAndProfile(email,password,role,rec){
   if(!data||!data.user)throw new Error('Não foi possível criar o login.');
   const row=userToProfileRow(rec,role);
   row.id=data.user.id;
-  const {data:inserted,error:insErr}=await sb.from('profiles').insert(row).select().single();
+  const {data:inserted,error:insErr}=await insertProfileSafe(row);
   if(insErr)throw new Error('Login criado, mas não foi possível salvar o perfil: '+insErr.message);
   return inserted;
 }
@@ -4500,10 +4582,10 @@ const SIGNUP_PILL={
 };
 let SIGNUPS_LOADED=false;
 let SIGNUPS_LOAD_PROMISE=null;
-function signupRowToLocal(row){return {id:row.id,name:row.name||'',cpf:row.cpf||'',birth:row.birth||'',email:row.email||'',phone:row.phone||'',cidade:row.cidade||'',rua:row.rua||'',numero:row.numero||'',cep:row.cep||'',cidadesAtuacao:(row.signup_cidades_atuacao||[]).map(c=>c.cidade),role:'pesq',docFoto:row.doc_foto_url||'',docComprovante:row.doc_comprovante_url||'',pixKey:row.pix_key||'',pixDoc:row.pix_doc||'',pixBank:row.pix_bank||'',pixAg:row.pix_ag||'',pixAcc:row.pix_acc||'',status:row.status||'novo',note:row.note||'',sent:row.sent_at?new Date(row.sent_at).toLocaleString('pt-BR'):'agora',recruiterId:row.recruiter_id||null,recruiterCode:row.recruiter_code||'',recruiterCaptureValue:Number(row.recruiter_capture_value)||0,approvedProfileId:row.approved_profile_id||null,authUserId:row.auth_user_id||null};}
+function signupRowToLocal(row){return {id:row.id,name:row.name||'',cpf:row.cpf||'',birth:row.birth||'',escolaridade:row.escolaridade||'',email:row.email||'',phone:row.phone||'',cidade:row.cidade||'',rua:row.rua||'',numero:row.numero||'',cep:row.cep||'',cidadesAtuacao:(row.signup_cidades_atuacao||[]).map(c=>c.cidade),role:'pesq',docFoto:row.doc_foto_url||'',docComprovante:row.doc_comprovante_url||'',pixKey:row.pix_key||'',pixDoc:row.pix_doc||'',pixBank:row.pix_bank||'',pixAg:row.pix_ag||'',pixAcc:row.pix_acc||'',status:row.status||'novo',note:row.note||'',sent:row.sent_at?new Date(row.sent_at).toLocaleString('pt-BR'):'agora',recruiterId:row.recruiter_id||null,recruiterCode:row.recruiter_code||'',recruiterCaptureValue:Number(row.recruiter_capture_value)||0,approvedProfileId:row.approved_profile_id||null,authUserId:row.auth_user_id||null};}
 function signupPendingRows(){return SIGNUPS.filter(s=>['novo','diligencia'].includes(s.status));}
 function signupOrphanRows(){return SIGNUPS.filter(s=>s.status==='aprovado'&&!isValidUuid(s.approvedProfileId));}
-function signupApprovalRecord(s){return {name:s.name,cpf:s.cpf,birth:s.birth,email:s.email,phone:s.phone,cidade:s.cidade,rua:s.rua||'',numero:s.numero||'',cep:s.cep||'',role:'pesq',status:'ativo',docFoto:s.docFoto,docComprovante:s.docComprovante,cidadesAtuacao:s.cidadesAtuacao||[],pixKey:s.pixKey||'',pixDoc:s.pixDoc||'',pixBank:s.pixBank||'',pixAg:s.pixAg||'',pixAcc:s.pixAcc||''};}
+function signupApprovalRecord(s){return {name:s.name,cpf:s.cpf,birth:s.birth,escolaridade:s.escolaridade||'',email:s.email,phone:s.phone,cidade:s.cidade,rua:s.rua||'',numero:s.numero||'',cep:s.cep||'',role:'pesq',status:'ativo',docFoto:s.docFoto,docComprovante:s.docComprovante,cidadesAtuacao:s.cidadesAtuacao||[],pixKey:s.pixKey||'',pixDoc:s.pixDoc||'',pixBank:s.pixBank||'',pixAg:s.pixAg||'',pixAcc:s.pixAcc||''};}
 function signupTemporaryPassword(){return 'Pp-'+crypto.randomUUID()+'-9a';}
 async function signupEnsureApprovedProfile(i){
   const s=SIGNUPS[i];
@@ -4514,13 +4596,13 @@ async function signupEnsureApprovedProfile(i){
   const {data:existing,error:findError}=await sb.from('profiles').select('id').eq('email',s.email).eq('role','pesq').maybeSingle();
   if(findError)throw new Error('Não foi possível verificar se o pesquisador já possui perfil: '+findError.message);
   if(existing?.id){
-    const {data:updated,error:updateError}=await sb.from('profiles').update(userToProfileRow(rec,'pesq')).eq('id',existing.id).select().single();
+    const {data:updated,error:updateError}=await updateProfileSafeSelect(existing.id,userToProfileRow(rec,'pesq'));
     if(updateError)throw new Error('Não foi possível atualizar o perfil existente: '+updateError.message);
     profile=updated;
     await syncPesqCidades(profile.id,rec.cidadesAtuacao);
   }else if(isValidUuid(s.authUserId)){
     const row=userToProfileRow(rec,'pesq');row.id=s.authUserId;
-    const {data:inserted,error:insertError}=await sb.from('profiles').insert(row).select().single();
+    const {data:inserted,error:insertError}=await insertProfileSafe(row);
     if(insertError)throw new Error('Não foi possível criar o perfil vinculado à conta de acesso: '+insertError.message);
     profile=inserted;
     await syncPesqCidades(profile.id,rec.cidadesAtuacao);
@@ -4545,8 +4627,8 @@ function loadSignupsIfNeeded(){
   if(SIGNUPS_LOAD_PROMISE)return SIGNUPS_LOAD_PROMISE;
   SIGNUPS_LOAD_PROMISE=(async()=>{
     try{
-      let result=await sb.from('signups').select('id,name,cpf,birth,email,phone,cidade,rua,numero,cep,doc_foto_url,doc_comprovante_url,pix_key,pix_doc,pix_bank,pix_ag,pix_acc,status,note,sent_at,recruiter_id,recruiter_code,recruiter_capture_value,approved_profile_id,auth_user_id,signup_cidades_atuacao(cidade)').in('status',['novo','diligencia','aprovado']).order('sent_at',{ascending:false});
-      if(result.error&&/approved_profile_id|column/i.test(result.error.message||''))result=await sb.from('signups').select('id,name,cpf,birth,email,phone,cidade,rua,numero,cep,doc_foto_url,doc_comprovante_url,pix_key,pix_doc,pix_bank,pix_ag,pix_acc,status,note,sent_at,recruiter_id,recruiter_code,recruiter_capture_value,auth_user_id,signup_cidades_atuacao(cidade)').in('status',['novo','diligencia','aprovado']).order('sent_at',{ascending:false});
+      let result=await sb.from('signups').select('id,name,cpf,birth,escolaridade,email,phone,cidade,rua,numero,cep,doc_foto_url,doc_comprovante_url,pix_key,pix_doc,pix_bank,pix_ag,pix_acc,status,note,sent_at,recruiter_id,recruiter_code,recruiter_capture_value,approved_profile_id,auth_user_id,signup_cidades_atuacao(cidade)').in('status',['novo','diligencia','aprovado']).order('sent_at',{ascending:false});
+      if(result.error&&/approved_profile_id|escolaridade|column/i.test(result.error.message||''))result=await sb.from('signups').select('id,name,cpf,birth,email,phone,cidade,rua,numero,cep,doc_foto_url,doc_comprovante_url,pix_key,pix_doc,pix_bank,pix_ag,pix_acc,status,note,sent_at,recruiter_id,recruiter_code,recruiter_capture_value,auth_user_id,signup_cidades_atuacao(cidade)').in('status',['novo','diligencia','aprovado']).order('sent_at',{ascending:false});
       if(result.error)throw new Error(result.error.message);
       SIGNUPS=(result.data||[]).map(signupRowToLocal);SIGNUPS_LOADED=true;
     }catch(ex){console.warn('Fila de cadastros ainda não disponível:',ex.message);}
@@ -4611,7 +4693,7 @@ function userTabStats(tab){
   </div>`;
 }
 function userTableHead(tab){
-  if(tab==='pesq')return '<tr><th>Nome</th><th>CPF</th><th>Cidades de atuação</th><th>Documentos</th><th>PIX</th><th>Status</th><th></th></tr>';
+  if(tab==='pesq')return '<tr><th>Nome</th><th>CPF</th><th>Cidade / estado</th><th>Escolaridade</th><th>Documentos</th><th>PIX</th><th>Status</th><th></th></tr>';
   if(tab==='cliente')return '<tr><th>Cliente</th><th>CPF/CNPJ</th><th>Celular</th><th>Pesquisas</th><th>Status</th><th></th></tr>';
   if(tab==='recrutador')return '<tr><th>Nome</th><th>CPF</th><th>Perfil</th><th>Celular</th><th>Valor por captação</th><th>Status</th><th></th></tr>';
   return '<tr><th>Nome</th><th>CPF</th><th>Perfil</th><th>Celular</th><th>Comissão</th><th>Status</th><th></th></tr>';
@@ -4619,7 +4701,7 @@ function userTableHead(tab){
 function userTableRows(tab){
   const items=usersInTab(tab);
   if(items.length===0){
-    const colspan=tab==='pesq'?7:tab==='cliente'?6:7;
+    const colspan=tab==='pesq'?8:tab==='cliente'?6:7;
     return `<tr><td colspan="${colspan}" class="empty">Nenhum cadastro nesta aba ainda.</td></tr>`;
   }
   if(tab==='pesq'){
@@ -4633,11 +4715,14 @@ function userTableRows(tab){
       const pixPill=u.pixKey?`<span class="pill pill-green" title="${esc(u.pixBank||'')} ${esc(u.pixAg||'')}/${esc(u.pixAcc||'')}">● ${esc((u.pixKey||'').length>16?u.pixKey.slice(0,15)+'…':u.pixKey)}</span>`:'<span class="pill pill-gray">— não informado</span>';
       const initials=u.name.split(' ').map(n=>n[0]).slice(0,2).join('');
       const nCidades=(u.cidadesAtuacao||[]).length;
+      const locations=researcherLocations(u);
+      const locationLabel=locations.length?locations.map(part=>part.raw).join(', '):'—';
       return `<tr style="cursor:pointer" onclick="userShow(${i})">
         <td><div style="display:flex;align-items:center;gap:9px"><div class="avatar" style="width:28px;height:28px;font-size:11px">${initials}</div>
           <div><div style="font-weight:600">${esc(u.name)}</div><div style="font-size:11px;color:var(--ink3)">${esc(u.email)}</div></div></div></td>
         <td>${esc(u.cpf)}</td>
-        <td>${nCidades?nCidades+' cidade'+(nCidades===1?'':'s'):'<span style="color:var(--ink3)">—</span>'}</td>
+        <td><div>${esc(locationLabel)}</div><small style="color:var(--ink3)">${nCidades?nCidades+' cidade'+(nCidades===1?'':'s'):'nenhuma cadastrada'}</small></td>
+        <td>${u.escolaridade?esc(schoolingLabel(u.escolaridade)):'<span class="pill pill-gray">Não informada</span>'}</td>
         <td>${docPill}</td>
         <td>${pixPill}</td>
         <td>${st}</td>
@@ -4731,12 +4816,13 @@ function userList(){
   <div class="callout" style="margin-top:16px">Este perfil só pode ser incluído manualmente pelo Administrador master ou por um ADM PesquisaPro autorizado — não há autocadastro.</div>`;
   const tableContent=currentCount?`<div class="user-table-scroll"><table><thead>${userTableHead(tab)}</thead><tbody>${userTableRows(tab)}</tbody></table></div>`:`<div class="users-empty-state"><div class="users-empty-icon">＋</div><div><h3>${USER_SEARCH?'Nenhum resultado encontrado':'Nenhum '+(USER_TAB_NEW_LABEL[tab]||'usuário')+' cadastrado'}</h3><p>${USER_SEARCH?'Tente outro nome, CPF ou e-mail.':'Comece adicionando o primeiro perfil nesta categoria para liberar o fluxo correspondente.'}</p>${USER_SEARCH?'<button class="btn btn-out" onclick="userClearSearch()">Limpar busca</button>':`<button class="btn btn-fill" onclick="userOpen('new')">Cadastrar ${USER_TAB_NEW_LABEL[tab]||'usuário'}</button>`}</div></div>`;
   const searchBar=`<div class="user-search-bar" role="search"><div class="user-search-main"><label class="sr-only" for="user-search">Buscar usuário</label><span class="user-search-icon">⌕</span><input id="user-search" class="inp" type="search" value="${esc(USER_SEARCH)}" placeholder="Buscar por nome, CPF ou e-mail…" autocomplete="off" oninput="userSearchInput(this.value)">${USER_SEARCH?'<button type="button" class="user-search-clear" title="Limpar busca" aria-label="Limpar busca" onclick="userClearSearch()">×</button>':''}</div><span class="user-search-hint">A busca vale para a aba atual e ignora acentos e pontuação.</span></div>`;
+  const researcherFilters=tab==='pesq'?userResearcherFiltersMarkup(usersInTab('pesq')):'';
   return `<div class="users-page"><div class="users-context"><div><span class="eyebrow">${tabInfo[0]}</span><p>${tabInfo[1]}</p></div><span class="users-count-chip">${currentCount} ${currentCount===1?'perfil':'perfis'}</span></div>`+
   head('Usuários','Cadastre e gerencie os diferentes perfis de usuário do sistema',
     `<button class="btn btn-fill" onclick="userOpen('new')">＋ Novo ${USER_TAB_NEW_LABEL[tab]||'usuário'}</button>`)+
   userTabBar()+
   userTabStats(tab)+
-  searchBar+
+  searchBar+researcherFilters+
   `<div class="card user-table-card"><div class="user-table-heading"><div><div class="card-t">${USER_TAB_NEW_LABEL[tab]||'Usuários'} cadastrados</div><div class="card-d">Confira os dados, o status e as permissões antes de abrir um perfil.</div></div><span class="users-table-count">${currentCount}</span></div>${tableContent}
   </div>${extras}</div>`;
 }
@@ -4821,7 +4907,7 @@ function signupView(i){
   const s=SIGNUPS[i];
   const pix=s.pixKey?('\n\nPIX: '+s.pixKey+'\nTitular: '+(s.pixDoc||'—')+'\nBanco: '+(s.pixBank||'—')+' · Ag '+(s.pixAg||'—')+' · Conta '+(s.pixAcc||'—')):'\n\nPIX: não informado';
   const cidades=(s.cidadesAtuacao||[]).join(', ')||'nenhuma informada';
-  alert('Cadastro de '+s.name+':\n\nCPF: '+s.cpf+'\nNascimento: '+s.birth+'\nE-mail: '+s.email+'\nCelular: '+s.phone+'\nCidade: '+s.cidade+'\nCidades de atuação: '+cidades+'\nDocumento com foto: '+(s.docFoto||'NÃO ANEXADO')+'\nComprovante de residência: '+(s.docComprovante||'NÃO ANEXADO')+pix);
+  alert('Cadastro de '+s.name+':\n\nCPF: '+s.cpf+'\nNascimento: '+s.birth+'\nEscolaridade: '+schoolingLabel(s.escolaridade)+'\nE-mail: '+s.email+'\nCelular: '+s.phone+'\nCidade: '+s.cidade+'\nCidades de atuação: '+cidades+'\nDocumento com foto: '+(s.docFoto||'NÃO ANEXADO')+'\nComprovante de residência: '+(s.docComprovante||'NÃO ANEXADO')+pix);
 }
 async function signupApprove(i){
   const s=SIGNUPS[i];
@@ -4992,6 +5078,7 @@ function userViewPesq(u,idx){
         ${row('Nome completo',esc(u.name))}
         ${row('CPF',esc(u.cpf))}
         ${row('Data de nascimento',esc(u.birth))}
+        ${row('Escolaridade',esc(schoolingLabel(u.escolaridade)))}
         ${row('E-mail',esc(u.email))}
         ${row('Celular',esc(u.phone))}
         ${row('Cidade',esc(u.cidade))}
@@ -5265,7 +5352,7 @@ function userClientePfPjToggle(){
 }
 let _pesqCidadesDraft=[];
 function userFormPesq(isNew){
-  const u=isNew?{name:'',cpf:'',birth:'',email:'',phone:'',cidade:'',rua:'',numero:'',cep:'',role:'pesq',status:'ativo',docFoto:'',docComprovante:'',cidadesAtuacao:[],pixKey:'',pixDoc:'',pixBank:'',pixAg:'',pixAcc:''}:USERS[USER_EDIT];
+  const u=isNew?{name:'',cpf:'',birth:'',escolaridade:'',email:'',phone:'',cidade:'',rua:'',numero:'',cep:'',role:'pesq',status:'ativo',docFoto:'',docComprovante:'',cidadesAtuacao:[],pixKey:'',pixDoc:'',pixBank:'',pixAg:'',pixAcc:''}:USERS[USER_EDIT];
   return head(isNew?'Novo pesquisador':'Editar pesquisador','Preencha todos os campos obrigatórios',
     '<button class="btn btn-out" onclick="userBack()">← Voltar</button>')+`
   <div class="grid g2" style="align-items:start">
@@ -5276,6 +5363,7 @@ function userFormPesq(isNew){
         <div><label class="lbl">CPF *</label><input class="inp" id="u-cpf" value="${esc(u.cpf)}" placeholder="000.000.000-00"></div>
         <div><label class="lbl">Data de nascimento *</label><input class="inp" id="u-birth" type="date" value="${esc(u.birth)}"></div>
       </div>
+      <div class="mb"><label class="lbl">Escolaridade</label><select class="inp" id="u-escolaridade"><option value="">Não informada</option>${SCHOOLING_OPTIONS.map(([value,label])=>`<option value="${value}" ${u.escolaridade===value?'selected':''}>${label}</option>`).join('')}</select></div>
       <div class="field-row mb">
         <div><label class="lbl">E-mail *</label><input class="inp" id="u-email" type="email" value="${esc(u.email)}"></div>
         <div><label class="lbl">Celular *</label><input class="inp" id="u-phone" value="${esc(u.phone)}" placeholder="(00) 00000-0000"></div>
@@ -5519,7 +5607,7 @@ async function userSaveCliente(isNew){
 }
 async function userSavePesq(isNew){
   const g=id=>{const e=document.getElementById(id);return e?e.value.trim():'';};
-  const name=g('u-name'),cpf=g('u-cpf'),birth=g('u-birth'),email=g('u-email'),phone=g('u-phone');
+  const name=g('u-name'),cpf=g('u-cpf'),birth=g('u-birth'),escolaridade=g('u-escolaridade'),email=g('u-email'),phone=g('u-phone');
   const cidade=g('u-cidade'),cep=g('u-cep'),rua=g('u-rua'),numero=g('u-numero'),pixKey=g('u-pix-key');
   const password=isNew?g('u-password'):'';
   const missing=[];
@@ -5536,7 +5624,7 @@ async function userSavePesq(isNew){
   if(isNew&&(!password||password.length<6))missing.push('Senha provisória (mínimo 6 caracteres)');
   if(missing.length){alert('Preencha os campos obrigatórios:\n• '+missing.join('\n• '));return;}
   const cidadesAtuacao=_pesqCidadesDraft.slice();
-  const rec={name,cpf,birth,email,phone,cidade,rua,numero,cep,role:'pesq',status:g('u-status')||'ativo',
+  const rec={name,cpf,birth,escolaridade,email,phone,cidade,rua,numero,cep,role:'pesq',status:g('u-status')||'ativo',
     docFoto,docComprovante,cidadesAtuacao,
     pixKey,pixDoc:g('u-pix-doc'),pixBank:g('u-pix-bank'),pixAg:g('u-pix-ag'),pixAcc:g('u-pix-acc')};
   userSaveSetBusy(true);
@@ -5547,7 +5635,7 @@ async function userSavePesq(isNew){
       const user=profileRowToUser(inserted);user.cidadesAtuacao=cidadesAtuacao;
       USERS.unshift(user);
     }else{
-      const {error}=await sb.from('profiles').update(userToProfileRow(rec,'pesq')).eq('id',USERS[USER_EDIT].id);
+      const {error}=await updateProfileSafe(USERS[USER_EDIT].id,userToProfileRow(rec,'pesq'));
       if(error)throw new Error(error.message);
       await syncPesqCidades(USERS[USER_EDIT].id,cidadesAtuacao);
       Object.assign(USERS[USER_EDIT],rec);

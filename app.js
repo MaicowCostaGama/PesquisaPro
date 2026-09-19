@@ -2,15 +2,15 @@
 let selectedRole='admin';
 const ROLES={
   admin:{name:'Admin Master',role:'Administrador',initials:'AM',
-    nav:['dashboard','commercial','new-survey','surveys','surveys-done','sample','collect','reports','users','permissions','finance','contracts','contract-template','company']},
+    nav:['dashboard','commercial','new-survey','surveys','surveys-done','sample','collect','reports','users','permissions','finance','contracts','contract-template','company','communication']},
   coord:{name:'Carla Menezes',role:'Coordenadora',initials:'CM',
     nav:['dashboard','commercial','surveys','surveys-done','collect','reports','finance']},
   gerente:{name:'Rafael Dias',role:'Gerente',initials:'RD',
     nav:['dashboard','commercial','sample','reports','finance']},
   pesq:{name:'João Pereira',role:'Pesquisador',initials:'JP',
-    nav:['dashboard-pesq','researcher-profile','researcher-guide','app-collect','researcher-badge','my-earnings','my-contract','support']},
+    nav:['dashboard-pesq','researcher-profile','researcher-guide','app-collect','researcher-badge','my-earnings','my-contract','communication','support']},
   cliente:{name:'Prefeitura de Uberlândia',role:'Cliente',initials:'PU',
-    nav:['client-progress','client-results']},
+    nav:['client-progress','client-results','communication']},
 };
 const CLIENT_SELF_IDX=0; /* cliente de referência ao entrar com o perfil "Cliente" */
 const NAV_META={
@@ -35,6 +35,7 @@ const NAV_META={
   'contract-template':{ico:'❒',label:'Modelos de contrato',group:'Pagamentos'},
   'my-contract':{ico:'✎',label:'Meu contrato',group:'Pagamentos'},
   company:{ico:'⌂',label:'Dados da empresa',group:'Administração'},
+  communication:{ico:'✉',label:'Comunicação',group:'Comunicação'},
   commercial:{ico:'↗',label:'Comercial',group:'Comercial'},
   recruitment:{ico:'♙',label:'Recrutamento',group:'Administração'},
   'client-progress':{ico:'◷',label:'Andamento',group:'Minha pesquisa'},
@@ -98,12 +99,12 @@ async function completePasswordReset(){
 }
 
 const ROLE_NAV={
-  admin:['dashboard','commercial','recruitment','new-survey','surveys','surveys-done','sample','collect','reports','users','permissions','finance','contracts','contract-template','company'],
-  coord:['dashboard','commercial','surveys','surveys-done','collect','reports','finance'],
-  gerente:['dashboard','commercial','sample','reports','finance'],
-  pesq:['dashboard-pesq','researcher-guide','app-collect','researcher-badge','my-earnings','my-contract','support'],
-  cliente:['client-progress','client-results'],
-  admpro:['dashboard','commercial','recruitment','new-survey','surveys','surveys-done','sample','collect','reports','users','permissions','finance','contracts','contract-template','company'],
+  admin:['dashboard','commercial','recruitment','new-survey','surveys','surveys-done','sample','collect','reports','users','permissions','finance','contracts','contract-template','company','communication'],
+  coord:['dashboard','commercial','surveys','surveys-done','collect','reports','finance','communication'],
+  gerente:['dashboard','commercial','sample','reports','finance','communication'],
+  pesq:['dashboard-pesq','researcher-guide','app-collect','researcher-profile','researcher-badge','my-earnings','my-contract','support','communication'],
+  cliente:['client-progress','client-results','communication'],
+  admpro:['dashboard','commercial','recruitment','new-survey','surveys','surveys-done','sample','collect','reports','users','permissions','finance','contracts','contract-template','company','communication'],
   vendedor:['commercial'],
   indicador:['commercial'],
   recrutador:['recruitment'],
@@ -209,6 +210,8 @@ async function afterLogin(user){
 
 async function logout(){
   await sb.auth.signOut();
+  chatStopRealtime();
+  CHAT_CHANNELS=[];CHAT_CHANNELS_LOADED=false;CHAT_CHANNELS_LOADING=false;CHAT_SCHEMA_MISSING=false;CHAT_ACTIVE_CHANNEL_ID=null;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=false;CHAT_MESSAGES_LOADING=false;CHAT_PENDING_SURVEY_ID=null;
   RESEARCHER_PROFILE_CITIES=[];RESEARCHER_PROFILE_CITIES_DRAFT=[];RESEARCHER_PROFILE_CITIES_LOADED=false;
   CURRENT_PROFILE=null;
   document.getElementById('app').classList.remove('show');
@@ -296,6 +299,158 @@ function closeSidebar(){
 
 /* PAGES object is populated in the next script block */
 const PAGES={};
+
+/* ============ COMUNICAÇÃO / CHAT SEGMENTADO ============ */
+let CHAT_CHANNELS=[],CHAT_CHANNELS_LOADED=false,CHAT_CHANNELS_LOADING=false,CHAT_SCHEMA_MISSING=false;
+let CHAT_ACTIVE_CHANNEL_ID=null,CHAT_MESSAGES=[],CHAT_MESSAGES_LOADED=false,CHAT_MESSAGES_LOADING=false;
+let CHAT_REALTIME_CHANNEL=null,CHAT_SENDING=false,CHAT_NEW_AUDIENCE_TYPE='all',CHAT_NEW_SURVEY_ID=null,CHAT_PENDING_SURVEY_ID=null;
+const CHAT_AUDIENCE_LABELS={all:'Todos os usuários',region:'Região',state:'Estado',city:'Cidade',survey:'Pesquisa'};
+const CHAT_REGIONS=['Norte','Nordeste','Centro-Oeste','Sudeste','Sul'];
+const CHAT_STATES=['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
+function chatAudienceLabel(type){return CHAT_AUDIENCE_LABELS[type]||'Público';}
+function chatChannelDescription(channel){
+  if(!channel)return '';
+  if(channel.audience_type==='all')return 'Todos os usuários autenticados';
+  if(channel.audience_type==='survey'){const survey=SURVEYS.find(item=>item.id===channel.survey_id);return survey?'Participantes de '+survey.name:'Participantes da pesquisa';}
+  return chatAudienceLabel(channel.audience_type)+': '+(channel.audience_value||'—');
+}
+function chatLocationValues(){
+  const values=new Map();
+  USERS.forEach(user=>[user?.cidade,...(user?.cidadesAtuacao||[])].filter(Boolean).forEach(value=>{const part=locationParts(value);if(part?.city){const raw=String(part.city)+(part.uf?'/'+part.uf:'');values.set(normalizeUserSearch(raw),raw);}}));
+  return [...values.values()].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+}
+function chatRefreshChannelList(){
+  const list=document.getElementById('chat-channel-list');if(!list)return;
+  list.innerHTML=chatChannelListMarkup();
+}
+function chatChannelListMarkup(){
+  if(!CHAT_CHANNELS.length)return '<div class="chat-empty-small">Nenhum canal disponível para seu perfil.</div>';
+  return CHAT_CHANNELS.map(channel=>`<button type="button" class="chat-channel-item ${CHAT_ACTIVE_CHANNEL_ID===channel.id?'is-active':''}" onclick="chatOpenChannel('${channel.id}')"><span class="chat-channel-icon">${channel.audience_type==='survey'?'⌁':'✉'}</span><span class="chat-channel-copy"><b>${esc(channel.name)}</b><small>${esc(chatChannelDescription(channel))}</small>${channel.last_message_at?`<time>${esc(new Date(channel.last_message_at).toLocaleString('pt-BR'))}</time>`:''}</span></button>`).join('');
+}
+function chatMessageMarkup(message){
+  const own=message.sender_id===CURRENT_PROFILE?.id;
+  return `<article class="chat-message ${own?'is-own':''}" data-chat-message-id="${esc(message.id)}"><div class="chat-message-avatar">${esc(initialsOf(message.sender_name))}</div><div class="chat-message-content"><div class="chat-message-meta"><b>${own?'Você':esc(message.sender_name)}</b><time>${esc(new Date(message.created_at).toLocaleString('pt-BR'))}</time></div><p>${esc(message.body).replace(/\n/g,'<br>')}</p></div></article>`;
+}
+function chatRenderMessages(){
+  const box=document.getElementById('chat-messages');if(!box)return;
+  box.innerHTML=CHAT_MESSAGES.length?CHAT_MESSAGES.map(chatMessageMarkup).join(''):'<div class="chat-empty-room"><span>✉</span><b>Nenhuma mensagem ainda</b><small>Envie a primeira mensagem para iniciar esta conversa.</small></div>';
+  box.scrollTop=box.scrollHeight;
+}
+function chatAppendMessage(message){
+  if(!message||CHAT_MESSAGES.some(item=>item.id===message.id))return;
+  CHAT_MESSAGES.push(message);CHAT_MESSAGES.sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
+  chatRenderMessages();
+  const input=document.getElementById('chat-message-input');if(input)input.focus();
+}
+async function loadChatChannelsIfNeeded(){
+  if(CHAT_CHANNELS_LOADED||CHAT_CHANNELS_LOADING||!CURRENT_PROFILE)return;
+  CHAT_CHANNELS_LOADING=true;
+  try{
+    const {data,error}=await sb.from('chat_channels').select('*').order('last_message_at',{ascending:false,nullsFirst:false}).order('created_at',{ascending:false});
+    if(error){if(/chat_channels|relation .* does not exist|schema cache/i.test(error.message||''))CHAT_SCHEMA_MISSING=true;throw error;}
+    CHAT_CHANNELS=data||[];CHAT_CHANNELS_LOADED=true;
+    if(CHAT_ACTIVE_CHANNEL_ID&&!CHAT_CHANNELS.some(channel=>channel.id===CHAT_ACTIVE_CHANNEL_ID))CHAT_ACTIVE_CHANNEL_ID=null;
+    if(CHAT_PENDING_SURVEY_ID){
+      const pending=CHAT_CHANNELS.find(channel=>channel.audience_type==='survey'&&channel.survey_id===CHAT_PENDING_SURVEY_ID);
+      if(pending)CHAT_ACTIVE_CHANNEL_ID=pending.id;else if(['admin','coord','gerente','admpro'].includes(CURRENT_PROFILE?.role)){CHAT_NEW_AUDIENCE_TYPE='survey';CHAT_NEW_SURVEY_ID=CHAT_PENDING_SURVEY_ID;}
+      CHAT_PENDING_SURVEY_ID=null;
+    }
+    if(!CHAT_ACTIVE_CHANNEL_ID&&CHAT_CHANNELS.length)CHAT_ACTIVE_CHANNEL_ID=CHAT_CHANNELS[0].id;
+  }catch(ex){console.error('Erro ao carregar canais de chat:',ex);if(CHAT_SCHEMA_MISSING)CHAT_CHANNELS_LOADED=true;}
+  CHAT_CHANNELS_LOADING=false;
+  const key=document.querySelector('.nav-item.on')?.dataset.key;
+  if(key==='communication')go('communication');
+}
+async function loadChatMessagesIfNeeded(){
+  if(!CHAT_ACTIVE_CHANNEL_ID||CHAT_MESSAGES_LOADED||CHAT_MESSAGES_LOADING)return;
+  CHAT_MESSAGES_LOADING=true;
+  try{
+    const {data,error}=await sb.from('chat_messages').select('*').eq('channel_id',CHAT_ACTIVE_CHANNEL_ID).order('created_at',{ascending:true}).limit(500);
+    if(error){if(/chat_messages|relation .* does not exist|schema cache/i.test(error.message||''))CHAT_SCHEMA_MISSING=true;throw error;}
+    CHAT_MESSAGES=data||[];CHAT_MESSAGES_LOADED=true;
+    await sb.rpc('chat_mark_read',{p_channel_id:CHAT_ACTIVE_CHANNEL_ID});
+  }catch(ex){console.error('Erro ao carregar mensagens:',ex);if(CHAT_SCHEMA_MISSING)CHAT_MESSAGES_LOADED=true;}
+  CHAT_MESSAGES_LOADING=false;
+  const key=document.querySelector('.nav-item.on')?.dataset.key;
+  if(key==='communication')go('communication');
+}
+function chatStartRealtime(){
+  if(CHAT_REALTIME_CHANNEL||!CURRENT_PROFILE||CHAT_SCHEMA_MISSING)return;
+  CHAT_REALTIME_CHANNEL=sb.channel('pesquisapro-chat-'+CURRENT_PROFILE.id)
+    .on('postgres_changes',{event:'INSERT',schema:'public',table:'chat_messages'},payload=>{
+      const message=payload.new;
+      if(!CHAT_CHANNELS.some(channel=>channel.id===message.channel_id))return;
+      const channel=CHAT_CHANNELS.find(item=>item.id===message.channel_id);if(channel)channel.last_message_at=message.created_at;
+      if(message.channel_id===CHAT_ACTIVE_CHANNEL_ID)chatAppendMessage(message);
+      else chatRefreshChannelList();
+    }).subscribe();
+}
+function chatStopRealtime(){
+  if(CHAT_REALTIME_CHANNEL){try{sb.removeChannel(CHAT_REALTIME_CHANNEL);}catch(ex){}CHAT_REALTIME_CHANNEL=null;}
+}
+function chatSetNewAudienceType(type){CHAT_NEW_AUDIENCE_TYPE=type||'all';go('communication');}
+function chatNewAudienceFields(){
+  if(CHAT_NEW_AUDIENCE_TYPE==='survey')return `<select class="inp" id="chat-new-survey" aria-label="Pesquisa do canal"><option value="">Selecione a pesquisa</option>${SURVEYS.map(s=>`<option value="${esc(s.id)}" ${CHAT_NEW_SURVEY_ID===s.id?'selected':''}>${esc(s.name)}</option>`).join('')}</select>`;
+  if(CHAT_NEW_AUDIENCE_TYPE==='region')return `<select class="inp" id="chat-new-value" aria-label="Região do canal"><option value="">Selecione a região</option>${CHAT_REGIONS.map(value=>`<option value="${value}">${value}</option>`).join('')}</select>`;
+  if(CHAT_NEW_AUDIENCE_TYPE==='state')return `<select class="inp" id="chat-new-value" aria-label="Estado do canal"><option value="">Selecione o estado</option>${CHAT_STATES.map(value=>`<option value="${value}">${value}</option>`).join('')}</select>`;
+  if(CHAT_NEW_AUDIENCE_TYPE==='city')return `<select class="inp" id="chat-new-value" aria-label="Cidade do canal"><option value="">Selecione a cidade</option>${chatLocationValues().map(value=>`<option value="${esc(value)}">${esc(value)}</option>`).join('')}</select>`;
+  return '<div class="chat-all-audience-note">Todos os usuários com acesso ao aplicativo poderão ver e responder neste canal.</div>';
+}
+function chatCreatePanel(){
+  const staff=['admin','coord','gerente','admpro'].includes(CURRENT_PROFILE?.role);if(!staff)return '';
+  return `<section class="card chat-create-card"><div class="card-t">Criar canal de comunicação</div><div class="card-d">Escolha um público amplo, uma localização específica ou os participantes de uma pesquisa.</div><div class="chat-create-grid"><input class="inp" id="chat-new-name" placeholder="Nome do canal, por exemplo: Avisos da coleta"><select class="inp" id="chat-new-type" aria-label="Público do canal" onchange="chatSetNewAudienceType(this.value)">${Object.entries(CHAT_AUDIENCE_LABELS).map(([value,label])=>`<option value="${value}" ${CHAT_NEW_AUDIENCE_TYPE===value?'selected':''}>${label}</option>`).join('')}</select><div id="chat-new-audience-field">${chatNewAudienceFields()}</div><button type="button" class="btn btn-fill" onclick="chatCreateChannel()">＋ Criar canal</button></div></section>`;
+}
+async function chatCreateChannel(){
+  if(!['admin','coord','gerente','admpro'].includes(CURRENT_PROFILE?.role))return;
+  const name=(document.getElementById('chat-new-name')?.value||'').trim(),type=document.getElementById('chat-new-type')?.value||CHAT_NEW_AUDIENCE_TYPE;
+  const value=document.getElementById('chat-new-value')?.value||null,surveyId=document.getElementById('chat-new-survey')?.value||null;
+  if(!name){alert('Informe um nome para o canal.');return;}
+  if(type==='survey'&&!surveyId){alert('Selecione a pesquisa do canal.');return;}
+  if(['region','state','city'].includes(type)&&!value){alert('Selecione a localização do canal.');return;}
+  try{
+    const {data,error}=await sb.rpc('chat_create_channel',{p_name:name,p_audience_type:type,p_audience_value:value,p_survey_id:surveyId});
+    if(error)throw new Error(error.message);
+    CHAT_CHANNELS_LOADED=false;CHAT_ACTIVE_CHANNEL_ID=data?.id||null;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=false;CHAT_NEW_AUDIENCE_TYPE='all';CHAT_NEW_SURVEY_ID=null;await loadChatChannelsIfNeeded();
+  }catch(ex){alert('Não foi possível criar o canal. Execute a migration deploy/chat-comunicacao-segmentada.sql no Supabase e tente novamente.');console.error(ex);}
+}
+function chatOpenChannel(channelId){
+  if(!CHAT_CHANNELS.some(channel=>channel.id===channelId))return;
+  CHAT_ACTIVE_CHANNEL_ID=channelId;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=false;go('communication');
+}
+function chatOpenSurveyChannel(surveyId){
+  if(!CHAT_CHANNELS_LOADED){CHAT_PENDING_SURVEY_ID=surveyId;CHAT_ACTIVE_CHANNEL_ID=null;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=true;go('communication');return;}
+  const existing=CHAT_CHANNELS.find(channel=>channel.audience_type==='survey'&&channel.survey_id===surveyId);
+  if(existing){chatOpenChannel(existing.id);return;}
+  if(['admin','coord','gerente','admpro'].includes(CURRENT_PROFILE?.role)){
+    CHAT_NEW_AUDIENCE_TYPE='survey';CHAT_NEW_SURVEY_ID=surveyId;CHAT_ACTIVE_CHANNEL_ID=null;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=true;go('communication');
+    return;
+  }
+  alert('O canal desta pesquisa ainda não foi criado pela gestão.');go('communication');
+}
+async function chatSendMessage(){
+  if(CHAT_SENDING||!CHAT_ACTIVE_CHANNEL_ID)return;
+  const input=document.getElementById('chat-message-input'),body=(input?.value||'').trim();if(!body)return;
+  CHAT_SENDING=true;if(input)input.disabled=true;
+  try{
+    const {data,error}=await sb.rpc('chat_send_message',{p_channel_id:CHAT_ACTIVE_CHANNEL_ID,p_body:body});
+    if(error)throw new Error(error.message);
+    chatAppendMessage(data);const channel=CHAT_CHANNELS.find(item=>item.id===CHAT_ACTIVE_CHANNEL_ID);if(channel)channel.last_message_at=data.created_at;
+    if(input){input.value='';input.disabled=false;input.focus();}
+  }catch(ex){alert('Não foi possível enviar a mensagem: '+ex.message);if(input)input.disabled=false;}
+  CHAT_SENDING=false;
+}
+function chatHandleKeydown(event){if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();chatSendMessage();}}
+PAGES.communication=()=>{
+  if(!CURRENT_PROFILE)return head('Comunicação','Entre no sistema para acessar o chat')+'<div class="empty">Faça login para acessar suas conversas.</div>';
+  if(CHAT_SCHEMA_MISSING)return head('Comunicação','Canais de avisos, suporte e acompanhamento de pesquisas')+`<div class="callout warn chat-migration-callout"><b>Chat ainda não ativado.</b><br>O administrador precisa executar a migration <code>deploy/chat-comunicacao-segmentada.sql</code> no SQL Editor do Supabase. Essa migration é aditiva e não apaga dados existentes.</div>`;
+  if(!CHAT_CHANNELS_LOADED){loadChatChannelsIfNeeded();return head('Comunicação','Canais de avisos, suporte e acompanhamento de pesquisas')+'<div class="empty">Carregando canais de comunicação…</div>';}
+  if(!SURVEYS_LOADED)loadSurveysIfNeeded();
+  if(['admin','coord','gerente','admpro'].includes(CURRENT_PROFILE.role)&&!SURVEYS_LOADED)return head('Comunicação','Canais de avisos, suporte e acompanhamento de pesquisas')+'<div class="empty">Carregando pesquisas para criar canais…</div>';
+  if(CHAT_ACTIVE_CHANNEL_ID&&!CHAT_MESSAGES_LOADED){loadChatMessagesIfNeeded();return head('Comunicação','Canais de avisos, suporte e acompanhamento de pesquisas')+'<div class="empty">Carregando mensagens…</div>';}
+  const active=CHAT_CHANNELS.find(channel=>channel.id===CHAT_ACTIVE_CHANNEL_ID)||null;
+  if(active)chatStartRealtime();
+  return head('Comunicação','Converse com equipes, pesquisadores e participantes de cada pesquisa')+`<div class="chat-page">${chatCreatePanel()}<div class="chat-layout"><aside class="card chat-channel-panel"><div class="chat-panel-heading"><div><div class="card-t">Canais</div><div class="card-d">Você vê somente os canais permitidos para seu perfil.</div></div><span class="pill pill-blue">${CHAT_CHANNELS.length}</span></div><div id="chat-channel-list" class="chat-channel-list">${chatChannelListMarkup()}</div></aside><section class="card chat-room-panel">${active?`<header class="chat-room-header"><div><span class="eyebrow">${esc(chatAudienceLabel(active.audience_type))}</span><h2>${esc(active.name)}</h2><p>${esc(chatChannelDescription(active))}</p></div><span class="chat-live-pill"><i></i> Atualização ao vivo</span></header><div id="chat-messages" class="chat-messages" aria-live="polite">${CHAT_MESSAGES.length?CHAT_MESSAGES.map(chatMessageMarkup).join(''):'<div class="chat-empty-room"><span>✉</span><b>Nenhuma mensagem ainda</b><small>Envie a primeira mensagem para iniciar esta conversa.</small></div>'}</div><form class="chat-compose" onsubmit="event.preventDefault();chatSendMessage()"><textarea id="chat-message-input" class="inp" rows="2" maxlength="4000" placeholder="Escreva uma orientação, dúvida ou aviso…" aria-label="Mensagem" onkeydown="chatHandleKeydown(event)"></textarea><button class="btn btn-fill" type="submit" ${CHAT_SENDING?'disabled':''}>Enviar</button></form>`:'<div class="chat-empty-room chat-no-selection"><span>✉</span><b>Selecione um canal</b><small>Escolha uma conversa na lista ao lado para visualizar e enviar mensagens.</small></div>'}</section></div></div>`;
+};
 
 /* ============ carregamento sob demanda de bibliotecas locais ============ */
 const LOCAL_ASSETS={
@@ -530,6 +685,7 @@ PAGES['researcher-profile']=()=>{
       </section>
     </div>
     <section class="card mb"><div class="card-t">Cidades em que pode atuar *</div><div class="card-d">Escolha de uma a cinco cidades. Essas informações ajudam a equipe a encontrar pesquisas compatíveis.</div><div id="researcher-profile-cities-wrap">${researcherProfileCitiesMarkup()}</div></section>
+    <section class="card mb researcher-profile-chat-card"><div><div class="card-t">Comunicação com a equipe</div><div class="card-d">Acesse os canais gerais, orientações por localização e os chats das pesquisas em que você participa. Use este espaço para tirar dúvidas e comunicar problemas de execução.</div></div><button class="btn btn-out" onclick="go('communication')">✉ Abrir chat</button></section>
     <section class="card mb"><div class="card-t">Dados de pagamento <span class="pill pill-gray">Opcional</span></div><div class="card-d">Você pode informar ou corrigir o PIX agora ou depois. Ele será usado somente para repasses aprovados.</div>
       <div class="field-row mb"><div><label class="lbl">Chave PIX</label><input class="inp" id="researcher-profile-pix-key" value="${esc(p.pix_key||'')}" placeholder="CPF, e-mail, celular ou chave aleatória"></div><div><label class="lbl">Banco</label><input class="inp" id="researcher-profile-pix-bank" value="${esc(p.pix_bank||'')}"></div></div>
       <div class="field-row"><div><label class="lbl">CPF/CNPJ do titular</label><input class="inp" id="researcher-profile-pix-doc" value="${esc(p.pix_doc||'')}"></div><div><label class="lbl">Agência / conta</label><input class="inp" id="researcher-profile-pix-account" value="${esc([p.pix_ag,p.pix_acc].filter(Boolean).join(' / '))}"></div></div>
@@ -1295,7 +1451,7 @@ async function loadSurveysIfNeeded(){
   refreshClientSurveyLinks();
   const onKey=document.querySelector('.nav-item.on');
   const k=onKey&&onKey.dataset.key;
-  if(k==='surveys'||k==='surveys-done'||k==='dashboard'||k==='dashboard-pesq'||k==='survey-team'||k==='client-progress'||k==='client-results'||k==='reports')go(k);
+  if(k==='surveys'||k==='surveys-done'||k==='dashboard'||k==='dashboard-pesq'||k==='survey-team'||k==='client-progress'||k==='client-results'||k==='reports'||k==='communication')go(k);
 }
 function surveySample(s){
   return Math.ceil(sampleSize(s&&s.pop,s&&s.err,s&&s.conf,s&&s.prop)*1.1);
@@ -2226,11 +2382,13 @@ function surveyRow(s,idx,opts){
   const tag=s.isNew?' <span class="pill pill-amber" style="font-size:9px;padding:1px 6px">nova</span>':'';
   const teamN=(s.team||[]).length;
   const actions=opts&&opts.done
-    ?`<button class="btn-ghost" onclick="go('reports')">Ver relatório</button>
+    ?`<button class="btn-ghost" onclick="chatOpenSurveyChannel('${s.id}')">Chat</button>
+      <button class="btn-ghost" onclick="go('reports')">Ver relatório</button>
       <button class="btn-ghost" onclick="surveyDuplicate(${idx})">Duplicar</button>
       <button class="btn-ghost" onclick="surveyReopen(${idx})">Reabrir</button>
       <button class="btn-ghost" style="color:var(--red)" onclick="surveyDelete(${idx})">Excluir</button>`
     :`${s.status==='rascunho'?`<button class="btn-ghost" style="color:var(--teal)" onclick="surveyStart(${idx})">▶ Iniciar coleta</button>`:''}
+      <button class="btn-ghost" onclick="chatOpenSurveyChannel('${s.id}')">Chat</button>
       <button class="btn-ghost" onclick="surveyTeam(${idx})">Equipe</button>
       <button class="btn-ghost" onclick="surveyEdit(${idx})">Editar</button>
       <button class="btn-ghost" onclick="surveyDuplicate(${idx})">Duplicar</button>
@@ -2527,7 +2685,7 @@ PAGES['survey-team']=()=>{
       ${inviteHtml}</label>`;
   }).join(''):'<div class="empty">Nenhum pesquisador cadastrado ainda. Cadastre em Usuários → Pesquisadores.</div>';
   return head('Atribuir equipe — '+s.name,'Escolha pesquisadores cadastrados ou envie link de cadastro para novos',
-    '<button class="btn btn-out" onclick="go(\'surveys\')">← Voltar</button><button class="btn btn-fill" onclick="teamSave()">Salvar equipe</button>')+`
+    '<button class="btn btn-out" onclick="go(\'surveys\')">← Voltar</button><button class="btn btn-out" onclick="chatOpenSurveyChannel(\''+s.id+'\')">✉ Chat da pesquisa</button><button class="btn btn-fill" onclick="teamSave()">Salvar equipe</button>')+`
   <div class="grid g2" style="align-items:start">
     <div class="card">
       <div class="card-t">Pesquisadores cadastrados</div>
@@ -4546,7 +4704,7 @@ function loadUsersIfNeeded(){
     refreshClientSurveyLinks();
     const onKey=document.querySelector('.nav-item.on');
     const k=onKey&&onKey.dataset.key;
-    if(k==='users'||k==='dashboard'||k==='survey-team'||k==='contracts'||k==='recruitment'){go(k);if(k==='survey-team')setTimeout(teamFilterRows,0);}
+    if(k==='users'||k==='dashboard'||k==='survey-team'||k==='contracts'||k==='recruitment'||k==='communication'){go(k);if(k==='survey-team')setTimeout(teamFilterRows,0);}
   })();
   return _usersLoadPromise;
 }
@@ -6551,6 +6709,7 @@ window._afterRender=function(key){
   if(key!=='collect'){stopCollectLive();}if(key!=='client-results'){clientGeoStopLive();}if(key!=='client-progress'){clientProgressStopLive();}
   if(key!=='app-collect'){stopAcollectQuotaLive();}
   if(key!=='reports'){reportsStopLive();}
+  if(key!=='communication'){chatStopRealtime();}
   if(key!=='dashboard'&&key!=='finance')disposeDashboardCharts();
   if(key==='collect'){
     if(COLLECT_IDX!=null){initCollectLive(COLLECT_IDX);}else{stopCollectLive();}

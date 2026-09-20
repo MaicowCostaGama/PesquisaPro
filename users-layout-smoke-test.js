@@ -7,10 +7,10 @@ for (const token of ['user-tabs','user-tab-context','users-count-chip','users-em
 for (const token of ['.user-tabs','.user-tab.is-active','.users-empty-state','.user-table-scroll','.user-table-scroll-hint','.user-data-table','.user-actions-header','.user-actions-cell','#app.show>.main','.user-stat-grid','@media(max-width:600px)']) assert(css.includes(token), `estilo ausente: ${token}`);
 assert(app.includes('aria-current="${USER_TAB===t.key?\'page\':\'false\'}"'));
 assert(app.includes('USER_TAB_NEW_LABEL[tab]'));
-assert(html.includes('style.css?v=20260920180000'));
-assert(html.includes('app.js?v=20260920180000'));
-assert(html.includes('commercial.js?v=20260920180000'));
-assert(html.includes('recruitment.js?v=20260920180000'));
+assert(html.includes('style.css?v=20260920182000'));
+assert(html.includes('app.js?v=20260920182000'));
+assert(html.includes('commercial.js?v=20260920182000'));
+assert(html.includes('recruitment.js?v=20260920182000'));
 assert(app.includes('tabindex="0" aria-label="Tabela de usuários. Deslize horizontalmente para ver todas as informações."'));
 assert(app.includes('A coluna <b>Ações</b> permanece acessível à direita.'));
 assert(app.includes('class="user-data-table user-data-table-${tab}"'));

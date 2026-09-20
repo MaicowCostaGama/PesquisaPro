@@ -432,7 +432,9 @@ async function loadChatChannelsIfNeeded(){
   try{
     const {data,error}=await sb.from('chat_channels').select('*').order('last_message_at',{ascending:false,nullsFirst:false}).order('created_at',{ascending:false});
     if(error){if(/chat_channels|relation .* does not exist|schema cache/i.test(error.message||''))CHAT_SCHEMA_MISSING=true;throw error;}
-    CHAT_CHANNELS=data||[];CHAT_CHANNELS_LOADED=true;
+    const privateSupportOnly=['cliente','pesq'].includes(CURRENT_PROFILE?.role);
+    CHAT_CHANNELS=privateSupportOnly?(data||[]).filter(channel=>channel.audience_type==='support'&&channel.private_user_id===CURRENT_PROFILE.id):(data||[]);
+    CHAT_CHANNELS_LOADED=true;
     if(CHAT_ACTIVE_CHANNEL_ID&&!CHAT_CHANNELS.some(channel=>channel.id===CHAT_ACTIVE_CHANNEL_ID))CHAT_ACTIVE_CHANNEL_ID=null;
     if(CHAT_PENDING_SURVEY_ID){
       const pending=CHAT_CHANNELS.find(channel=>channel.audience_type==='survey'&&channel.survey_id===CHAT_PENDING_SURVEY_ID);

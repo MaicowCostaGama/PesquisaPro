@@ -33,5 +33,5 @@ for(const token of [
   "enable row level security",
 ])assert(migration.includes(token),`migration sem ${token}`);
 assert(!/drop table|drop column|truncate|delete from/i.test(migration),'migration contém operação destrutiva');
-assert(html.includes('style.css?v=20260919130000'),'cache do chat não atualizado');
+assert(html.includes('style.css?v=20260920174500'),'cache do chat não atualizado');
 console.log('Chat communication smoke test: PASS — canais, públicos, pesquisa, perfil do pesquisador, RLS e realtime verificados.');

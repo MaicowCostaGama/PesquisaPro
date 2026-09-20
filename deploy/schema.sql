@@ -123,6 +123,7 @@ create table public.surveys (
   form_started boolean not null default false,
   collected integer not null default 0,
   status text not null default 'rascunho' check (status in ('rascunho','campo','encerrada')),
+  form_approval_required boolean not null default false,
   coordenador_id uuid references public.profiles(id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()

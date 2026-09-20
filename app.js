@@ -10,7 +10,7 @@ const ROLES={
   pesq:{name:'João Pereira',role:'Pesquisador',initials:'JP',
     nav:['dashboard-pesq','researcher-profile','researcher-guide','app-collect','researcher-badge','my-earnings','my-contract','communication','support']},
   cliente:{name:'Prefeitura de Uberlândia',role:'Cliente',initials:'PU',
-    nav:['client-progress','client-results','communication']},
+    nav:['form-approval','client-progress','client-results','communication']},
 };
 const CLIENT_SELF_IDX=0; /* cliente de referência ao entrar com o perfil "Cliente" */
 const NAV_META={
@@ -39,6 +39,7 @@ const NAV_META={
   commercial:{ico:'↗',label:'Comercial',group:'Comercial'},
   recruitment:{ico:'♙',label:'Recrutamento',group:'Administração'},
   'client-progress':{ico:'◷',label:'Andamento',group:'Minha pesquisa'},
+  'form-approval':{ico:'✓',label:'Aprovar formulário',group:'Minha pesquisa'},
   'client-results':{ico:'◫',label:'Resultados',group:'Minha pesquisa'},
 };
 
@@ -56,6 +57,9 @@ let RESEARCHER_BADGE_UPLOADING=false;
 let PASSWORD_RECOVERY_MODE=false;
 let PUSH_STATUS='unknown',PUSH_STATUS_LOADING=false,PUSH_SCHEMA_MISSING=false,PUSH_SW_REGISTRATION=null;
 let MY_COMMUNICATIONS=[],MY_COMMUNICATIONS_LOADED=false,MY_COMMUNICATIONS_LOADING=false;
+let CLIENT_APPROVAL_REQUEST_ID=null,CLIENT_APPROVAL_REQUEST=null,CLIENT_APPROVAL_REQUEST_LOADED=false,CLIENT_APPROVAL_LOADING=false,CLIENT_APPROVAL_RESPONDING=false,CLIENT_APPROVAL_SCHEMA_MISSING=false;
+let RESEARCHER_LINK_TOKEN=null,RESEARCHER_LINK_CONTEXT=null,RESEARCHER_LINK_LOADING=false,RESEARCHER_LINK_ACCEPTING=false;
+let ADMIN_APPROVAL_STATUS_BY_CLIENT={},ADMIN_APPROVAL_STATUS_LOADING={},ADMIN_APPROVAL_STATUS_LOADED={};
 
 function pushBrowserSupported(){return 'serviceWorker' in navigator&&'PushManager' in window&&'Notification' in window;}
 function pushKeyToUint8Array(base64String){
@@ -166,7 +170,7 @@ const ROLE_NAV={
   coord:['dashboard','commercial','surveys','surveys-done','collect','reports','finance','communication'],
   gerente:['dashboard','commercial','sample','reports','finance','communication'],
   pesq:['dashboard-pesq','researcher-guide','app-collect','researcher-profile','researcher-badge','my-earnings','my-contract','support','communication'],
-  cliente:['client-progress','client-results','communication'],
+  cliente:['form-approval','client-progress','client-results','communication'],
   admpro:['dashboard','commercial','recruitment','new-survey','surveys','surveys-done','sample','collect','reports','users','permissions','finance','contracts','contract-template','company','communication'],
   vendedor:['commercial'],
   indicador:['commercial'],
@@ -270,13 +274,15 @@ async function afterLogin(user){
   const nav=ROLE_NAV[profile.role]||['dashboard'];
   go(nav[0]);
   if(typeof openSurveyInviteFromUrl==='function')openSurveyInviteFromUrl();
+  if(typeof openClientApprovalFromUrl==='function')openClientApprovalFromUrl();
+  if(typeof openResearcherLinkFromUrl==='function')openResearcherLinkFromUrl();
 }
 
 async function logout(){
   await sb.auth.signOut();
   chatStopRealtime();
   CHAT_CHANNELS=[];CHAT_CHANNELS_LOADED=false;CHAT_CHANNELS_LOADING=false;CHAT_SCHEMA_MISSING=false;CHAT_ACTIVE_CHANNEL_ID=null;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=false;CHAT_MESSAGES_LOADING=false;CHAT_PENDING_SURVEY_ID=null;
-  RESEARCHER_PROFILE_CITIES=[];RESEARCHER_PROFILE_CITIES_DRAFT=[];RESEARCHER_PROFILE_CITIES_LOADED=false;PUSH_STATUS='unknown';PUSH_STATUS_LOADING=false;PUSH_SCHEMA_MISSING=false;PUSH_SW_REGISTRATION=null;MY_COMMUNICATIONS=[];MY_COMMUNICATIONS_LOADED=false;MY_COMMUNICATIONS_LOADING=false;
+  RESEARCHER_PROFILE_CITIES=[];RESEARCHER_PROFILE_CITIES_DRAFT=[];RESEARCHER_PROFILE_CITIES_LOADED=false;PUSH_STATUS='unknown';PUSH_STATUS_LOADING=false;PUSH_SCHEMA_MISSING=false;PUSH_SW_REGISTRATION=null;MY_COMMUNICATIONS=[];MY_COMMUNICATIONS_LOADED=false;MY_COMMUNICATIONS_LOADING=false;CLIENT_APPROVAL_REQUEST_ID=null;CLIENT_APPROVAL_REQUEST=null;CLIENT_APPROVAL_LOADING=false;CLIENT_APPROVAL_RESPONDING=false;CLIENT_APPROVAL_SCHEMA_MISSING=false;RESEARCHER_LINK_TOKEN=null;RESEARCHER_LINK_CONTEXT=null;RESEARCHER_LINK_LOADING=false;RESEARCHER_LINK_ACCEPTING=false;
   CURRENT_PROFILE=null;
   document.getElementById('app').classList.remove('show');
   document.getElementById('login').style.display='flex';
@@ -1342,7 +1348,7 @@ function surveyRowToSnapshot(row,questionRows,clientCompanyNames,teamNames){
     clientes:clientCompanyNames||[],
     clientIds:(row.survey_clients||[]).map(sc=>sc.client_id), /* ids reais dos clientes vinculados — usado para o cliente logado achar sua própria pesquisa sem depender de nome/USERS carregado */
     clientReleaseById:Object.fromEntries((row.survey_clients||[]).filter(sc=>sc.client_id).map(sc=>[sc.client_id,!!sc.results_released])),
-    formStarted:!!row.form_started,questions,quotas,quotaOff,remote,
+    formStarted:!!row.form_started,formApprovalRequired:!!row.form_approval_required,questions,quotas,quotaOff,remote,
     collected:row.collected||0,status:row.status||'rascunho',
     created:fmtRelativo(row.created_at),
     team:teamNames||[],coord:'',isNew:false,
@@ -1354,7 +1360,7 @@ function snapshotToSurveyRow(d){
     abrangencia:d.abrangencia||null,estados:d.estados||[],cidades:d.cidades||{},
     populacao:+d.pop||0,margem_erro:d.err?+d.err:null,nivel_confianca:d.conf?+d.conf:null,
     proporcao:+d.prop||50,price:+d.price||0,price_remote:+d.priceRemote||0,client_price:+d.clientPrice||0,
-    form_started:!!d.formStarted,status:d.status||'rascunho',
+    form_started:!!d.formStarted,status:d.status||'rascunho',form_approval_required:!!d.formApprovalRequired,
   };
 }
 /* atualiza perguntas/opções sem apagar perguntas que já possuem respostas.
@@ -2374,13 +2380,21 @@ async function wizCreate(){
   try{
     let surveyId;
     if(isNew){
-      const {data:inserted,error}=await sb.from('surveys').insert(row).select().single();
-      if(error)throw new Error(error.message);
-      surveyId=inserted.id;
+      let result=await sb.from('surveys').insert(row).select().single();
+      if(result.error&&/form_approval_required|schema cache|column .* does not exist/i.test(result.error.message||'')){
+        const {form_approval_required,...legacyRow}=row;
+        result=await sb.from('surveys').insert(legacyRow).select().single();
+      }
+      if(result.error)throw new Error(result.error.message);
+      surveyId=result.data.id;
     }else{
       surveyId=SURVEYS[WIZ.editIndex].id;
-      const {error}=await sb.from('surveys').update(row).eq('id',surveyId);
-      if(error)throw new Error(error.message);
+      let result=await sb.from('surveys').update(row).eq('id',surveyId);
+      if(result.error&&/form_approval_required|schema cache|column .* does not exist/i.test(result.error.message||'')){
+        const {form_approval_required,...legacyRow}=row;
+        result=await sb.from('surveys').update(legacyRow).eq('id',surveyId);
+      }
+      if(result.error)throw new Error(result.error.message);
     }
     await syncSurveyQuestionsAndOptions(surveyId,d);
     await syncSurveyClients(surveyId,d.clientes||[],d.clientReleaseById||{});
@@ -2525,11 +2539,15 @@ PAGES['surveys-done']=()=>{
 
 async function surveyStart(idx){
   const s=SURVEYS[idx];
+  if(s.formApprovalRequired){
+    alert('Esta pesquisa exige aprovação do cliente antes de entrar em campo. Envie o formulário para aprovação e aguarde o aceite da versão atual.');
+    return;
+  }
   if(!confirm('Colocar "'+s.name+'" em campo? Os pesquisadores atribuídos já vão poder começar a coletar.'))return;
   try{
     const {error}=await sb.from('surveys').update({status:'campo'}).eq('id',s.id);
     if(error)throw new Error(error.message);
-  }catch(ex){alert('Não foi possível iniciar a coleta: '+ex.message);return;}
+  }catch(ex){alert('Não foi possível iniciar a coleta: '+(String(ex.message||'').includes('form approval required')?'o formulário ainda precisa ser aprovado pelo cliente.':ex.message));return;}
   s.status='campo';go('surveys');
 }
 async function surveyFinish(idx){
@@ -2590,7 +2608,7 @@ function surveyEdit(idx){
     tipo:s.tipo||'Eleitoral / intenção de voto',dataIni:s.dataIni||'',dataFim:s.dataFim||'',
     abrangencia:s.abrangencia||'estadual',estados:s.estados||[],cidades:s.cidades||{},
     pop:s.pop,err:s.err,conf:s.conf,prop:s.prop,price:s.price,priceRemote:s.priceRemote,clientes:linkedClientes,
-    formStarted:s.formStarted!==false,questions:s.questions||[],clientPrice:s.clientPrice!=null?s.clientPrice:12,quotas:s.quotas||{},quotaOff:s.quotaOff||{},remote:s.remote||{},clientReleaseById:s.clientReleaseById||{}
+    formStarted:s.formStarted!==false,formApprovalRequired:!!s.formApprovalRequired,questions:s.questions||[],clientPrice:s.clientPrice!=null?s.clientPrice:12,quotas:s.quotas||{},quotaOff:s.quotaOff||{},remote:s.remote||{},clientReleaseById:s.clientReleaseById||{}
   }));
   WIZ_QID=(WIZ.data.questions.reduce((m,q)=>Math.max(m,q.id),0)||0)+1;
   go('new-survey');
@@ -2642,6 +2660,7 @@ async function copySurveyInviteLink(inviteId){
 }
 let TEAM_INVITES=[],TEAM_INVITES_LOADED=false,TEAM_INVITES_LOADING=false;
 let TEAM_COMM_SETTINGS=null,TEAM_COMM_SETTINGS_LOADED=false,TEAM_COMM_SETTINGS_LOADING=false,TEAM_BULK_INVITING=false;
+let TEAM_RESEARCHER_LINK=null,TEAM_RESEARCHER_LINK_LOADED=false,TEAM_RESEARCHER_LINK_LOADING=false,TEAM_RESEARCHER_LINK_CREATING=false;
 async function loadTeamInvitesIfNeeded(){
   const s=SURVEYS[TEAM_IDX];
   if(!s||TEAM_INVITES_LOADED||TEAM_INVITES_LOADING)return;
@@ -2669,6 +2688,41 @@ async function loadTeamCommunicationSettingsIfNeeded(){
     TEAM_COMM_SETTINGS=data||{};TEAM_COMM_SETTINGS_LOADED=true;
   }catch(ex){console.error('Não foi possível carregar a configuração dos grupos:',ex);TEAM_COMM_SETTINGS_LOADED=true;}
   finally{TEAM_COMM_SETTINGS_LOADING=false;if(document.getElementById('team-picklist')){go('survey-team');setTimeout(teamFilterRows,0);}}
+}
+async function loadTeamResearcherLinkIfNeeded(){
+  const s=SURVEYS[TEAM_IDX];
+  if(!s||TEAM_RESEARCHER_LINK_LOADED||TEAM_RESEARCHER_LINK_LOADING)return;
+  TEAM_RESEARCHER_LINK_LOADING=true;
+  try{
+    const {data,error}=await sb.from('survey_researcher_links').select('*').eq('survey_id',s.id).eq('active',true).order('created_at',{ascending:false}).limit(1).maybeSingle();
+    if(error)throw error;TEAM_RESEARCHER_LINK=data||null;
+  }catch(ex){console.error('Não foi possível carregar o link geral da equipe:',ex);TEAM_RESEARCHER_LINK=null;}
+  finally{TEAM_RESEARCHER_LINK_LOADED=true;TEAM_RESEARCHER_LINK_LOADING=false;if(document.getElementById('team-picklist')){go('survey-team');setTimeout(teamFilterRows,0);}}
+}
+function teamResearcherLinkMarkup(){
+  const s=SURVEYS[TEAM_IDX];if(!s)return '';
+  if(!TEAM_RESEARCHER_LINK_LOADED)return '<div class="card mb"><div class="empty" style="padding:12px 0">Carregando link geral da equipe…</div></div>';
+  const link=TEAM_RESEARCHER_LINK?.token?surveyResearcherLinkUrl(TEAM_RESEARCHER_LINK.token):'';
+  return `<div class="card mb team-researcher-link-card"><div class="card-t">Convite por link geral</div><div class="card-d">Gere um único link para compartilhar com pesquisadores. Depois do login, o sistema verifica automaticamente documentos, status e compatibilidade com a área desta pesquisa antes de permitir o aceite.</div>${link?`<div class="approval-link-value">${esc(link)}</div><div class="team-researcher-link-actions"><button class="btn btn-out" onclick="copyTextValue(${jsArg(link)},'Link geral copiado.')">Copiar link</button><button class="btn btn-out" onclick="shareResearcherLinkWhatsapp()">Enviar por WhatsApp</button><button class="btn btn-ghost" style="color:var(--red)" onclick="deactivateResearcherLink()">Desativar</button></div>${TEAM_RESEARCHER_LINK.expires_at?`<div class="card-d">Expira em ${esc(new Date(TEAM_RESEARCHER_LINK.expires_at).toLocaleString('pt-BR'))}.</div>`:''}`:'<div class="callout">Nenhum link geral ativo para esta pesquisa.</div>'}<button class="btn btn-fill" style="width:100%;margin-top:10px" onclick="createResearcherLink()">${link?'Gerar novo link e invalidar o anterior':'Gerar link geral da pesquisa'}</button><div class="card-d" style="margin-top:8px">O aceite é individual e autenticado. O link não adiciona ninguém automaticamente sem a confirmação do próprio pesquisador.</div></div>`;
+}
+async function createResearcherLink(){
+  const s=SURVEYS[TEAM_IDX];if(!s||TEAM_RESEARCHER_LINK_CREATING)return;
+  if(!confirm('Gerar um novo link geral? O link anterior será desativado.'))return;
+  TEAM_RESEARCHER_LINK_CREATING=true;
+  try{
+    const {data,error}=await sb.rpc('create_survey_researcher_link',{p_survey_id:s.id,p_expires_at:null});
+    if(error)throw new Error(error.message);TEAM_RESEARCHER_LINK=data;TEAM_RESEARCHER_LINK_LOADED=true;alert('Link geral gerado. Compartilhe somente com pesquisadores que possam participar desta pesquisa.');
+  }catch(ex){alert('Não foi possível gerar o link. Execute a migration deploy/aprovacao-formulario-link-pesquisadores.sql no Supabase. Detalhe: '+ex.message);}
+  TEAM_RESEARCHER_LINK_CREATING=false;go('survey-team');
+}
+function shareResearcherLinkWhatsapp(){
+  const s=SURVEYS[TEAM_IDX],link=TEAM_RESEARCHER_LINK?.token?surveyResearcherLinkUrl(TEAM_RESEARCHER_LINK.token):'';if(!s||!link)return;
+  window.open('https://wa.me/?text='+encodeURIComponent('Convite para participar da pesquisa "'+s.name+'" no PesquisaPro. Entre com sua conta e aceite se seu perfil for elegível: '+link),'_blank','noopener');
+}
+async function deactivateResearcherLink(){
+  const link=TEAM_RESEARCHER_LINK;if(!link?.id)return;
+  if(!confirm('Desativar o link geral? Quem ainda não aceitou não poderá usá-lo.'))return;
+  try{const {error}=await sb.from('survey_researcher_links').update({active:false,deactivated_at:new Date().toISOString()}).eq('id',link.id);if(error)throw error;TEAM_RESEARCHER_LINK=null;alert('Link geral desativado.');}catch(ex){alert('Não foi possível desativar o link: '+ex.message);}go('survey-team');
 }
 function teamCommunicationMarkup(){
   const url=TEAM_COMM_SETTINGS?.whatsapp_group_url||'';
@@ -2775,6 +2829,7 @@ PAGES['survey-team']=()=>{
   }
   if(!TEAM_INVITES_LOADED)loadTeamInvitesIfNeeded();
   if(!TEAM_COMM_SETTINGS_LOADED)loadTeamCommunicationSettingsIfNeeded();
+  if(!TEAM_RESEARCHER_LINK_LOADED)loadTeamResearcherLinkIfNeeded();
   const team=s.team||[];
   const targets=surveyCityTargets(s);
   const hasTarget=!!(targets.cities.size||targets.states.size);
@@ -2823,6 +2878,7 @@ PAGES['survey-team']=()=>{
   }).join(''):'<div class="empty">Nenhum pesquisador cadastrado ainda. Cadastre em Usuários → Pesquisadores.</div>';
   return head('Atribuir equipe — '+s.name,'Escolha pesquisadores cadastrados ou envie link de cadastro para novos',
     '<button class="btn btn-out" onclick="go(\'surveys\')">← Voltar</button><button class="btn btn-out" onclick="chatOpenSurveyChannel(\''+s.id+'\')">✉ Chat da pesquisa</button><button class="btn btn-fill" onclick="teamSave()">Salvar equipe</button>')+`
+  ${TEAM_RESEARCHER_LINK_LOADED?teamResearcherLinkMarkup():''}
   ${TEAM_COMM_SETTINGS_LOADED?teamCommunicationMarkup():''}
   <div class="grid g2" style="align-items:start">
     <div class="card">
@@ -2848,7 +2904,7 @@ PAGES['survey-team']=()=>{
     </div>
   </div>`;
 };
-function surveyTeam(idx){TEAM_IDX=idx;TEAM_SHOW_OUT_OF_AREA=false;TEAM_FILTERS={text:'',state:'',city:'',schooling:''};TEAM_INVITES=[];TEAM_INVITES_LOADED=false;TEAM_COMM_SETTINGS=null;TEAM_COMM_SETTINGS_LOADED=false;TEAM_COMM_SETTINGS_LOADING=false;TEAM_BULK_INVITING=false;go('survey-team');setTimeout(teamFilterRows,0);}
+function surveyTeam(idx){TEAM_IDX=idx;TEAM_SHOW_OUT_OF_AREA=false;TEAM_FILTERS={text:'',state:'',city:'',schooling:''};TEAM_INVITES=[];TEAM_INVITES_LOADED=false;TEAM_COMM_SETTINGS=null;TEAM_COMM_SETTINGS_LOADED=false;TEAM_COMM_SETTINGS_LOADING=false;TEAM_BULK_INVITING=false;TEAM_RESEARCHER_LINK=null;TEAM_RESEARCHER_LINK_LOADED=false;TEAM_RESEARCHER_LINK_LOADING=false;TEAM_RESEARCHER_LINK_CREATING=false;go('survey-team');setTimeout(teamFilterRows,0);}
 /* liga/desliga a visibilidade de quem está fora da área, sem perder o que
    já foi marcado na tela (por isso mexe direto no DOM em vez de re-renderizar
    a página inteira) — quem está fora da área nunca fica marcável por aqui,
@@ -5444,9 +5500,8 @@ function userViewCliente(u,idx){
     <div>
       <div class="card mb">
         <div class="card-t">Aprovação do formulário</div>
-        <div class="card-d">Envie o formulário da pesquisa para o cliente revisar e aprovar</div>
-        <button class="btn btn-fill" style="width:100%;background:var(--teal)" onclick="userClienteSendForm(${idx})">Enviar formulário via WhatsApp</button>
-        <button class="btn btn-out" style="width:100%;margin-top:8px" onclick="alert('Recurso ainda não configurado: formulário enviado por e-mail para aprovação')">Enviar por e-mail</button>
+        <div class="card-d">Selecione uma pesquisa vinculada e envie ao cliente um link real para revisar, aprovar ou solicitar ajustes.</div>
+        ${adminClientApprovalMarkup(u,idx)}
       </div>
       <div class="card">
         <div class="card-t">Acesso do cliente (andamento + resultados)</div>
@@ -5492,10 +5547,6 @@ async function userClienteToggleAccess(i){
   }catch(ex){alert('Não foi possível salvar: '+ex.message);return;}
   u.resultsReleased=next;
   USER_VIEW=i;USER_ARMED=true;go('users');
-}
-function userClienteSendForm(i){
-  const c=USERS[i];
-  clientWhatsAppMsg(c.phone,'Olá '+(c.contact||c.name)+'! Segue o formulário da pesquisa para sua aprovação: https://pesquisapro.com.br/aprovar/'+(i+1)+'x. Por favor, revise as perguntas e responda com seu aceite.');
 }
 function userClienteSendReport(i){
   const c=USERS[i];
@@ -6993,3 +7044,164 @@ function permAdd(){
   PERMS.push(row);drawPerms();
 }
 function permSave(){alert('Permissões salvas. Cada perfil passa a ter exatamente os acessos marcados.');}
+
+
+/* ============ APROVAÇÃO DO FORMULÁRIO E LINK GERAL DE EQUIPE ============ */
+function surveyApprovalLink(requestId){
+  const url=new URL('app.html',window.location.href);url.search='';url.searchParams.set('aprovar',requestId);return url.href;
+}
+function surveyResearcherLinkUrl(token){
+  const url=new URL('app.html',window.location.href);url.search='';url.searchParams.set('equipe',token);return url.href;
+}
+function approvalStatusMarkup(status){
+  if(status==='aprovado')return '<span class="pill pill-green">✓ Aprovado pelo cliente</span>';
+  if(status==='ajustes_solicitados')return '<span class="pill pill-amber">Ajustes solicitados</span>';
+  if(status==='cancelado')return '<span class="pill pill-gray">Versão substituída</span>';
+  if(status==='nao_enviado')return '<span class="pill pill-gray">Ainda não enviado</span>';
+  return '<span class="pill pill-blue">Aguardando aprovação</span>';
+}
+function approvalQuestionTypeLabel(type){return Q_TYPES[type]||({pair:'Duas respostas',ranking:'Ranking de preferências'}[type]||type||'Pergunta');}
+function approvalSnapshotMarkup(snapshot){
+  const questions=Array.isArray(snapshot?.questions)?snapshot.questions:[];
+  if(!questions.length)return '<div class="empty">Este formulário ainda não possui perguntas configuradas.</div>';
+  return `<div class="approval-form-question-list">${questions.slice().sort((a,b)=>(a.position||0)-(b.position||0)).map((q,i)=>{
+    const options=Array.isArray(q.options)?q.options:[],fields=Array.isArray(q.fields)?q.fields:[];
+    const optionMarkup=options.length?`<div class="approval-form-options">${options.slice().sort((a,b)=>(a.position||0)-(b.position||0)).map(o=>`<span class="approval-form-option">${esc(o.label||'')}</span>`).join('')}</div>`:'';
+    const fieldMarkup=fields.length?`<div class="approval-form-fields">${fields.slice().sort((a,b)=>(a.position||0)-(b.position||0)).map(f=>`<div class="approval-form-field"><b>${esc(f.label||'Resposta')}</b><span>${esc(approvalQuestionTypeLabel(f.type))}${Array.isArray(f.options)&&f.options.length?' · '+esc(f.options.join(' · ')):''}</span></div>`).join('')}</div>`:'';
+    return `<article class="approval-form-question"><div class="approval-form-question-head"><span class="approval-form-question-number">${String(i+1).padStart(2,'0')}</span><div><h3>${esc(q.text||'(pergunta sem texto)')}</h3><span class="pill pill-gray">${esc(approvalQuestionTypeLabel(q.type))}</span></div></div>${optionMarkup}${fieldMarkup}</article>`;
+  }).join('')}</div>`;
+}
+function clientApprovalRequestLinkMarkup(request){
+  if(!request?.id)return '';
+  const link=surveyApprovalLink(request.id);
+  return `<div class="callout" style="margin-top:14px"><b>Link de aprovação</b><div class="approval-link-value">${esc(link)}</div><button class="btn btn-out" style="margin-top:8px" onclick="copyTextValue(${jsArg(link)},'Link de aprovação copiado.')">Copiar link</button></div>`;
+}
+async function loadClientApprovalRequest(){
+  if(CLIENT_APPROVAL_REQUEST_LOADED||CLIENT_APPROVAL_LOADING||!CURRENT_PROFILE||CURRENT_PROFILE.role!=='cliente')return;
+  CLIENT_APPROVAL_LOADING=true;
+  try{
+    const {data,error}=await sb.rpc('get_client_form_approval_request',{p_request_id:CLIENT_APPROVAL_REQUEST_ID||null});
+    if(error){if(/get_client_form_approval_request|function .* does not exist|schema cache/i.test(error.message||'')){CLIENT_APPROVAL_SCHEMA_MISSING=true;}else throw error;}
+    CLIENT_APPROVAL_REQUEST=data||null;
+  }catch(ex){console.error('Não foi possível carregar a aprovação do formulário:',ex);}
+  finally{CLIENT_APPROVAL_REQUEST_LOADED=true;CLIENT_APPROVAL_LOADING=false;if(document.querySelector('.nav-item.on')?.dataset.key==='form-approval')go('form-approval');}
+}
+async function respondClientFormApproval(status){
+  if(CLIENT_APPROVAL_RESPONDING||!CLIENT_APPROVAL_REQUEST?.id)return;
+  const comment=(document.getElementById('client-approval-comment')?.value||'').trim();
+  if(status==='ajustes_solicitados'&&!comment){alert('Descreva quais ajustes precisam ser feitos antes de solicitar alterações.');return;}
+  if(status==='aprovado'&&!confirm('Confirmar a aprovação desta versão do formulário?'))return;
+  CLIENT_APPROVAL_RESPONDING=true;go('form-approval');
+  try{
+    const {data,error}=await sb.rpc('respond_survey_form_approval',{p_request_id:CLIENT_APPROVAL_REQUEST.id,p_status:status,p_comment:comment||null});
+    if(error)throw new Error(error.message);
+    CLIENT_APPROVAL_REQUEST={...CLIENT_APPROVAL_REQUEST,status:data?.status||status,client_comment:data?.client_comment||comment||null,responded_at:data?.responded_at||new Date().toISOString()};
+    alert(status==='aprovado'?'Formulário aprovado. A equipe já pode prosseguir conforme as regras da pesquisa.':'Pedido de ajustes registrado e enviado à equipe do PesquisaPro.');
+  }catch(ex){alert('Não foi possível registrar sua resposta. '+(CLIENT_APPROVAL_SCHEMA_MISSING?'Execute a migration deploy/aprovacao-formulario-link-pesquisadores.sql no Supabase.':'Detalhe: '+ex.message));}
+  CLIENT_APPROVAL_RESPONDING=false;go('form-approval');
+}
+PAGES['form-approval']=()=>{
+  if(!CURRENT_PROFILE||CURRENT_PROFILE.role!=='cliente')return head('Aprovação do formulário','Área exclusiva do cliente')+'<div class="card"><div class="empty">Entre com uma conta de cliente para revisar um formulário.</div></div>';
+  if(!CLIENT_APPROVAL_REQUEST_LOADED){loadClientApprovalRequest();return head('Aprovação do formulário','Carregando a solicitação enviada pela equipe…')+'<div class="empty">Carregando formulário para aprovação…</div>';}
+  if(CLIENT_APPROVAL_SCHEMA_MISSING)return head('Aprovação do formulário','Revisão da pesquisa')+'<div class="card"><div class="callout warn"><b>Este recurso ainda não foi ativado no banco.</b><br>A equipe precisa executar a migration <code>deploy/aprovacao-formulario-link-pesquisadores.sql</code> no Supabase.</div></div>';
+  const request=CLIENT_APPROVAL_REQUEST;
+  if(!request)return head('Aprovação do formulário','Revisão da pesquisa')+'<div class="card" style="text-align:center;padding:44px 24px"><div style="font-weight:800;font-size:18px">Nenhum formulário aguardando sua revisão</div><p style="color:var(--ink3);max-width:520px;margin:10px auto;line-height:1.6">Quando a equipe enviar uma pesquisa, ela aparecerá aqui para você revisar, aprovar ou solicitar ajustes.</p></div>';
+  const snapshot=request.form_snapshot||{};
+  const canRespond=request.status==='pendente'||request.status==='ajustes_solicitados';
+  return head('Aprovação do formulário',snapshot.name||request.survey_name||'Pesquisa',`<span class="pill pill-blue">Versão ${Number(request.form_version)||1}</span>`)+`<section class="card approval-form-intro"><div class="approval-form-status-row"><div><div class="card-t">Revise o formulário da pesquisa</div><div class="card-d">Confira o texto das perguntas e as opções exatamente como serão apresentadas aos entrevistados.</div></div>${approvalStatusMarkup(request.status)}</div><div class="approval-form-meta"><span><b>Pesquisa:</b> ${esc(request.survey_name||snapshot.name||'—')}</span><span><b>Tipo:</b> ${esc(snapshot.tipo||'—')}</span><span><b>Período:</b> ${esc(snapshot.data_ini||'—')} a ${esc(snapshot.data_fim||'—')}</span><span><b>Perguntas:</b> ${(snapshot.questions||[]).length}</span></div></section><section class="card approval-form-preview"><div class="card-t">Formulário apresentado</div><div class="card-d">Versão congelada no momento do envio. Alterações posteriores gerarão uma nova versão para aprovação.</div>${approvalSnapshotMarkup(snapshot)}</section>${request.client_comment?`<section class="card approval-client-comment"><div class="card-t">Seu último comentário</div><p>${esc(request.client_comment)}</p></section>`:''}${canRespond?`<section class="card approval-form-response"><div class="card-t">Sua decisão</div><div class="card-d">Aprove o formulário ou descreva os ajustes necessários para a equipe.</div><textarea class="inp" id="client-approval-comment" rows="4" placeholder="Comentário opcional na aprovação; obrigatório ao solicitar ajustes.">${esc(request.client_comment||'')}</textarea><div class="approval-response-actions"><button class="btn btn-out" onclick="respondClientFormApproval('ajustes_solicitados')">Solicitar ajustes</button><button class="btn btn-fill" onclick="respondClientFormApproval('aprovado')">✓ Aprovar formulário</button></div></section>`:'<div class="callout">Esta versão já recebeu uma resposta. A equipe poderá enviar uma nova versão se o formulário for alterado.</div>'}`;
+};
+function openClientApprovalFromUrl(){
+  const id=new URLSearchParams(window.location.search).get('aprovar');
+  if(!id||!CURRENT_PROFILE||CURRENT_PROFILE.role!=='cliente')return;
+  CLIENT_APPROVAL_REQUEST_ID=id;CLIENT_APPROVAL_REQUEST=null;CLIENT_APPROVAL_REQUEST_LOADED=false;CLIENT_APPROVAL_SCHEMA_MISSING=false;go('form-approval');
+}
+async function copyTextValue(value,message='Copiado.'){
+  try{await navigator.clipboard.writeText(value);alert(message);}catch(ex){window.prompt('Copie o valor:',value);}
+}
+async function loadResearcherLinkContext(){
+  if(RESEARCHER_LINK_LOADING||!RESEARCHER_LINK_TOKEN||!CURRENT_PROFILE||CURRENT_PROFILE.role!=='pesq')return;
+  RESEARCHER_LINK_LOADING=true;
+  try{
+    const {data,error}=await sb.rpc('get_survey_researcher_link_context',{p_token:RESEARCHER_LINK_TOKEN});
+    if(error)throw error;RESEARCHER_LINK_CONTEXT=data||null;
+  }catch(ex){RESEARCHER_LINK_CONTEXT={valid:false,reason:'Não foi possível carregar o convite. Execute a migration de aprovação e links no Supabase.'};console.error(ex);}
+  finally{RESEARCHER_LINK_LOADING=false;if(document.querySelector('.nav-item.on')?.dataset.key==='researcher-link-invite')go('researcher-link-invite');}
+}
+PAGES['researcher-link-invite']=()=>{
+  if(!CURRENT_PROFILE||CURRENT_PROFILE.role!=='pesq')return head('Convite de pesquisa','Área exclusiva de pesquisadores')+'<div class="card"><div class="empty">Entre com a conta de pesquisador que deseja usar para aceitar o convite.</div></div>';
+  if(!RESEARCHER_LINK_CONTEXT){loadResearcherLinkContext();return head('Convite de pesquisa','Verificando sua elegibilidade…')+'<div class="empty">Carregando convite…</div>';}
+  const context=RESEARCHER_LINK_CONTEXT;
+  if(!context.valid)return head('Convite de pesquisa','Convite indisponível')+'<div class="card"><div class="callout warn">'+esc(context.reason||'Este link não está disponível.')+'</div></div>';
+  const canAccept=!!context.eligible&&!context.already_member;
+  return head('Convite de pesquisa',context.survey_name||'Pesquisa')+`<section class="card researcher-link-invite-card"><div class="researcher-link-icon">✉</div><div class="card-t">Você foi convidado(a) para participar desta pesquisa</div><p class="researcher-link-survey-name">${esc(context.survey_name||'Pesquisa')}</p><div class="callout ${canAccept?'':'warn'}">${esc(context.reason||'')}</div>${context.expires_at?`<div class="card-d">Este link expira em ${esc(new Date(context.expires_at).toLocaleString('pt-BR'))}.</div>`:''}<div class="researcher-link-actions">${context.already_member?'<button class="btn btn-fill" onclick="go(\'dashboard-pesq\')">Abrir meu painel</button>':canAccept?'<button class="btn btn-fill" onclick="acceptResearcherLinkInvite()">✓ Aceitar e entrar na equipe</button>':'<button class="btn btn-out" onclick="go(\'researcher-profile\')">Atualizar meu perfil</button>'}</div><p class="card-d" style="margin-top:14px">Ao aceitar, você entra automaticamente na equipe da pesquisa e terá acesso ao chat de orientações. O grupo de WhatsApp, quando configurado, será disponibilizado no seu painel.</p></section>`;
+};
+async function acceptResearcherLinkInvite(){
+  if(RESEARCHER_LINK_ACCEPTING||!RESEARCHER_LINK_TOKEN)return;
+  RESEARCHER_LINK_ACCEPTING=true;
+  try{
+    const {data,error}=await sb.rpc('accept_survey_researcher_link',{p_token:RESEARCHER_LINK_TOKEN});
+    if(error)throw new Error(error.message);
+    SURVEYS_LOADED=false;await loadSurveysIfNeeded();MY_COMMUNICATIONS_LOADED=false;MY_COMMUNICATIONS=[];await loadMySurveyCommunicationsIfNeeded();
+    alert('Convite aceito. Você entrou automaticamente na equipe da pesquisa e o chat de orientações está disponível no seu painel.');
+    const clean=new URL(window.location.href);clean.searchParams.delete('equipe');window.history.replaceState({},'',clean.href);RESEARCHER_LINK_TOKEN=null;RESEARCHER_LINK_CONTEXT=null;go('dashboard-pesq');
+  }catch(ex){alert('Não foi possível aceitar o convite. Verifique sua elegibilidade e se a migration foi executada. Detalhe: '+ex.message);}
+  RESEARCHER_LINK_ACCEPTING=false;
+}
+function openResearcherLinkFromUrl(){
+  const token=new URLSearchParams(window.location.search).get('equipe');
+  if(!token||!CURRENT_PROFILE||CURRENT_PROFILE.role!=='pesq')return;
+  RESEARCHER_LINK_TOKEN=token;RESEARCHER_LINK_CONTEXT=null;go('researcher-link-invite');
+}
+
+function loadAdminClientApprovalStatus(clientId,surveyIds){
+  if(!clientId||!surveyIds.length||ADMIN_APPROVAL_STATUS_LOADING[clientId]||ADMIN_APPROVAL_STATUS_LOADED[clientId])return;
+  ADMIN_APPROVAL_STATUS_LOADING[clientId]=true;
+  Promise.all(surveyIds.map(surveyId=>sb.rpc('get_staff_form_approval_summary',{p_survey_id:surveyId}))).then(results=>{
+    results.forEach((result,i)=>{
+      if(result.error)return;
+      (result.data||[]).filter(row=>row.client_id===clientId).forEach(row=>{ADMIN_APPROVAL_STATUS_BY_CLIENT[clientId+'|'+surveyIds[i]]=row;});
+    });
+    ADMIN_APPROVAL_STATUS_LOADED[clientId]=true;
+    if(USER_VIEW!=null){USER_ARMED=true;go('users');}
+  }).catch(ex=>console.warn('Status de aprovação ainda indisponível:',ex)).finally(()=>{delete ADMIN_APPROVAL_STATUS_LOADING[clientId];});
+}
+function adminClientApprovalMarkup(client,index){
+  if(!client?.id)return '<div class="callout warn">Este cliente ainda não possui um identificador persistido.</div>';
+  if(!SURVEYS_LOADED){USER_ARMED=true;loadSurveysIfNeeded();return '<div class="empty" style="padding:12px 0">Carregando pesquisas vinculadas…</div>';}
+  const linked=SURVEYS.filter(s=>(s.clientIds||[]).includes(client.id)||(client.surveys||[]).includes(s.name));
+  if(!linked.length)return '<div class="empty" style="padding:12px 0">Nenhuma pesquisa está vinculada a este cliente. Vincule o cliente no assistente da pesquisa antes de enviar o formulário.</div>';
+  const surveyIds=linked.map(s=>s.id);loadAdminClientApprovalStatus(client.id,surveyIds);
+  return `<label class="lbl" for="admin-approval-survey-${index}">Pesquisa para aprovação</label><select class="inp" id="admin-approval-survey-${index}" onchange="adminApprovalSelectionChanged(${index},${jsArg(client.id)})">${linked.map(s=>{const row=ADMIN_APPROVAL_STATUS_BY_CLIENT[client.id+'|'+s.id];return `<option value="${esc(s.id)}">${esc(s.name)}${row&&row.status&&row.status!=='nao_enviado'?' · '+(row.status==='aprovado'?'aprovado':row.status==='ajustes_solicitados'?'ajustes solicitados':'aguardando'):''}</option>`;}).join('')}</select><div id="admin-approval-status-${index}" class="card-d" style="margin-top:8px">${adminApprovalStatusText(client.id,linked[0]?.id)}</div><button class="btn btn-fill" style="width:100%;margin-top:10px;background:var(--teal)" onclick="requestSurveyFormApprovalForClient(${index})">Enviar formulário via WhatsApp</button><button class="btn btn-out" style="width:100%;margin-top:8px" onclick="requestSurveyFormApprovalForClient(${index},true)">Gerar e copiar link</button><div class="card-d" style="margin-top:10px">O cliente deverá entrar com a própria conta para aprovar ou solicitar ajustes. Uma nova versão é criada quando o formulário for reenviado.</div>`;
+}
+function adminApprovalStatusText(clientId,surveyId){
+  const row=ADMIN_APPROVAL_STATUS_BY_CLIENT[clientId+'|'+surveyId];
+  if(!row)return 'Status de aprovação será carregado quando a migration estiver disponível.';
+  if(row.status==='nao_enviado')return 'Nenhuma versão enviada para aprovação.';
+  const status=row.status==='aprovado'?'aprovada':row.status==='ajustes_solicitados'?'com ajustes solicitados':row.status==='pendente'?'aguardando resposta':'cancelada';
+  return 'Versão '+(row.form_version||'—')+' '+status+(row.client_comment?' · comentário: '+esc(row.client_comment):'');
+}
+function adminApprovalSelectionChanged(index,clientId){
+  const surveyId=document.getElementById('admin-approval-survey-'+index)?.value;
+  const el=document.getElementById('admin-approval-status-'+index);if(el)el.innerHTML=adminApprovalStatusText(clientId,surveyId);
+}
+async function requestSurveyFormApprovalForClient(clientIndex,copyOnly=false){
+  const client=USERS[clientIndex];if(!client?.id)return;
+  const surveyId=document.getElementById('admin-approval-survey-'+clientIndex)?.value;
+  const survey=SURVEYS.find(s=>s.id===surveyId);
+  if(!surveyId||!survey){alert('Selecione uma pesquisa vinculada a este cliente.');return;}
+  try{
+    const {data,error}=await sb.rpc('request_survey_form_approval',{p_survey_id:surveyId,p_client_id:client.id});
+    if(error)throw new Error(error.message);
+    const request=data||{};
+    if(!request.id)throw new Error('A solicitação foi criada sem identificador.');
+    ADMIN_APPROVAL_STATUS_BY_CLIENT[client.id+'|'+surveyId]={client_id:client.id,form_version:request.form_version,status:'pendente',client_comment:null};
+    const statusEl=document.getElementById('admin-approval-status-'+clientIndex);if(statusEl)statusEl.innerHTML=adminApprovalStatusText(client.id,surveyId);
+    const link=surveyApprovalLink(request.id);
+    if(copyOnly){await copyTextValue(link,'Link de aprovação copiado.');return;}
+    const msg='Olá, '+(client.contact||client.name)+'! O formulário da pesquisa "'+survey.name+'" está disponível para sua revisão. Acesse com sua conta, aprove ou solicite ajustes neste link: '+link;
+    const href=conversationUrl(client.phone,msg);
+    if(href)window.open(href,'_blank','noopener');else await copyTextValue(link,'Cliente sem telefone cadastrado. Link de aprovação copiado.');
+    alert('Solicitação de aprovação criada para a versão '+(request.form_version||1)+'.');
+  }catch(ex){alert('Não foi possível enviar o formulário para aprovação. '+(String(ex.message||'').match(/function|schema cache|approval_requests/i)?'Execute a migration deploy/aprovacao-formulario-link-pesquisadores.sql no Supabase.':'Detalhe: '+ex.message));}
+}
+function userClienteSendForm(i){requestSurveyFormApprovalForClient(i,false);}

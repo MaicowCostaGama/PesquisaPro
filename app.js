@@ -248,6 +248,7 @@ async function requestOwnPasswordReset(){
 }
 
 async function afterLogin(user){
+  chatStopRealtime();CHAT_CHANNELS=[];CHAT_CHANNELS_LOADED=false;CHAT_CHANNELS_LOADING=false;CHAT_SCHEMA_MISSING=false;CHAT_ACTIVE_CHANNEL_ID=null;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=false;CHAT_MESSAGES_LOADING=false;CHAT_SUPPORT_CHANNEL_ID=null;CHAT_SUPPORT_READY=false;CHAT_SUPPORT_LOADING=false;CHAT_PENDING_SURVEY_ID=null;
   PUSH_STATUS='unknown';PUSH_STATUS_LOADING=false;PUSH_SCHEMA_MISSING=false;PUSH_SW_REGISTRATION=null;MY_COMMUNICATIONS=[];MY_COMMUNICATIONS_LOADED=false;MY_COMMUNICATIONS_LOADING=false;
   const profileFields='id,name,email,phone,role,status,cpf,cpf_cnpj,pf_pj,birth,cidade,rua,numero,cep,contact_person,doc_url,doc_foto_url,doc_comprovante_url,pix_key,pix_doc,pix_bank,pix_ag,pix_acc,results_released,approved_at,commission_rate,commission_rate_with_indicator,recruiter_code,recruiter_capture_value,badge_public_token,badge_photo_path';
   let {data:profile,error}=await sb.from('profiles').select(profileFields).eq('id',user.id).single();
@@ -281,7 +282,7 @@ async function afterLogin(user){
 async function logout(){
   await sb.auth.signOut();
   chatStopRealtime();
-  CHAT_CHANNELS=[];CHAT_CHANNELS_LOADED=false;CHAT_CHANNELS_LOADING=false;CHAT_SCHEMA_MISSING=false;CHAT_ACTIVE_CHANNEL_ID=null;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=false;CHAT_MESSAGES_LOADING=false;CHAT_PENDING_SURVEY_ID=null;
+  CHAT_CHANNELS=[];CHAT_CHANNELS_LOADED=false;CHAT_CHANNELS_LOADING=false;CHAT_SCHEMA_MISSING=false;CHAT_ACTIVE_CHANNEL_ID=null;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=false;CHAT_MESSAGES_LOADING=false;CHAT_SUPPORT_CHANNEL_ID=null;CHAT_SUPPORT_READY=false;CHAT_SUPPORT_LOADING=false;CHAT_PENDING_SURVEY_ID=null;
   RESEARCHER_PROFILE_CITIES=[];RESEARCHER_PROFILE_CITIES_DRAFT=[];RESEARCHER_PROFILE_CITIES_LOADED=false;PUSH_STATUS='unknown';PUSH_STATUS_LOADING=false;PUSH_SCHEMA_MISSING=false;PUSH_SW_REGISTRATION=null;MY_COMMUNICATIONS=[];MY_COMMUNICATIONS_LOADED=false;MY_COMMUNICATIONS_LOADING=false;CLIENT_APPROVAL_REQUEST_ID=null;CLIENT_APPROVAL_REQUEST=null;CLIENT_APPROVAL_LOADING=false;CLIENT_APPROVAL_RESPONDING=false;CLIENT_APPROVAL_SCHEMA_MISSING=false;RESEARCHER_LINK_TOKEN=null;RESEARCHER_LINK_CONTEXT=null;RESEARCHER_LINK_LOADING=false;RESEARCHER_LINK_ACCEPTING=false;
   CURRENT_PROFILE=null;
   document.getElementById('app').classList.remove('show');
@@ -374,12 +375,14 @@ const PAGES={};
 let CHAT_CHANNELS=[],CHAT_CHANNELS_LOADED=false,CHAT_CHANNELS_LOADING=false,CHAT_SCHEMA_MISSING=false;
 let CHAT_ACTIVE_CHANNEL_ID=null,CHAT_MESSAGES=[],CHAT_MESSAGES_LOADED=false,CHAT_MESSAGES_LOADING=false;
 let CHAT_REALTIME_CHANNEL=null,CHAT_SENDING=false,CHAT_NEW_AUDIENCE_TYPE='all',CHAT_NEW_SURVEY_ID=null,CHAT_PENDING_SURVEY_ID=null;
-const CHAT_AUDIENCE_LABELS={all:'Todos os usuários',region:'Região',state:'Estado',city:'Cidade',survey:'Pesquisa'};
+let CHAT_SUPPORT_CHANNEL_ID=null,CHAT_SUPPORT_READY=false,CHAT_SUPPORT_LOADING=false;
+const CHAT_AUDIENCE_LABELS={all:'Todos os usuários',region:'Região',state:'Estado',city:'Cidade',survey:'Pesquisa',support:'Atendimento privado'};
 const CHAT_REGIONS=['Norte','Nordeste','Centro-Oeste','Sudeste','Sul'];
 const CHAT_STATES=['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 function chatAudienceLabel(type){return CHAT_AUDIENCE_LABELS[type]||'Público';}
 function chatChannelDescription(channel){
   if(!channel)return '';
+  if(channel.audience_type==='support')return 'Conversa privada com a equipe PesquisaPro';
   if(channel.audience_type==='all')return 'Todos os usuários autenticados';
   if(channel.audience_type==='survey'){const survey=SURVEYS.find(item=>item.id===channel.survey_id);return survey?'Participantes de '+survey.name:'Participantes da pesquisa';}
   return chatAudienceLabel(channel.audience_type)+': '+(channel.audience_value||'—');
@@ -395,7 +398,7 @@ function chatRefreshChannelList(){
 }
 function chatChannelListMarkup(){
   if(!CHAT_CHANNELS.length)return '<div class="chat-empty-small">Nenhum canal disponível para seu perfil.</div>';
-  return CHAT_CHANNELS.map(channel=>`<button type="button" class="chat-channel-item ${CHAT_ACTIVE_CHANNEL_ID===channel.id?'is-active':''}" onclick="chatOpenChannel('${channel.id}')"><span class="chat-channel-icon">${channel.audience_type==='survey'?'⌁':'✉'}</span><span class="chat-channel-copy"><b>${esc(channel.name)}</b><small>${esc(chatChannelDescription(channel))}</small>${channel.last_message_at?`<time>${esc(new Date(channel.last_message_at).toLocaleString('pt-BR'))}</time>`:''}</span></button>`).join('');
+  return CHAT_CHANNELS.map(channel=>`<button type="button" class="chat-channel-item ${CHAT_ACTIVE_CHANNEL_ID===channel.id?'is-active':''}" onclick="chatOpenChannel('${channel.id}')"><span class="chat-channel-icon">${channel.audience_type==='survey'?'⌁':channel.audience_type==='support'?'◉':'✉'}</span><span class="chat-channel-copy"><b>${esc(channel.name)}</b><small>${esc(chatChannelDescription(channel))}</small>${channel.last_message_at?`<time>${esc(new Date(channel.last_message_at).toLocaleString('pt-BR'))}</time>`:''}</span></button>`).join('');
 }
 function chatMessageMarkup(message){
   const own=message.sender_id===CURRENT_PROFILE?.id;
@@ -411,6 +414,17 @@ function chatAppendMessage(message){
   CHAT_MESSAGES.push(message);CHAT_MESSAGES.sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
   chatRenderMessages();
   const input=document.getElementById('chat-message-input');if(input)input.focus();
+}
+async function ensurePrivateSupportChatIfNeeded(){
+  if(!['cliente','pesq'].includes(CURRENT_PROFILE?.role)||CHAT_SUPPORT_READY||CHAT_SUPPORT_LOADING)return;
+  CHAT_SUPPORT_LOADING=true;
+  try{
+    const {data,error}=await sb.rpc('get_or_create_private_support_chat');
+    if(error){if(/get_or_create_private_support_chat|chat_channels|relation .* does not exist|schema cache/i.test(error.message||'')){CHAT_SCHEMA_MISSING=true;}throw error;}
+    CHAT_SUPPORT_CHANNEL_ID=data?.id||null;CHAT_SUPPORT_READY=true;CHAT_CHANNELS_LOADED=false;CHAT_ACTIVE_CHANNEL_ID=CHAT_SUPPORT_CHANNEL_ID;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=false;
+  }catch(ex){console.error('Erro ao preparar o chat privado:',ex);if(CHAT_SCHEMA_MISSING)CHAT_SUPPORT_READY=true;}
+  CHAT_SUPPORT_LOADING=false;
+  if(document.querySelector('.nav-item.on')?.dataset.key==='communication')go('communication');
 }
 async function loadChatChannelsIfNeeded(){
   if(CHAT_CHANNELS_LOADED||CHAT_CHANNELS_LOADING||!CURRENT_PROFILE)return;
@@ -517,14 +531,17 @@ async function chatSendMessage(){
 function chatHandleKeydown(event){if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();chatSendMessage();}}
 PAGES.communication=()=>{
   if(!CURRENT_PROFILE)return head('Comunicação','Entre no sistema para acessar o chat')+'<div class="empty">Faça login para acessar suas conversas.</div>';
-  if(CHAT_SCHEMA_MISSING)return head('Comunicação','Canais de avisos, suporte e acompanhamento de pesquisas')+`<div class="callout warn chat-migration-callout"><b>Chat ainda não ativado.</b><br>O administrador precisa executar a migration <code>deploy/chat-comunicacao-segmentada.sql</code> no SQL Editor do Supabase. Essa migration é aditiva e não apaga dados existentes.</div>`;
+  if(CHAT_SCHEMA_MISSING){const privateChat=['cliente','pesq'].includes(CURRENT_PROFILE.role);return head('Comunicação',privateChat?'Atendimento direto com a equipe PesquisaPro':'Canais de avisos, suporte e acompanhamento de pesquisas')+`<div class="callout warn chat-migration-callout"><b>Chat ainda não ativado.</b><br>O administrador precisa executar ${privateChat?'<code>deploy/chat-comunicacao-segmentada.sql</code> e <code>deploy/chat-atendimento-privado.sql</code>':'a migration <code>deploy/chat-comunicacao-segmentada.sql</code>'} no SQL Editor do Supabase. As migrations são aditivas e não apagam dados existentes.</div>`;}
+  if(['cliente','pesq'].includes(CURRENT_PROFILE.role)&&!CHAT_SUPPORT_READY){ensurePrivateSupportChatIfNeeded();return head('Comunicação','Atendimento direto com a equipe PesquisaPro')+'<div class="empty">Preparando seu chat privado de atendimento…</div>';}
   if(!CHAT_CHANNELS_LOADED){loadChatChannelsIfNeeded();return head('Comunicação','Canais de avisos, suporte e acompanhamento de pesquisas')+'<div class="empty">Carregando canais de comunicação…</div>';}
   if(!SURVEYS_LOADED)loadSurveysIfNeeded();
   if(['admin','coord','gerente','admpro'].includes(CURRENT_PROFILE.role)&&!SURVEYS_LOADED)return head('Comunicação','Canais de avisos, suporte e acompanhamento de pesquisas')+'<div class="empty">Carregando pesquisas para criar canais…</div>';
   if(CHAT_ACTIVE_CHANNEL_ID&&!CHAT_MESSAGES_LOADED){loadChatMessagesIfNeeded();return head('Comunicação','Canais de avisos, suporte e acompanhamento de pesquisas')+'<div class="empty">Carregando mensagens…</div>';}
   const active=CHAT_CHANNELS.find(channel=>channel.id===CHAT_ACTIVE_CHANNEL_ID)||null;
   if(active)chatStartRealtime();
-  return head('Comunicação','Converse com equipes, pesquisadores e participantes de cada pesquisa')+`<div class="chat-page">${chatCreatePanel()}<div class="chat-layout"><aside class="card chat-channel-panel"><div class="chat-panel-heading"><div><div class="card-t">Canais</div><div class="card-d">Você vê somente os canais permitidos para seu perfil.</div></div><span class="pill pill-blue">${CHAT_CHANNELS.length}</span></div><div id="chat-channel-list" class="chat-channel-list">${chatChannelListMarkup()}</div></aside><section class="card chat-room-panel">${active?`<header class="chat-room-header"><div><span class="eyebrow">${esc(chatAudienceLabel(active.audience_type))}</span><h2>${esc(active.name)}</h2><p>${esc(chatChannelDescription(active))}</p></div><span class="chat-live-pill"><i></i> Atualização ao vivo</span></header><div id="chat-messages" class="chat-messages" aria-live="polite">${CHAT_MESSAGES.length?CHAT_MESSAGES.map(chatMessageMarkup).join(''):'<div class="chat-empty-room"><span>✉</span><b>Nenhuma mensagem ainda</b><small>Envie a primeira mensagem para iniciar esta conversa.</small></div>'}</div><form class="chat-compose" onsubmit="event.preventDefault();chatSendMessage()"><textarea id="chat-message-input" class="inp" rows="2" maxlength="4000" placeholder="Escreva uma orientação, dúvida ou aviso…" aria-label="Mensagem" onkeydown="chatHandleKeydown(event)"></textarea><button class="btn btn-fill" type="submit" ${CHAT_SENDING?'disabled':''}>Enviar</button></form>`:'<div class="chat-empty-room chat-no-selection"><span>✉</span><b>Selecione um canal</b><small>Escolha uma conversa na lista ao lado para visualizar e enviar mensagens.</small></div>'}</section></div></div>`;
+  const isPrivateSupport=['cliente','pesq'].includes(CURRENT_PROFILE.role);
+  const supportNotice=isPrivateSupport?'<div class="chat-support-banner"><span class="chat-support-banner-icon">◉</span><div><b>Atendimento PesquisaPro</b><p>Este é um chat privado para tirar dúvidas, receber orientações e relatar problemas da pesquisa. Apenas a equipe PesquisaPro administra o atendimento.</p></div></div>':'';
+  return head('Comunicação',isPrivateSupport?'Fale diretamente com a equipe PesquisaPro':'Converse com equipes, pesquisadores e participantes de cada pesquisa')+`<div class="chat-page">${supportNotice}${chatCreatePanel()}<div class="chat-layout"><aside class="card chat-channel-panel"><div class="chat-panel-heading"><div><div class="card-t">${isPrivateSupport?'Atendimento':'Canais'}</div><div class="card-d">${isPrivateSupport?'Sua conversa privada com a equipe PesquisaPro.':'Você vê somente os canais permitidos para seu perfil.'}</div></div><span class="pill pill-blue">${CHAT_CHANNELS.length}</span></div><div id="chat-channel-list" class="chat-channel-list">${chatChannelListMarkup()}</div></aside><section class="card chat-room-panel">${active?`<header class="chat-room-header"><div><span class="eyebrow">${esc(chatAudienceLabel(active.audience_type))}</span><h2>${esc(active.name)}</h2><p>${esc(chatChannelDescription(active))}</p></div><span class="chat-live-pill"><i></i> Atualização ao vivo</span></header><div id="chat-messages" class="chat-messages" aria-live="polite">${CHAT_MESSAGES.length?CHAT_MESSAGES.map(chatMessageMarkup).join(''):'<div class="chat-empty-room"><span>✉</span><b>Nenhuma mensagem ainda</b><small>Envie a primeira mensagem para iniciar esta conversa.</small></div>'}</div><form class="chat-compose" onsubmit="event.preventDefault();chatSendMessage()"><textarea id="chat-message-input" class="inp" rows="2" maxlength="4000" placeholder="Escreva sua dúvida ou mensagem para a equipe PesquisaPro…" aria-label="Mensagem" onkeydown="chatHandleKeydown(event)"></textarea><button class="btn btn-fill" type="submit" ${CHAT_SENDING?'disabled':''}>Enviar</button></form>`:'<div class="chat-empty-room chat-no-selection"><span>✉</span><b>Selecione um canal</b><small>Escolha uma conversa na lista ao lado para visualizar e enviar mensagens.</small></div>'}</section></div></div>`;
 };
 
 /* ============ carregamento sob demanda de bibliotecas locais ============ */
@@ -760,7 +777,7 @@ PAGES['researcher-profile']=()=>{
       </section>
     </div>
     <section class="card mb"><div class="card-t">Cidades em que pode atuar *</div><div class="card-d">Escolha de uma a cinco cidades. Essas informações ajudam a equipe a encontrar pesquisas compatíveis.</div><div id="researcher-profile-cities-wrap">${researcherProfileCitiesMarkup()}</div></section>
-    <section class="card mb researcher-profile-chat-card"><div><div class="card-t">Comunicação com a equipe</div><div class="card-d">Acesse os canais gerais, orientações por localização e os chats das pesquisas em que você participa. Use este espaço para tirar dúvidas e comunicar problemas de execução.</div></div><button class="btn btn-out" onclick="go('communication')">✉ Abrir chat</button></section>
+    <section class="card mb researcher-profile-chat-card"><div><div class="card-t">Atendimento PesquisaPro</div><div class="card-d">Fale diretamente com a equipe PesquisaPro em um chat privado para tirar dúvidas, receber orientações e relatar problemas de execução.</div></div><button class="btn btn-out" onclick="go('communication')">✉ Abrir chat privado</button></section>
     <section class="card mb"><div class="card-t">Dados de pagamento <span class="pill pill-gray">Opcional</span></div><div class="card-d">Você pode informar ou corrigir o PIX agora ou depois. Ele será usado somente para repasses aprovados.</div>
       <div class="field-row mb"><div><label class="lbl">Chave PIX</label><input class="inp" id="researcher-profile-pix-key" value="${esc(p.pix_key||'')}" placeholder="CPF, e-mail, celular ou chave aleatória"></div><div><label class="lbl">Banco</label><input class="inp" id="researcher-profile-pix-bank" value="${esc(p.pix_bank||'')}"></div></div>
       <div class="field-row"><div><label class="lbl">CPF/CNPJ do titular</label><input class="inp" id="researcher-profile-pix-doc" value="${esc(p.pix_doc||'')}"></div><div><label class="lbl">Agência / conta</label><input class="inp" id="researcher-profile-pix-account" value="${esc([p.pix_ag,p.pix_acc].filter(Boolean).join(' / '))}"></div></div>

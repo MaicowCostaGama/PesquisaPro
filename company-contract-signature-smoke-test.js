@@ -17,5 +17,5 @@ ok(migration.includes('create or replace function public.sign_company_contract')
 ok(migration.includes('not public.is_admin()'),'RPC não bloqueia perfis não administrativos');
 ok(migration.includes('on conflict (contract_version) do nothing'),'proteção contra assinatura duplicada ausente');
 ok(migration.includes('auth.uid()'),'RPC não vincula a assinatura ao administrador autenticado');
-ok(html.includes('app.js?v=20260920174500'),'cache do contrato não atualizado');
+ok(html.includes('app.js?v=20260920180000'),'cache do contrato não atualizado');
 console.log('company-contract-signature-smoke-test: PASS');

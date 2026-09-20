@@ -1049,3 +1049,26 @@ body.lp{background:#f8faff;color:var(--ink)}
   .researcher-profile-chat-card .btn{width:100%}
 }
 @media(prefers-reduced-motion:reduce){.chat-channel-item{transition:none}.chat-messages{scroll-behavior:auto}}
+
+
+/* ============ CONVITES, PUSH E GRUPOS DE PESQUISA ============ */
+.researcher-push-card{display:flex;align-items:center;justify-content:space-between;gap:16px;background:linear-gradient(135deg,#f4f8ff,#f4fffb);border-color:#cfe0f7}
+.researcher-push-card .card-d{max-width:720px}
+.researcher-communications-card{border-color:#cfe0f7}
+.researcher-communication-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 0;border-top:1px solid var(--line)}
+.researcher-communication-row>div:first-child{display:flex;min-width:0;flex-direction:column;gap:3px}
+.researcher-communication-row small{font-size:11px;color:var(--ink3)}
+.researcher-communication-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:7px}
+.team-communication-settings{background:linear-gradient(135deg,#f8fbff,#f4fffb);border-color:#cfe0f7}
+.team-communication-url-row{display:flex;align-items:center;gap:9px}
+.team-communication-url-row .inp{flex:1}
+.team-communication-help,.team-filter-help{margin-top:7px;color:var(--ink3);font-size:11px;line-height:1.45}
+.team-bulk-invite-btn{margin-top:12px}
+.team-bulk-invite-btn:disabled{opacity:.55;cursor:not-allowed;transform:none}
+@media(max-width:680px){
+  .researcher-push-card,.researcher-communication-row{align-items:flex-start;flex-direction:column}
+  .researcher-push-card .btn,.researcher-communication-actions,.researcher-communication-actions .btn{width:100%}
+  .researcher-communication-actions{justify-content:stretch}
+  .team-communication-url-row{align-items:stretch;flex-direction:column}
+  .team-communication-url-row .btn{width:100%}
+}

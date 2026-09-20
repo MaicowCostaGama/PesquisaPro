@@ -54,6 +54,69 @@ let RESEARCHER_PROFILE_CITIES_LOADING=false;
 let RESEARCHER_PROFILE_SAVING=false;
 let RESEARCHER_BADGE_UPLOADING=false;
 let PASSWORD_RECOVERY_MODE=false;
+let PUSH_STATUS='unknown',PUSH_STATUS_LOADING=false,PUSH_SCHEMA_MISSING=false,PUSH_SW_REGISTRATION=null;
+let MY_COMMUNICATIONS=[],MY_COMMUNICATIONS_LOADED=false,MY_COMMUNICATIONS_LOADING=false;
+
+function pushBrowserSupported(){return 'serviceWorker' in navigator&&'PushManager' in window&&'Notification' in window;}
+function pushKeyToUint8Array(base64String){
+  const padding='='.repeat((4-base64String.length%4)%4),base64=(base64String+padding).replace(/-/g,'+').replace(/_/g,'/');
+  const rawData=window.atob(base64),output=new Uint8Array(rawData.length);
+  for(let i=0;i<rawData.length;++i)output[i]=rawData.charCodeAt(i);return output;
+}
+async function loadPushStatusIfNeeded(){
+  if(PUSH_STATUS!=='unknown'||PUSH_STATUS_LOADING||!CURRENT_PROFILE?.id||CURRENT_PROFILE.role!=='pesq')return;
+  PUSH_STATUS_LOADING=true;
+  try{
+    const {data,error}=await sb.from('push_subscriptions').select('endpoint').eq('user_id',CURRENT_PROFILE.id).limit(1);
+    if(error){if(/push_subscriptions|relation .* does not exist|schema cache/i.test(error.message||''))PUSH_SCHEMA_MISSING=true;throw error;}
+    PUSH_STATUS=data?.length?'enabled':'disabled';
+  }catch(ex){console.error('Não foi possível consultar o push:',ex);if(PUSH_SCHEMA_MISSING)PUSH_STATUS='unavailable';}
+  finally{PUSH_STATUS_LOADING=false;}
+}
+async function enableResearcherPush(){
+  if(CURRENT_PROFILE?.role!=='pesq')return;
+  if(!pushBrowserSupported()){alert('Este navegador não oferece notificações push. Use Chrome, Edge ou Firefox em um endereço HTTPS.');return;}
+  if(!window.PP_PUSH_PUBLIC_KEY){alert('As notificações push ainda não foram configuradas pela gestão. O administrador precisa cadastrar a chave pública do push.');return;}
+  if(PUSH_SCHEMA_MISSING){alert('O cadastro de notificações ainda não foi ativado no banco. Execute a migration equipe-convites-push-grupos.sql no Supabase.');return;}
+  try{
+    const permission=await Notification.requestPermission();
+    if(permission!=='granted'){PUSH_STATUS='blocked';go('dashboard-pesq');return;}
+    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20260919130000',{scope:'./'});
+    const subscription=await PUSH_SW_REGISTRATION.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:pushKeyToUint8Array(window.PP_PUSH_PUBLIC_KEY)});
+    const json=subscription.toJSON();
+    const {error}=await sb.from('push_subscriptions').upsert({user_id:CURRENT_PROFILE.id,endpoint:json.endpoint,subscription:json,user_agent:navigator.userAgent,updated_at:new Date().toISOString()},{onConflict:'endpoint'});
+    if(error)throw new Error(error.message);
+    PUSH_STATUS='enabled';alert('Notificações push ativadas. Você receberá avisos de novos convites mesmo com o aplicativo fechado.');
+  }catch(ex){console.error('Falha ao ativar push:',ex);alert('Não foi possível ativar as notificações. Verifique a permissão do navegador e tente novamente.');}
+  go('dashboard-pesq');
+}
+function pushStatusMarkup(){
+  if(PUSH_STATUS==='enabled')return '<span class="pill pill-green">● Push ativado</span>';
+  if(PUSH_STATUS==='blocked')return '<span class="pill pill-amber">Notificações bloqueadas no navegador</span>';
+  if(PUSH_STATUS==='unavailable')return '<span class="pill pill-gray">Push ainda não ativado no banco</span>';
+  if(PUSH_STATUS_LOADING)return '<span class="pill pill-gray">Verificando…</span>';
+  return '<span class="pill pill-amber">Push não ativado</span>';
+}
+function researcherPushCard(){
+  const ready=PUSH_STATUS==='enabled';
+  return `<section class="card mb researcher-push-card"><div><div class="card-t">Avisos de convites <span style="margin-left:5px">${pushStatusMarkup()}</span></div><div class="card-d">Ative as notificações para receber novos convites de pesquisa mesmo quando o aplicativo estiver fechado. Você poderá aceitar ou recusar cada convite no seu painel.</div></div>${ready?'<button class="btn btn-out" onclick="go(\'communication\')">Abrir comunicação</button>':'<button class="btn btn-fill" onclick="enableResearcherPush()">Ativar notificações</button>'}</section>`;
+}
+function loadMySurveyCommunicationsIfNeeded(){
+  if(MY_COMMUNICATIONS_LOADED||MY_COMMUNICATIONS_LOADING||!CURRENT_PROFILE?.id||CURRENT_PROFILE.role!=='pesq')return Promise.resolve();
+  MY_COMMUNICATIONS_LOADING=true;
+  return (async()=>{
+    try{
+      const {data,error}=await sb.rpc('get_my_survey_communications');
+      if(error){if(/get_my_survey_communications|function .* does not exist|schema cache/i.test(error.message||''))return;throw error;}
+      MY_COMMUNICATIONS=data||[];MY_COMMUNICATIONS_LOADED=true;
+    }catch(ex){console.error('Não foi possível carregar grupos das pesquisas:',ex);}
+    finally{MY_COMMUNICATIONS_LOADING=false;if(document.querySelector('.nav-item.on')?.dataset.key==='dashboard-pesq')go('dashboard-pesq');}
+  })();
+}
+function mySurveyCommunicationsMarkup(){
+  if(!MY_COMMUNICATIONS_LOADED||!MY_COMMUNICATIONS.length)return '';
+  return `<section class="card mb researcher-communications-card"><div class="card-t">Pesquisas aceitas e canais de apoio</div><div class="card-d">Após aceitar um convite, use o chat para instruções e dúvidas. O grupo de WhatsApp é acessado pelo link oficial da pesquisa.</div>${MY_COMMUNICATIONS.map(item=>`<div class="researcher-communication-row"><div><b>${esc(item.survey_name||'Pesquisa')}</b><small>Convite aceito${item.accepted_at?' em '+esc(new Date(item.accepted_at).toLocaleDateString('pt-BR')):''}</small></div><div class="researcher-communication-actions">${item.chat_channel_id?`<button class="btn btn-out" onclick="openResearcherSurveyChat('${item.survey_id}')">✉ Chat da pesquisa</button>`:'<span class="pill pill-gray">Chat em preparação</span>'}${item.whatsapp_group_url?`<a class="btn btn-fill" href="${esc(item.whatsapp_group_url)}" target="_blank" rel="noopener">Entrar no grupo do WhatsApp</a>`:'<span class="pill pill-gray">Grupo ainda não configurado</span>'}</div></div>`).join('')}</section>`;
+}
 
 function showLoginError(message){
   const error=document.getElementById('li-error');
@@ -181,6 +244,7 @@ async function requestOwnPasswordReset(){
 }
 
 async function afterLogin(user){
+  PUSH_STATUS='unknown';PUSH_STATUS_LOADING=false;PUSH_SCHEMA_MISSING=false;PUSH_SW_REGISTRATION=null;MY_COMMUNICATIONS=[];MY_COMMUNICATIONS_LOADED=false;MY_COMMUNICATIONS_LOADING=false;
   const profileFields='id,name,email,phone,role,status,cpf,cpf_cnpj,pf_pj,birth,cidade,rua,numero,cep,contact_person,doc_url,doc_foto_url,doc_comprovante_url,pix_key,pix_doc,pix_bank,pix_ag,pix_acc,results_released,approved_at,commission_rate,commission_rate_with_indicator,recruiter_code,recruiter_capture_value,badge_public_token,badge_photo_path';
   let {data:profile,error}=await sb.from('profiles').select(profileFields).eq('id',user.id).single();
   if(error && /badge_public_token|badge_photo_path|column/i.test(error.message||'')){
@@ -212,7 +276,7 @@ async function logout(){
   await sb.auth.signOut();
   chatStopRealtime();
   CHAT_CHANNELS=[];CHAT_CHANNELS_LOADED=false;CHAT_CHANNELS_LOADING=false;CHAT_SCHEMA_MISSING=false;CHAT_ACTIVE_CHANNEL_ID=null;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=false;CHAT_MESSAGES_LOADING=false;CHAT_PENDING_SURVEY_ID=null;
-  RESEARCHER_PROFILE_CITIES=[];RESEARCHER_PROFILE_CITIES_DRAFT=[];RESEARCHER_PROFILE_CITIES_LOADED=false;
+  RESEARCHER_PROFILE_CITIES=[];RESEARCHER_PROFILE_CITIES_DRAFT=[];RESEARCHER_PROFILE_CITIES_LOADED=false;PUSH_STATUS='unknown';PUSH_STATUS_LOADING=false;PUSH_SCHEMA_MISSING=false;PUSH_SW_REGISTRATION=null;MY_COMMUNICATIONS=[];MY_COMMUNICATIONS_LOADED=false;MY_COMMUNICATIONS_LOADING=false;
   CURRENT_PROFILE=null;
   document.getElementById('app').classList.remove('show');
   document.getElementById('login').style.display='flex';
@@ -416,6 +480,11 @@ async function chatCreateChannel(){
 function chatOpenChannel(channelId){
   if(!CHAT_CHANNELS.some(channel=>channel.id===channelId))return;
   CHAT_ACTIVE_CHANNEL_ID=channelId;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=false;go('communication');
+}
+async function openResearcherSurveyChat(surveyId){
+  CHAT_PENDING_SURVEY_ID=surveyId;CHAT_ACTIVE_CHANNEL_ID=null;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=false;CHAT_CHANNELS_LOADED=false;
+  go('communication');
+  await loadChatChannelsIfNeeded();
 }
 function chatOpenSurveyChannel(surveyId){
   if(!CHAT_CHANNELS_LOADED){CHAT_PENDING_SURVEY_ID=surveyId;CHAT_ACTIVE_CHANNEL_ID=null;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=true;go('communication');return;}
@@ -831,6 +900,8 @@ PAGES['dashboard-pesq']=()=>{
   if(!PAYMENTS_LOADED)loadPaymentsIfNeeded();
   if(!MY_CONTRACT_LOADED)loadMyContractIfNeeded();
   if(!MY_INVITES_LOADED)loadMyInvitesIfNeeded();
+  loadPushStatusIfNeeded();
+  loadMySurveyCommunicationsIfNeeded();
   const primeiroNome=(CURRENT_PROFILE&&CURRENT_PROFILE.name)?CURRENT_PROFILE.name.trim().split(' ')[0]:'';
   const subtitulo=primeiroNome?('Olá '+primeiroNome+' — acompanhe suas metas e ganhos'):'Acompanhe suas metas e ganhos';
   if(!SURVEYS_LOADED||!COLLECT_EVENTS_LOADED||!PAYMENTS_LOADED){
@@ -882,6 +953,8 @@ PAGES['dashboard-pesq']=()=>{
   </div>`:'';
   return head('Meu painel',subtitulo)+`
   ${invitesHtml}
+  ${researcherPushCard()}
+  ${mySurveyCommunicationsMarkup()}
   ${(MY_CONTRACT_LOADED&&!MY_CONTRACT)?'<div class="callout mb">✎ Você ainda não assinou seu contrato de prestação de serviços — assine para poder coletar. <button class="btn-ghost" style="margin-left:6px" onclick="go(\'my-contract\')">Assinar agora →</button></div>':''}
   <div class="grid g4" style="margin-bottom:18px">
     ${stat('Coletas hoje',String(hojeCount),'entrevistas enviadas hoje','✓','#2563eb')}
@@ -2568,6 +2641,7 @@ async function copySurveyInviteLink(inviteId){
   catch(ex){window.prompt('Copie o link do convite:',link);}
 }
 let TEAM_INVITES=[],TEAM_INVITES_LOADED=false,TEAM_INVITES_LOADING=false;
+let TEAM_COMM_SETTINGS=null,TEAM_COMM_SETTINGS_LOADED=false,TEAM_COMM_SETTINGS_LOADING=false,TEAM_BULK_INVITING=false;
 async function loadTeamInvitesIfNeeded(){
   const s=SURVEYS[TEAM_IDX];
   if(!s||TEAM_INVITES_LOADED||TEAM_INVITES_LOADING)return;
@@ -2584,6 +2658,68 @@ async function loadTeamInvitesIfNeeded(){
   // tela certa antes de re-renderizar — em vez disso, confere se o próprio
   // conteúdo desta página ainda está no ar.
   if(document.getElementById('team-picklist')){go('survey-team');setTimeout(teamFilterRows,0);}
+}
+async function loadTeamCommunicationSettingsIfNeeded(){
+  const s=SURVEYS[TEAM_IDX];
+  if(!s||TEAM_COMM_SETTINGS_LOADED||TEAM_COMM_SETTINGS_LOADING)return;
+  TEAM_COMM_SETTINGS_LOADING=true;
+  try{
+    const {data,error}=await sb.from('survey_communication_settings').select('*').eq('survey_id',s.id).maybeSingle();
+    if(error)throw new Error(error.message);
+    TEAM_COMM_SETTINGS=data||{};TEAM_COMM_SETTINGS_LOADED=true;
+  }catch(ex){console.error('Não foi possível carregar a configuração dos grupos:',ex);TEAM_COMM_SETTINGS_LOADED=true;}
+  finally{TEAM_COMM_SETTINGS_LOADING=false;if(document.getElementById('team-picklist')){go('survey-team');setTimeout(teamFilterRows,0);}}
+}
+function teamCommunicationMarkup(){
+  const url=TEAM_COMM_SETTINGS?.whatsapp_group_url||'';
+  return `<div class="card mb team-communication-settings"><div class="card-t">Grupos desta pesquisa</div><div class="card-d">Depois de aceitar o convite, o pesquisador terá acesso ao chat da pesquisa e poderá abrir o grupo oficial do WhatsApp pelo link abaixo. O WhatsApp exige que cada pessoa toque no link para entrar; não há inclusão automática por número.</div><label class="lbl" for="team-whatsapp-group-url">Link de convite do grupo do WhatsApp</label><div class="team-communication-url-row"><input class="inp" id="team-whatsapp-group-url" value="${esc(url)}" placeholder="https://chat.whatsapp.com/…" inputmode="url"><button class="btn btn-out" onclick="saveTeamCommunicationSettings()">Salvar link</button></div><div class="team-communication-help">Crie o grupo no WhatsApp, copie o link de convite e cole aqui. O link será mostrado somente aos pesquisadores que aceitarem esta pesquisa.</div></div>`;
+}
+async function saveTeamCommunicationSettings(){
+  const s=SURVEYS[TEAM_IDX];if(!s)return;
+  const input=document.getElementById('team-whatsapp-group-url'),url=(input?.value||'').trim();
+  if(url&&!/^https:\/\/chat\.whatsapp\.com\/[A-Za-z0-9]+$/.test(url)){alert('Cole um link oficial de convite do WhatsApp no formato https://chat.whatsapp.com/…');return;}
+  try{
+    const {data,error}=await sb.rpc('save_survey_communication_settings',{p_survey_id:s.id,p_whatsapp_group_url:url||null});
+    if(error)throw new Error(error.message);
+    TEAM_COMM_SETTINGS=data||{whatsapp_group_url:url};TEAM_COMM_SETTINGS_LOADED=true;alert(url?'Link do grupo salvo.':'Link do grupo removido.');go('survey-team');
+  }catch(ex){alert('Não foi possível salvar o link do grupo. Execute a migration equipe-convites-push-grupos.sql no Supabase.');console.error(ex);}
+}
+function teamEligibleResearchers(){
+  const s=SURVEYS[TEAM_IDX];if(!s)return [];
+  const targets=surveyCityTargets(s),hasTarget=!!(targets.cities.size||targets.states.size),team=new Set(s.team||[]),f=TEAM_FILTERS,qq=normalizeUserSearch(f.text);
+  return pesqUsers().map(u=>({u,area:pesqAreaMatch(u,targets)})).filter(({u,area})=>{
+    if(team.has(u.name)||!researcherIsAvailable(u)||(hasTarget&&!area.match))return false;
+    if(!teamFilterMatches(u))return false;
+    const locations=researcherLocations(u);
+    const text=normalizeUserSearch([u.name,area.label,...locations.map(part=>part.city),...locations.map(part=>part.uf),schoolingLabel(u.escolaridade)].join(' '));
+    return !qq||text.includes(qq);
+  });
+}
+async function inviteEligibleResearchersBulk(){
+  const s=SURVEYS[TEAM_IDX];if(!s||TEAM_BULK_INVITING)return;
+  const eligible=teamEligibleResearchers();
+  if(!eligible.length){alert('Nenhum pesquisador elegível corresponde aos filtros atuais.');return;}
+  const ids=eligible.map(({u})=>u.id).filter(Boolean);
+  if(!ids.length){alert('Os pesquisadores encontrados ainda não possuem identificador válido no banco. Recarregue a lista.');return;}
+  if(!confirm('Enviar convite para '+ids.length+' pesquisador'+(ids.length===1?'':'es')+' elegível'+(ids.length===1?'':'is')+'? Cada pessoa poderá aceitar ou recusar no próprio painel.'))return;
+  TEAM_BULK_INVITING=true;go('survey-team');
+  try{
+    const {data,error}=await sb.rpc('create_survey_invites_bulk',{p_survey_id:s.id,p_researcher_ids:ids});
+    if(error)throw new Error(error.message);
+    const returned=data||[];
+    const byId=new Map(TEAM_INVITES.map(item=>[item.researcher_id,item]));
+    returned.forEach(item=>byId.set(item.researcher_id,item));TEAM_INVITES=[...byId.values()];TEAM_INVITES_LOADED=true;
+    let pushMessage='Os convites aparecerão no painel dos pesquisadores.';
+    if(typeof sb.functions?.invoke==='function'){
+      try{
+        const push=await sb.functions.invoke('send-survey-invite-push',{body:{survey_id:s.id,invite_ids:returned.map(item=>item.id)}});
+        if(push.error)throw push.error;
+        const result=push.data||{};pushMessage=(result.sent||0)+' push enviado'+((result.sent||0)===1?'':'s')+'; '+(result.skipped||0)+' pesquisador'+((result.skipped||0)===1?'':'es')+' receberá o aviso ao entrar no aplicativo.';
+      }catch(pushError){console.warn('Push não enviado; convite interno continua válido:',pushError);pushMessage='Convites registrados. O push real ainda depende da configuração da função de envio; todos também verão o convite ao entrar no painel.';}
+    }
+    alert(returned.length+' convite'+(returned.length===1?'':'s')+' registrado'+(returned.length===1?'':'s')+'. '+pushMessage);
+  }catch(ex){alert('Não foi possível enviar os convites em massa: '+ex.message);}
+  TEAM_BULK_INVITING=false;go('survey-team');
 }
 /* cria o convite (ou reabre um que foi recusado) e abre o WhatsApp com a
    mensagem já pronta — o pesquisador só entra na equipe se ele aceitar
@@ -2629,7 +2765,7 @@ function teamFilterMatches(user){
 }
 function teamFiltersMarkup(pesqs,hasTarget){
   const {states,cities}=teamFilterOptions(pesqs),f=TEAM_FILTERS;
-  return `<div class="team-filter-panel"><div class="team-filter-title"><div><b>Encontrar pesquisadores</b><span>Filtre por localização e escolaridade antes de convidar.</span></div><span class="pill pill-blue" id="team-available-count">— disponíveis</span></div><div class="team-filter-grid"><input class="inp" id="team-search" value="${esc(f.text)}" placeholder="Buscar por nome ou cidade…" oninput="teamSetFilter('text',this.value)"><select class="inp" aria-label="Filtrar equipe por estado" onchange="teamSetFilter('state',this.value)"><option value="">Todos os estados</option>${states.map(state=>`<option value="${esc(state)}" ${f.state===state?'selected':''}>${esc(state)}</option>`).join('')}</select><select class="inp" aria-label="Filtrar equipe por cidade" onchange="teamSetFilter('city',this.value)"><option value="">Todas as cidades</option>${cities.map(([value,label])=>`<option value="${esc(value)}" ${f.city===value?'selected':''}>${esc(label)}</option>`).join('')}</select><select class="inp" aria-label="Filtrar equipe por escolaridade" onchange="teamSetFilter('schooling',this.value)"><option value="">Todas as escolaridades</option>${SCHOOLING_OPTIONS.map(([value,label])=>`<option value="${value}" ${f.schooling===value?'selected':''}>${label}</option>`).join('')}</select></div><div class="team-filter-note">${hasTarget?'A contagem considera pesquisadores ativos, com documentos completos, cidade cadastrada e compatíveis com a área da pesquisa.':'A contagem considera pesquisadores ativos, com documentos completos e cidade cadastrada.'}</div></div>`;
+  return `<div class="team-filter-panel"><div class="team-filter-title"><div><b>Encontrar pesquisadores</b><span>Filtre por localização e escolaridade antes de convidar.</span></div><span class="pill pill-blue" id="team-available-count">— disponíveis</span></div><div class="team-filter-grid"><input class="inp" id="team-search" value="${esc(f.text)}" placeholder="Buscar por nome ou cidade…" oninput="teamSetFilter('text',this.value)"><select class="inp" aria-label="Filtrar equipe por estado" onchange="teamSetFilter('state',this.value)"><option value="">Todos os estados</option>${states.map(state=>`<option value="${esc(state)}" ${f.state===state?'selected':''}>${esc(state)}</option>`).join('')}</select><select class="inp" aria-label="Filtrar equipe por cidade" onchange="teamSetFilter('city',this.value)"><option value="">Todas as cidades</option>${cities.map(([value,label])=>`<option value="${esc(value)}" ${f.city===value?'selected':''}>${esc(label)}</option>`).join('')}</select><select class="inp" aria-label="Filtrar equipe por escolaridade" onchange="teamSetFilter('schooling',this.value)"><option value="">Todas as escolaridades</option>${SCHOOLING_OPTIONS.map(([value,label])=>`<option value="${value}" ${f.schooling===value?'selected':''}>${label}</option>`).join('')}</select></div><div class="team-filter-note">${hasTarget?'A contagem considera pesquisadores ativos, com documentos completos, cidade cadastrada e compatíveis com a área da pesquisa.':'A contagem considera pesquisadores ativos, com documentos completos e cidade cadastrada.'}</div><button class="btn btn-fill team-bulk-invite-btn" id="team-bulk-invite" type="button" onclick="inviteEligibleResearchersBulk()">✉ Convidar pesquisadores elegíveis</button><div class="team-filter-help">O convite chega por push para quem ativou notificações e fica disponível no painel dos demais. Cada pesquisador decide aceitar ou recusar.</div></div>`;
 }
 PAGES['survey-team']=()=>{
   const s=SURVEYS[TEAM_IDX];if(!s)return '<div class="empty">Pesquisa não encontrada.</div>';
@@ -2638,6 +2774,7 @@ PAGES['survey-team']=()=>{
     return head('Atribuir equipe — '+s.name,'Carregando pesquisadores cadastrados…')+'<div class="empty">Carregando pesquisadores do banco de dados…</div>';
   }
   if(!TEAM_INVITES_LOADED)loadTeamInvitesIfNeeded();
+  if(!TEAM_COMM_SETTINGS_LOADED)loadTeamCommunicationSettingsIfNeeded();
   const team=s.team||[];
   const targets=surveyCityTargets(s);
   const hasTarget=!!(targets.cities.size||targets.states.size);
@@ -2686,6 +2823,7 @@ PAGES['survey-team']=()=>{
   }).join(''):'<div class="empty">Nenhum pesquisador cadastrado ainda. Cadastre em Usuários → Pesquisadores.</div>';
   return head('Atribuir equipe — '+s.name,'Escolha pesquisadores cadastrados ou envie link de cadastro para novos',
     '<button class="btn btn-out" onclick="go(\'surveys\')">← Voltar</button><button class="btn btn-out" onclick="chatOpenSurveyChannel(\''+s.id+'\')">✉ Chat da pesquisa</button><button class="btn btn-fill" onclick="teamSave()">Salvar equipe</button>')+`
+  ${TEAM_COMM_SETTINGS_LOADED?teamCommunicationMarkup():''}
   <div class="grid g2" style="align-items:start">
     <div class="card">
       <div class="card-t">Pesquisadores cadastrados</div>
@@ -2710,7 +2848,7 @@ PAGES['survey-team']=()=>{
     </div>
   </div>`;
 };
-function surveyTeam(idx){TEAM_IDX=idx;TEAM_SHOW_OUT_OF_AREA=false;TEAM_FILTERS={text:'',state:'',city:'',schooling:''};TEAM_INVITES=[];TEAM_INVITES_LOADED=false;go('survey-team');setTimeout(teamFilterRows,0);}
+function surveyTeam(idx){TEAM_IDX=idx;TEAM_SHOW_OUT_OF_AREA=false;TEAM_FILTERS={text:'',state:'',city:'',schooling:''};TEAM_INVITES=[];TEAM_INVITES_LOADED=false;TEAM_COMM_SETTINGS=null;TEAM_COMM_SETTINGS_LOADED=false;TEAM_COMM_SETTINGS_LOADING=false;TEAM_BULK_INVITING=false;go('survey-team');setTimeout(teamFilterRows,0);}
 /* liga/desliga a visibilidade de quem está fora da área, sem perder o que
    já foi marcado na tela (por isso mexe direto no DOM em vez de re-renderizar
    a página inteira) — quem está fora da área nunca fica marcável por aqui,
@@ -2740,6 +2878,8 @@ function teamFilterRows(){
   if(noMatch)noMatch.style.display=visible?'none':'';
   const count=document.getElementById('team-available-count');
   if(count)count.textContent=available+' disponível'+(available===1?'':'is');
+  const bulk=document.getElementById('team-bulk-invite');
+  if(bulk){bulk.disabled=TEAM_BULK_INVITING||available===0;bulk.textContent=TEAM_BULK_INVITING?'Enviando convites…':'✉ Convidar '+available+' pesquisador'+(available===1?' elegível':'es elegíveis');}
 }
 async function teamSave(){
   const s=SURVEYS[TEAM_IDX];if(!s)return;
@@ -6533,8 +6673,12 @@ async function respondMyInvite(inviteId,accept){
   MY_INVITE_RESPONDING=inviteId;
   go('dashboard-pesq');
   try{
-    const {error}=await sb.rpc('respond_survey_invite',{p_invite_id:inviteId,p_accept:accept});
-    if(error)throw new Error(error.message);
+    let detail=null;
+    const detailed=await sb.rpc('respond_survey_invite_details',{p_invite_id:inviteId,p_accept:accept});
+    if(detailed.error){
+      const legacy=await sb.rpc('respond_survey_invite',{p_invite_id:inviteId,p_accept:accept});
+      if(legacy.error)throw new Error(legacy.error.message);
+    }else detail=detailed.data;
     MY_INVITES=MY_INVITES.filter(i=>i.id!==inviteId);
     if(accept){
       // o convite aceito grava o vínculo direto no banco (survey_team) — só
@@ -6542,6 +6686,10 @@ async function respondMyInvite(inviteId,accept){
       // cotas/coleta desta conta.
       SURVEYS_LOADED=false;
       await loadSurveysIfNeeded();
+      MY_COMMUNICATIONS_LOADED=false;MY_COMMUNICATIONS=[];
+      await loadMySurveyCommunicationsIfNeeded();
+      if(detail?.whatsapp_group_url)alert('Convite aceito. O chat da pesquisa já está disponível no seu painel. Use o botão "Entrar no grupo do WhatsApp" para solicitar sua entrada no grupo oficial.');
+      else alert('Convite aceito. O chat da pesquisa já está disponível no seu painel. A gestão ainda não configurou o link do grupo do WhatsApp.');
     }
     INVITE_FOCUS_ID=null;
     const cleanUrl=new URL(window.location.href);cleanUrl.searchParams.delete('convite');

@@ -12,7 +12,7 @@ for (const token of ['USER_SEARCH', 'normalizeUserSearch', 'compactUserSearch', 
 for (const token of ['password-reset-card', 'id="rp-pass"', 'id="rp-pass-confirm"', 'Esqueci minha senha']) {
   assert(html.includes(token), `interface de senha ausente: ${token}`);
 }
-for (const token of ['id="user-search"', 'Buscar por nome, CPF ou e-mail', 'user-password-reset', 'Resetar senha']) {
+for (const token of ['id="user-search"', 'Buscar por nome, CPF, cidade ou e-mail', 'user-password-reset', 'Resetar senha']) {
   assert(app.includes(token), `interface de busca ausente: ${token}`);
 }
 for (const token of ['.user-search-bar', '.user-search-clear', '.user-password-reset', '.password-recovery-link']) {

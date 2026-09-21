@@ -4764,11 +4764,12 @@ const USER_TABS=[
 const USER_TAB_ROLES={pesq:['pesq'],cliente:['cliente'],admpro:['admpro'],vendedor:['vendedor'],indicador:['indicador'],recrutador:['recrutador'],staff:['admin','coord','gerente']};
 let USER_TAB='pesq';
 let USER_SEARCH='';
+let USER_GENERAL_FILTERS={status:'',city:''};
 let USER_RESEARCHER_FILTERS={state:'',city:'',schooling:''};
 function normalizeUserSearch(value){return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();}
 function compactUserSearch(value){return normalizeUserSearch(value).replace(/[^a-z0-9]/g,'');}
 function researcherIsAvailable(user){return user?.role==='pesq'&&user.status==='ativo'&&!!user.docFoto&&!!user.docComprovante&&researcherLocations(user).length>0;}
-function userSearchText(user){return [user.name,user.email,user.cpf,user.cpfCnpj,user.phone,user.contact,user.cidade,(user.cidadesAtuacao||[]).join(' '),schoolingLabel(user.escolaridade),ROLE_LABEL[user.role]||user.role].filter(Boolean).join(' ');}
+function userSearchText(user){return [user.name,user.email,user.cpf,user.cpfCnpj,user.phone,user.contact,user.cidade,user.addr,(user.cidadesAtuacao||[]).join(' '),schoolingLabel(user.escolaridade),ROLE_LABEL[user.role]||user.role].filter(Boolean).join(' ');}
 function userMatchesSearch(user){
   const query=normalizeUserSearch(USER_SEARCH);
   if(!query)return true;
@@ -4777,12 +4778,34 @@ function userMatchesSearch(user){
   const compactText=compactUserSearch(userSearchText(user));
   return text.includes(query)||(compactQuery&&compactText.includes(compactQuery));
 }
-function userMatchesResearcherFilters(user){
-  if(USER_TAB!=='pesq'||user?.role!=='pesq')return true;
+function userCitySet(user){
+  return new Set([user?.cidade,user?.addr,...(user?.cidadesAtuacao||[])].filter(Boolean).flatMap(value=>{const part=locationParts(value);return part?[normalizeUserSearch(part.city),normalizeUserSearch(String(part.city)+'/'+String(part.uf||''))]:[]}).filter(Boolean));
+}
+function userMatchesGeneralFilters(user,tab=USER_TAB){
+  if(USER_GENERAL_FILTERS.status&&user?.status!==USER_GENERAL_FILTERS.status)return false;
+  if(USER_GENERAL_FILTERS.city&&!userCitySet(user).has(USER_GENERAL_FILTERS.city))return false;
+  return true;
+}
+function userMatchesResearcherFilters(user,tab=USER_TAB){
+  if(tab!=='pesq'||user?.role!=='pesq')return true;
   const filters=USER_RESEARCHER_FILTERS,states=researcherStateSet(user),cities=researcherCitySet(user);
   return (!filters.state||states.has(filters.state))&&(!filters.city||cities.has(filters.city))&&(!filters.schooling||user.escolaridade===filters.schooling);
 }
-function usersInTab(tab){const roles=USER_TAB_ROLES[tab]||[];return USERS.map((u,i)=>({u,i})).filter(x=>roles.includes(x.u.role)&&userMatchesSearch(x.u)&&userMatchesResearcherFilters(x.u));}
+function usersInTab(tab){const roles=USER_TAB_ROLES[tab]||[];return USERS.map((u,i)=>({u,i})).filter(x=>roles.includes(x.u.role)&&userMatchesSearch(x.u)&&userMatchesGeneralFilters(x.u,tab)&&userMatchesResearcherFilters(x.u,tab));}
+function userGeneralFilterOptions(tab){
+  const roles=USER_TAB_ROLES[tab]||[],base=USERS.filter(user=>roles.includes(user.role)),cities=new Map();
+  base.forEach(user=>[user.cidade,user.addr,...(user.cidadesAtuacao||[])].filter(Boolean).forEach(value=>{const part=locationParts(value);if(part?.city){const key=normalizeUserSearch(part.city);cities.set(key,part.city+(part.uf?'/'+part.uf:''));}}));
+  return {cities:[...cities.entries()].sort((a,b)=>a[1].localeCompare(b[1],'pt-BR'))};
+}
+const USER_STATUS_LABELS={ativo:'Ativos',pendente:'Pendentes',prospecto:'Prospectos',encerrado:'Encerrados'};
+function userGeneralFilterSet(key,value){USER_GENERAL_FILTERS[key]=value||'';go('users');}
+function userGeneralFilterClear(){USER_GENERAL_FILTERS={status:'',city:''};go('users');}
+function userClearAllFilters(){USER_SEARCH='';USER_GENERAL_FILTERS={status:'',city:''};USER_RESEARCHER_FILTERS={state:'',city:'',schooling:''};go('users');}
+function userGeneralFiltersMarkup(tab){
+  const {cities}=userGeneralFilterOptions(tab),f=USER_GENERAL_FILTERS,active=!!(f.status||f.city),base=USERS.filter(user=>(USER_TAB_ROLES[tab]||[]).includes(user.role)),statuses=[...new Set(base.map(user=>user.status).filter(Boolean))];
+  return `<div class="user-filter-panel"><div class="user-filter-title"><div><b>Refinar usuários</b><span>Combine a busca textual com situação e cidade.</span></div><span class="user-filter-result"><strong>${usersInTab(tab).length}</strong> resultado${usersInTab(tab).length===1?'':'s'}</span></div><div class="user-filter-grid"><select class="inp" aria-label="Filtrar por situação" onchange="userGeneralFilterSet('status',this.value)"><option value="">Todas as situações</option>${statuses.map(status=>`<option value="${esc(status)}" ${f.status===status?'selected':''}>${esc(USER_STATUS_LABELS[status]||status)}</option>`).join('')}</select><select class="inp" aria-label="Filtrar por cidade" onchange="userGeneralFilterSet('city',this.value)"><option value="">Todas as cidades</option>${cities.map(([value,label])=>`<option value="${esc(value)}" ${f.city===value?'selected':''}>${esc(label)}</option>`).join('')}</select>${active?'<button class="btn btn-out" type="button" onclick="userGeneralFilterClear()">Limpar filtros</button>':''}</div></div>`;
+}
+function signupMatchesUsersView(signup){return userMatchesSearch(signup)&&userMatchesGeneralFilters(signup,'pesq')&&userMatchesResearcherFilters(signup,'pesq');}
 function userResearcherFilterOptions(){
   const list=pesqUsers(),states=new Set(),cities=new Map();
   list.forEach(user=>researcherLocations(user).forEach(part=>{if(part.uf)states.add(part.uf);if(part.city)cities.set(normalizeUserSearch(part.city),part.city+(part.uf?'/'+part.uf:''));}));
@@ -5031,7 +5054,7 @@ PAGES.users=()=>{
   if(USER_EDIT!=null)return userForm();
   return userList();
 };
-function userSetTab(tab){USER_TAB=tab;USER_VIEW=null;USER_EDIT=null;USER_ARMED=true;go('users');}
+function userSetTab(tab){USER_GENERAL_FILTERS={status:'',city:''};USER_RESEARCHER_FILTERS={state:'',city:'',schooling:''};USER_TAB=tab;USER_VIEW=null;USER_EDIT=null;USER_ARMED=true;go('users');}
 function userTabBar(){
   const total=usersInTab(USER_TAB).length;
   const activeLabel=(USER_TABS.find(t=>t.key===USER_TAB)||{}).label||'Usuários';
@@ -5043,7 +5066,7 @@ function userTabBar(){
 function userTabStats(tab){
   const list=usersInTab(tab).map(x=>x.u);
   if(tab==='pesq'){
-    const pendingSignups=signupPendingRows();
+    const pendingSignups=signupPendingRows().filter(signupMatchesUsersView);
     const pendingProfiles=list.filter(u=>u.status==='pendente');
     const missingDocs=list.filter(u=>!u.docFoto||!u.docComprovante).length+pendingSignups.filter(s=>!s.docFoto||!s.docComprovante).length;
     return `<div class="grid g4" style="margin-bottom:16px">
@@ -5182,8 +5205,10 @@ function userList(){
   <div class="callout" style="margin-top:16px">Clientes são cadastrados manualmente por um administrador — não há autocadastro para este perfil.</div>`
   : `
   <div class="callout" style="margin-top:16px">Este perfil só pode ser incluído manualmente pelo Administrador master ou por um ADM PesquisaPro autorizado — não há autocadastro.</div>`;
-  const tableContent=currentCount?`<div class="user-table-scroll" tabindex="0" aria-label="Tabela de usuários. Deslize horizontalmente para ver todas as informações."><div class="user-table-scroll-hint"><span aria-hidden="true">↔</span> Deslize horizontalmente para ver todos os dados. A coluna <b>Ações</b> permanece acessível à direita.</div><table class="user-data-table user-data-table-${tab}"><thead>${userTableHead(tab)}</thead><tbody>${userTableRows(tab)}</tbody></table></div>`:`<div class="users-empty-state"><div class="users-empty-icon">＋</div><div><h3>${USER_SEARCH?'Nenhum resultado encontrado':'Nenhum '+(USER_TAB_NEW_LABEL[tab]||'usuário')+' cadastrado'}</h3><p>${USER_SEARCH?'Tente outro nome, CPF ou e-mail.':'Comece adicionando o primeiro perfil nesta categoria para liberar o fluxo correspondente.'}</p>${USER_SEARCH?'<button class="btn btn-out" onclick="userClearSearch()">Limpar busca</button>':`<button class="btn btn-fill" onclick="userOpen('new')">Cadastrar ${USER_TAB_NEW_LABEL[tab]||'usuário'}</button>`}</div></div>`;
-  const searchBar=`<div class="user-search-bar" role="search"><div class="user-search-main"><label class="sr-only" for="user-search">Buscar usuário</label><span class="user-search-icon">⌕</span><input id="user-search" class="inp" type="search" value="${esc(USER_SEARCH)}" placeholder="Buscar por nome, CPF ou e-mail…" autocomplete="off" oninput="userSearchInput(this.value)">${USER_SEARCH?'<button type="button" class="user-search-clear" title="Limpar busca" aria-label="Limpar busca" onclick="userClearSearch()">×</button>':''}</div><span class="user-search-hint">A busca vale para a aba atual e ignora acentos e pontuação.</span></div>`;
+  const hasUserFilters=!!(USER_SEARCH||USER_GENERAL_FILTERS.status||USER_GENERAL_FILTERS.city||(tab==='pesq'&&(USER_RESEARCHER_FILTERS.state||USER_RESEARCHER_FILTERS.city||USER_RESEARCHER_FILTERS.schooling)));
+  const tableContent=currentCount?`<div class="user-table-scroll" tabindex="0" aria-label="Tabela de usuários. Deslize horizontalmente para ver todas as informações."><div class="user-table-scroll-hint"><span aria-hidden="true">↔</span> Deslize horizontalmente para ver todos os dados. A coluna <b>Ações</b> permanece acessível à direita.</div><table class="user-data-table user-data-table-${tab}"><thead>${userTableHead(tab)}</thead><tbody>${userTableRows(tab)}</tbody></table></div>`:`<div class="users-empty-state"><div class="users-empty-icon">＋</div><div><h3>${hasUserFilters?'Nenhum resultado encontrado':'Nenhum '+(USER_TAB_NEW_LABEL[tab]||'usuário')+' cadastrado'}</h3><p>${hasUserFilters?'Ajuste ou limpe os filtros para visualizar outros usuários.':'Comece adicionando o primeiro perfil nesta categoria para liberar o fluxo correspondente.'}</p>${hasUserFilters?'<button class="btn btn-out" onclick="userClearAllFilters()">Limpar filtros e busca</button>':`<button class="btn btn-fill" onclick="userOpen('new')">Cadastrar ${USER_TAB_NEW_LABEL[tab]||'usuário'}</button>`}</div></div>`;
+  const searchBar=`<div class="user-search-bar" role="search"><div class="user-search-main"><label class="sr-only" for="user-search">Buscar usuário</label><span class="user-search-icon">⌕</span><input id="user-search" class="inp" type="search" value="${esc(USER_SEARCH)}" placeholder="Buscar por nome, CPF, cidade ou e-mail…" autocomplete="off" oninput="userSearchInput(this.value)">${USER_SEARCH?'<button type="button" class="user-search-clear" title="Limpar busca" aria-label="Limpar busca" onclick="userClearSearch()">×</button>':''}</div><span class="user-search-hint">A busca vale para a aba ${esc((USER_TABS.find(t=>t.key===tab)||{}).label||'atual')} e ignora acentos e pontuação.</span></div>`;
+  const generalFilters=userGeneralFiltersMarkup(tab);
   const researcherFilters=tab==='pesq'?userResearcherFiltersMarkup(usersInTab('pesq')):'';
   const researcherQueue=tab==='pesq'?researcherApprovalQueueMarkup():'';
   return `<div class="users-page"><div class="users-context"><div><span class="eyebrow">${tabInfo[0]}</span><p>${tabInfo[1]}</p></div><span class="users-count-chip">${currentCount} ${currentCount===1?'perfil':'perfis'}</span></div>`+
@@ -5192,12 +5217,12 @@ function userList(){
   userTabBar()+
   userTabStats(tab)+
   researcherQueue+
-  searchBar+researcherFilters+
-  `<div class="card user-table-card" ${tab==='pesq'?'id="researcher-table"':''}><div class="user-table-heading"><div><div class="card-t">${USER_TAB_NEW_LABEL[tab]||'Usuários'} cadastrados</div><div class="card-d">Confira os dados, o status e as permissões antes de abrir um perfil.</div></div><span class="users-table-count">${currentCount}</span></div>${tableContent}
+  searchBar+generalFilters+researcherFilters+
+  `<div class="card user-table-card" ${tab==='pesq'?'id="researcher-table"':''}><div class="user-table-heading"><div><div class="card-t">${USER_TAB_NEW_LABEL[tab]||'Usuários'} encontrados</div><div class="card-d">${currentCount?`Mostrando ${currentCount} ${currentCount===1?'registro':'registros'} com os filtros atuais.`:'Nenhum registro corresponde aos filtros atuais.'}</div></div><span class="users-table-count" aria-label="Quantidade encontrada">${currentCount}</span></div>${tableContent}
   </div>${extras}</div>`;
 }
 function signupRows(){
-  const pending=SIGNUPS.map((s,i)=>({s,i})).filter(({s})=>['novo','diligencia'].includes(s.status));
+  const pending=SIGNUPS.map((s,i)=>({s,i})).filter(({s})=>['novo','diligencia'].includes(s.status)&&signupMatchesUsersView(s));
   if(pending.length===0)return '<div class="empty">Nenhum cadastro pendente.</div>';
   return pending.map(({s,i})=>{
     const initials=s.name.split(' ').map(n=>n[0]).slice(0,2).join('');
@@ -5234,17 +5259,29 @@ function signupOrphanRowsMarkup(){
   return `<div class="card mb" style="margin-top:16px;border-color:var(--amber,#d97706)"><div style="display:flex;align-items:center;gap:8px"><div class="card-t" style="margin:0">Aprovados aguardando reconciliação</div><span class="pill pill-amber" style="margin-left:auto">${orphan.length}</span></div><div class="card-d">Estes cadastros foram marcados como aprovados, mas ainda não têm perfil vinculado. Nenhum dado será apagado; reconcilie para criar ou localizar o perfil real.</div><div>${orphan.map(({s,i})=>`<div class="signup-row"><div class="signup-top"><div class="avatar" style="width:30px;height:30px;font-size:11px;background:var(--teal)">${initialsOf(s.name)}</div><div style="flex:1"><div style="font-weight:600;font-size:13px">${esc(s.name)} ${SIGNUP_PILL.aprovado}</div><div style="font-size:11px;color:var(--ink3)">${esc(s.cpf)} · ${esc(s.email)} · ${s.sent}</div></div><button class="btn-ghost" onclick="signupView(${i})">Ver dados</button></div><div class="signup-actions"><span class="pill pill-amber">● perfil não vinculado</span><button class="btn-ghost" style="margin-left:auto;color:var(--teal)" onclick="signupReconcileApproved(${i})">Reconciliar perfil</button></div></div>`).join('')}</div></div>`;
 }
 function researcherPendingProfileRows(){return usersInTab('pesq').filter(({u})=>u.status==='pendente');}
+function signupQueueDocumentActions(s,i){
+  const actions=[];
+  if(s.docFoto)actions.push(`<button class="btn-ghost queue-doc-btn" onclick="event.stopPropagation();signupOpenDocument(${i},'foto')">Abrir foto</button><button class="btn-ghost queue-doc-download" onclick="event.stopPropagation();signupDownloadDocument(${i},'foto')">Baixar</button>`);
+  if(s.docComprovante)actions.push(`<button class="btn-ghost queue-doc-btn" onclick="event.stopPropagation();signupOpenDocument(${i},'comprovante')">Abrir endereço</button><button class="btn-ghost queue-doc-download" onclick="event.stopPropagation();signupDownloadDocument(${i},'comprovante')">Baixar</button>`);
+  return actions.length?`<div class="queue-document-actions" aria-label="Documentos do cadastro">${actions.join('')}</div>`:'<span class="queue-no-docs">Nenhum documento anexado</span>';
+}
+function profileQueueDocumentActions(u,i){
+  const actions=[];
+  if(u.docFoto)actions.push(`<button class="btn-ghost queue-doc-btn" onclick="event.stopPropagation();userOpenPesqDocument(${i},'foto')">Abrir foto</button><button class="btn-ghost queue-doc-download" onclick="event.stopPropagation();userDownloadPesqDocument(${i},'foto')">Baixar</button>`);
+  if(u.docComprovante)actions.push(`<button class="btn-ghost queue-doc-btn" onclick="event.stopPropagation();userOpenPesqDocument(${i},'comprovante')">Abrir endereço</button><button class="btn-ghost queue-doc-download" onclick="event.stopPropagation();userDownloadPesqDocument(${i},'comprovante')">Baixar</button>`);
+  return actions.length?`<div class="queue-document-actions" aria-label="Documentos do perfil">${actions.join('')}</div>`:'<span class="queue-no-docs">Nenhum documento anexado</span>';
+}
 function researcherApprovalQueueMarkup(){
-  const pendingSignups=SIGNUPS.map((s,i)=>({s,i})).filter(({s})=>['novo','diligencia'].includes(s.status));
+  const pendingSignups=SIGNUPS.map((s,i)=>({s,i})).filter(({s})=>['novo','diligencia'].includes(s.status)&&signupMatchesUsersView(s));
   const pendingProfiles=researcherPendingProfileRows();
   const total=pendingSignups.length+pendingProfiles.length;
   const signupColumn=pendingSignups.length
-    ?pendingSignups.slice(0,3).map(({s,i})=>`<article class="researcher-queue-item"><div class="researcher-queue-person"><span class="avatar" style="width:34px;height:34px;font-size:11px;background:#d97706">${initialsOf(s.name)}</span><div><strong>${esc(s.name)}</strong><small>${esc(s.cidade||'Localização não informada')} · ${s.sent}</small></div></div><div class="researcher-queue-item-meta">${SIGNUP_PILL[s.status]||''}${s.docFoto&&s.docComprovante?'<span class="pill pill-green">Docs completos</span>':'<span class="pill pill-red">Docs incompletos</span>'}</div><div class="researcher-queue-actions"><button class="btn btn-out" onclick="signupView(${i})">Ver dados</button><button class="btn btn-fill" style="background:var(--teal)" onclick="signupApprove(${i})">Aprovar</button></div></article>`).join('')
+    ?pendingSignups.slice(0,3).map(({s,i})=>`<article class="researcher-queue-item"><div class="researcher-queue-person"><span class="avatar" style="width:34px;height:34px;font-size:11px;background:#d97706">${initialsOf(s.name)}</span><div><strong>${esc(s.name)}</strong><small>${esc(s.cidade||'Localização não informada')} · ${s.sent}</small></div></div><div class="researcher-queue-item-meta">${SIGNUP_PILL[s.status]||''}${s.docFoto&&s.docComprovante?'<span class="pill pill-green">Docs completos</span>':'<span class="pill pill-red">Docs incompletos</span>'}</div>${signupQueueDocumentActions(s,i)}<div class="researcher-queue-actions">${conversationButton(s.phone,'Olá '+s.name+'! Podemos conversar sobre seu cadastro no PesquisaPro?')}<button class="btn btn-out" onclick="signupView(${i})">Ver dados</button><button class="btn btn-fill" style="background:var(--teal)" onclick="signupApprove(${i})">Aprovar</button></div></article>`).join('')
     :'<div class="researcher-queue-empty"><span>✓</span><div><strong>Nenhum autocadastro pendente</strong><small>A fila de novos pesquisadores está em dia.</small></div></div>';
   const profileColumn=pendingProfiles.length
-    ?pendingProfiles.slice(0,3).map(({u,i})=>`<article class="researcher-queue-item"><div class="researcher-queue-person"><span class="avatar" style="width:34px;height:34px;font-size:11px;background:#d97706">${initialsOf(u.name)}</span><div><strong>${esc(u.name)}</strong><small>${esc(researcherLocations(u).map(part=>part.raw).join(', ')||'Localização não informada')}</small></div></div><div class="researcher-queue-item-meta"><span class="pill pill-amber">● Pendente</span>${u.docFoto&&u.docComprovante?'<span class="pill pill-green">Docs completos</span>':'<span class="pill pill-red">Docs incompletos</span>'}</div><div class="researcher-queue-actions"><button class="btn btn-out" onclick="userShow(${i})">Ver dados</button><button class="btn btn-fill" style="background:var(--teal)" onclick="userPesqApproveList(${i})">Aprovar</button></div></article>`).join('')
+    ?pendingProfiles.slice(0,3).map(({u,i})=>`<article class="researcher-queue-item"><div class="researcher-queue-person"><span class="avatar" style="width:34px;height:34px;font-size:11px;background:#d97706">${initialsOf(u.name)}</span><div><strong>${esc(u.name)}</strong><small>${esc(researcherLocations(u).map(part=>part.raw).join(', ')||'Localização não informada')}</small></div></div><div class="researcher-queue-item-meta"><span class="pill pill-amber">● Pendente</span>${u.docFoto&&u.docComprovante?'<span class="pill pill-green">Docs completos</span>':'<span class="pill pill-red">Docs incompletos</span>'}</div>${profileQueueDocumentActions(u,i)}<div class="researcher-queue-actions">${conversationButton(u.phone,'Olá '+u.name+'! Podemos conversar sobre seu cadastro e as próximas coletas?')}<button class="btn btn-out" onclick="userShow(${i})">Ver dados</button><button class="btn btn-fill" style="background:var(--teal)" onclick="userPesqApproveList(${i})">Aprovar</button></div></article>`).join('')
     :'<div class="researcher-queue-empty"><span>✓</span><div><strong>Nenhum perfil pendente</strong><small>Todos os perfis administrativos estão ativos.</small></div></div>';
-  return `<section class="researcher-approval-queue" aria-labelledby="researcher-approval-title"><div class="researcher-queue-head"><div><span class="eyebrow">AÇÃO PRIORITÁRIA</span><h2 id="researcher-approval-title">Pesquisadores para analisar</h2><p>Resolva aprovações, documentos e diligências sem sair da visão principal.</p></div><div class="researcher-queue-head-actions"><button class="btn btn-out researcher-queue-table-link" onclick="document.getElementById('researcher-table')?.scrollIntoView({behavior:'smooth',block:'start'})">Ver lista completa</button><div class="researcher-queue-total"><strong>${total}</strong><span>${total===1?'pendência':'pendências'}</span></div></div></div><div class="researcher-queue-grid"><div class="researcher-queue-card"><div class="researcher-queue-card-head"><div><strong>Novos cadastros</strong><small>Autocadastros aguardando decisão</small></div><span class="pill pill-amber">${pendingSignups.length}</span></div><div class="researcher-queue-list">${signupColumn}</div>${pendingSignups.length>3?`<div class="researcher-queue-more">+ ${pendingSignups.length-3} cadastro(s) na fila detalhada abaixo</div>`:''}</div><div class="researcher-queue-card"><div class="researcher-queue-card-head"><div><strong>Perfis pendentes</strong><small>Pesquisadores cadastrados manualmente</small></div><span class="pill pill-amber">${pendingProfiles.length}</span></div><div class="researcher-queue-list">${profileColumn}</div>${pendingProfiles.length>3?`<div class="researcher-queue-more">+ ${pendingProfiles.length-3} perfil(is) na tabela completa abaixo</div>`:''}</div></div></section>`;
+  return `<section class="researcher-approval-queue" aria-labelledby="researcher-approval-title"><div class="researcher-queue-head"><div><span class="eyebrow">AUTORIZAÇÃO E DOCUMENTOS</span><h2 id="researcher-approval-title">Pendências de autorização</h2><p>Visualize dados, abra ou baixe documentos, converse e decida sem rolar até o fim da página.</p></div><div class="researcher-queue-head-actions"><button class="btn btn-out researcher-queue-table-link" onclick="document.getElementById('researcher-table')?.scrollIntoView({behavior:'smooth',block:'start'})">Ver lista completa</button><div class="researcher-queue-total"><strong>${total}</strong><span>${total===1?'pendência':'pendências'}</span></div></div></div><div class="researcher-queue-grid"><div class="researcher-queue-card"><div class="researcher-queue-card-head"><div><strong>Autocadastros pendentes</strong><small>Pessoas aguardando aprovação</small></div><span class="pill pill-amber">${pendingSignups.length}</span></div><div class="researcher-queue-list">${signupColumn}</div>${pendingSignups.length>3?`<div class="researcher-queue-more">+ ${pendingSignups.length-3} cadastro(s) na fila detalhada abaixo</div>`:''}</div><div class="researcher-queue-card"><div class="researcher-queue-card-head"><div><strong>Perfis pendentes</strong><small>Pesquisadores cadastrados manualmente</small></div><span class="pill pill-amber">${pendingProfiles.length}</span></div><div class="researcher-queue-list">${profileColumn}</div>${pendingProfiles.length>3?`<div class="researcher-queue-more">+ ${pendingProfiles.length-3} perfil(is) na tabela completa abaixo</div>`:''}</div></div></section>`;
 }
 function refreshSignups(){
   const el=document.getElementById('signup-list');if(el)el.innerHTML=signupRows();
@@ -5272,20 +5309,35 @@ function sendSignupWhatsApp(){
   const base=digits?('https://wa.me/'+(digits.length<=11?'55'+digits:digits)):'https://wa.me/';
   window.open(base+'?text='+msg,'_blank','noopener');
 }
+async function signupGetDocumentUrl(path){
+  if(/^https?:\/\//i.test(path))return path;
+  const {data,error}=await sb.storage.from('researcher-documents').createSignedUrl(path,600);
+  if(error||!data?.signedUrl)throw new Error(error?.message||'URL temporária indisponível');
+  return data.signedUrl;
+}
+function signupDocumentName(path,kind){
+  const raw=String(path||'').split('?')[0].split('/').pop()||'';
+  try{return decodeURIComponent(raw)||`documento-${kind}`;}catch(ex){return raw||`documento-${kind}`;}
+}
 async function signupOpenDocument(i,kind){
   const s=SIGNUPS[i];
   const path=kind==='foto'?s.docFoto:s.docComprovante;
   if(!path){alert('Este documento não foi anexado.');return;}
   const popup=window.open('about:blank','_blank','noopener');
   try{
-    let url=path;
-    if(!/^https?:\/\//i.test(path)){
-      const {data,error}=await sb.storage.from('researcher-documents').createSignedUrl(path,600);
-      if(error||!data?.signedUrl)throw new Error(error?.message||'URL temporária indisponível');
-      url=data.signedUrl;
-    }
+    const url=await signupGetDocumentUrl(path);
     if(popup)popup.location.href=url;else window.location.href=url;
   }catch(ex){if(popup)popup.close();alert('Não foi possível abrir este documento. Verifique se a migration de documentos foi executada e se o arquivo ainda existe.');console.error(ex);}
+}
+async function signupDownloadDocument(i,kind){
+  const s=SIGNUPS[i],path=kind==='foto'?s?.docFoto:s?.docComprovante;
+  if(!path){alert('Este documento não foi anexado.');return;}
+  try{
+    const response=await fetch(await signupGetDocumentUrl(path));
+    if(!response.ok)throw new Error(`download HTTP ${response.status}`);
+    const blob=await response.blob(),objectUrl=URL.createObjectURL(blob),link=document.createElement('a');
+    link.href=objectUrl;link.download=signupDocumentName(path,kind);link.style.display='none';document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(objectUrl),1000);
+  }catch(ex){alert('Não foi possível baixar este documento. Verifique se o arquivo existe e se o bucket de documentos está configurado.');console.error(ex);}
 }
 function signupView(i){
   const s=SIGNUPS[i];

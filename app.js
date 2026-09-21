@@ -5473,7 +5473,7 @@ function userViewPesq(u,idx){
   const dash='<span style="color:var(--ink3);font-weight:400">—</span>';
   const row=(l,v)=>`<tr><td style="color:var(--ink3);width:38%">${l}</td><td style="font-weight:600">${v||dash}</td></tr>`;
   const docRow=(label,val,kind)=>val
-    ?`<div class="doc-attached" style="margin:0 0 8px"><span>📎 ${esc(label)}: ${esc(val)}</span><span style="display:inline-flex;gap:5px;margin-left:auto"><button class="btn-ghost" onclick="userOpenPesqDocument(${idx},'${kind}')">abrir</button><button class="btn-ghost" onclick="userDownloadPesqDocument(${idx},'${kind}')">baixar</button></span></div>`
+    ?`<div class="doc-attached profile-document-row" title="${esc(val)}"><span class="doc-file-label"><span class="doc-file-icon" aria-hidden="true">📎</span><span class="doc-file-copy"><strong>${esc(label)}</strong><small>${esc(userPesqDocumentName(val,kind))}</small></span></span><span class="doc-action-buttons"><button class="btn-ghost" onclick="userOpenPesqDocument(${idx},'${kind}')">Abrir</button><button class="btn-ghost doc-download-btn" onclick="userDownloadPesqDocument(${idx},'${kind}')">Baixar</button></span></div>`
     :`<div style="margin-bottom:8px"><span class="pill pill-red">● ${esc(label)}: não anexado</span></div>`;
   const cidades=(u.cidadesAtuacao||[]).length
     ?u.cidadesAtuacao.map(c=>`<span class="chip" style="margin:2px">${esc(c)}</span>`).join('')
@@ -5484,8 +5484,8 @@ function userViewPesq(u,idx){
      ${userPasswordResetButton(u,idx)}
      ${u.status!=='ativo'?`<button class="btn btn-fill" style="background:var(--teal)" onclick="userPesqApprove(${idx})">Aprovar</button>`:''}
      <button class="btn btn-fill" onclick="userEditFromView()">Editar</button>`)+`
-  <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
-    <div class="avatar" style="width:54px;height:54px;font-size:20px">${initials}</div>
+  <div class="profile-identity">
+    <div class="avatar profile-identity-avatar">${initials}</div>
     <div>
       <div style="font-weight:700;font-size:18px">${esc(u.name)}</div>
       <div style="display:flex;gap:8px;align-items:center;margin-top:4px">
@@ -5514,8 +5514,8 @@ function userViewPesq(u,idx){
       <div>${cidades}</div>
     </div>
     <div>
-      <div class="card mb">
-        <div class="card-t">Documentos obrigatórios</div>
+      <div class="card mb profile-documents-card">
+        <div class="profile-card-title"><span class="profile-card-icon" aria-hidden="true">▣</span><div><div class="card-t">Documentos obrigatórios</div><div class="profile-card-sub">Arquivos privados do pesquisador</div></div></div>
         ${docRow('Documento com foto',u.docFoto,'foto')}
         ${docRow('Comprovante de residência',u.docComprovante,'comprovante')}
       </div>

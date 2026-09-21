@@ -9,7 +9,7 @@ const geoSql=fs.readFileSync(path.join(root,'deploy','georreferenciamento-client
 const geoResearcherSql=fs.readFileSync(path.join(root,'deploy','georreferenciamento-cliente-pesquisador.sql'),'utf8');
 const html=fs.readFileSync(path.join(root,'app.html'),'utf8');
 const checks=[
-  ['cliente localiza pesquisa pelo vínculo real',app.includes("SURVEYS.find(s=>(s.clientIds||[]).includes(CURRENT_PROFILE.id))")],
+  ['cliente localiza pesquisa pelo vínculo real',app.includes('campaignSurveysForCurrentUser')&&app.includes("(s.clientIds||[]).includes(CURRENT_PROFILE.id)")&&app.includes('ACTIVE_CAMPAIGN_ID')],
   ['snapshot carrega liberação por pesquisa',app.includes('clientReleaseById:Object.fromEntries')&&app.includes('results_released')],
   ['cliente considera liberação global ou por pesquisa',app.includes('function clientResultsReleasedForSurvey')&&app.includes('client.resultsReleased')&&app.includes('bySurvey[clientId]===true')],
   ['resultados bloqueados antes da liberação',app.includes('Resultados ainda não liberados')&&app.includes('!clientResultsReleasedForSurvey(c,s)')],
@@ -37,7 +37,7 @@ const checks=[
   ['permissão de perguntas do cliente',schema.includes('cliente vê perguntas das suas pesquisas')&&schema.includes('survey_questions')],
   ['vínculo traz estado de liberação',app.includes('survey_clients(client_id, results_released)')],
   ['toggle do master grava vínculo da pesquisa',app.includes("from('survey_clients').update({results_released:next})")],
-  ['cache atualizado',html.includes('20260921201500')],
+  ['cache atualizado',html.includes('20260921202500')],
 ];
 let failed=0;for(const [label,ok] of checks){console.log(`${ok?'PASS':'FAIL'} — ${label}`);if(!ok)failed++;}
 if(failed)process.exit(1);

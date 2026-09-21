@@ -250,6 +250,7 @@ async function requestOwnPasswordReset(){
 async function afterLogin(user){
   chatStopRealtime();CHAT_CHANNELS=[];CHAT_CHANNELS_LOADED=false;CHAT_CHANNELS_LOADING=false;CHAT_SCHEMA_MISSING=false;CHAT_ACTIVE_CHANNEL_ID=null;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=false;CHAT_MESSAGES_LOADING=false;CHAT_SUPPORT_CHANNEL_ID=null;CHAT_SUPPORT_READY=false;CHAT_SUPPORT_LOADING=false;CHAT_PENDING_SURVEY_ID=null;
   PUSH_STATUS='unknown';PUSH_STATUS_LOADING=false;PUSH_SCHEMA_MISSING=false;PUSH_SW_REGISTRATION=null;MY_COMMUNICATIONS=[];MY_COMMUNICATIONS_LOADED=false;MY_COMMUNICATIONS_LOADING=false;
+  ACTIVE_CAMPAIGN_ID=null;
   const profileFields='id,name,email,phone,role,status,cpf,cpf_cnpj,pf_pj,birth,cidade,rua,numero,cep,contact_person,doc_url,doc_foto_url,doc_comprovante_url,pix_key,pix_doc,pix_bank,pix_ag,pix_acc,results_released,approved_at,commission_rate,commission_rate_with_indicator,recruiter_code,recruiter_capture_value,badge_public_token,badge_photo_path';
   let {data:profile,error}=await sb.from('profiles').select(profileFields).eq('id',user.id).single();
   if(error && /badge_public_token|badge_photo_path|column/i.test(error.message||'')){
@@ -271,6 +272,7 @@ async function afterLogin(user){
   document.getElementById('tbAvatar').textContent=initialsOf(profile.name);
   document.getElementById('tbName').textContent=profile.name;
   document.getElementById('tbRole').textContent=ROLE_LABEL[profile.role]||profile.role;
+  updateCampaignSwitcherButton();
   buildSidebar();
   const nav=ROLE_NAV[profile.role]||['dashboard'];
   go(nav[0]);
@@ -285,6 +287,8 @@ async function logout(){
   CHAT_CHANNELS=[];CHAT_CHANNELS_LOADED=false;CHAT_CHANNELS_LOADING=false;CHAT_SCHEMA_MISSING=false;CHAT_ACTIVE_CHANNEL_ID=null;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=false;CHAT_MESSAGES_LOADING=false;CHAT_SUPPORT_CHANNEL_ID=null;CHAT_SUPPORT_READY=false;CHAT_SUPPORT_LOADING=false;CHAT_PENDING_SURVEY_ID=null;
   RESEARCHER_PROFILE_CITIES=[];RESEARCHER_PROFILE_CITIES_DRAFT=[];RESEARCHER_PROFILE_CITIES_LOADED=false;PUSH_STATUS='unknown';PUSH_STATUS_LOADING=false;PUSH_SCHEMA_MISSING=false;PUSH_SW_REGISTRATION=null;MY_COMMUNICATIONS=[];MY_COMMUNICATIONS_LOADED=false;MY_COMMUNICATIONS_LOADING=false;CLIENT_APPROVAL_REQUEST_ID=null;CLIENT_APPROVAL_REQUEST=null;CLIENT_APPROVAL_LOADING=false;CLIENT_APPROVAL_RESPONDING=false;CLIENT_APPROVAL_SCHEMA_MISSING=false;RESEARCHER_LINK_TOKEN=null;RESEARCHER_LINK_CONTEXT=null;RESEARCHER_LINK_LOADING=false;RESEARCHER_LINK_ACCEPTING=false;
   CURRENT_PROFILE=null;
+  ACTIVE_CAMPAIGN_ID=null;
+  updateCampaignSwitcherButton();
   document.getElementById('app').classList.remove('show');
   document.getElementById('login').style.display='flex';
   document.getElementById('li-pass').value='';
@@ -348,6 +352,7 @@ function go(key){
   });
   if(window._beforeRender)window._beforeRender(key);
   document.getElementById('main').innerHTML=PAGES[key]?PAGES[key]():'<div class="empty">Em construção</div>';
+  updateCampaignSwitcherButton();
   if(window._afterRender)window._afterRender(key);
   closeSidebar(); // no celular, o menu (gaveta) fecha sozinho ao navegar; no computador não faz diferença nenhuma
 }
@@ -1027,10 +1032,57 @@ function clientSelf(){
   if(CURRENT_PROFILE&&CURRENT_PROFILE.role==='cliente')return profileRowToUser(CURRENT_PROFILE);
   return clienteUsers()[CLIENT_SELF_IDX]; // fallback só usado fora de uma sessão real de cliente
 }
+let ACTIVE_CAMPAIGN_ID=null;
+function campaignSurveysForCurrentUser(){
+  if(!CURRENT_PROFILE)return[];
+  if(CURRENT_PROFILE.role==='cliente'){
+    const client=clientSelf();
+    return SURVEYS.filter(s=>(s.clientIds||[]).includes(CURRENT_PROFILE.id)||(client?.surveys||[]).includes(s.name));
+  }
+  if(CURRENT_PROFILE.role==='pesq')return typeof acollectMySurveys==='function'?acollectMySurveys():[];
+  return SURVEYS.filter(s=>s.status!=='encerrada');
+}
+function activeCampaignSurvey(){
+  const available=campaignSurveysForCurrentUser();
+  return available.find(s=>s.id===ACTIVE_CAMPAIGN_ID)||available[0]||null;
+}
+function updateCampaignSwitcherButton(){
+  const button=document.getElementById('campaignSwitcherBtn');
+  if(!button)return;
+  const active=activeCampaignSurvey();
+  button.textContent=active?`Trocar pesquisa · ${active.name.length>24?active.name.slice(0,24)+'…':active.name} ▾`:'Trocar pesquisa ▾';
+  button.title=active?'Pesquisa atual: '+active.name:'Selecione uma pesquisa ou campanha';
+}
+async function openCampaignSwitcher(){
+  const modal=document.getElementById('campaignSwitcherModal'),body=document.getElementById('campaignSwitcherBody');
+  if(!modal||!body)return;
+  modal.hidden=false;
+  body.innerHTML='<div class="campaign-switcher-loading"><span class="spinner"></span><b>Carregando pesquisas…</b><small>Buscando as pesquisas vinculadas ao seu perfil.</small></div>';
+  if(!SURVEYS_LOADED)await loadSurveysIfNeeded();
+  const available=campaignSurveysForCurrentUser();
+  const active=activeCampaignSurvey();
+  if(active&&!ACTIVE_CAMPAIGN_ID)ACTIVE_CAMPAIGN_ID=active.id;
+  updateCampaignSwitcherButton();
+  body.innerHTML=`<div class="campaign-switcher-heading"><span class="eyebrow">PESQUISA ATIVA</span><h2 id="campaignSwitcherTitle">Trocar pesquisa ou campanha</h2><p>Selecione a pesquisa que deseja acompanhar neste momento.</p></div>${available.length?`<div class="campaign-switcher-list">${available.map(s=>`<button type="button" class="campaign-switcher-option ${active?.id===s.id?'is-active':''}" onclick="selectCampaign('${esc(s.id)}')"><span class="campaign-switcher-option-icon">⌁</span><span><strong>${esc(s.name)}</strong><small>${esc(s.tipo||'Pesquisa de opinião')} · ${s.status==='campo'?'Em campo':'Disponível'}</small></span><span class="campaign-switcher-check">${active?.id===s.id?'✓':'›'}</span></button>`).join('')}</div>`:'<div class="campaign-switcher-empty"><strong>Nenhuma pesquisa disponível para este perfil</strong><small>Quando uma pesquisa for vinculada ou liberada, ela aparecerá aqui.</small></div>'}`;
+  document.querySelector('.campaign-switcher-close')?.focus();
+}
+function closeCampaignSwitcher(){
+  const modal=document.getElementById('campaignSwitcherModal');if(modal)modal.hidden=true;
+}
+function selectCampaign(surveyId){
+  const available=campaignSurveysForCurrentUser();
+  if(!available.some(s=>s.id===surveyId))return;
+  ACTIVE_CAMPAIGN_ID=surveyId;
+  closeCampaignSwitcher();
+  updateCampaignSwitcherButton();
+  const key=document.querySelector('.nav-item.on')?.dataset.key;
+  if(key&&PAGES[key])go(key);
+}
 function clientSelfSurvey(){
   const c=clientSelf();if(!c)return null;
   if(CURRENT_PROFILE&&CURRENT_PROFILE.role==='cliente'){
-    return SURVEYS.find(s=>(s.clientIds||[]).includes(CURRENT_PROFILE.id))||null;
+    const linked=campaignSurveysForCurrentUser();
+    return linked.find(s=>s.id===ACTIVE_CAMPAIGN_ID)||linked[0]||null;
   }
   return SURVEYS.find(s=>s.name===(c.surveys||[])[0])||null;
 }

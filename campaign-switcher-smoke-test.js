@@ -1,0 +1,13 @@
+const assert=require('assert');
+const fs=require('fs');
+const app=fs.readFileSync(__dirname+'/app.js','utf8');
+const html=fs.readFileSync(__dirname+'/app.html','utf8');
+const css=fs.readFileSync(__dirname+'/style.css','utf8');
+for(const token of ['campaignSurveysForCurrentUser','activeCampaignSurvey','openCampaignSwitcher','closeCampaignSwitcher','selectCampaign','ACTIVE_CAMPAIGN_ID','Trocar pesquisa ou campanha'])assert(app.includes(token),`lógica ausente: ${token}`);
+for(const token of ['id="campaignSwitcherBtn"','onclick="openCampaignSwitcher()"','id="campaignSwitcherModal"','campaignSwitcherBody'])assert(html.includes(token),`HTML ausente: ${token}`);
+for(const token of ['.campaign-switcher-overlay','.campaign-switcher-dialog','.campaign-switcher-option','.campaign-switcher-empty','@media(max-width:600px)'])assert(css.includes(token),`CSS ausente: ${token}`);
+assert(!html.includes("alert('Recurso ainda não configurado: troca de pesquisa/campanha')"),'placeholder antigo ainda está no cabeçalho');
+assert(app.includes("const linked=campaignSurveysForCurrentUser();"),'cliente ainda não usa pesquisas vinculadas');
+assert(app.includes('return linked.find(s=>s.id===ACTIVE_CAMPAIGN_ID)||linked[0]||null;'),'pesquisa ativa não é persistida na tela do cliente');
+assert(html.includes('20260921202500'),'cache do seletor não atualizado');
+console.log('Campaign switcher smoke test OK: troca de pesquisa funcional e sem alerta placeholder.');

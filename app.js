@@ -918,6 +918,22 @@ PAGES['researcher-guide']=()=>{
   </div>`;
 };
 
+function researcherAvailableSurveysMarkup(surveys){
+  if(!surveys.length)return `<section class="researcher-available-surveys card mb" aria-labelledby="researcher-available-title"><div class="researcher-available-head"><div><span class="eyebrow">COLETA DE CAMPO</span><h2 id="researcher-available-title">Pesquisas disponíveis para coleta</h2><p>Quando uma pesquisa for liberada e você fizer parte da equipe, ela aparecerá aqui.</p></div><span class="researcher-available-count">0 disponíveis</span></div><div class="researcher-available-empty"><span>⌁</span><div><strong>Nenhuma pesquisa disponível agora</strong><small>Aguarde um convite ou a liberação de uma pesquisa pela coordenação.</small></div></div></section>`;
+  const cards=surveys.map(s=>{
+    const sample=Number(surveySample(s)||0).toLocaleString('pt-BR');
+    const price=Number(s.price)||0;
+    return `<article class="researcher-available-item"><div class="researcher-available-item-main"><span class="researcher-available-icon">▣</span><div><div class="researcher-available-item-title"><strong>${esc(s.name)}</strong><span class="pill pill-green">● Em campo</span></div><p>${esc(s.tipo||'Pesquisa de opinião')} · Amostra de ${sample} entrevistas</p><small>${price?brl(price)+' por entrevista aprovada':'Remuneração definida pela coordenação'}</small></div></div><div class="researcher-available-item-action"><span class="researcher-available-location">📍 Coleta com GPS obrigatório</span><button class="btn btn-accent" type="button" onclick="researcherStartCollection('${esc(s.id)}')">▶ Iniciar coleta</button></div></article>`;
+  }).join('');
+  return `<section class="researcher-available-surveys card mb" aria-labelledby="researcher-available-title"><div class="researcher-available-head"><div><span class="eyebrow">COLETA DE CAMPO</span><h2 id="researcher-available-title">Pesquisas disponíveis para coleta</h2><p>Escolha uma pesquisa e inicie a coleta diretamente pelo botão abaixo.</p></div><span class="researcher-available-count">${surveys.length} ${surveys.length===1?'disponível':'disponíveis'}</span></div><div class="researcher-available-list">${cards}</div></section>`;
+}
+function researcherStartCollection(surveyId){
+  if(!surveyId)return;
+  ACOLLECT_SURVEY_ID=surveyId;
+  ACOLLECT_SELECTED_QUOTA=null;
+  go('app-collect');
+}
+
 PAGES['dashboard-pesq']=()=>{
   if(!CONTRACT_SETTINGS_LOADED){loadContractSettingsIfNeeded();return head('Meu painel','Acompanhe suas metas e ganhos')+'<div class="empty">Carregando a versão vigente do contrato…</div>';}
   if(!SURVEYS_LOADED)loadSurveysIfNeeded();
@@ -946,6 +962,10 @@ PAGES['dashboard-pesq']=()=>{
   const aReceber=myPayments.filter(p=>p.status==='aprovado').reduce((sum,p)=>{
     const s=SURVEYS.find(x=>x.id===p.surveyId);return sum+p.valid*(s?+s.price:0);
   },0);
+  const ganhosEmAnalise=myPayments.filter(p=>p.status!=='aprovado').reduce((sum,p)=>{
+    const s=SURVEYS.find(x=>x.id===p.surveyId);return sum+p.valid*(s?+s.price:0);
+  },0);
+  const entrevistasAprovadas=myPayments.reduce((sum,p)=>sum+(Number(p.valid)||0),0);
   const surveysMine=acollectMySurveys();
   const quotaSurvey=surveysMine[0];
   const quotaList=quotaSurvey?surveyQuotas(quotaSurvey):[];
@@ -960,6 +980,7 @@ PAGES['dashboard-pesq']=()=>{
   }else{
     quotasHtml=quotaList.map((q,i)=>quota(q.label,DASH_QUOTA_COUNTS[q.label]||0,q.target,quotaColors[i%quotaColors.length])).join('');
   }
+  const earningsHtml=`<section class="researcher-earnings-hero" aria-labelledby="researcher-earnings-title"><div class="researcher-earnings-copy"><span class="eyebrow">SEU DESEMPENHO</span><h2 id="researcher-earnings-title">Ganhos com pesquisas</h2><p>Valor das entrevistas aprovadas pela auditoria.</p><strong class="researcher-earnings-value">${brl(aReceber)}</strong></div><div class="researcher-earnings-side"><div class="researcher-earnings-metric"><span>Entrevistas aprovadas</span><strong>${entrevistasAprovadas}</strong></div><div class="researcher-earnings-metric"><span>Em análise</span><strong>${brl(ganhosEmAnalise)}</strong></div><button class="btn btn-ghost" type="button" onclick="go('my-earnings')">Ver meus ganhos →</button></div></section>`;
   const invitesHtml=(MY_INVITES_LOADED&&MY_INVITES.length)?`<div class="card mb">
     <div class="card-t">Convite${MY_INVITES.length>1?'s':''} para pesquisa${MY_INVITES.length>1?'s':''}</div>
     <div class="card-d">Você foi convidado(a) pelo administrador — aceite para entrar na equipe e liberar a coleta.</div>
@@ -977,14 +998,15 @@ PAGES['dashboard-pesq']=()=>{
     }).join('')}
   </div>`:'';
   return head('Meu painel',subtitulo)+`
+  ${earningsHtml}
+  ${researcherAvailableSurveysMarkup(surveysMine)}
   ${invitesHtml}
   ${researcherPushCard()}
   ${mySurveyCommunicationsMarkup()}
   ${(MY_CONTRACT_LOADED&&!MY_CONTRACT)?'<div class="callout mb">✎ Você ainda não assinou seu contrato de prestação de serviços — assine para poder coletar. <button class="btn-ghost" style="margin-left:6px" onclick="go(\'my-contract\')">Assinar agora →</button></div>':''}
-  <div class="grid g4" style="margin-bottom:18px">
+  <div class="grid g3" style="margin-bottom:18px">
     ${stat('Coletas hoje',String(hojeCount),'entrevistas enviadas hoje','✓','#2563eb')}
     ${stat('Coletas no mês',String(mesCount),'+'+ontemCount+' ontem','◷','#059669')}
-    ${stat('A receber',brl(aReceber),'aprovado, aguardando repasse','$','#ea580c')}
     ${stat('Aprovação',mine.length?(aprovPct+'%'):'—',mine.length?(rejeitadas+' rejeitada(s) de '+mine.length):'nenhuma coleta ainda','✓','#7c3aed')}
   </div>
   <div class="card mb">

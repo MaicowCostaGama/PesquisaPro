@@ -5429,27 +5429,51 @@ function userViewGeneric(u){
     </div>
   </div></div>`;
 }
+async function userGetPesqDocumentUrl(path){
+  if(/^https?:\/\//i.test(path))return path;
+  const {data,error}=await sb.storage.from('researcher-documents').createSignedUrl(path,600);
+  if(error||!data?.signedUrl)throw new Error(error?.message||'URL temporária indisponível');
+  return data.signedUrl;
+}
+function userPesqDocumentName(path,kind){
+  const raw=String(path||'').split('?')[0].split('/').pop()||'';
+  try{return decodeURIComponent(raw)||`documento-${kind}`;}catch(ex){return raw||`documento-${kind}`;}
+}
 async function userOpenPesqDocument(index,kind){
   const u=USERS[index];
   const path=kind==='foto'?u?.docFoto:u?.docComprovante;
   if(!path){alert('Este documento não foi anexado.');return;}
   const popup=window.open('about:blank','_blank','noopener');
   try{
-    let url=path;
-    if(!/^https?:\/\//i.test(path)){
-      const {data,error}=await sb.storage.from('researcher-documents').createSignedUrl(path,600);
-      if(error||!data?.signedUrl)throw new Error(error?.message||'URL temporária indisponível');
-      url=data.signedUrl;
-    }
+    const url=await userGetPesqDocumentUrl(path);
     if(popup)popup.location.href=url;else window.open(url,'_blank','noopener');
   }catch(ex){if(popup)popup.close();alert('Não foi possível abrir este documento. Verifique se o arquivo existe e se o bucket de documentos está configurado.');console.error(ex);}
+}
+async function userDownloadPesqDocument(index,kind){
+  const u=USERS[index];
+  const path=kind==='foto'?u?.docFoto:u?.docComprovante;
+  if(!path){alert('Este documento não foi anexado.');return;}
+  try{
+    const response=await fetch(await userGetPesqDocumentUrl(path));
+    if(!response.ok)throw new Error(`download HTTP ${response.status}`);
+    const blob=await response.blob();
+    const objectUrl=URL.createObjectURL(blob);
+    const link=document.createElement('a');
+    link.href=objectUrl;
+    link.download=userPesqDocumentName(path,kind);
+    link.style.display='none';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(()=>URL.revokeObjectURL(objectUrl),1000);
+  }catch(ex){alert('Não foi possível baixar este documento. Verifique se o arquivo existe e se o bucket de documentos está configurado.');console.error(ex);}
 }
 function userViewPesq(u,idx){
   const initials=u.name.split(' ').map(n=>n[0]).slice(0,2).join('');
   const dash='<span style="color:var(--ink3);font-weight:400">—</span>';
   const row=(l,v)=>`<tr><td style="color:var(--ink3);width:38%">${l}</td><td style="font-weight:600">${v||dash}</td></tr>`;
   const docRow=(label,val,kind)=>val
-    ?`<div class="doc-attached" style="margin:0 0 8px"><span>📎 ${esc(label)}: ${esc(val)}</span><button class="btn-ghost" onclick="userOpenPesqDocument(${idx},'${kind}')">abrir</button></div>`
+    ?`<div class="doc-attached" style="margin:0 0 8px"><span>📎 ${esc(label)}: ${esc(val)}</span><span style="display:inline-flex;gap:5px;margin-left:auto"><button class="btn-ghost" onclick="userOpenPesqDocument(${idx},'${kind}')">abrir</button><button class="btn-ghost" onclick="userDownloadPesqDocument(${idx},'${kind}')">baixar</button></span></div>`
     :`<div style="margin-bottom:8px"><span class="pill pill-red">● ${esc(label)}: não anexado</span></div>`;
   const cidades=(u.cidadesAtuacao||[]).length
     ?u.cidadesAtuacao.map(c=>`<span class="chip" style="margin:2px">${esc(c)}</span>`).join('')

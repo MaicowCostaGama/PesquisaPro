@@ -5043,11 +5043,14 @@ function userTabBar(){
 function userTabStats(tab){
   const list=usersInTab(tab).map(x=>x.u);
   if(tab==='pesq'){
+    const pendingSignups=signupPendingRows();
+    const pendingProfiles=list.filter(u=>u.status==='pendente');
+    const missingDocs=list.filter(u=>!u.docFoto||!u.docComprovante).length+pendingSignups.filter(s=>!s.docFoto||!s.docComprovante).length;
     return `<div class="grid g4" style="margin-bottom:16px">
       ${stat('Pesquisadores',String(list.length),'cadastrados','☺','#2563eb')}
       ${stat('Ativos',String(list.filter(u=>u.status==='ativo').length),'liberados para coleta','✓','#059669')}
-      ${stat('Pendentes',String(list.filter(u=>u.status==='pendente').length),'aguardando aprovação','◷','#d97706')}
-      ${stat('Docs faltando',String(list.filter(u=>!u.docFoto||!u.docComprovante).length),'com algum documento pendente','◷','#dc2626')}
+      ${stat('Aguardando análise',String(pendingProfiles.length+pendingSignups.length),'perfis e cadastros pendentes','◷','#d97706')}
+      ${stat('Docs faltando',String(missingDocs),'com algum documento pendente','◷','#dc2626')}
     </div>`;
   }
   if(tab==='cliente'){
@@ -5153,14 +5156,6 @@ function userList(){
   const tabInfo={pesq:['REDE DE CAMPO','Pesquisadores cadastrados e documentos para liberação de coleta.'],cliente:['BASE DE CLIENTES','Organizações e contatos que acompanham suas pesquisas.'],admpro:['EQUIPE INTERNA','Perfis ADM PesquisaPro autorizados no sistema.'],vendedor:['TIME COMERCIAL','Vendedores, percentuais de comissão e acesso ao funil.'],indicador:['PARCEIROS COMERCIAIS','Indicadores de clientes e percentuais de comissão.'],recrutador:['REDE DE CAPTAÇÃO','Parceiros que trazem novos pesquisadores para a rede.'],staff:['ADMINISTRAÇÃO','Usuários com acesso operacional e permissões de gestão.']}[tab]||['CADASTROS','Gestão dos perfis de acesso.'];
   const currentCount=usersInTab(tab).length;
   const extras = tab==='pesq' ? `
-  <div class="card mb" style="margin-top:16px">
-    <div style="display:flex;align-items:center;gap:8px">
-      <div class="card-t" style="margin:0">Novos cadastros aguardando aprovação</div>
-      <span class="pill pill-amber" style="margin-left:auto">${signupPendingRows().length}</span>
-    </div>
-    <div class="card-d">Cadastros feitos pelo próprio pesquisador via link/QR Code de autocadastro. Aprove, diligencie (devolve para correção) ou reprove.</div>
-    <div id="signup-list">${signupRows()}</div>
-  </div>
   ${signupOrphanRowsMarkup()}
   <div class="card" style="margin-top:16px">
     <div style="display:flex;align-items:center;gap:10px;cursor:pointer" onclick="userSignupToggle()">
@@ -5190,13 +5185,15 @@ function userList(){
   const tableContent=currentCount?`<div class="user-table-scroll" tabindex="0" aria-label="Tabela de usuários. Deslize horizontalmente para ver todas as informações."><div class="user-table-scroll-hint"><span aria-hidden="true">↔</span> Deslize horizontalmente para ver todos os dados. A coluna <b>Ações</b> permanece acessível à direita.</div><table class="user-data-table user-data-table-${tab}"><thead>${userTableHead(tab)}</thead><tbody>${userTableRows(tab)}</tbody></table></div>`:`<div class="users-empty-state"><div class="users-empty-icon">＋</div><div><h3>${USER_SEARCH?'Nenhum resultado encontrado':'Nenhum '+(USER_TAB_NEW_LABEL[tab]||'usuário')+' cadastrado'}</h3><p>${USER_SEARCH?'Tente outro nome, CPF ou e-mail.':'Comece adicionando o primeiro perfil nesta categoria para liberar o fluxo correspondente.'}</p>${USER_SEARCH?'<button class="btn btn-out" onclick="userClearSearch()">Limpar busca</button>':`<button class="btn btn-fill" onclick="userOpen('new')">Cadastrar ${USER_TAB_NEW_LABEL[tab]||'usuário'}</button>`}</div></div>`;
   const searchBar=`<div class="user-search-bar" role="search"><div class="user-search-main"><label class="sr-only" for="user-search">Buscar usuário</label><span class="user-search-icon">⌕</span><input id="user-search" class="inp" type="search" value="${esc(USER_SEARCH)}" placeholder="Buscar por nome, CPF ou e-mail…" autocomplete="off" oninput="userSearchInput(this.value)">${USER_SEARCH?'<button type="button" class="user-search-clear" title="Limpar busca" aria-label="Limpar busca" onclick="userClearSearch()">×</button>':''}</div><span class="user-search-hint">A busca vale para a aba atual e ignora acentos e pontuação.</span></div>`;
   const researcherFilters=tab==='pesq'?userResearcherFiltersMarkup(usersInTab('pesq')):'';
+  const researcherQueue=tab==='pesq'?researcherApprovalQueueMarkup():'';
   return `<div class="users-page"><div class="users-context"><div><span class="eyebrow">${tabInfo[0]}</span><p>${tabInfo[1]}</p></div><span class="users-count-chip">${currentCount} ${currentCount===1?'perfil':'perfis'}</span></div>`+
   head('Usuários','Cadastre e gerencie os diferentes perfis de usuário do sistema',
     `<button class="btn btn-fill" onclick="userOpen('new')">＋ Novo ${USER_TAB_NEW_LABEL[tab]||'usuário'}</button>`)+
   userTabBar()+
   userTabStats(tab)+
+  researcherQueue+
   searchBar+researcherFilters+
-  `<div class="card user-table-card"><div class="user-table-heading"><div><div class="card-t">${USER_TAB_NEW_LABEL[tab]||'Usuários'} cadastrados</div><div class="card-d">Confira os dados, o status e as permissões antes de abrir um perfil.</div></div><span class="users-table-count">${currentCount}</span></div>${tableContent}
+  `<div class="card user-table-card" ${tab==='pesq'?'id="researcher-table"':''}><div class="user-table-heading"><div><div class="card-t">${USER_TAB_NEW_LABEL[tab]||'Usuários'} cadastrados</div><div class="card-d">Confira os dados, o status e as permissões antes de abrir um perfil.</div></div><span class="users-table-count">${currentCount}</span></div>${tableContent}
   </div>${extras}</div>`;
 }
 function signupRows(){
@@ -5236,9 +5233,23 @@ function signupOrphanRowsMarkup(){
   if(!orphan.length)return '';
   return `<div class="card mb" style="margin-top:16px;border-color:var(--amber,#d97706)"><div style="display:flex;align-items:center;gap:8px"><div class="card-t" style="margin:0">Aprovados aguardando reconciliação</div><span class="pill pill-amber" style="margin-left:auto">${orphan.length}</span></div><div class="card-d">Estes cadastros foram marcados como aprovados, mas ainda não têm perfil vinculado. Nenhum dado será apagado; reconcilie para criar ou localizar o perfil real.</div><div>${orphan.map(({s,i})=>`<div class="signup-row"><div class="signup-top"><div class="avatar" style="width:30px;height:30px;font-size:11px;background:var(--teal)">${initialsOf(s.name)}</div><div style="flex:1"><div style="font-weight:600;font-size:13px">${esc(s.name)} ${SIGNUP_PILL.aprovado}</div><div style="font-size:11px;color:var(--ink3)">${esc(s.cpf)} · ${esc(s.email)} · ${s.sent}</div></div><button class="btn-ghost" onclick="signupView(${i})">Ver dados</button></div><div class="signup-actions"><span class="pill pill-amber">● perfil não vinculado</span><button class="btn-ghost" style="margin-left:auto;color:var(--teal)" onclick="signupReconcileApproved(${i})">Reconciliar perfil</button></div></div>`).join('')}</div></div>`;
 }
+function researcherPendingProfileRows(){return usersInTab('pesq').filter(({u})=>u.status==='pendente');}
+function researcherApprovalQueueMarkup(){
+  const pendingSignups=SIGNUPS.map((s,i)=>({s,i})).filter(({s})=>['novo','diligencia'].includes(s.status));
+  const pendingProfiles=researcherPendingProfileRows();
+  const total=pendingSignups.length+pendingProfiles.length;
+  const signupColumn=pendingSignups.length
+    ?pendingSignups.slice(0,3).map(({s,i})=>`<article class="researcher-queue-item"><div class="researcher-queue-person"><span class="avatar" style="width:34px;height:34px;font-size:11px;background:#d97706">${initialsOf(s.name)}</span><div><strong>${esc(s.name)}</strong><small>${esc(s.cidade||'Localização não informada')} · ${s.sent}</small></div></div><div class="researcher-queue-item-meta">${SIGNUP_PILL[s.status]||''}${s.docFoto&&s.docComprovante?'<span class="pill pill-green">Docs completos</span>':'<span class="pill pill-red">Docs incompletos</span>'}</div><div class="researcher-queue-actions"><button class="btn btn-out" onclick="signupView(${i})">Ver dados</button><button class="btn btn-fill" style="background:var(--teal)" onclick="signupApprove(${i})">Aprovar</button></div></article>`).join('')
+    :'<div class="researcher-queue-empty"><span>✓</span><div><strong>Nenhum autocadastro pendente</strong><small>A fila de novos pesquisadores está em dia.</small></div></div>';
+  const profileColumn=pendingProfiles.length
+    ?pendingProfiles.slice(0,3).map(({u,i})=>`<article class="researcher-queue-item"><div class="researcher-queue-person"><span class="avatar" style="width:34px;height:34px;font-size:11px;background:#d97706">${initialsOf(u.name)}</span><div><strong>${esc(u.name)}</strong><small>${esc(researcherLocations(u).map(part=>part.raw).join(', ')||'Localização não informada')}</small></div></div><div class="researcher-queue-item-meta"><span class="pill pill-amber">● Pendente</span>${u.docFoto&&u.docComprovante?'<span class="pill pill-green">Docs completos</span>':'<span class="pill pill-red">Docs incompletos</span>'}</div><div class="researcher-queue-actions"><button class="btn btn-out" onclick="userShow(${i})">Ver dados</button><button class="btn btn-fill" style="background:var(--teal)" onclick="userPesqApproveList(${i})">Aprovar</button></div></article>`).join('')
+    :'<div class="researcher-queue-empty"><span>✓</span><div><strong>Nenhum perfil pendente</strong><small>Todos os perfis administrativos estão ativos.</small></div></div>';
+  return `<section class="researcher-approval-queue" aria-labelledby="researcher-approval-title"><div class="researcher-queue-head"><div><span class="eyebrow">AÇÃO PRIORITÁRIA</span><h2 id="researcher-approval-title">Pesquisadores para analisar</h2><p>Resolva aprovações, documentos e diligências sem sair da visão principal.</p></div><div class="researcher-queue-head-actions"><button class="btn btn-out researcher-queue-table-link" onclick="document.getElementById('researcher-table')?.scrollIntoView({behavior:'smooth',block:'start'})">Ver lista completa</button><div class="researcher-queue-total"><strong>${total}</strong><span>${total===1?'pendência':'pendências'}</span></div></div></div><div class="researcher-queue-grid"><div class="researcher-queue-card"><div class="researcher-queue-card-head"><div><strong>Novos cadastros</strong><small>Autocadastros aguardando decisão</small></div><span class="pill pill-amber">${pendingSignups.length}</span></div><div class="researcher-queue-list">${signupColumn}</div>${pendingSignups.length>3?`<div class="researcher-queue-more">+ ${pendingSignups.length-3} cadastro(s) na fila detalhada abaixo</div>`:''}</div><div class="researcher-queue-card"><div class="researcher-queue-card-head"><div><strong>Perfis pendentes</strong><small>Pesquisadores cadastrados manualmente</small></div><span class="pill pill-amber">${pendingProfiles.length}</span></div><div class="researcher-queue-list">${profileColumn}</div>${pendingProfiles.length>3?`<div class="researcher-queue-more">+ ${pendingProfiles.length-3} perfil(is) na tabela completa abaixo</div>`:''}</div></div></section>`;
+}
 function refreshSignups(){
   const el=document.getElementById('signup-list');if(el)el.innerHTML=signupRows();
   const orphan= document.querySelector('.signup-orphan-placeholder');if(orphan)orphan.outerHTML=signupOrphanRowsMarkup();
+  if(document.querySelector('.nav-item.on')?.dataset.key==='users')go('users');
 }
 function renderSignupQR(){
   const box=document.getElementById('signup-qr');if(!box)return;

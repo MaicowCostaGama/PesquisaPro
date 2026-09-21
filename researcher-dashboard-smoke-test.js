@@ -7,5 +7,8 @@ for(const token of ['researcherAvailableSurveysMarkup','researcherStartCollectio
 for(const token of ['.researcher-earnings-hero','.researcher-earnings-value','.researcher-earnings-side','.researcher-available-surveys','.researcher-available-item','.researcher-available-item-action','.researcher-available-empty','@media(max-width:760px)'])assert(css.includes(token),`estilo ausente: ${token}`);
 assert(app.indexOf('${earningsHtml}')<app.indexOf('${researcherAvailableSurveysMarkup(surveysMine)}'),'ganhos não aparecem antes das pesquisas disponíveis');
 assert(app.includes('onclick="researcherStartCollection(\'${esc(s.id)}\')"'),'botão de início não está vinculado à pesquisa');
-assert(html.includes('20260921202500'),'cache do dashboard do pesquisador não atualizado');
-console.log('Researcher dashboard smoke test OK: ganhos no topo, pesquisas disponíveis e início de coleta verificados.');
+const dashboardStart=app.indexOf("PAGES['dashboard-pesq']=()=>");
+const dashboard=app.slice(dashboardStart,app.indexOf("/* ============ ÁREA DO CLIENTE",dashboardStart));
+for(const removed of ["stat('Coletas hoje'","stat('Coletas no mês'","stat('Aprovação'",'Suas cotas pendentes hoje','quotasHtml','Abrir app de coleta'])assert(!dashboard.includes(removed),`bloco removido ainda aparece: ${removed}`);
+assert(html.includes('20260921203500'),'cache do dashboard do pesquisador não atualizado');
+console.log('Researcher dashboard smoke test OK: ganhos e pesquisas disponíveis mantidos; cartões, cotas e botão duplicado removidos.');

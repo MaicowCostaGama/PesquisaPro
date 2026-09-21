@@ -942,7 +942,6 @@ function researcherStartCollection(surveyId){
 PAGES['dashboard-pesq']=()=>{
   if(!CONTRACT_SETTINGS_LOADED){loadContractSettingsIfNeeded();return head('Meu painel','Acompanhe suas metas e ganhos')+'<div class="empty">Carregando a versão vigente do contrato…</div>';}
   if(!SURVEYS_LOADED)loadSurveysIfNeeded();
-  if(!COLLECT_EVENTS_LOADED)loadCollectEventsIfNeeded();
   if(!PAYMENTS_LOADED)loadPaymentsIfNeeded();
   if(!MY_CONTRACT_LOADED)loadMyContractIfNeeded();
   if(!MY_INVITES_LOADED)loadMyInvitesIfNeeded();
@@ -950,19 +949,10 @@ PAGES['dashboard-pesq']=()=>{
   loadMySurveyCommunicationsIfNeeded();
   const primeiroNome=(CURRENT_PROFILE&&CURRENT_PROFILE.name)?CURRENT_PROFILE.name.trim().split(' ')[0]:'';
   const subtitulo=primeiroNome?('Olá '+primeiroNome+' — acompanhe suas metas e ganhos'):'Acompanhe suas metas e ganhos';
-  if(!SURVEYS_LOADED||!COLLECT_EVENTS_LOADED||!PAYMENTS_LOADED){
+  if(!SURVEYS_LOADED||!PAYMENTS_LOADED){
     return head('Meu painel',subtitulo)+'<div class="empty">Carregando seus dados…</div>';
   }
-  loadDashQuotasIfNeeded();
   const myId=CURRENT_PROFILE&&CURRENT_PROFILE.id;
-  const mine=COLLECT_EVENTS.filter(e=>e.researcherId===myId);
-  const now=new Date();
-  const ontem=new Date(now.getFullYear(),now.getMonth(),now.getDate()-1);
-  const hojeCount=mine.filter(e=>isSameLocalDay(e.ts,now)).length;
-  const ontemCount=mine.filter(e=>isSameLocalDay(e.ts,ontem)).length;
-  const mesCount=mine.filter(e=>{const d=new Date(e.ts);return d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth();}).length;
-  const rejeitadas=mine.filter(e=>e.status==='rejected').length;
-  const aprovPct=mine.length?Math.round(((mine.length-rejeitadas)/mine.length)*100):100;
   const myPayments=PAYMENTS.filter(p=>p.researcherId===myId);
   const aReceber=myPayments.filter(p=>p.status==='aprovado').reduce((sum,p)=>{
     const s=SURVEYS.find(x=>x.id===p.surveyId);return sum+p.valid*(s?+s.price:0);
@@ -972,19 +962,6 @@ PAGES['dashboard-pesq']=()=>{
   },0);
   const entrevistasAprovadas=myPayments.reduce((sum,p)=>sum+(Number(p.valid)||0),0);
   const surveysMine=acollectMySurveys();
-  const quotaSurvey=surveysMine[0];
-  const quotaList=quotaSurvey?surveyQuotas(quotaSurvey):[];
-  const quotaColors=['#dc2626','#d97706','#059669','#2563eb','#7c3aed','#0891b2'];
-  let quotasHtml;
-  if(!quotaSurvey){
-    quotasHtml='<div class="empty" style="padding:10px 0">Você não está atribuído a nenhuma pesquisa em campo no momento.</div>';
-  }else if(!DASH_QUOTA_LOADED){
-    quotasHtml='<div class="empty" style="padding:10px 0">Carregando cotas…</div>';
-  }else if(!quotaList.length){
-    quotasHtml='<div class="empty" style="padding:10px 0">Esta pesquisa não tem cotas configuradas — pode coletar livremente.</div>';
-  }else{
-    quotasHtml=quotaList.map((q,i)=>quota(q.label,DASH_QUOTA_COUNTS[q.label]||0,q.target,quotaColors[i%quotaColors.length])).join('');
-  }
   const earningsHtml=`<section class="researcher-earnings-hero" aria-labelledby="researcher-earnings-title"><div class="researcher-earnings-copy"><span class="eyebrow">SEU DESEMPENHO</span><h2 id="researcher-earnings-title">Ganhos com pesquisas</h2><p>Valor das entrevistas aprovadas pela auditoria.</p><strong class="researcher-earnings-value">${brl(aReceber)}</strong></div><div class="researcher-earnings-side"><div class="researcher-earnings-metric"><span>Entrevistas aprovadas</span><strong>${entrevistasAprovadas}</strong></div><div class="researcher-earnings-metric"><span>Em análise</span><strong>${brl(ganhosEmAnalise)}</strong></div><button class="btn btn-ghost" type="button" onclick="go('my-earnings')">Ver meus ganhos →</button></div></section>`;
   const invitesHtml=(MY_INVITES_LOADED&&MY_INVITES.length)?`<div class="card mb">
     <div class="card-t">Convite${MY_INVITES.length>1?'s':''} para pesquisa${MY_INVITES.length>1?'s':''}</div>
@@ -1009,17 +986,7 @@ PAGES['dashboard-pesq']=()=>{
   ${researcherPushCard()}
   ${mySurveyCommunicationsMarkup()}
   ${(MY_CONTRACT_LOADED&&!MY_CONTRACT)?'<div class="callout mb">✎ Você ainda não assinou seu contrato de prestação de serviços — assine para poder coletar. <button class="btn-ghost" style="margin-left:6px" onclick="go(\'my-contract\')">Assinar agora →</button></div>':''}
-  <div class="grid g3" style="margin-bottom:18px">
-    ${stat('Coletas hoje',String(hojeCount),'entrevistas enviadas hoje','✓','#2563eb')}
-    ${stat('Coletas no mês',String(mesCount),'+'+ontemCount+' ontem','◷','#059669')}
-    ${stat('Aprovação',mine.length?(aprovPct+'%'):'—',mine.length?(rejeitadas+' rejeitada(s) de '+mine.length):'nenhuma coleta ainda','✓','#7c3aed')}
-  </div>
-  <div class="card mb">
-    <div class="card-t">Suas cotas pendentes hoje</div>
-    <div class="card-d">${quotaSurvey?('Pesquisa: '+esc(quotaSurvey.name)+(surveysMine.length>1?' · você também está em mais '+(surveysMine.length-1)+' pesquisa(s) em campo':''))+' — foque nos perfis que ainda faltam para bater a meta':'Foque nos perfis que ainda faltam para bater a meta'}</div>
-    ${quotasHtml}
-  </div>
-  <button class="btn btn-accent" style="font-size:15px;padding:14px 22px" onclick="go('app-collect')">▶ Abrir app de coleta</button>`;
+  `;
 };
 
 /* ============ ÁREA DO CLIENTE ============

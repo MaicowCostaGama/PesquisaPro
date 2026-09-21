@@ -12,3 +12,8 @@ A fila de pesquisadores foi destacada no topo com a seção **Pendências de aut
 ## Ajuste posterior — fila única
 
 Autocadastros pendentes e perfis de pesquisadores cadastrados manualmente agora aparecem em uma única área chamada **Fila única de autorização**. Cada item identifica sua origem com os marcadores **Autocadastro** ou **Perfil manual**, mas compartilha o mesmo fluxo de revisão: conversar por WhatsApp, visualizar dados, abrir ou baixar documentos e aprovar. A fila mostra até seis itens no painel superior e direciona os demais para a lista completa.
+
+
+## Refinamento visual — aproveitamento de espaço
+
+Quando existe uma única pendência, o item passa a ocupar toda a largura do cartão. A identidade e a localização ficam em uma coluna; situação, documentos e ações ficam organizados na coluna ao lado. Em telas menores, o layout volta automaticamente para uma coluna vertical para preservar leitura e área de toque.

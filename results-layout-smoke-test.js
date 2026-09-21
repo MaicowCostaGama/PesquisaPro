@@ -11,7 +11,7 @@ const checks=[
   ['georreferenciamento desktop compacto',css.includes('.client-geo-section .client-geo-map-canvas{height:300px')],
   ['georreferenciamento mobile compacto',css.includes('.client-geo-section .client-geo-map-canvas{height:245px')],
   ['cartões de resultados compactos',css.includes('.reports-question-card{padding:16px 18px}')&&css.includes('.reports-client-crossing{padding:15px 17px}')],
-  ['cache atualizado',html.includes('20260921194500')]
+  ['cache atualizado',html.includes('20260921195500')]
 ];
 let failed=0;for(const [label,ok] of checks){console.log(`${ok?'PASS':'FAIL'} — ${label}`);if(!ok)failed++;}
 if(failed)process.exit(1);

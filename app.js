@@ -5086,8 +5086,8 @@ function userTableRows(tab){
       const docsOk=u.docFoto&&u.docComprovante;
       const docCount=(u.docFoto?1:0)+(u.docComprovante?1:0);
       const docPillTop=docsOk?'<span class="pill pill-green">● 2/2 anexados</span>':`<span class="pill pill-red">● ${docCount}/2 anexados</span>`;
-      const docLine=(val)=>val?`<div style="font-size:11px;line-height:1.6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px" title="${esc(val)}"><a href="#" onclick="event.stopPropagation();event.preventDefault();alert('Recurso ainda não configurado: abrir/baixar documento')" style="color:var(--teal);text-decoration:none">📎 ${esc(val)}</a></div>`:'';
-      const docPill=`<div>${docPillTop}</div>${docLine(u.docFoto)}${docLine(u.docComprovante)}`;
+      const docLine=(val,kind)=>val?`<div style="font-size:11px;line-height:1.6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px" title="${esc(val)}"><a href="#" onclick="event.stopPropagation();event.preventDefault();userOpenPesqDocument(${i},'${kind}')" style="color:var(--teal);text-decoration:none">📎 ${esc(val)}</a></div>`:'';
+      const docPill=`<div>${docPillTop}</div>${docLine(u.docFoto,'foto')}${docLine(u.docComprovante,'comprovante')}`;
       const pixPill=u.pixKey?`<span class="pill pill-green" title="${esc(u.pixBank||'')} ${esc(u.pixAg||'')}/${esc(u.pixAcc||'')}">● ${esc((u.pixKey||'').length>16?u.pixKey.slice(0,15)+'…':u.pixKey)}</span>`:'<span class="pill pill-gray">— não informado</span>';
       const initials=u.name.split(' ').map(n=>n[0]).slice(0,2).join('');
       const nCidades=(u.cidadesAtuacao||[]).length;
@@ -5429,12 +5429,27 @@ function userViewGeneric(u){
     </div>
   </div></div>`;
 }
+async function userOpenPesqDocument(index,kind){
+  const u=USERS[index];
+  const path=kind==='foto'?u?.docFoto:u?.docComprovante;
+  if(!path){alert('Este documento não foi anexado.');return;}
+  const popup=window.open('about:blank','_blank','noopener');
+  try{
+    let url=path;
+    if(!/^https?:\/\//i.test(path)){
+      const {data,error}=await sb.storage.from('researcher-documents').createSignedUrl(path,600);
+      if(error||!data?.signedUrl)throw new Error(error?.message||'URL temporária indisponível');
+      url=data.signedUrl;
+    }
+    if(popup)popup.location.href=url;else window.open(url,'_blank','noopener');
+  }catch(ex){if(popup)popup.close();alert('Não foi possível abrir este documento. Verifique se o arquivo existe e se o bucket de documentos está configurado.');console.error(ex);}
+}
 function userViewPesq(u,idx){
   const initials=u.name.split(' ').map(n=>n[0]).slice(0,2).join('');
   const dash='<span style="color:var(--ink3);font-weight:400">—</span>';
   const row=(l,v)=>`<tr><td style="color:var(--ink3);width:38%">${l}</td><td style="font-weight:600">${v||dash}</td></tr>`;
-  const docRow=(label,val)=>val
-    ?`<div class="doc-attached" style="margin:0 0 8px"><span>📎 ${esc(label)}: ${esc(val)}</span><button class="btn-ghost" onclick="alert('Recurso ainda não configurado: abrir/baixar documento')">abrir</button></div>`
+  const docRow=(label,val,kind)=>val
+    ?`<div class="doc-attached" style="margin:0 0 8px"><span>📎 ${esc(label)}: ${esc(val)}</span><button class="btn-ghost" onclick="userOpenPesqDocument(${idx},'${kind}')">abrir</button></div>`
     :`<div style="margin-bottom:8px"><span class="pill pill-red">● ${esc(label)}: não anexado</span></div>`;
   const cidades=(u.cidadesAtuacao||[]).length
     ?u.cidadesAtuacao.map(c=>`<span class="chip" style="margin:2px">${esc(c)}</span>`).join('')
@@ -5477,8 +5492,8 @@ function userViewPesq(u,idx){
     <div>
       <div class="card mb">
         <div class="card-t">Documentos obrigatórios</div>
-        ${docRow('Documento com foto',u.docFoto)}
-        ${docRow('Comprovante de residência',u.docComprovante)}
+        ${docRow('Documento com foto',u.docFoto,'foto')}
+        ${docRow('Comprovante de residência',u.docComprovante,'comprovante')}
       </div>
       <div class="card">
         <div class="card-t">Dados para pagamento (PIX) <span class="pill pill-gray">Opcional</span></div>

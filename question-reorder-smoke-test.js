@@ -20,5 +20,5 @@ ok(app.includes('position:i'), 'ordem não é persistida pelo position do banco'
 ok(app.includes('sort((a,b)=>a.position-b.position)'), 'ordem não é reidratada pela posição persistida');
 ok(css.includes('.q-drag-handle')&&css.includes('touch-action:none'), 'estilo da alça não permite arraste por toque');
 ok(css.includes('.q-drop-before')&&css.includes('.q-drop-after'), 'indicador visual de destino ausente');
-ok(html.includes('app.js?v=20260922110500')&&html.includes('style.css?v=20260922110500'), 'cache da nova versão não foi atualizado');
+ok(html.includes('app.js?v=20260922111500')&&html.includes('style.css?v=20260922111500'), 'cache da nova versão não foi atualizado');
 console.log('question-reorder-smoke-test: PASS');

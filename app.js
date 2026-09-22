@@ -3308,8 +3308,9 @@ function collectDetail(idx){
       <div class="card-t">Auditoria da coleta</div>
       <div class="card-d">Todas as entrevistas desta pesquisa: pesquisador, cota, coordenadas (com a distância até a coleta anterior do mesmo pesquisador), horário, intervalo desde a entrevista anterior, confirmação final e alertas de qualidade. Aproximadamente 20% podem ser selecionadas para uma confirmação curta em áudio, sempre com autorização do entrevistado. Reprove uma coleta com fraude/erro (não entra no pagamento do pesquisador) ou marque como calibração (fica fora do cálculo dos resultados, mas continua contando para o pagamento). As duas ações podem ser desfeitas a qualquer momento, aqui ou no painel acima.</div>
       <div id="auditRecordingSummary" class="recording-summary"></div>
-      <div style="overflow-x:auto">
-      <table><thead><tr><th>Pesquisador</th><th>Cota</th><th>Data/hora</th><th title="Tempo desde a entrevista anterior do mesmo pesquisador">Intervalo</th><th>Coordenadas</th><th>Precisão</th><th>Status</th><th>Confirmação</th><th>Alertas</th><th>Ações</th></tr></thead>
+      <div class="audit-table-scroll-hint" role="note"><span aria-hidden="true">↔</span><span><b>Deslize horizontalmente</b> para consultar todos os detalhes. A coluna <b>Ações</b> permanece acessível à direita.</span></div>
+      <div class="audit-table-scroll" tabindex="0" aria-label="Tabela de auditoria. Deslize horizontalmente para ver todas as informações e ações.">
+      <table class="audit-data-table"><thead><tr><th>Pesquisador</th><th>Cota</th><th>Data/hora</th><th title="Tempo desde a entrevista anterior do mesmo pesquisador">Intervalo</th><th>Coordenadas</th><th>Precisão</th><th>Status</th><th>Confirmação</th><th>Alertas</th><th class="audit-actions-header">Ações</th></tr></thead>
       <tbody id="auditBody"></tbody></table>
       </div>
     </div>
@@ -3661,7 +3662,7 @@ function renderAudit(idx){
       (rejected?`<div style="margin-top:5px"><span class="pill pill-red" title="${esc(e.rejectReason||'')}">✕ Reprovada</span><div style="font-size:10.5px;color:var(--ink3);margin-top:2px;max-width:170px">${esc(e.rejectReason||'')}</div></div>`:'')+
       (e.calibration?'<div style="margin-top:5px"><span class="pill pill-blue">◎ Calibração</span></div>':'');
     const recordingCell=collectionRecordingCell(e);
-    const actionsCell=`<div style="display:flex;flex-direction:column;gap:4px;white-space:nowrap">
+    const actionsCell=`<div class="audit-actions-stack">
       ${conversationButton(e.phone,'Olá '+e.name+'! Podemos conversar sobre a coleta '+(e.cota||'')+'?')}
       <button class="btn-ghost" style="font-size:11px;padding:3px 8px" onclick="auditReject('${e.id}')">${rejected?'↺ Reaprovar':'✕ Reprovar'}</button>
       <button class="btn-ghost" style="font-size:11px;padding:3px 8px" onclick="auditToggleCalibration('${e.id}')">${e.calibration?'↺ Nos resultados':'◎ Calibração'}</button>
@@ -3676,7 +3677,7 @@ function renderAudit(idx){
       <td>${statusCell}</td>
       <td>${recordingCell}</td>
       <td>${flags.length?flags.map(f=>'<span class="pill pill-red" style="margin-right:4px;white-space:nowrap">'+esc(f)+'</span>').join(''):'<span style="color:var(--ink3)">—</span>'}</td>
-      <td>${actionsCell}</td>
+      <td class="audit-actions-cell">${actionsCell}</td>
     </tr>`;
   }).join('')||'<tr><td colspan="10" class="empty">Nenhuma coleta registrada ainda.</td></tr>';
   if(AUDIT_HIGHLIGHT_ID!=null){

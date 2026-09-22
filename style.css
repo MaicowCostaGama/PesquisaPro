@@ -23,6 +23,7 @@
   }
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:var(--sans);background:var(--bg);color:var(--ink);font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+  body:has(#app.show){overflow:hidden}
   button{font-family:inherit;cursor:pointer;border:none;background:none}
   input,select,textarea{font-family:inherit;font-size:14px}
   a{color:var(--brand);text-decoration:none}
@@ -69,8 +70,8 @@
 
   /* ---------- APP SHELL ---------- */
   #app{display:none;min-height:100vh}
-  #app.show{display:grid;grid-template-columns:232px 1fr;grid-template-rows:auto 1fr}
-  .topbar{grid-column:1/3;height:60px;background:var(--surface);border-bottom:1px solid var(--line);
+  #app.show{display:grid;width:100%;height:100vh;height:100dvh;min-height:0;grid-template-columns:232px minmax(0,1fr);grid-template-rows:60px minmax(0,1fr);overflow:hidden}
+  .topbar{grid-column:1/-1;height:60px;background:var(--surface);border-bottom:1px solid var(--line);
     display:flex;align-items:center;padding:0 22px;gap:16px;position:sticky;top:0;z-index:30;box-shadow:var(--shadow-xs)}
   .topbar .logo-mark{width:30px;height:30px;font-size:15px;border-radius:8px}
   .tb-title{font-weight:800;font-size:15px;letter-spacing:-.2px}
@@ -85,7 +86,7 @@
   .btn-ghost:hover{background:var(--bg);border-color:var(--line2)}
 
   /* ---------- SIDEBAR ---------- */
-  .sidebar{background:var(--surface);border-right:1px solid var(--line);padding:16px 12px;overflow-y:auto}
+  .sidebar{background:var(--surface);border-right:1px solid var(--line);padding:16px 12px;min-width:0;min-height:0;overflow-x:hidden;overflow-y:auto}
   .nav-group{margin-bottom:14px}
   .nav-group .ng-label{font-size:10.5px;font-weight:700;letter-spacing:.6px;color:var(--ink3);text-transform:uppercase;padding:4px 10px;margin-bottom:2px}
   .nav-item{position:relative;display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:var(--r-s);font-weight:500;font-size:13.5px;color:var(--ink2);width:100%;text-align:left;margin-bottom:2px;transition:background .15s var(--ease),color .15s var(--ease)}
@@ -101,7 +102,8 @@
   .sidebar-backdrop{display:none}
 
   /* ---------- MAIN ---------- */
-  .main{padding:26px 30px;overflow-y:auto;height:calc(100vh - 60px)}
+  .main{padding:26px 30px;min-width:0;min-height:0;overflow-x:hidden;overflow-y:auto;height:auto}
+  .main>*{min-width:0;max-width:100%}
   .page-head{display:flex;align-items:flex-start;gap:16px;margin-bottom:22px}
   .page-head h1{font-size:22px;font-weight:800;letter-spacing:-.4px}
   .page-head p{color:var(--ink3);font-size:13px;margin-top:4px}
@@ -649,8 +651,8 @@ table{font-size:12.5px}th{color:var(--ink3);font-size:10px;letter-spacing:.65px;
 .wiz-steps{margin-bottom:26px}.wiz-step .ws-num{width:29px;height:29px}.wiz-step.on .ws-num{box-shadow:0 0 0 5px var(--brand-l)}.q-card,.quota-block,.contract-doc,.client-link-list,.geo-box,.add-q,.form-start{border-color:var(--line);border-radius:13px;box-shadow:var(--shadow-xs)}.q-card{padding:16px}.q-card:hover{box-shadow:var(--shadow-sm)}.q-num{background:var(--brand-l);border-radius:9px}.doc-drop{border-color:var(--line2);background:#fbfcfe;border-radius:12px}.doc-drop:hover{border-color:var(--brand);background:var(--brand-l)}
 #login{background:radial-gradient(760px 540px at 15% -10%,#3b82f6 0%,#2458c8 46%,#0e1c35 100%)}#login::before{background:radial-gradient(600px 400px at 85% 15%,rgba(255,255,255,.12),transparent 60%),radial-gradient(500px 500px at 10% 95%,rgba(255,255,255,.07),transparent 60%)}.login-card{max-width:430px;padding:44px 38px;border-radius:24px;box-shadow:0 30px 85px rgba(5,17,38,.28)}.login-sub{font-size:13.5px}.btn-primary{height:46px;border-radius:11px;background:linear-gradient(135deg,#2d6fe9,#1747b5);box-shadow:0 10px 22px rgba(37,99,235,.25)}
 /* tables and long forms remain usable on small screens */
-@media(max-width:1200px){#app.show{grid-template-columns:232px 1fr}.main{padding:28px 24px}.comm-funnel{grid-template-columns:repeat(7,minmax(190px,1fr))}}
-@media(max-width:860px){#app.show{grid-template-columns:1fr;grid-template-rows:60px 1fr}.topbar{height:60px;padding:0 16px}.brand-logo-topbar{height:30px}.main{height:calc(100vh - 60px);padding:22px 16px}.sidebar{top:60px}.sidebar-backdrop{inset:60px 0 0 0}.page-head{align-items:flex-start;margin-bottom:22px}.page-head h1{font-size:23px}.page-head p{font-size:12.5px}.stat{padding:16px}.card{padding:17px}}
+@media(max-width:1200px){#app.show{grid-template-columns:232px minmax(0,1fr)}.main{padding:28px 24px}.comm-funnel{grid-template-columns:repeat(7,minmax(190px,1fr))}}
+@media(max-width:860px){#app.show{height:100vh;height:100dvh;grid-template-columns:minmax(0,1fr);grid-template-rows:60px minmax(0,1fr)}.topbar{height:60px;padding:0 16px}.brand-logo-topbar{height:30px}.main{height:auto;min-height:0;padding:22px 16px}.sidebar{top:60px}.sidebar-backdrop{inset:60px 0 0 0}.page-head{align-items:flex-start;margin-bottom:22px}.page-head h1{font-size:23px}.page-head p{font-size:12.5px}.stat{padding:16px}.card{padding:17px}}
 @media(max-width:640px){.page-head h1{font-size:21px}.page-head .ph-actions{gap:7px}.page-head .ph-actions .btn{min-width:0}.g4{grid-template-columns:repeat(2,1fr)}.grid{gap:12px}.card{border-radius:14px}.stat{border-radius:14px}.stat .s-val{font-size:25px}.field-row{gap:10px}.sample-out{gap:10px}.lp-main{padding:0 16px}}
   @media(max-width:480px){.g4{grid-template-columns:1fr}.main{padding:18px 12px}.page-head .ph-actions{width:100%}.page-head .ph-actions .btn{flex:1}.login-card{padding:34px 24px}}
 

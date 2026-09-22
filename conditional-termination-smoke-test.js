@@ -20,5 +20,5 @@ ok(app.includes('acollectToggleMultiAnswer')&&app.includes('acollectSetAnswer'),
 ok(sql.includes('add column if not exists ends_interview boolean not null default false'), 'migration aditiva não existe');
 ok(sql.includes('survey_question_options'), 'migration não altera a tabela correta');
 ok(css.includes('.opt-end')&&css.includes('.collect-termination-card'), 'estilos da configuração e do aviso ausentes');
-ok(html.includes('app.js?v=20260922135000')&&html.includes('style.css?v=20260922135000'), 'cache da nova versão não foi atualizado');
+ok(html.includes('app.js?v=20260922143000')&&html.includes('style.css?v=20260922143000'), 'cache da nova versão não foi atualizado');
 console.log('conditional-termination-smoke-test: PASS');

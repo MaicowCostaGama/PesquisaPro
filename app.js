@@ -1000,6 +1000,7 @@ function clientSelf(){
   return clienteUsers()[CLIENT_SELF_IDX]; // fallback só usado fora de uma sessão real de cliente
 }
 let ACTIVE_CAMPAIGN_ID=null;
+let CAMPAIGN_SWITCHER_VIEW_ID=null;
 function campaignSurveysForCurrentUser(){
   if(!CURRENT_PROFILE)return[];
   if(CURRENT_PROFILE.role==='cliente'){
@@ -1020,6 +1021,44 @@ function updateCampaignSwitcherButton(){
   button.textContent=active?`Trocar pesquisa · ${active.name.length>24?active.name.slice(0,24)+'…':active.name} ▾`:'Trocar pesquisa ▾';
   button.title=active?'Pesquisa atual: '+active.name:'Selecione uma pesquisa ou campanha';
 }
+function campaignDateLabel(value){
+  if(!value)return 'Não informado';
+  const date=new Date(value+'T00:00:00');
+  return Number.isNaN(date.getTime())?String(value):date.toLocaleDateString('pt-BR');
+}
+function campaignLocationLabel(s){
+  const states=(s.estados||[]).filter(Boolean);
+  const cities=Object.values(s.cidades||{}).flat().filter(Boolean);
+  const detail=[];
+  if(states.length)detail.push(states.join(', '));
+  if(cities.length)detail.push(cities.length>8?cities.slice(0,8).join(', ')+' e mais '+(cities.length-8):cities.join(', '));
+  return (ABRANGENCIA_LABELS[s.abrangencia]||'Abrangência não informada')+(detail.length?' · '+detail.join(' · '):'');
+}
+function campaignSwitcherListMarkup(available,active){
+  return available.map(s=>`<button type="button" class="campaign-switcher-option ${active?.id===s.id?'is-active':''}" onclick="viewCampaignDetails('${esc(s.id)}')"><span class="campaign-switcher-option-icon">⌁</span><span><strong>${esc(s.name)}</strong><small>${esc(s.tipo||'Pesquisa de opinião')} · ${esc(STATUS_LABEL?.[s.status]||'Disponível')}</small></span><span class="campaign-switcher-check">›</span></button>`).join('');
+}
+function campaignDetailsMarkup(s,active){
+  const isClient=CURRENT_PROFILE?.role==='cliente';
+  const released=isClient&&clientResultsReleasedForSurvey(clientSelf(),s);
+  const sample=Number(surveySample(s)||0).toLocaleString('pt-BR');
+  const margin=s.err?`± ${Math.round(Number(s.err)*100)}%`:'Não informado';
+  return `<button type="button" class="campaign-switcher-back" onclick="renderCampaignSwitcherBody()">← Ver todas as pesquisas</button><div class="campaign-details-hero"><div class="campaign-details-icon">⌁</div><div><span class="eyebrow">INFORMAÇÕES DA PESQUISA</span><h2>${esc(s.name)}</h2><p>${esc(s.tipo||'Pesquisa de opinião')} · <span class="pill ${s.status==='campo'?'pill-green':s.status==='encerrada'?'pill-blue':'pill-amber'}">${esc(STATUS_LABEL?.[s.status]||'Disponível')}</span></p></div></div><div class="campaign-details-grid"><div><span>Período</span><strong>${campaignDateLabel(s.dataIni)} a ${campaignDateLabel(s.dataFim)}</strong></div><div><span>Amostra prevista</span><strong>${sample} entrevistas</strong></div><div><span>Margem de erro</span><strong>${margin}</strong></div><div><span>Confiança</span><strong>${s.conf==='1.96'?'95%':esc(s.conf||'Não informado')}</strong></div><div class="campaign-details-wide"><span>Abrangência</span><strong>${esc(campaignLocationLabel(s))}</strong></div><div><span>Questionário</span><strong>${(s.questions||[]).length} ${(s.questions||[]).length===1?'pergunta':'perguntas'}</strong></div>${isClient?`<div><span>Resultados</span><strong>${released?'Liberados para visualização':'Ainda não liberados'}</strong></div>`:''}</div><div class="campaign-details-actions"><button type="button" class="btn btn-accent" onclick="selectCampaign('${esc(s.id)}')">${active?.id===s.id?'Acompanhar esta pesquisa':'Selecionar pesquisa'}</button>${isClient&&active?.id===s.id?'<button type="button" class="btn btn-ghost" onclick="closeCampaignSwitcher();go(\'client-progress\')">Abrir andamento →</button>':''}</div>`;
+}
+function renderCampaignSwitcherBody(){
+  const body=document.getElementById('campaignSwitcherBody');if(!body)return;
+  const available=campaignSurveysForCurrentUser();
+  const active=activeCampaignSurvey();
+  if(CAMPAIGN_SWITCHER_VIEW_ID){
+    const viewed=available.find(s=>s.id===CAMPAIGN_SWITCHER_VIEW_ID);
+    if(viewed){body.innerHTML=campaignDetailsMarkup(viewed,active);return;}
+    CAMPAIGN_SWITCHER_VIEW_ID=null;
+  }
+  body.innerHTML=`<div class="campaign-switcher-heading"><span class="eyebrow">PESQUISAS DISPONÍVEIS</span><h2 id="campaignSwitcherTitle">Escolha uma pesquisa</h2><p>Clique em uma pesquisa para consultar suas informações antes de acompanhar os dados.</p></div>${available.length?`<div class="campaign-switcher-list">${campaignSwitcherListMarkup(available,active)}</div>`:'<div class="campaign-switcher-empty"><strong>Nenhuma pesquisa disponível para este perfil</strong><small>Quando uma pesquisa for vinculada ou liberada, ela aparecerá aqui.</small></div>'}`;
+}
+function viewCampaignDetails(surveyId){
+  if(!campaignSurveysForCurrentUser().some(s=>s.id===surveyId))return;
+  CAMPAIGN_SWITCHER_VIEW_ID=surveyId;renderCampaignSwitcherBody();
+}
 async function openCampaignSwitcher(){
   const modal=document.getElementById('campaignSwitcherModal'),body=document.getElementById('campaignSwitcherBody');
   if(!modal||!body)return;
@@ -1030,11 +1069,12 @@ async function openCampaignSwitcher(){
   const active=activeCampaignSurvey();
   if(active&&!ACTIVE_CAMPAIGN_ID)ACTIVE_CAMPAIGN_ID=active.id;
   updateCampaignSwitcherButton();
-  body.innerHTML=`<div class="campaign-switcher-heading"><span class="eyebrow">PESQUISA ATIVA</span><h2 id="campaignSwitcherTitle">Trocar pesquisa ou campanha</h2><p>Selecione a pesquisa que deseja acompanhar neste momento.</p></div>${available.length?`<div class="campaign-switcher-list">${available.map(s=>`<button type="button" class="campaign-switcher-option ${active?.id===s.id?'is-active':''}" onclick="selectCampaign('${esc(s.id)}')"><span class="campaign-switcher-option-icon">⌁</span><span><strong>${esc(s.name)}</strong><small>${esc(s.tipo||'Pesquisa de opinião')} · ${s.status==='campo'?'Em campo':'Disponível'}</small></span><span class="campaign-switcher-check">${active?.id===s.id?'✓':'›'}</span></button>`).join('')}</div>`:'<div class="campaign-switcher-empty"><strong>Nenhuma pesquisa disponível para este perfil</strong><small>Quando uma pesquisa for vinculada ou liberada, ela aparecerá aqui.</small></div>'}`;
+  CAMPAIGN_SWITCHER_VIEW_ID=null;
+  renderCampaignSwitcherBody();
   document.querySelector('.campaign-switcher-close')?.focus();
 }
 function closeCampaignSwitcher(){
-  const modal=document.getElementById('campaignSwitcherModal');if(modal)modal.hidden=true;
+  const modal=document.getElementById('campaignSwitcherModal');if(modal)modal.hidden=true;CAMPAIGN_SWITCHER_VIEW_ID=null;
 }
 function selectCampaign(surveyId){
   const available=campaignSurveysForCurrentUser();

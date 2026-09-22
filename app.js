@@ -4873,8 +4873,9 @@ function surveyFormPdfWriteQuestion(doc,data,q,index,y){
   doc.text(titleLines,M,y,{lineHeightFactor:.95});y+=titleLines.length*5+2;
   doc.setTextColor(100,116,139);doc.setFont('helvetica','normal');doc.setFontSize(8.5);doc.text(surveyFormPdfQuestionKind(q),M,y);y+=7;
   const optionLine=(label,extra='')=>{
-    const text='□ '+label+(extra?'  · '+extra:'');const lines=doc.splitTextToSize(text,bodyW-4);if(y+lines.length*4.5+4>H-20){doc.addPage();y=reportsPdfHeader(doc,title,subtitle);}
-    doc.setTextColor(51,65,85);doc.setFont('helvetica','normal');doc.setFontSize(9.5);doc.text(lines,M+3,y,{lineHeightFactor:.9});y+=lines.length*4.5+2;
+    const text=String(label||'')+(extra?'  · '+extra:'');const lines=doc.splitTextToSize(text,bodyW-13);if(y+lines.length*4.5+4>H-20){doc.addPage();y=reportsPdfHeader(doc,title,subtitle);}
+    doc.setDrawColor(51,65,85);doc.setLineWidth(.45);doc.rect(M+3,y-3.4,3.2,3.2,'S');
+    doc.setTextColor(51,65,85);doc.setFont('helvetica','normal');doc.setFontSize(9.5);doc.text(lines,M+9,y,{lineHeightFactor:.9});y+=lines.length*4.5+2;
   };
   if(Q_HAS_OPTS(q.type)){
     q.opts.filter(option=>option.trim()).forEach((option,oi)=>optionLine(option,q.endsInterview[oi]?'encerrar entrevista':''));

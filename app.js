@@ -2855,6 +2855,7 @@ function surveyInvitationGroupText(groupLink,compact=false){
     ?(compact?'Grupo WhatsApp: ':'Grupo oficial da pesquisa no WhatsApp: ')+groupLink+' — entre antes da primeira coleta.'
     :'O link do grupo WhatsApp será disponibilizado no seu painel antes da primeira coleta.';
 }
+function surveyInvitationSiteUrl(){return 'https://www.pesquisa-pro.com/app.html';}
 async function teamWhatsappGroupUrl(){
   const s=SURVEYS[TEAM_IDX];if(!s?.id)return '';
   if(TEAM_COMM_SETTINGS_LOADED)return TEAM_COMM_SETTINGS?.whatsapp_group_url||'';
@@ -2896,7 +2897,8 @@ function surveyInvitationWhatsappMessage(s,u,link,groupLink=''){
     '*Georreferenciamento:*\nDurante a entrevista, o aplicativo poderá registrar a localização aproximada do aparelho para confirmar o local da coleta e auxiliar na auditoria.\n\n'+
     '*Confirmação gravada ao final:*\nEm parte das entrevistas, poderá ser solicitada uma confirmação curta gravada. Ela dependerá da autorização do entrevistado e será usada somente para verificar se a pesquisa foi realizada corretamente.\n\n'+
     '*Grupo oficial do WhatsApp:*\n'+surveyInvitationGroupText(groupLink)+'\n\n'+
-    '*Para aceitar o convite:*\nAcesse o link abaixo, entre com sua conta PesquisaPro e toque em "Aceitar e entrar na equipe":\n\n'+link+'\n\n'+
+    '*Site do PesquisaPro:*\n'+surveyInvitationSiteUrl()+'\n\n'+
+    '*Para aceitar o convite:*\nAcesse o link individual abaixo, entre com sua conta PesquisaPro e toque em "Aceitar e entrar na equipe":\n\n'+link+'\n\n'+
     'Ao aceitar, você entrará automaticamente na equipe desta pesquisa e poderá acompanhar as orientações e coletas no seu painel. Caso não possa participar, você poderá recusar o convite no próprio aplicativo.\n\n'+
     'PesquisaPro — Pesquisa, coleta e auditoria de campo.';
 }

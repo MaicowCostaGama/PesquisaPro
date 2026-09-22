@@ -50,8 +50,8 @@ for (const token of [
   assert(css.includes(token), `estilo financeiro ausente: ${token}`);
 }
 
-assert(html.includes('app.js?v=20260922205500'), 'cache do app financeiro não foi atualizado');
-assert(html.includes('style.css?v=20260922205500'), 'cache do CSS financeiro não foi atualizado');
+assert(html.includes('app.js?v=20260922210000'), 'cache do app financeiro não foi atualizado');
+assert(html.includes('style.css?v=20260922210000'), 'cache do CSS financeiro não foi atualizado');
 assert(app.includes("r.status==='aprovado'?Math.max(0,valor-recebido):0"), 'a receber não está restrito a pagamentos aprovados');
 assert(app.includes("r.rejectedValor?'<div class=\"earnings-rejected-value\">"), 'rejeitadas não estão separadas no extrato');
 assert(migration.includes('grant execute on function public.record_payment_receipt(uuid, numeric, date, text) to authenticated;'), 'RPC de registro sem grant');

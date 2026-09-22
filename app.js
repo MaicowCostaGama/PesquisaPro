@@ -10,7 +10,7 @@ const ROLES={
   pesq:{name:'João Pereira',role:'Pesquisador',initials:'JP',
     nav:['dashboard-pesq','researcher-profile','researcher-guide','app-collect','researcher-badge','my-earnings','my-contract','communication','support']},
   cliente:{name:'Prefeitura de Uberlândia',role:'Cliente',initials:'PU',
-    nav:['form-approval','client-progress','client-results','communication']},
+    nav:['client-surveys','form-approval','client-progress','client-results','communication']},
 };
 const CLIENT_SELF_IDX=0; /* cliente de referência ao entrar com o perfil "Cliente" */
 const NAV_META={
@@ -38,6 +38,7 @@ const NAV_META={
   communication:{ico:'✉',label:'Comunicação',group:'Comunicação'},
   commercial:{ico:'↗',label:'Comercial',group:'Comercial'},
   recruitment:{ico:'♙',label:'Recrutamento',group:'Administração'},
+  'client-surveys':{ico:'▤',label:'Minhas pesquisas',group:'Minha pesquisa'},
   'client-progress':{ico:'◷',label:'Andamento',group:'Minha pesquisa'},
   'form-approval':{ico:'✓',label:'Aprovar formulário',group:'Minha pesquisa'},
   'client-results':{ico:'◫',label:'Resultados',group:'Minha pesquisa'},
@@ -170,7 +171,7 @@ const ROLE_NAV={
   coord:['dashboard','commercial','surveys','surveys-done','collect','reports','finance','communication'],
   gerente:['dashboard','commercial','sample','reports','finance','communication'],
   pesq:['dashboard-pesq','researcher-guide','app-collect','researcher-profile','researcher-badge','my-earnings','my-contract','support','communication'],
-  cliente:['form-approval','client-progress','client-results','communication'],
+  cliente:['client-surveys','form-approval','client-progress','client-results','communication'],
   admpro:['dashboard','commercial','recruitment','new-survey','surveys','surveys-done','sample','collect','reports','users','permissions','finance','contracts','contract-template','company','communication'],
   vendedor:['commercial'],
   indicador:['commercial'],
@@ -250,7 +251,7 @@ async function requestOwnPasswordReset(){
 async function afterLogin(user){
   chatStopRealtime();CHAT_CHANNELS=[];CHAT_CHANNELS_LOADED=false;CHAT_CHANNELS_LOADING=false;CHAT_SCHEMA_MISSING=false;CHAT_ACTIVE_CHANNEL_ID=null;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=false;CHAT_MESSAGES_LOADING=false;CHAT_SUPPORT_CHANNEL_ID=null;CHAT_SUPPORT_READY=false;CHAT_SUPPORT_LOADING=false;CHAT_PENDING_SURVEY_ID=null;
   PUSH_STATUS='unknown';PUSH_STATUS_LOADING=false;PUSH_SCHEMA_MISSING=false;PUSH_SW_REGISTRATION=null;MY_COMMUNICATIONS=[];MY_COMMUNICATIONS_LOADED=false;MY_COMMUNICATIONS_LOADING=false;
-  ACTIVE_CAMPAIGN_ID=null;
+  ACTIVE_CAMPAIGN_ID=null;CLIENT_SURVEY_VIEW_ID=null;
   const profileFields='id,name,email,phone,role,status,cpf,cpf_cnpj,pf_pj,birth,cidade,rua,numero,cep,contact_person,doc_url,doc_foto_url,doc_comprovante_url,pix_key,pix_doc,pix_bank,pix_ag,pix_acc,results_released,approved_at,commission_rate,commission_rate_with_indicator,recruiter_code,recruiter_capture_value,badge_public_token,badge_photo_path';
   let {data:profile,error}=await sb.from('profiles').select(profileFields).eq('id',user.id).single();
   if(error && /badge_public_token|badge_photo_path|column/i.test(error.message||'')){
@@ -287,7 +288,7 @@ async function logout(){
   CHAT_CHANNELS=[];CHAT_CHANNELS_LOADED=false;CHAT_CHANNELS_LOADING=false;CHAT_SCHEMA_MISSING=false;CHAT_ACTIVE_CHANNEL_ID=null;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=false;CHAT_MESSAGES_LOADING=false;CHAT_SUPPORT_CHANNEL_ID=null;CHAT_SUPPORT_READY=false;CHAT_SUPPORT_LOADING=false;CHAT_PENDING_SURVEY_ID=null;
   RESEARCHER_PROFILE_CITIES=[];RESEARCHER_PROFILE_CITIES_DRAFT=[];RESEARCHER_PROFILE_CITIES_LOADED=false;PUSH_STATUS='unknown';PUSH_STATUS_LOADING=false;PUSH_SCHEMA_MISSING=false;PUSH_SW_REGISTRATION=null;MY_COMMUNICATIONS=[];MY_COMMUNICATIONS_LOADED=false;MY_COMMUNICATIONS_LOADING=false;CLIENT_APPROVAL_REQUEST_ID=null;CLIENT_APPROVAL_REQUEST=null;CLIENT_APPROVAL_LOADING=false;CLIENT_APPROVAL_RESPONDING=false;CLIENT_APPROVAL_SCHEMA_MISSING=false;RESEARCHER_LINK_TOKEN=null;RESEARCHER_LINK_CONTEXT=null;RESEARCHER_LINK_LOADING=false;RESEARCHER_LINK_ACCEPTING=false;
   CURRENT_PROFILE=null;
-  ACTIVE_CAMPAIGN_ID=null;
+  ACTIVE_CAMPAIGN_ID=null;CLIENT_SURVEY_VIEW_ID=null;
   updateCampaignSwitcherButton();
   document.getElementById('app').classList.remove('show');
   document.getElementById('login').style.display='flex';
@@ -1000,6 +1001,7 @@ function clientSelf(){
   return clienteUsers()[CLIENT_SELF_IDX]; // fallback só usado fora de uma sessão real de cliente
 }
 let ACTIVE_CAMPAIGN_ID=null;
+let CLIENT_SURVEY_VIEW_ID=null;
 let CAMPAIGN_SWITCHER_VIEW_ID=null;
 function campaignSurveysForCurrentUser(){
   if(!CURRENT_PROFILE)return[];
@@ -1017,6 +1019,8 @@ function activeCampaignSurvey(){
 function updateCampaignSwitcherButton(){
   const button=document.getElementById('campaignSwitcherBtn');
   if(!button)return;
+  if(CURRENT_PROFILE?.role==='cliente'){button.hidden=true;button.setAttribute('aria-hidden','true');return;}
+  button.hidden=false;button.removeAttribute('aria-hidden');
   const active=activeCampaignSurvey();
   button.textContent=active?`Trocar pesquisa · ${active.name.length>24?active.name.slice(0,24)+'…':active.name} ▾`:'Trocar pesquisa ▾';
   button.title=active?'Pesquisa atual: '+active.name:'Selecione uma pesquisa ou campanha';
@@ -1152,10 +1156,39 @@ async function clientProgressLoad(){
 }
 function clientProgressStartLive(){if(CLIENT_PROGRESS_TIMER)clearInterval(CLIENT_PROGRESS_TIMER);clientProgressLoad();CLIENT_PROGRESS_TIMER=setInterval(()=>{if(document.querySelector('.nav-item.on')?.dataset.key==='client-progress')clientProgressLoad();},20000);}
 function clientProgressStopLive(){if(CLIENT_PROGRESS_TIMER){clearInterval(CLIENT_PROGRESS_TIMER);CLIENT_PROGRESS_TIMER=null;}}
+function clientSurveyListMarkup(available,active){
+  return `<div class="client-survey-list">${available.map(s=>{
+    const released=clientResultsReleasedForSurvey(clientSelf(),s);
+    return `<button type="button" class="client-survey-card ${active?.id===s.id?'is-active':''}" onclick="clientViewSurvey('${esc(s.id)}')"><span class="client-survey-card-icon">⌁</span><span class="client-survey-card-copy"><strong>${esc(s.name)}</strong><small>${esc(s.tipo||'Pesquisa de opinião')} · ${esc(STATUS_LABEL?.[s.status]||'Disponível')}</small><em>${esc(campaignLocationLabel(s))}</em></span><span class="client-survey-card-meta"><span class="pill ${released?'pill-green':'pill-gray'}">${released?'Resultados liberados':'Em acompanhamento'}</span><b>Ver informações&nbsp; →</b></span></button>`;
+  }).join('')}</div>`;
+}
+function clientSurveyDetailsMarkup(s,c,active){
+  const released=clientResultsReleasedForSurvey(c,s);
+  const sample=Number(surveySample(s)||0).toLocaleString('pt-BR');
+  const margin=s.err?`± ${Math.round(Number(s.err)*100)}%`:'Não informado';
+  return `<div class="client-survey-details card"><button type="button" class="client-survey-back" onclick="clientBackToSurveyList()">← Voltar para minhas pesquisas</button><div class="client-survey-details-hero"><div class="client-survey-details-icon">⌁</div><div><span class="eyebrow">INFORMAÇÕES DA PESQUISA</span><h2>${esc(s.name)}</h2><p>${esc(s.tipo||'Pesquisa de opinião')} · <span class="pill ${s.status==='campo'?'pill-green':s.status==='encerrada'?'pill-blue':'pill-amber'}">${esc(STATUS_LABEL?.[s.status]||'Disponível')}</span></p></div></div><div class="client-survey-details-grid"><div><span>Período</span><strong>${campaignDateLabel(s.dataIni)} a ${campaignDateLabel(s.dataFim)}</strong></div><div><span>Amostra prevista</span><strong>${sample} entrevistas</strong></div><div><span>Margem de erro</span><strong>${margin}</strong></div><div><span>Nível de confiança</span><strong>${s.conf==='1.96'?'95%':esc(s.conf||'Não informado')}</strong></div><div class="client-survey-details-wide"><span>Abrangência</span><strong>${esc(campaignLocationLabel(s))}</strong></div><div><span>Questionário</span><strong>${(s.questions||[]).length} ${(s.questions||[]).length===1?'pergunta':'perguntas'}</strong></div><div><span>Resultados</span><strong>${released?'Liberados para visualização':'Ainda não liberados'}</strong></div></div><div class="client-survey-details-actions"><button type="button" class="btn btn-fill" onclick="clientSelectSurveyAndGo('${esc(s.id)}','client-progress')">${active?.id===s.id?'Abrir andamento':'Selecionar e acompanhar'}</button>${s.formApprovalRequired?`<button type="button" class="btn btn-out" onclick="clientSelectSurveyAndGo('${esc(s.id)}','form-approval')">Aprovar formulário</button>`:''}</div></div>`;
+}
+function clientViewSurvey(surveyId){
+  if(CURRENT_PROFILE?.role!=='cliente'||!campaignSurveysForCurrentUser().some(s=>s.id===surveyId))return;
+  CLIENT_SURVEY_VIEW_ID=surveyId;go('client-surveys');
+}
+function clientBackToSurveyList(){CLIENT_SURVEY_VIEW_ID=null;go('client-surveys');}
+function clientSelectSurveyAndGo(surveyId,target){
+  if(CURRENT_PROFILE?.role!=='cliente'||!campaignSurveysForCurrentUser().some(s=>s.id===surveyId))return;
+  ACTIVE_CAMPAIGN_ID=surveyId;CLIENT_SURVEY_VIEW_ID=null;updateCampaignSwitcherButton();go(target||'client-progress');
+}
+PAGES['client-surveys']=()=>{
+  if(!SURVEYS_LOADED){loadSurveysIfNeeded();return head('Minhas pesquisas','Pesquisas disponibilizadas para sua empresa')+'<div class="card"><div class="empty">Carregando pesquisas…</div></div>';}
+  const c=clientSelf(),available=campaignSurveysForCurrentUser(),active=activeCampaignSurvey();
+  if(!c||!available.length)return head('Minhas pesquisas','Pesquisas disponibilizadas para sua empresa')+'<div class="card client-surveys-empty"><div class="empty"><strong>Nenhuma pesquisa disponibilizada no momento</strong><br><small>A equipe PesquisaPro mostrará aqui as pesquisas vinculadas à sua conta.</small></div></div>';
+  const viewed=available.find(s=>s.id===CLIENT_SURVEY_VIEW_ID);
+  if(viewed)return head('Informações da pesquisa','Confira os detalhes antes de acompanhar a coleta')+clientSurveyDetailsMarkup(viewed,c,active);
+  return head('Minhas pesquisas','Pesquisas disponibilizadas para sua empresa')+`<section class="client-surveys-page"><div class="client-surveys-intro card"><div><span class="eyebrow">MINHAS PESQUISAS</span><h2>Pesquisas disponibilizadas para você</h2><p>Clique em uma pesquisa para consultar as informações, o período, a abrangência e o estado dos resultados.</p></div><span class="client-surveys-count">${available.length} ${available.length===1?'pesquisa':'pesquisas'}</span></div>${clientSurveyListMarkup(available,active)}</section>`;
+};
 PAGES['client-progress']=()=>{
   if(!SURVEYS_LOADED)loadSurveysIfNeeded();
   const c=clientSelf(),s=clientSelfSurvey();
-  if(!c||!s)return head('Minha pesquisa','Acompanhe o andamento da coleta')+`<div class="card"><div class="empty">Nenhuma pesquisa vinculada à sua conta no momento.</div></div>`;
+  if(!c||!s)return head('Andamento','Acompanhe o andamento da coleta')+`<div class="card"><div class="empty">Nenhuma pesquisa vinculada à sua conta no momento. <button class="btn btn-out" style="margin-top:16px" onclick="go('client-surveys')">Ver minhas pesquisas</button></div></div>`;
   if(!clientResultsReleasedForSurvey(c,s))return head(s.name,'Andamento da coleta · '+c.company)+`<div class="card" style="text-align:center;padding:44px 24px"><div style="font-weight:800;font-size:18px">Resultados e andamento detalhado ainda não liberados</div><p style="color:var(--ink3);font-size:13.5px;margin-top:8px;line-height:1.6">A equipe PesquisaPro libera os dados agregados nesta área após a validação da pesquisa.</p></div>`;
   return head(s.name,'Andamento da coleta em tempo real · '+c.company,'<button class="btn btn-fill" onclick="go(\'client-results\')">Ver resultados →</button>')+`<section id="client-progress-live"><div class="card"><div class="empty" style="padding:28px 0">Carregando dados reais da coleta…</div></div></section>`;
 };
@@ -1630,7 +1663,7 @@ async function loadSurveysIfNeeded(){
   refreshClientSurveyLinks();
   const onKey=document.querySelector('.nav-item.on');
   const k=onKey&&onKey.dataset.key;
-  if(k==='surveys'||k==='surveys-done'||k==='dashboard'||k==='dashboard-pesq'||k==='survey-team'||k==='client-progress'||k==='client-results'||k==='reports'||k==='communication')go(k);
+  if(k==='surveys'||k==='surveys-done'||k==='dashboard'||k==='dashboard-pesq'||k==='survey-team'||k==='client-surveys'||k==='client-progress'||k==='client-results'||k==='reports'||k==='communication')go(k);
 }
 function surveySample(s){
   return Math.ceil(sampleSize(s&&s.pop,s&&s.err,s&&s.conf,s&&s.prop)*1.1);

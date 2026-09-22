@@ -1,0 +1,11 @@
+const assert=require('assert');
+const fs=require('fs');
+const app=fs.readFileSync(__dirname+'/app.js','utf8');
+const css=fs.readFileSync(__dirname+'/style.css','utf8');
+const html=fs.readFileSync(__dirname+'/app.html','utf8');
+for(const token of ["'client-surveys'","Minhas pesquisas","clientSurveyListMarkup","clientSurveyDetailsMarkup","clientViewSurvey","clientBackToSurveyList","clientSelectSurveyAndGo","Pesquisas disponibilizadas para sua empresa","Ver informações"])assert(app.includes(token),`código ausente: ${token}`);
+for(const token of ['.client-surveys-page','.client-survey-list','.client-survey-card','.client-survey-details','.client-survey-details-grid','.client-survey-details-actions','@media(max-width:900px)'])assert(css.includes(token),`CSS ausente: ${token}`);
+assert(app.includes("cliente:['client-surveys','form-approval','client-progress','client-results','communication']"),'cliente não inicia pela lista de pesquisas');
+assert(app.includes("if(CURRENT_PROFILE?.role==='cliente'){button.hidden=true"),'seletor superior ainda aparece para cliente');
+assert(html.includes('20260922105000'),'cache da lista de pesquisas não atualizado');
+console.log('Client surveys list smoke test OK: lista visível, ficha detalhada e acesso sem seletor superior verificados.');

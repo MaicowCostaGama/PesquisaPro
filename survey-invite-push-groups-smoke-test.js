@@ -35,10 +35,12 @@ for(const token of [
   'enable row level security',
 ])if(migration)ok(migration.includes(token),`migration sem ${token}`);
 if(migration)ok(!/drop table|drop column|truncate|delete from/i.test(migration),'migration contém operação destrutiva');
+if(migration)ok(migration.includes('jsonb_object_keys'),'RPC usa a verificação JSONB compatível para cidades');
+if(migration)ok(!migration.includes('jsonb_object_length'),'RPC ainda usa jsonb_object_length incompatível');
 else console.log('Migration ausente neste clone por publicação somente do código — execução manual permanece separada.');
 for(const token of ['addEventListener(\'push\'','showNotification','notificationclick'])ok(worker.includes(token),`service worker sem ${token}`);
 ok(pushConfig.includes('PP_PUSH_PUBLIC_KEY'),'configuração pública do push ausente');
 for(const token of ['web-push','VAPID_PRIVATE_KEY','sendNotification','push_subscriptions','not authorized'])ok(edge.includes(token),`função Edge sem ${token}`);
-ok(html.includes('push-config.js?v=20260922195500'),'configuração de push sem cache novo');
-ok(html.includes('app.js?v=20260922195500'),'app sem cache novo');
+ok(html.includes('push-config.js?v=20260922205500'),'configuração de push sem cache novo');
+ok(html.includes('app.js?v=20260922205500'),'app sem cache novo');
 console.log('Survey invite push/groups smoke test: PASS — elegibilidade, convite em massa, aceite, grupo WhatsApp, canal chat, service worker, RLS e função de push verificados.');

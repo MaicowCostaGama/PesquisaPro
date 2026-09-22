@@ -120,7 +120,7 @@ function loadMySurveyCommunicationsIfNeeded(){
 }
 function mySurveyCommunicationsMarkup(){
   if(!MY_COMMUNICATIONS_LOADED||!MY_COMMUNICATIONS.length)return '';
-  return `<section class="card mb researcher-communications-card"><div class="card-t">Pesquisas aceitas e canais de apoio</div><div class="card-d">Após aceitar um convite, use o chat para instruções e dúvidas. O grupo de WhatsApp é acessado pelo link oficial da pesquisa.</div>${MY_COMMUNICATIONS.map(item=>`<div class="researcher-communication-row"><div><b>${esc(item.survey_name||'Pesquisa')}</b><small>Convite aceito${item.accepted_at?' em '+esc(new Date(item.accepted_at).toLocaleDateString('pt-BR')):''}</small></div><div class="researcher-communication-actions">${item.chat_channel_id?`<button class="btn btn-out" onclick="openResearcherSurveyChat('${item.survey_id}')">✉ Chat da pesquisa</button>`:'<span class="pill pill-gray">Chat em preparação</span>'}${item.whatsapp_group_url?`<a class="btn btn-fill" href="${esc(item.whatsapp_group_url)}" target="_blank" rel="noopener">Entrar no grupo do WhatsApp</a>`:'<span class="pill pill-gray">Grupo ainda não configurado</span>'}</div></div>`).join('')}</section>`;
+  return `<section class="card mb researcher-communications-card researcher-first-collection-groups"><div class="card-t">Antes da primeira coleta</div><div class="card-d">Entre no grupo oficial do WhatsApp da pesquisa antes de iniciar a primeira entrevista. Use também o chat para receber instruções e tirar dúvidas. A entrada no grupo é feita manualmente pelo próprio pesquisador.</div>${MY_COMMUNICATIONS.map(item=>`<div class="researcher-communication-row"><div><b>${esc(item.survey_name||'Pesquisa')}</b><small>Convite aceito${item.accepted_at?' em '+esc(new Date(item.accepted_at).toLocaleDateString('pt-BR')):''}</small></div><div class="researcher-communication-actions">${item.chat_channel_id?`<button class="btn btn-out" onclick="openResearcherSurveyChat('${item.survey_id}')">✉ Chat da pesquisa</button>`:'<span class="pill pill-gray">Chat em preparação</span>'}${item.whatsapp_group_url?`<a class="btn btn-fill" href="${esc(item.whatsapp_group_url)}" target="_blank" rel="noopener">Entrar no grupo do WhatsApp</a>`:'<span class="pill pill-gray">Grupo ainda não configurado</span>'}</div></div>`).join('')}</section>`;
 }
 
 function showLoginError(message){
@@ -984,10 +984,10 @@ PAGES['dashboard-pesq']=()=>{
   </div>`:'';
   return head('Meu painel',subtitulo)+`
   ${earningsHtml}
+  ${mySurveyCommunicationsMarkup()}
   ${researcherAvailableSurveysMarkup(surveysMine)}
   ${invitesHtml}
   ${researcherPushCard()}
-  ${mySurveyCommunicationsMarkup()}
   ${(MY_CONTRACT_LOADED&&!MY_CONTRACT)?'<div class="callout mb">✎ Você ainda não assinou seu contrato de prestação de serviços — assine para poder coletar. <button class="btn-ghost" style="margin-left:6px" onclick="go(\'my-contract\')">Assinar agora →</button></div>':''}
   `;
 };
@@ -2819,6 +2819,87 @@ function surveyInviteLink(inviteId){
   url.searchParams.set('convite',inviteId);
   return url.href;
 }
+function surveyInvitationMoney(value){
+  const amount=Number(value);
+  return Number.isFinite(amount)&&amount>0?amount.toLocaleString('pt-BR',{style:'currency',currency:'BRL'}):'valor definido no sistema';
+}
+function surveyInvitationPeriod(s){
+  return (s?.dataIni?fmtDataBR(s.dataIni):'início a confirmar')+' até '+(s?.dataFim?fmtDataBR(s.dataFim):'fim a confirmar');
+}
+function surveyInvitationArea(s){
+  const targets=surveyCityTargets(s||{});
+  const cities=[...targets.cities].map(value=>String(value).replace('/', ' / '));
+  if(cities.length){const shown=cities.slice(0,8);return shown.join(', ')+(cities.length>shown.length?' e mais '+(cities.length-shown.length)+' localidade(s)':'');}
+  if(targets.states.size)return [...targets.states].join(', ');
+  return ABRANGENCIA_LABELS[s?.abrangencia]||'área definida no aplicativo';
+}
+function surveyInvitationQuotaText(s,compact=false){
+  const quotaOff=s?.quotaOff||{};
+  const rows=(s?.questions||[]).filter(q=>['single','multi'].includes(q.type)&&!(quotaOff[q.id])&&Array.isArray(q.opts)&&q.opts.some(value=>String(value||'').trim())).map(q=>{
+    const options=q.opts.map(value=>String(value||'').trim()).filter(Boolean);
+    const saved=s?.quotas?.[q.id]||{};const def=options.length?Math.round(100/options.length):0;
+    const values=options.map((value,index)=>value+' '+(saved[index]!=null?saved[index]:def)+'%');
+    return (q.text||'Cota')+': '+values.join(', ');
+  });
+  if(!rows.length)return 'as cotas disponíveis serão exibidas e controladas pelo aplicativo';
+  const shown=rows.slice(0,compact?2:4);return shown.join(' | ')+(rows.length>shown.length?' | e outras cotas da pesquisa':'');
+}
+function surveyInvitationPriceText(s){
+  const standard=surveyInvitationMoney(s?.price),remote=Number(s?.priceRemote);
+  return Number.isFinite(remote)&&remote>0&&remote!==Number(s?.price)
+    ?standard+' por entrevista válida e aprovada; em região remota, '+surveyInvitationMoney(remote)
+    :standard+' por entrevista válida e aprovada';
+}
+function surveyInvitationGroupText(groupLink,compact=false){
+  return groupLink
+    ?(compact?'Grupo WhatsApp: ':'Grupo oficial da pesquisa no WhatsApp: ')+groupLink+' — entre antes da primeira coleta.'
+    :'O link do grupo WhatsApp será disponibilizado no seu painel antes da primeira coleta.';
+}
+async function teamWhatsappGroupUrl(){
+  const s=SURVEYS[TEAM_IDX];if(!s?.id)return '';
+  if(TEAM_COMM_SETTINGS_LOADED)return TEAM_COMM_SETTINGS?.whatsapp_group_url||'';
+  try{
+    const {data,error}=await sb.from('survey_communication_settings').select('whatsapp_group_url').eq('survey_id',s.id).maybeSingle();
+    if(error)throw error;
+    TEAM_COMM_SETTINGS=data||{};
+  }catch(ex){TEAM_COMM_SETTINGS={};console.warn('Não foi possível carregar o link do grupo para o convite:',ex);}
+  TEAM_COMM_SETTINGS_LOADED=true;
+  return TEAM_COMM_SETTINGS?.whatsapp_group_url||'';
+}
+function surveyInvitationPushBody(s,researcherName,link,groupLink=''){
+  const first=String(researcherName||'').trim().split(/\s+/)[0]||'pesquisador(a)';
+  return 'Olá, '+first+'! Convite PesquisaPro para "'+(s?.name||'pesquisa')+'" ('+(s?.tipo||'pesquisa')+'). Período: '+surveyInvitationPeriod(s)+'; área: '+surveyInvitationArea(s)+'. Valor: '+surveyInvitationPriceText(s)+'. Pagamentos semanais: mantenha sua chave Pix atualizada. Respeite o formulário, as cotas ('+surveyInvitationQuotaText(s,true)+'), o georreferenciamento e a eventual confirmação final gravada; a coleta passa por auditoria. '+surveyInvitationGroupText(groupLink,true)+' Aceite e entre automaticamente na equipe: '+link;
+}
+function surveyInvitationWhatsappMessage(s,u,link,groupLink=''){
+  const quotaText=surveyInvitationQuotaText(s);
+  return 'Olá, '+(u?.name||'pesquisador(a)')+'! Tudo bem?\n\n'+
+    'Você está sendo convidado(a) pela PesquisaPro para participar da pesquisa:\n\n'+
+    '*'+(s?.name||'Pesquisa')+'*\n\n'+
+    '*Informações da pesquisa:*\n'+
+    '• Tipo: '+(s?.tipo||'pesquisa')+'\n'+
+    '• Período de coleta: '+surveyInvitationPeriod(s)+'\n'+
+    '• Localidades: '+surveyInvitationArea(s)+'\n'+
+    '• Valor: '+surveyInvitationPriceText(s)+'\n'+
+    '• Forma de coleta: aplicativo PesquisaPro\n'+
+    '• Pagamento: realizado semanalmente, após o processamento e a auditoria das entrevistas.\n\n'+
+    '*Importante sobre o recebimento:*\n'+
+    'Para receber os pagamentos, mantenha sua chave Pix correta e atualizada no cadastro do PesquisaPro. Dados ausentes ou incorretos podem impedir ou atrasar o repasse até a atualização.\n\n'+
+    '*Regras para participar:*\n'+
+    '• Respeitar o formulário e as orientações exibidas no aplicativo;\n'+
+    '• Entrevistar somente pessoas dentro do perfil solicitado;\n'+
+    '• Respeitar as cotas disponíveis;\n'+
+    '• Não realizar entrevistas fictícias, duplicadas ou sem falar com o entrevistado;\n'+
+    '• Registrar corretamente todas as respostas;\n'+
+    '• Seguir as orientações da equipe PesquisaPro;\n'+
+    '• A coleta poderá passar por auditoria antes da aprovação do pagamento.\n\n'+
+    '*Cotas da pesquisa:*\n'+quotaText+'. O aplicativo informará as cotas disponíveis e bloqueará automaticamente as que estiverem completas.\n\n'+
+    '*Georreferenciamento:*\nDurante a entrevista, o aplicativo poderá registrar a localização aproximada do aparelho para confirmar o local da coleta e auxiliar na auditoria.\n\n'+
+    '*Confirmação gravada ao final:*\nEm parte das entrevistas, poderá ser solicitada uma confirmação curta gravada. Ela dependerá da autorização do entrevistado e será usada somente para verificar se a pesquisa foi realizada corretamente.\n\n'+
+    '*Grupo oficial do WhatsApp:*\n'+surveyInvitationGroupText(groupLink)+'\n\n'+
+    '*Para aceitar o convite:*\nAcesse o link abaixo, entre com sua conta PesquisaPro e toque em "Aceitar e entrar na equipe":\n\n'+link+'\n\n'+
+    'Ao aceitar, você entrará automaticamente na equipe desta pesquisa e poderá acompanhar as orientações e coletas no seu painel. Caso não possa participar, você poderá recusar o convite no próprio aplicativo.\n\n'+
+    'PesquisaPro — Pesquisa, coleta e auditoria de campo.';
+}
 async function copySurveyInviteLink(inviteId){
   const link=surveyInviteLink(inviteId);
   try{await navigator.clipboard.writeText(link);alert('Link do convite copiado.');}
@@ -2932,7 +3013,10 @@ async function inviteEligibleResearchersBulk(){
     let pushMessage='Os convites aparecerão no painel dos pesquisadores.';
     if(typeof sb.functions?.invoke==='function'){
       try{
-        const push=await sb.functions.invoke('send-survey-invite-push',{body:{survey_id:s.id,invite_ids:returned.map(item=>item.id)}});
+        const eligibleById=new Map(eligible.map(({u})=>[u.id,u]));
+        const groupLink=await teamWhatsappGroupUrl();
+        const inviteMessages=Object.fromEntries(returned.map(item=>[item.id,surveyInvitationPushBody(s,eligibleById.get(item.researcher_id)?.name||'pesquisador(a)',surveyInviteLink(item.id),groupLink)]));
+        const push=await sb.functions.invoke('send-survey-invite-push',{body:{survey_id:s.id,invite_ids:returned.map(item=>item.id),invite_messages:inviteMessages}});
         if(push.error)throw push.error;
         const result=push.data||{};pushMessage=(result.sent||0)+' push enviado'+((result.sent||0)===1?'':'s')+'; '+(result.skipped||0)+' pesquisador'+((result.skipped||0)===1?'':'es')+' receberá o aviso ao entrar no aplicativo.';
       }catch(pushError){console.warn('Push não enviado; convite interno continua válido:',pushError);pushMessage='Convites registrados. O push real ainda depende da configuração da função de envio; todos também verão o convite ao entrar no painel.';}
@@ -2966,8 +3050,8 @@ async function inviteResearcherWhatsapp(researcherId){
     }
   }catch(ex){alert('Não foi possível criar o convite: '+ex.message);return;}
   const link=surveyInviteLink(inviteId);
-  const msg='Olá, '+u.name.split(' ')[0]+'! Você foi convidado(a) para a pesquisa "'+s.name+'" no PesquisaPro. '+
-    'Abra este link, entre com seu login e toque em "Aceitar e entrar na equipe" para começar: '+link;
+  const groupLink=await teamWhatsappGroupUrl();
+  const msg=surveyInvitationWhatsappMessage(s,u,link,groupLink);
   window.open('https://wa.me/'+digits+'?text='+encodeURIComponent(msg),'_blank','noopener');
   go('survey-team');
 }

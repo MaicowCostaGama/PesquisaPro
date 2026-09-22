@@ -26,7 +26,7 @@ Deno.serve(async(req)=>{
   const {data:profile}=await admin.from('profiles').select('role').eq('id',user.id).maybeSingle();
   if(!profile||!['admin','coord','gerente','admpro'].includes(profile.role))return json({error:'not authorized'},403);
 
-  let body:{survey_id?:string,invite_ids?:string[]}={};
+  let body:{survey_id?:string,invite_ids?:string[],invite_messages?:Record<string,string>}={};
   try{body=await req.json();}catch(ex){return json({error:'invalid json'},400);}
   if(!body.survey_id||!Array.isArray(body.invite_ids)||!body.invite_ids.length)return json({error:'survey_id and invite_ids are required'},400);
 
@@ -40,21 +40,22 @@ Deno.serve(async(req)=>{
   if(subscriptionError)return json({error:subscriptionError.message},500);
 
   webpush.setVapidDetails(vapidSubject,vapidPublic,vapidPrivate);
-  const url=new URL('/app.html',supabaseUrl.replace(/\/$/,''));
   // A URL de destino é substituída pelo domínio do app para não levar o usuário
   // ao domínio da API Supabase.
   const appUrl=Deno.env.get('APP_URL')||'https://www.pesquisa-pro.com/app.html';
-  const payload=JSON.stringify({
-    title:'Novo convite de pesquisa — PesquisaPro',
-    body:`Você foi convidado(a) para participar de “${survey.name}”. Abra o Meu painel para aceitar ou recusar.`,
-    url:appUrl,
-    survey_id:survey.id,
-    tag:`survey-invite-${survey.id}`
-  });
   let sent=0,failed=0,skipped=0;
   for(const invite of invites){
     const userSubs=(subscriptions||[]).filter(item=>item.user_id===invite.researcher_id);
     if(!userSubs.length){skipped++;continue;}
+    const inviteUrl=new URL(appUrl);inviteUrl.searchParams.set('convite',invite.id);
+    const payload=JSON.stringify({
+      title:'Convite para participar da pesquisa — PesquisaPro',
+      body:String(body.invite_messages?.[invite.id]||`Você foi convidado(a) para participar de “${survey.name}”. Abra o convite para consultar as regras e aceitar ou recusar.`),
+      url:inviteUrl.href,
+      survey_id:survey.id,
+      invite_id:invite.id,
+      tag:`survey-invite-${survey.id}`
+    });
     let userSent=false;
     for(const item of userSubs){
       try{await webpush.sendNotification(item.subscription,payload);sent++;userSent=true;}

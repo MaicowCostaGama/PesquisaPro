@@ -249,9 +249,10 @@ async function requestOwnPasswordReset(){
 }
 
 async function afterLogin(user){
-  chatStopRealtime();CHAT_CHANNELS=[];CHAT_CHANNELS_LOADED=false;CHAT_CHANNELS_LOADING=false;CHAT_SCHEMA_MISSING=false;CHAT_ACTIVE_CHANNEL_ID=null;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=false;CHAT_MESSAGES_LOADING=false;CHAT_SUPPORT_CHANNEL_ID=null;CHAT_SUPPORT_READY=false;CHAT_SUPPORT_LOADING=false;CHAT_PENDING_SURVEY_ID=null;
+  chatStopRealtime();CHAT_CHANNELS=[];CHAT_CHANNELS_LOADED=false;CHAT_CHANNELS_LOADING=false;CHAT_SCHEMA_MISSING=false;CHAT_ACTIVE_CHANNEL_ID=null;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=false;CHAT_MESSAGES_LOADING=false;CHAT_SUPPORT_CHANNEL_ID=null;CHAT_SUPPORT_READY=false;CHAT_SUPPORT_LOADING=false;
   PUSH_STATUS='unknown';PUSH_STATUS_LOADING=false;PUSH_SCHEMA_MISSING=false;PUSH_SW_REGISTRATION=null;MY_COMMUNICATIONS=[];MY_COMMUNICATIONS_LOADED=false;MY_COMMUNICATIONS_LOADING=false;
   ACTIVE_CAMPAIGN_ID=null;CLIENT_SURVEY_VIEW_ID=null;
+  PAYMENTS=[];PAYMENTS_LOADED=false;PAYMENTS_LOADING=false;PAYMENT_RECEIPTS=[];PAYMENT_RECEIPTS_LOADED=false;PAYMENT_RECEIPTS_LOADING=false;PAYMENT_RECEIPTS_SCHEMA_MISSING=false;
   const profileFields='id,name,email,phone,role,status,cpf,cpf_cnpj,pf_pj,birth,cidade,rua,numero,cep,contact_person,doc_url,doc_foto_url,doc_comprovante_url,pix_key,pix_doc,pix_bank,pix_ag,pix_acc,results_released,approved_at,commission_rate,commission_rate_with_indicator,recruiter_code,recruiter_capture_value,badge_public_token,badge_photo_path';
   let {data:profile,error}=await sb.from('profiles').select(profileFields).eq('id',user.id).single();
   if(error && /badge_public_token|badge_photo_path|column/i.test(error.message||'')){
@@ -287,6 +288,7 @@ async function logout(){
   chatStopRealtime();
   CHAT_CHANNELS=[];CHAT_CHANNELS_LOADED=false;CHAT_CHANNELS_LOADING=false;CHAT_SCHEMA_MISSING=false;CHAT_ACTIVE_CHANNEL_ID=null;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=false;CHAT_MESSAGES_LOADING=false;CHAT_SUPPORT_CHANNEL_ID=null;CHAT_SUPPORT_READY=false;CHAT_SUPPORT_LOADING=false;CHAT_PENDING_SURVEY_ID=null;
   RESEARCHER_PROFILE_CITIES=[];RESEARCHER_PROFILE_CITIES_DRAFT=[];RESEARCHER_PROFILE_CITIES_LOADED=false;PUSH_STATUS='unknown';PUSH_STATUS_LOADING=false;PUSH_SCHEMA_MISSING=false;PUSH_SW_REGISTRATION=null;MY_COMMUNICATIONS=[];MY_COMMUNICATIONS_LOADED=false;MY_COMMUNICATIONS_LOADING=false;CLIENT_APPROVAL_REQUEST_ID=null;CLIENT_APPROVAL_REQUEST=null;CLIENT_APPROVAL_LOADING=false;CLIENT_APPROVAL_RESPONDING=false;CLIENT_APPROVAL_SCHEMA_MISSING=false;RESEARCHER_LINK_TOKEN=null;RESEARCHER_LINK_CONTEXT=null;RESEARCHER_LINK_LOADING=false;RESEARCHER_LINK_ACCEPTING=false;
+  PAYMENTS=[];PAYMENTS_LOADED=false;PAYMENTS_LOADING=false;PAYMENT_RECEIPTS=[];PAYMENT_RECEIPTS_LOADED=false;PAYMENT_RECEIPTS_LOADING=false;PAYMENT_RECEIPTS_SCHEMA_MISSING=false;
   CURRENT_PROFILE=null;
   ACTIVE_CAMPAIGN_ID=null;CLIENT_SURVEY_VIEW_ID=null;
   updateCampaignSwitcherButton();
@@ -6291,6 +6293,8 @@ PAGES.permissions=()=>head('Perfis e permissões','Defina o que cada perfil pode
    linha de verdade no banco quando a primeira coleta dele é enviada. */
 let PAYMENTS=[]; // {id, surveyId, researcherId, name, pixKey, valid, rejected, status}
 let PAYMENTS_LOADED=false,PAYMENTS_LOADING=false;
+let PAYMENT_RECEIPTS=[]; // {id,paymentId,researcherId,amount,paidAt,note,createdBy,createdAt}
+let PAYMENT_RECEIPTS_LOADED=false,PAYMENT_RECEIPTS_LOADING=false,PAYMENT_RECEIPTS_SCHEMA_MISSING=false;
 const FIN_STATUS={
   aprovado:{pill:'<span class="pill pill-green">● Aprovado</span>'},
   pendente:{pill:'<span class="pill pill-amber">● Dados bancários pendentes</span>'},
@@ -6308,6 +6312,20 @@ function paymentRowToEntry(row){
     name:u?u.name:'(pesquisador removido)',pixKey:u?u.pixKey:'',
     valid:row.valid_count||0,rejected:row.rejected_count||0,status:row.status||'pendente'};
 }
+function paymentReceiptRowToEntry(row){
+  return {id:row.id,paymentId:row.payment_id,researcherId:row.researcher_id,
+    amount:Number(row.amount)||0,paidAt:row.paid_at||'',note:row.note||'',
+    createdBy:row.created_by||'',createdAt:row.created_at||''};
+}
+function paymentReceiptsFor(paymentId){return PAYMENT_RECEIPTS.filter(r=>r.paymentId===paymentId);}
+function paymentReceivedValue(paymentId){return paymentId?paymentReceiptsFor(paymentId).reduce((sum,r)=>sum+r.amount,0):0;}
+function paymentDueValue(row,price){return Math.max(0,(Number(row?.valid)||0)*(Number(price)||0));}
+function paymentBalanceValue(row,price){return Math.max(0,paymentDueValue(row,price)-paymentReceivedValue(row?.id));}
+function paymentReceiptMigrationNotice(){
+  return PAYMENT_RECEIPTS_SCHEMA_MISSING
+    ? '<div class="callout warn payment-ledger-warning"><b>Livro de recebimentos ainda não habilitado.</b> Execute a migration <code>deploy/pagamentos-recebimentos-extrato.sql</code> no Supabase para liberar aprovações em lote, lançamentos pagos e extrato de recebimentos.</div>'
+    : '';
+}
 async function loadPaymentsIfNeeded(){
   if(PAYMENTS_LOADED||PAYMENTS_LOADING)return;
   PAYMENTS_LOADING=true;
@@ -6322,11 +6340,30 @@ async function loadPaymentsIfNeeded(){
   const k=onKey&&onKey.dataset.key;
   if(k==='finance'||k==='my-earnings'||k==='dashboard-pesq')go(k);
 }
+async function loadPaymentReceiptsIfNeeded(){
+  if(PAYMENT_RECEIPTS_LOADED||PAYMENT_RECEIPTS_LOADING)return;
+  PAYMENT_RECEIPTS_LOADING=true;
+  try{
+    const {data,error}=await sb.from('payment_receipts').select('*').order('paid_at',{ascending:false});
+    if(error){
+      PAYMENT_RECEIPTS_SCHEMA_MISSING=/payment_receipts|relation|schema cache|does not exist/i.test(error.message||'');
+      console.error('Erro ao carregar livro de recebimentos:',error);
+    }else PAYMENT_RECEIPTS=(data||[]).map(paymentReceiptRowToEntry);
+  }catch(ex){
+    PAYMENT_RECEIPTS_SCHEMA_MISSING=/payment_receipts|relation|schema cache|does not exist/i.test(ex.message||'');
+    console.error('Erro de conexão ao carregar livro de recebimentos:',ex);
+  }
+  PAYMENT_RECEIPTS_LOADED=true;PAYMENT_RECEIPTS_LOADING=false;
+  const onKey=document.querySelector('.nav-item.on');
+  const k=onKey&&onKey.dataset.key;
+  if(k==='finance'||k==='my-earnings')go(k);
+}
 /* define só o status do pagamento (pendente/aprovado/auditoria) — válidos e
    rejeitados não são mais editáveis aqui: vêm de verdade da Coleta de campo
    e são recalculados sozinhos por um gatilho no banco (schema.sql) */
 async function saveFinStatus(surveyId,researcherId,status){
   const existing=PAYMENTS.find(p=>p.surveyId===surveyId&&p.researcherId===researcherId);
+  if(existing&&status!=='aprovado'&&paymentReceivedValue(existing.id)>0)throw new Error('Este pagamento já possui recebimento registrado e não pode voltar para pendente ou auditoria.');
   if(existing){
     const {error}=await sb.from('payments').update({status}).eq('id',existing.id);
     if(error)throw new Error(error.message);
@@ -6352,12 +6389,16 @@ function finTotals(idx){
   const rejected=rows.reduce((a,r)=>a+r.rejected,0);
   const valor=rows.reduce((a,r)=>a+r.valid*price,0);
   const pendingValor=rows.filter(r=>r.status!=='aprovado').reduce((a,r)=>a+r.valid*price,0);
-  return{valid,rejected,valor,pendingValor,count:rows.length};
+  const recebido=rows.reduce((a,r)=>a+paymentReceivedValue(r.id),0);
+  const aReceber=rows.filter(r=>r.status==='aprovado').reduce((a,r)=>a+paymentBalanceValue(r,price),0);
+  const rejeitadoValor=rejected*price;
+  return{valid,rejected,valor,pendingValor,recebido,aReceber,rejeitadoValor,count:rows.length};
 }
 PAGES.finance=()=>{
-  if(!SURVEYS_LOADED||!PAYMENTS_LOADED){
+  if(!SURVEYS_LOADED||!PAYMENTS_LOADED||!PAYMENT_RECEIPTS_LOADED){
     if(!SURVEYS_LOADED)loadSurveysIfNeeded();
     if(!PAYMENTS_LOADED)loadPaymentsIfNeeded();
+    if(!PAYMENT_RECEIPTS_LOADED)loadPaymentReceiptsIfNeeded();
     return head('Financeiro','Pagamentos separados por pesquisa · calculado por entrevista válida coletada')+'<div class="empty">Carregando dados financeiros…</div>';
   }
   if(FIN_IDX!=null)return financeDetail(FIN_IDX);
@@ -6367,6 +6408,8 @@ function financeList(){
   const entries=SURVEYS.map((s,i)=>({s,i,t:finTotals(i)}));
   const totalValor=entries.reduce((a,e)=>a+e.t.valor,0);
   const totalPend=entries.reduce((a,e)=>a+e.t.pendingValor,0);
+  const totalRecebido=entries.reduce((a,e)=>a+e.t.recebido,0);
+  const totalAReceber=entries.reduce((a,e)=>a+e.t.aReceber,0);
   const totalValid=entries.reduce((a,e)=>a+e.t.valid,0);
   const totalPesq=entries.reduce((a,e)=>a+e.t.count,0);
   const body=entries.map(({s,i,t})=>`<tr style="cursor:pointer" onclick="financeOpen(${i})">
@@ -6374,12 +6417,15 @@ function financeList(){
       <td>${t.count?t.count+' pesquisador'+(t.count===1?'':'es'):'<span style="color:var(--ink3)">sem coleta</span>'}</td>
       <td>${t.valid.toLocaleString('pt-BR')}</td>
       <td><b>${brl(t.valor)}</b></td>
-      <td>${t.pendingValor?'<span class="pill pill-amber">'+brl(t.pendingValor)+' pendente</span>':(t.count?'<span class="pill pill-green">Tudo em dia</span>':'<span style="color:var(--ink3)">—</span>')}</td>
+      <td>${t.aReceber?'<span class="pill pill-blue">'+brl(t.aReceber)+' a receber</span>':t.pendingValor?'<span class="pill pill-amber">'+brl(t.pendingValor)+' pendente</span>':(t.count?'<span class="pill pill-green">Tudo em dia</span>':'<span style="color:var(--ink3)">—</span>')}</td>
       <td><span class="pill pill-blue">Abrir →</span></td></tr>`).join('')||'<tr><td colspan="6" class="empty">Nenhuma pesquisa cadastrada.</td></tr>';
   return head('Financeiro','Pagamentos separados por pesquisa · calculado por entrevista válida coletada')+`
+  ${paymentReceiptMigrationNotice()}
   <div class="grid g4" style="margin-bottom:16px">
     ${stat('A pagar (todas as pesquisas)',brl(totalValor),totalValid.toLocaleString('pt-BR')+' entrevistas válidas','$','#2563eb')}
-    ${stat('Pendente de pagamento',brl(totalPend),'dados bancários / auditoria','◷','#d97706')}
+    ${stat('Pendente de pagamento',brl(totalPend),'aguardando aprovação','◷','#d97706')}
+    ${stat('A receber',brl(totalAReceber),'pagamentos aprovados','◷','#2563eb')}
+    ${stat('Recebido',brl(totalRecebido),'repasses lançados','✓','#059669')}
     ${stat('Pesquisadores remunerados',String(totalPesq),'com entrevistas válidas','☺','#059669')}
     ${stat('Valor padrão por formulário','R$ 5,00','pode variar por pesquisa','◷','#7c3aed')}
   </div>
@@ -6399,26 +6445,36 @@ function financeDetail(idx){
   const price=+s.price,priceRemote=+s.priceRemote;
   const body=rows.length?rows.map(r=>{
     const st=FIN_STATUS[r.status]||FIN_STATUS.pendente;
-    const valor=r.valid*price;
+    const valor=paymentDueValue(r,price);
+    const recebido=paymentReceivedValue(r.id);
+    const aReceber=r.status==='aprovado'?Math.max(0,valor-recebido):0;
     const pixShown=maskPix(r.pixKey);
-    return `<tr><td>${esc(r.name)}</td><td>${r.valid}</td><td>${r.rejected}</td><td><b>${brl(valor)}</b></td><td>${pixShown||'<span style="color:var(--ink3)">—</span>'}</td><td>${st.pill}</td>
-      <td><button class="btn-ghost" onclick="finEditPayment(${idx},'${r.researcherId}')">Definir status</button></td></tr>`;
-  }).join(''):'<tr><td colspan="7" class="empty">Nenhum pesquisador atribuído a esta pesquisa ainda — atribua a equipe em Minhas pesquisas.</td></tr>';
+    const approveButton=r.virtual||!r.valid?'':'<button class="btn-ghost finance-action-approve" onclick="finApprovePayment('+idx+','+jsArg(r.researcherId)+')">'+(r.status==='aprovado'?'✓ Pagamento aprovado':'Aprovar pagamento')+'</button>';
+    const receiptButton=r.virtual||!r.valid||r.status!=='aprovado'||aReceber<=0?'':'<button class="btn-ghost finance-action-receipt" onclick="finRegisterPayment('+idx+','+jsArg(r.researcherId)+')">＋ Registrar pagamento</button>';
+    const statusButton=r.virtual?'':'<button class="btn-ghost" onclick="finEditPayment('+idx+','+jsArg(r.researcherId)+')">Alterar status</button>';
+    return `<tr><td><b>${esc(r.name)}</b>${r.virtual?'<div class="finance-row-note">Sem pagamento criado ainda</div>':''}</td><td>${r.valid}</td><td>${r.rejected}</td><td><b>${brl(valor)}</b></td><td>${brl(recebido)}</td><td>${aReceber?'<b class="finance-to-receive">'+brl(aReceber)+'</b>':'<span class="pill pill-gray">R$ 0,00</span>'}</td><td>${pixShown||'<span style="color:var(--ink3)">—</span>'}</td><td>${st.pill}</td>
+      <td><div class="finance-row-actions">${approveButton}${receiptButton}${statusButton}</div></td></tr>`;
+  }).join(''):'<tr><td colspan="9" class="empty">Nenhum pesquisador atribuído a esta pesquisa ainda — atribua a equipe em Minhas pesquisas.</td></tr>';
   return head('Financeiro — '+s.name,'Pagamento por entrevista válida coletada nesta pesquisa',
-    '<button class="btn btn-out" onclick="financeBack()">← Financeiro</button>'+
-    (rows.length?'<button class="btn btn-out" onclick="alert(\'Recurso ainda não configurado: exportar remessa bancária / PIX em lote desta pesquisa\')">Exportar remessa</button><button class="btn btn-fill" onclick="alert(\'Recurso ainda não configurado: processar pagamentos aprovados desta pesquisa\')">Processar pagamentos</button>':''))+`
+    '<button class="btn btn-out" onclick="financeBack()">← Financeiro</button>'+ 
+    (rows.length?'<button class="btn btn-out" onclick="finApproveAll('+idx+')">✓ Aprovar todos os pagamentos</button><button class="btn btn-out" onclick="alert(\'A exportação de remessa bancária será adicionada em uma etapa posterior.\')">Exportar remessa</button>':''))+`
+  ${paymentReceiptMigrationNotice()}
   <div class="grid g4" style="margin-bottom:16px">
     ${stat('A pagar nesta pesquisa',brl(t.valor),t.valid.toLocaleString('pt-BR')+' entrevistas válidas','$','#2563eb')}
     ${stat('Pesquisadores',String(t.count),'com coleta nesta pesquisa','☺','#059669')}
     ${stat('Valor por formulário',brl(price),'região remota: '+brl(priceRemote),'◷','#7c3aed')}
-    ${stat('Pendente',brl(t.pendingValor),'dados bancários / auditoria','◷','#d97706')}
+    ${stat('Pendente',brl(t.pendingValor),'aguardando aprovação','◷','#d97706')}
+    ${stat('A receber',brl(t.aReceber),'pagamentos aprovados','◷','#2563eb')}
+    ${stat('Recebido',brl(t.recebido),'repasses lançados','✓','#059669')}
   </div>
   <div class="card mb">
     <div class="card-t">Pagamentos por pesquisador</div>
-    <div class="card-d">Válidos e rejeitados vêm de verdade das coletas de campo (contados automaticamente). Dados bancários armazenados de forma segura (LGPD).</div>
-    <table><thead><tr><th>Pesquisador</th><th>Válidos</th><th>Rejeitados</th><th>Valor</th><th>Chave PIX</th><th>Status</th><th></th></tr></thead>
+    <div class="card-d">Válidos e rejeitados vêm das coletas de campo. Rejeitadas são apenas informativas e não entram em pendente, a receber ou recebido. <b>Aprovar pagamento</b> move o valor válido para “A receber”; <b>Registrar pagamento</b> lança um repasse total ou parcial com data.</div>
+    <div class="finance-table-scroll"><table class="finance-data-table"><thead><tr><th>Pesquisador</th><th>Válidos</th><th>Rejeitados</th><th>Valor aprovado</th><th>Recebido</th><th>A receber</th><th>Chave PIX</th><th>Status</th><th>Ações</th></tr></thead>
     <tbody>${body}</tbody></table>
+    </div>
   </div>
+  ${financeReceiptHistoryHtml(idx)}
   <div class="grid g2">
     <div class="card"><div class="card-t" style="font-size:13px">Tabela de valores desta pesquisa</div>
       <table style="margin-top:6px"><tbody>
@@ -6432,6 +6488,65 @@ function financeDetail(idx){
       <div style="position:relative;height:180px;margin-top:6px"><canvas id="finChart" role="img" aria-label="Repasse acumulado"></canvas></div>
     </div>
   </div>`;
+}
+function financeReceiptHistoryHtml(idx){
+  const s=SURVEYS[idx];if(!s)return '';
+  const rows=finRows(idx),byId=new Map(rows.map(r=>[r.id,r]));
+  const receipts=PAYMENT_RECEIPTS.filter(receipt=>byId.has(receipt.paymentId)).sort((a,b)=>String(b.paidAt).localeCompare(String(a.paidAt))||String(b.createdAt).localeCompare(String(a.createdAt)));
+  const body=receipts.length?receipts.map(r=>`<tr><td>${esc(byId.get(r.paymentId)?.name||'(pesquisador removido)')}</td><td>${esc(r.paidAt||'—')}</td><td><b>${brl(r.amount)}</b></td><td>${esc(r.note||'—')}</td></tr>`).join(''):'<tr><td colspan="4" class="empty">Nenhum repasse lançado nesta pesquisa.</td></tr>';
+  return `<div class="card mb"><div class="card-t">Histórico de recebimentos</div><div class="card-d">Lançamentos registrados para ${esc(s.name)}. O histórico é cumulativo e não apaga as entrevistas nem as reprovações.</div><div class="finance-table-scroll"><table class="finance-data-table finance-receipts-table"><thead><tr><th>Pesquisador</th><th>Data do pagamento</th><th>Valor recebido</th><th>Observação</th></tr></thead><tbody>${body}</tbody></table></div></div>`;
+}
+function financeReturnToDetail(idx){FIN_IDX=idx;FIN_ARMED=true;go('finance');}
+async function finApprovePayment(idx,researcherId){
+  const s=SURVEYS[idx],current=finRows(idx).find(r=>r.researcherId===researcherId);if(!s||!current||current.virtual||!current.valid)return;
+  if(current.status==='aprovado'){alert('Este pagamento já está aprovado e disponível em “A receber”.');return;}
+  const due=paymentDueValue(current,+s.price);
+  if(!confirm('Aprovar '+brl(due)+' para '+current.name+'? O valor ficará em “A receber” até um repasse ser registrado.'))return;
+  try{await saveFinStatus(s.id,researcherId,'aprovado');}catch(ex){alert('Não foi possível aprovar o pagamento: '+ex.message);return;}
+  financeReturnToDetail(idx);
+}
+async function finApproveAll(idx){
+  const s=SURVEYS[idx];if(!s)return;
+  const eligible=finRows(idx).filter(r=>!r.virtual&&r.valid&&r.status!=='aprovado');
+  if(!eligible.length){alert('Não há pagamentos pendentes de aprovação nesta pesquisa.');return;}
+  const total=eligible.reduce((sum,r)=>sum+paymentDueValue(r,+s.price),0);
+  if(!confirm('Aprovar '+eligible.length+' pagamento(s), no total de '+brl(total)+'? Os valores ficarão em “A receber”.'))return;
+  try{
+    const {data,error}=await sb.rpc('approve_payment_batch',{p_survey_id:s.id});
+    if(error)throw new Error(error.message);
+    const approvedCount=Number(data)||eligible.length;
+    PAYMENTS.filter(p=>p.surveyId===s.id&&p.valid>0).forEach(p=>{p.status='aprovado';});
+    alert(approvedCount+' pagamento(s) aprovado(s).');
+  }catch(ex){alert('Não foi possível aprovar em lote. Execute a migration pagamentos-recebimentos-extrato.sql no Supabase e tente novamente.');console.error(ex);return;}
+  financeReturnToDetail(idx);
+}
+function parsePaymentAmount(value){
+  const raw=String(value??'').trim().replace(/[^\d,.-]/g,'');if(!raw)return null;
+  const normalized=raw.includes(',')?raw.replace(/\./g,'').replace(',','.'):raw;
+  const amount=Number(normalized);return Number.isFinite(amount)&&amount>0?Math.round(amount*100)/100:null;
+}
+function validPaymentDate(value){
+  const date=String(value||'').trim();if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return false;
+  const parsed=new Date(date+'T00:00:00Z');return !Number.isNaN(parsed.getTime())&&parsed.toISOString().slice(0,10)===date;
+}
+async function finRegisterPayment(idx,researcherId){
+  const s=SURVEYS[idx],current=finRows(idx).find(r=>r.researcherId===researcherId);if(!s||!current||current.virtual||current.status!=='aprovado')return;
+  if(PAYMENT_RECEIPTS_SCHEMA_MISSING){alert('Execute primeiro a migration deploy/pagamentos-recebimentos-extrato.sql no Supabase.');return;}
+  const due=paymentDueValue(current,+s.price),received=paymentReceivedValue(current.id),balance=Math.max(0,due-received);if(balance<=0){alert('Este pagamento já foi recebido integralmente.');return;}
+  const amount=parsePaymentAmount(prompt('Valor pago para '+current.name+' (máximo '+brl(balance)+'). Pagamentos parciais são permitidos:',String(balance.toFixed(2)).replace('.',',')));
+  if(amount==null){alert('Informe um valor pago válido.');return;}
+  if(amount>balance){alert('O valor informado ultrapassa o saldo a receber de '+brl(balance)+'.');return;}
+  const today=new Date().toISOString().slice(0,10);
+  const paidAt=prompt('Data do pagamento (AAAA-MM-DD):',today);if(paidAt==null)return;
+  if(!validPaymentDate(paidAt)){alert('Informe uma data válida no formato AAAA-MM-DD.');return;}
+  const note=prompt('Observação ou referência do pagamento (opcional):','');if(note==null)return;
+  try{
+    const {data,error}=await sb.rpc('record_payment_receipt',{p_payment_id:current.id,p_amount:amount,p_paid_at:paidAt,p_note:note.trim()||null});
+    if(error)throw new Error(error.message);
+    const row=Array.isArray(data)?data[0]:data;if(row)PAYMENT_RECEIPTS.unshift(paymentReceiptRowToEntry(row));
+  }catch(ex){alert('Não foi possível registrar o pagamento. Verifique se a migration pagamentos-recebimentos-extrato.sql foi executada e se o valor ainda está disponível.');console.error(ex);return;}
+  alert('Pagamento registrado em '+paidAt+'.');
+  financeReturnToDetail(idx);
 }
 /* define o status do pagamento de um pesquisador nesta pesquisa — válidos e
    rejeitados não são mais perguntados aqui: vêm de verdade da Coleta de
@@ -6452,10 +6567,11 @@ async function finEditPayment(idx,researcherId){
 
 /* ============ MY EARNINGS (pesquisador) ============ */
 PAGES['my-earnings']=()=>{
-  if(!SURVEYS_LOADED||!PAYMENTS_LOADED||!COLLECT_EVENTS_LOADED){
+  if(!SURVEYS_LOADED||!PAYMENTS_LOADED||!COLLECT_EVENTS_LOADED||!PAYMENT_RECEIPTS_LOADED){
     if(!SURVEYS_LOADED)loadSurveysIfNeeded();
     if(!PAYMENTS_LOADED)loadPaymentsIfNeeded();
     if(!COLLECT_EVENTS_LOADED)loadCollectEventsIfNeeded();
+    if(!PAYMENT_RECEIPTS_LOADED)loadPaymentReceiptsIfNeeded();
     return head('Meus ganhos','Acompanhe seus pagamentos por formulário coletado')+'<div class="empty">Carregando seus dados financeiros…</div>';
   }
   const myId=CURRENT_PROFILE&&CURRENT_PROFILE.id;
@@ -6463,24 +6579,30 @@ PAGES['my-earnings']=()=>{
   const rowsData=mine.map(p=>{
     const s=SURVEYS.find(x=>x.id===p.surveyId);
     const price=s?+s.price:0;
-    return {survey:s?s.name:'(pesquisa removida)',valid:p.valid,valor:p.valid*price,status:p.status};
+    const valor=paymentDueValue(p,price),recebido=paymentReceivedValue(p.id),aReceber=p.status==='aprovado'?Math.max(0,valor-recebido):0;
+    return {payment:p,survey:s?s.name:'(pesquisa removida)',valid:p.valid,rejected:p.rejected,valor,recebido,aReceber,rejectedValor:p.rejected*price,status:p.status};
   });
-  const aReceber=rowsData.filter(r=>r.status==='aprovado').reduce((a,r)=>a+r.valor,0);
-  const pendente=rowsData.filter(r=>r.status==='pendente').reduce((a,r)=>a+r.valor,0);
-  const auditoria=rowsData.filter(r=>r.status==='auditoria').reduce((a,r)=>a+r.valor,0);
-  const histRows=rowsData.length?rowsData.map(r=>`<tr><td>${esc(r.survey)}</td><td>${r.valid}</td><td>${brl(r.valor)}</td><td>${(FIN_STATUS[r.status]||FIN_STATUS.pendente).pill}</td></tr>`).join('')
-    :'<tr><td colspan="4" class="empty">Nenhuma coleta ainda — assim que você enviar sua primeira entrevista em "Coletar (app)", aparece aqui.</td></tr>';
+  const aReceber=rowsData.reduce((a,r)=>a+r.aReceber,0),recebido=rowsData.reduce((a,r)=>a+r.recebido,0);
+  const pendente=rowsData.filter(r=>r.status==='pendente').reduce((a,r)=>a+r.valor,0),auditoria=rowsData.filter(r=>r.status==='auditoria').reduce((a,r)=>a+r.valor,0);
+  const rejeitadas=rowsData.reduce((a,r)=>a+r.rejected,0),rejeitadasValor=rowsData.reduce((a,r)=>a+r.rejectedValor,0);
+  const histRows=rowsData.length?rowsData.map(r=>`<tr><td><b>${esc(r.survey)}</b></td><td>${r.valid}</td><td>${r.rejected}${r.rejectedValor?'<div class="earnings-rejected-value">'+brl(r.rejectedValor)+' não contabilizado</div>':''}</td><td>${brl(r.valor)}</td><td>${brl(r.recebido)}</td><td>${r.aReceber?'<b class="finance-to-receive">'+brl(r.aReceber)+'</b>':'<span class="pill pill-gray">R$ 0,00</span>'}</td><td>${(FIN_STATUS[r.status]||FIN_STATUS.pendente).pill}</td></tr>`).join('')
+    :'<tr><td colspan="7" class="empty">Nenhuma coleta ainda — assim que você enviar sua primeira entrevista em "Coletar (app)", aparece aqui.</td></tr>';
   return head('Meus ganhos','Acompanhe seus pagamentos por formulário coletado')+`
-  <div class="grid g3" style="margin-bottom:16px">
-    ${stat('A receber',brl(aReceber),'aprovado, aguardando repasse','$','#2563eb')}
-    ${stat('Pendente',brl(pendente),'dados bancários / lançamento','◷','#d97706')}
-    ${stat('Em auditoria',brl(auditoria),'em revisão','◷','#7c3aed')}
+  ${paymentReceiptMigrationNotice()}
+  <div class="grid g4" style="margin-bottom:16px">
+    ${stat('Recebido',brl(recebido),'repasses registrados','✓','#059669')}
+    ${stat('A receber',brl(aReceber),'pagamentos aprovados','$','#2563eb')}
+    ${stat('Pendente / revisão',brl(pendente+auditoria),'entrevistas válidas ainda não aprovadas','◷','#d97706')}
+    ${stat('Rejeitadas',String(rejeitadas),brl(rejeitadasValor)+' apenas informativo','✕','#dc2626')}
   </div>
   <div class="card mb">
-    <div class="card-t">Histórico de pagamentos</div>
-    <table style="margin-top:6px"><thead><tr><th>Pesquisa</th><th>Válidos</th><th>Valor</th><th>Status</th></tr></thead>
+    <div class="card-t">Extrato por pesquisa</div>
+    <div class="card-d">Entrevistas rejeitadas aparecem somente para informação e nunca entram em pendente, a receber ou recebido. “A receber” diminui somente quando a PesquisaPro registra um pagamento.</div>
+    <div class="finance-table-scroll"><table class="finance-data-table earnings-table" style="margin-top:6px"><thead><tr><th>Pesquisa</th><th>Válidas</th><th>Rejeitadas</th><th>Valor aprovado</th><th>Recebido</th><th>A receber</th><th>Situação</th></tr></thead>
     <tbody>${histRows}</tbody></table>
+    </div>
   </div>
+  ${myReceiptHistoryHtml(rowsData)}
   <div class="card mb">
     <div class="card-t" style="font-size:13px">Coletas reprovadas</div>
     <div class="card-d">Reprovadas pelo administrador ou coordenador na auditoria de campo — não entram no seu pagamento.</div>
@@ -6493,6 +6615,12 @@ PAGES['my-earnings']=()=>{
     <button class="btn btn-fill" onclick="saveMyPixData()">Salvar dados</button>
   </div>`;
 };
+function myReceiptHistoryHtml(rowsData){
+  const paymentNames=new Map(rowsData.map(r=>[r.payment.id,r.survey]));
+  const receipts=PAYMENT_RECEIPTS.filter(r=>paymentNames.has(r.paymentId)).sort((a,b)=>String(b.paidAt).localeCompare(String(a.paidAt))||String(b.createdAt).localeCompare(String(a.createdAt)));
+  const body=receipts.length?receipts.map(r=>`<tr><td>${esc(paymentNames.get(r.paymentId)||'Pesquisa')}</td><td>${esc(r.paidAt||'—')}</td><td><b>${brl(r.amount)}</b></td><td>${esc(r.note||'—')}</td></tr>`).join(''):'<tr><td colspan="4" class="empty">Nenhum repasse registrado ainda.</td></tr>';
+  return `<div class="card mb"><div class="card-t">Histórico de recebimentos</div><div class="card-d">Aqui ficam os valores efetivamente registrados como pagos, com a data informada pela PesquisaPro.</div><div class="finance-table-scroll"><table class="finance-data-table finance-receipts-table"><thead><tr><th>Pesquisa</th><th>Data</th><th>Valor recebido</th><th>Observação</th></tr></thead><tbody>${body}</tbody></table></div></div>`;
+}
 async function saveMyPixData(){
   if(!CURRENT_PROFILE)return;
   const pixKey=(document.getElementById('me-pix-key').value||'').trim();

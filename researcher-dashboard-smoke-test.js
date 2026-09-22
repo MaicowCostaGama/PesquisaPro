@@ -10,5 +10,5 @@ assert(app.includes('onclick="researcherStartCollection(\'${esc(s.id)}\')"'),'bo
 const dashboardStart=app.indexOf("PAGES['dashboard-pesq']=()=>");
 const dashboard=app.slice(dashboardStart,app.indexOf("/* ============ ÁREA DO CLIENTE",dashboardStart));
 for(const removed of ["stat('Coletas hoje'","stat('Coletas no mês'","stat('Aprovação'",'Suas cotas pendentes hoje','quotasHtml','Abrir app de coleta'])assert(!dashboard.includes(removed),`bloco removido ainda aparece: ${removed}`);
-assert(html.includes('20260922105000'),'cache do dashboard do pesquisador não atualizado');
+assert(html.includes('20260922110500'),'cache do dashboard do pesquisador não atualizado');
 console.log('Researcher dashboard smoke test OK: ganhos e pesquisas disponíveis mantidos; cartões, cotas e botão duplicado removidos.');

@@ -15,7 +15,7 @@ const checks=[
   ['lista carrega aprovados para reconciliação',app.includes(".in('status',['novo','diligencia','aprovado'])")],
   ['redefinição de senha após criação',app.includes('resetPasswordForEmail(s.email')],
   ['migration prevê approved_profile_id',recruitmentSql.includes('add column if not exists approved_profile_id')],
-  ['cache atualizado',html.includes('20260922105000')]
+  ['cache atualizado',html.includes('20260922110500')]
 ];
 let failed=0;
 for(const [label,ok] of checks){console.log(`${ok?'PASS':'FAIL'} — ${label}`);if(!ok)failed++;}

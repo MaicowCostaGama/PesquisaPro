@@ -1103,8 +1103,15 @@ function clientResultsReleasedForSurvey(client,survey){
   const bySurvey=survey.clientReleaseById||{};
   return !!client.resultsReleased||!!(clientId&&bySurvey[clientId]===true);
 }
+function clientWithTimeout(request,label,timeoutMs=15000){
+  let timer;
+  const timeout=new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('Tempo esgotado ao carregar '+label+'.')),timeoutMs);});
+  return Promise.race([Promise.resolve(request),timeout]).finally(()=>clearTimeout(timer));
+}
 let CLIENT_PROGRESS_CACHE={surveyId:null,summary:null,quotas:[]};
 let CLIENT_PROGRESS_LOADING=false,CLIENT_PROGRESS_TIMER=null;
+let CLIENT_RESEARCHER_PROGRESS_CACHE={surveyId:null,rows:[]};
+let CLIENT_RESEARCHER_PROGRESS_LOADING=false;
 function clientProgressStatus(done,target){
   const d=Number(done)||0,t=Number(target)||0;
   if(!t)return '<span class="pill pill-gray">Sem meta</span>';
@@ -1123,12 +1130,33 @@ function clientProgressCoverageRows(s){
   if(!rows.length)return '<tr><td colspan="4" class="empty">Nenhuma meta de cota real foi encontrada.</td></tr>';
   return rows.map(row=>`<tr><td><b>${esc(row.quotaLabel||'Sem cota')}</b><small style="display:block;color:var(--ink3);margin-top:3px">${esc(row.questionText||'Cota da pesquisa')}</small></td><td>${Number(row.validCount||0).toLocaleString('pt-BR')}</td><td>${Number(row.targetCount||0).toLocaleString('pt-BR')}</td><td>${clientProgressStatus(row.validCount,row.targetCount)}</td></tr>`).join('');
 }
+function clientResearcherProgressRows(){
+  const rows=CLIENT_RESEARCHER_PROGRESS_CACHE.rows||[];
+  if(!rows.length)return '<tr><td colspan="5" class="empty">Nenhum pesquisador possui coleta registrada nesta pesquisa.</td></tr>';
+  return rows.map(row=>`<tr><td><b>${esc(row.researcherName||'Pesquisador não identificado')}</b></td><td>${Number(row.totalCount||0).toLocaleString('pt-BR')}</td><td><span class="pill pill-green">${Number(row.validCount||0).toLocaleString('pt-BR')}</span></td><td>${Number(row.rejectedCount||0).toLocaleString('pt-BR')}</td><td>${row.lastOccurredAt?new Date(row.lastOccurredAt).toLocaleString('pt-BR'):'—'}</td></tr>`).join('');
+}
+function clientResearcherProgressMarkup(){
+  return `<section id="client-researcher-progress" class="card client-researcher-progress-card"><div class="map-panel-head"><div><div class="map-eyebrow">EQUIPE DE CAMPO</div><div class="card-t">Pesquisadores e coletas</div><div class="card-d">Quantidade de entrevistas registradas por pesquisador nesta pesquisa.</div></div><span class="pill pill-blue">Dados agregados</span></div><div class="client-researcher-table-wrap"><table class="client-researcher-table"><thead><tr><th>Pesquisador</th><th>Total</th><th>Válidas</th><th>Reprovadas</th><th>Última coleta</th></tr></thead><tbody><tr><td colspan="5" class="empty">Carregando pesquisadores e coletas…</td></tr></tbody></table></div></section>`;
+}
+async function clientResearcherProgressLoad(){
+  const wrap=document.getElementById('client-researcher-progress');if(!wrap||CLIENT_RESEARCHER_PROGRESS_LOADING)return;
+  const c=clientSelf(),s=clientSelfSurvey();if(!c||!s||!clientResultsReleasedForSurvey(c,s))return;
+  CLIENT_RESEARCHER_PROGRESS_LOADING=true;
+  try{
+    const {data,error}=await clientWithTimeout(sb.rpc('client_collection_researcher_progress',{p_survey_id:s.id}),'a equipe de campo');
+    if(error)throw error;
+    CLIENT_RESEARCHER_PROGRESS_CACHE={surveyId:s.id,rows:(data||[]).map(row=>({researcherName:row.researcher_name||'Pesquisador não identificado',totalCount:Number(row.total_count)||0,validCount:Number(row.valid_count)||0,rejectedCount:Number(row.rejected_count)||0,lastOccurredAt:row.last_occurred_at||null}))};
+    const tbody=wrap.querySelector('tbody');if(tbody)tbody.innerHTML=clientResearcherProgressRows();
+  }catch(ex){
+    const tbody=wrap.querySelector('tbody');if(tbody)tbody.innerHTML=`<tr><td colspan="5"><div class="callout warn"><b>Não foi possível carregar os pesquisadores.</b><br>Execute a migration <code>deploy/progresso-pesquisadores-cliente.sql</code> no Supabase. Detalhe: ${esc(ex?.message||ex)}</div></td></tr>`;
+  }finally{CLIENT_RESEARCHER_PROGRESS_LOADING=false;}
+}
 function clientProgressRender(s,c){
   const host=document.getElementById('client-progress-live');if(!host)return;
   const summary=CLIENT_PROGRESS_CACHE.summary||{};
   const valid=Number(summary.validCount)||0,total=Number(summary.totalCount)||0,rejected=Number(summary.rejectedCount)||0,researchers=Number(summary.researcherCount)||0,sample=surveySample(s),pct=sample?Math.min(100,Math.round(valid/sample*100)):0;
   const last=summary.lastOccurredAt?new Date(summary.lastOccurredAt).toLocaleString('pt-BR'):'Ainda não há entrevistas registradas';
-  host.innerHTML=`${clientPublishedReportsMarkup()}<div class="grid g4" style="margin-bottom:18px">
+  host.innerHTML=`<div class="grid g4" style="margin-bottom:18px">
     ${stat('Entrevistas válidas',valid.toLocaleString('pt-BR'),'de '+sample.toLocaleString('pt-BR')+' · '+pct+'%','✓','#2563eb')}
     ${stat('Pesquisadores com coleta',researchers.toLocaleString('pt-BR'),'identificados nos eventos reais','☺','#059669')}
     ${stat('Status',STATUS_LABEL[s.status]||'Sem status',last,'◷','#d97706')}
@@ -1144,8 +1172,8 @@ async function clientProgressLoad(){
   CLIENT_PROGRESS_LOADING=true;host.innerHTML='<div class="card"><div class="empty" style="padding:28px 0">Carregando dados reais da coleta…</div></div>';
   try{
     const [{data:summary,error:summaryError},{data:quotas,error:quotaError}]=await Promise.all([
-      sb.rpc('client_collection_progress',{p_survey_id:s.id}),
-      sb.rpc('client_collection_quota_progress',{p_survey_id:s.id})
+      clientWithTimeout(sb.rpc('client_collection_progress',{p_survey_id:s.id}),'o andamento da coleta'),
+      clientWithTimeout(sb.rpc('client_collection_quota_progress',{p_survey_id:s.id}),'as cotas da coleta')
     ]);
     if(summaryError)throw summaryError;if(quotaError)throw quotaError;
     const row=summary?.[0]||{};
@@ -1190,7 +1218,7 @@ PAGES['client-progress']=()=>{
   const c=clientSelf(),s=clientSelfSurvey();
   if(!c||!s)return head('Andamento','Acompanhe o andamento da coleta')+`<div class="card"><div class="empty">Nenhuma pesquisa vinculada à sua conta no momento. <button class="btn btn-out" style="margin-top:16px" onclick="go('client-surveys')">Ver minhas pesquisas</button></div></div>`;
   if(!clientResultsReleasedForSurvey(c,s))return head(s.name,'Andamento da coleta · '+c.company)+`<div class="card" style="text-align:center;padding:44px 24px"><div style="font-weight:800;font-size:18px">Resultados e andamento detalhado ainda não liberados</div><p style="color:var(--ink3);font-size:13.5px;margin-top:8px;line-height:1.6">A equipe PesquisaPro libera os dados agregados nesta área após a validação da pesquisa.</p></div>`;
-  return head(s.name,'Andamento da coleta em tempo real · '+c.company,'<button class="btn btn-fill" onclick="go(\'client-results\')">Ver resultados →</button>')+`<section id="client-progress-live"><div class="card"><div class="empty" style="padding:28px 0">Carregando dados reais da coleta…</div></div></section>`;
+  return head(s.name,'Andamento da coleta em tempo real · '+c.company,`<button class="btn btn-out" onclick="clientViewSurvey('${esc(s.id)}')">Informações da pesquisa</button>`)+`<section id="client-progress-live"><div class="card"><div class="empty" style="padding:28px 0">Carregando dados reais da coleta…</div></div></section>${clientResearcherProgressMarkup()}<div id="cr-client-report"><div class="empty" style="padding:28px 0">Carregando resultados agregados…</div></div>${clientHeatmapMarkup(s)}<section id="cr-client-geo" class="client-geo-section"><div class="card"><div class="empty" style="padding:28px 0">Carregando georreferenciamento…</div></div></section>${clientPublishedReportsMarkup()}<div class="callout mb" style="margin-top:16px">Resultados, mapa e indicadores exibidos nesta área são agregados e condicionados à liberação da pesquisa para o cliente.</div>`;
 };
 
 const STATUS_LABEL={campo:'Em campo',rascunho:'Rascunho',encerrada:'Concluída'};
@@ -1257,8 +1285,8 @@ async function clientGeoLoad(isLive=false){
   CR_CLIENT_GEO_LOADING=true;
   try{
     const [{data:pointRows,error:pointError},{data:feedRows,error:feedError}]=await Promise.all([
-      sb.rpc('client_collection_geo_summary',{p_survey_id:s.id}),
-      sb.rpc('client_collection_geo_feed',{p_survey_id:s.id})
+      clientWithTimeout(sb.rpc('client_collection_geo_summary',{p_survey_id:s.id}),'o resumo do georreferenciamento'),
+      clientWithTimeout(sb.rpc('client_collection_geo_feed',{p_survey_id:s.id}),'o histórico do georreferenciamento')
     ]);
     if(pointError)throw pointError;if(feedError)throw feedError;
     CR_CLIENT_GEO_CACHE={surveyId:s.id,points:(pointRows||[]).map(clientGeoNormalizePoint),feed:(feedRows||[]).map(r=>({quotaLabel:r.quota_label||'Sem cota',status:r.status||'valid',isCalibration:!!r.is_calibration,occurredAt:r.occurred_at||null,synced:r.synced!==false,accuracyM:Number(r.accuracy_m)||0}))};
@@ -1287,13 +1315,13 @@ function heatmapValueOptions(rows,selected){return (rows||[]).map(r=>`<option va
 function responseHeatmapPanelMarkup(prefix,qs,questionId,value,master=false){return `<section class="card response-heatmap-panel ${master?'reports-response-heatmap':'client-response-heatmap'}" id="${prefix}-response-heatmap"><div class="reports-heatmap-head"><div><div class="reports-eyebrow">MAPA DE CALOR POR RESPOSTA</div><h2>Onde essa resposta aconteceu?</h2><p>Escolha uma pergunta e depois uma resposta para visualizar sua concentração geográfica.</p></div><span class="pill pill-blue">Áreas aproximadas</span></div><div class="response-heatmap-controls"><div><label class="lbl">Pergunta</label><select class="inp" id="${prefix}-heatmap-question" onchange="${master?'reportsHeatmapPickQuestion':'clientHeatmapPickQuestion'}(this.value)">${heatmapQuestionOptions(qs,questionId)}</select></div><div><label class="lbl">Resposta selecionada</label><select class="inp" id="${prefix}-heatmap-value" onchange="${master?'reportsHeatmapPickValue':'clientHeatmapPickValue'}(this.value)"><option value="">Carregando respostas…</option></select></div></div><div id="${prefix}-heatmap-summary" class="response-heatmap-summary">Carregando respostas agregadas…</div><div class="map-canvas-wrap response-heatmap-map-wrap"><div id="${prefix}-heatmap-map" class="collect-map-canvas response-heatmap-map" role="application" aria-label="Mapa de calor por resposta"></div><div id="${prefix}-heatmap-map-loading" class="map-loading" aria-live="polite">Preparando mapa de calor…</div></div><div class="response-heatmap-legend"><span><i style="background:#22c55e"></i>Menor concentração</span><span><i style="background:#facc15"></i>Concentração média</span><span><i style="background:#dc2626"></i>Maior concentração</span><small>Localização arredondada para preservar privacidade.</small></div></section>`;}
 function reportsHeatmapMarkup(survey){const qs=heatmapQuestionsForSurvey(survey);if(!qs.length)return '';if(!RP_HEATMAP_QUESTION_ID||!qs.some(q=>q.dbId===RP_HEATMAP_QUESTION_ID))RP_HEATMAP_QUESTION_ID=qs[0].dbId;return responseHeatmapPanelMarkup('rp',qs,RP_HEATMAP_QUESTION_ID,RP_HEATMAP_VALUE,true);}
 function clientHeatmapMarkup(survey){const qs=heatmapQuestionsForSurvey(survey);if(!qs.length)return '';if(!CR_HEATMAP_QUESTION_ID||!qs.some(q=>q.dbId===CR_HEATMAP_QUESTION_ID))CR_HEATMAP_QUESTION_ID=qs[0].dbId;return responseHeatmapPanelMarkup('cr',qs,CR_HEATMAP_QUESTION_ID,CR_HEATMAP_VALUE,false);}
-async function loadResponseHeatmapRows(mode){const isMaster=mode==='master',survey=isMaster?reportsCurrentSurvey():clientSelfSurvey(),questionId=isMaster?RP_HEATMAP_QUESTION_ID:CR_HEATMAP_QUESTION_ID;if(!survey||!questionId)return[];const {data,error}=await sb.rpc('survey_response_values',{p_survey_id:survey.id,p_question_id:questionId});if(error)throw error;return data||[];}
-async function loadResponseHeatmapPoints(mode,value){const isMaster=mode==='master',survey=isMaster?reportsCurrentSurvey():clientSelfSurvey(),questionId=isMaster?RP_HEATMAP_QUESTION_ID:CR_HEATMAP_QUESTION_ID;if(!survey||!questionId||!value)return[];const {data,error}=await sb.rpc('survey_response_heatmap',{p_survey_id:survey.id,p_question_id:questionId,p_value_label:value});if(error)throw error;return data||[];}
+async function loadResponseHeatmapRows(mode){const isMaster=mode==='master',survey=isMaster?reportsCurrentSurvey():clientSelfSurvey(),questionId=isMaster?RP_HEATMAP_QUESTION_ID:CR_HEATMAP_QUESTION_ID;if(!survey||!questionId)return[];const {data,error}=await clientWithTimeout(sb.rpc('survey_response_values',{p_survey_id:survey.id,p_question_id:questionId}),'as respostas do mapa de calor');if(error)throw error;return data||[];}
+async function loadResponseHeatmapPoints(mode,value){const isMaster=mode==='master',survey=isMaster?reportsCurrentSurvey():clientSelfSurvey(),questionId=isMaster?RP_HEATMAP_QUESTION_ID:CR_HEATMAP_QUESTION_ID;if(!survey||!questionId||!value)return[];const {data,error}=await clientWithTimeout(sb.rpc('survey_response_heatmap',{p_survey_id:survey.id,p_question_id:questionId,p_value_label:value}),'os pontos do mapa de calor');if(error)throw error;return data||[];}
 function renderResponseHeatmapControls(mode){const prefix=mode==='master'?'rp':'cr',rows=mode==='master'?RP_HEATMAP_ROWS:CR_HEATMAP_ROWS,selected=mode==='master'?RP_HEATMAP_VALUE:CR_HEATMAP_VALUE,select=document.getElementById(prefix+'-heatmap-value'),summary=document.getElementById(prefix+'-heatmap-summary');if(select)select.innerHTML=rows.length?heatmapValueOptions(rows,selected):'<option value="">Nenhuma resposta encontrada</option>';if(summary)summary.textContent=rows.length?`${rows.length} resposta${rows.length===1?'':'s'} encontrada${rows.length===1?'':'s'} · selecione uma para desenhar o mapa de calor.`:'Nenhuma resposta agregada encontrada para esta pergunta.';}
 async function responseHeatmapLoad(mode){const isMaster=mode==='master',wrap=document.getElementById((isMaster?'rp':'cr')+'-response-heatmap');if(!wrap||((isMaster?RP_HEATMAP_LOADING:CR_HEATMAP_LOADING)))return;if(!isMaster&&!clientResultsReleasedForSurvey(clientSelf(),clientSelfSurvey()))return;if(isMaster)RP_HEATMAP_LOADING=true;else CR_HEATMAP_LOADING=true;try{const rows=await loadResponseHeatmapRows(mode);if(isMaster){RP_HEATMAP_ROWS=rows;if(!rows.some(r=>r.value_label===RP_HEATMAP_VALUE))RP_HEATMAP_VALUE=rows[0]?.value_label||'';}else{CR_HEATMAP_ROWS=rows;if(!rows.some(r=>r.value_label===CR_HEATMAP_VALUE))CR_HEATMAP_VALUE=rows[0]?.value_label||'';}renderResponseHeatmapControls(mode);const points=await loadResponseHeatmapPoints(mode,isMaster?RP_HEATMAP_VALUE:CR_HEATMAP_VALUE);renderResponseHeatmapMap(isMaster?'master-response-heatmap':'client-response-heatmap',isMaster?'rp-heatmap-map':'cr-heatmap-map',points);const summary=document.getElementById((isMaster?'rp':'cr')+'-heatmap-summary');if(summary)summary.textContent=(isMaster?RP_HEATMAP_VALUE:CR_HEATMAP_VALUE)?`${(isMaster?RP_HEATMAP_VALUE:CR_HEATMAP_VALUE)} · ${points.reduce((sum,p)=>sum+Number(p.point_count||0),0).toLocaleString('pt-BR')} entrevista${points.reduce((sum,p)=>sum+Number(p.point_count||0),0)===1?'':'s'} georreferenciada${points.length===1?'':'s'}`:'Selecione uma resposta para desenhar o mapa de calor.';}catch(ex){const summary=document.getElementById((isMaster?'rp':'cr')+'-heatmap-summary');if(summary)summary.textContent='Não foi possível carregar o mapa de calor: '+(ex?.message||ex);}finally{if(isMaster)RP_HEATMAP_LOADING=false;else CR_HEATMAP_LOADING=false;}}
 function reportsHeatmapPickQuestion(id){RP_HEATMAP_QUESTION_ID=id;RP_HEATMAP_VALUE='';go('reports');}
 function reportsHeatmapPickValue(value){RP_HEATMAP_VALUE=value;responseHeatmapLoad('master');}
-function clientHeatmapPickQuestion(id){CR_HEATMAP_QUESTION_ID=id;CR_HEATMAP_VALUE='';go('client-results');}
+function clientHeatmapPickQuestion(id){CR_HEATMAP_QUESTION_ID=id;CR_HEATMAP_VALUE='';const key=document.querySelector('.nav-item.on')?.dataset.key;go(key==='client-progress'?'client-progress':'client-results');}
 function clientHeatmapPickValue(value){CR_HEATMAP_VALUE=value;responseHeatmapLoad('client');}
 function clientReportQuestionLabel(qs,id){return qs.find(q=>q.dbId===id)?.text||'(variável sem texto)';}
 function clientReportCrossOptionLabels(qs,qid){return (qs.find(q=>q.dbId===qid)?.opts||[]).map(v=>String(v||'').trim()).filter(Boolean);}
@@ -1307,13 +1335,13 @@ async function clientLoadReportOverview(){
   if(!clientResultsReleasedForSurvey(c,s)){out.innerHTML='<div class="card"><div class="empty">Os resultados ainda não foram liberados.</div></div>';return;}
   CR_CLIENT_REPORT_LOADING=true;out.innerHTML='<div class="empty" style="padding:28px 0">Carregando resultados agregados…</div>';
   try{
-    const {data:docs,error:docError}=await sb.from('report_documents').select('id,title,subtitle,presentation,methodology,executive_summary,sections,status,published_at').eq('survey_id',s.id).eq('client_id',CURRENT_PROFILE?.id||c.id).eq('status','published').order('published_at',{ascending:false}).limit(1);
+    const {data:docs,error:docError}=await clientWithTimeout(sb.from('report_documents').select('id,title,subtitle,presentation,methodology,executive_summary,sections,status,published_at').eq('survey_id',s.id).eq('client_id',CURRENT_PROFILE?.id||c.id).eq('status','published').order('published_at',{ascending:false}).limit(1),'o relatório publicado');
     if(docError)throw docError;
     const publishedDocument=docs?.[0]||null;
-    const {data:overviewRows,error:overviewError}=await sb.rpc('client_report_all_questions',{p_survey_id:s.id});
+    const {data:overviewRows,error:overviewError}=await clientWithTimeout(sb.rpc('client_report_all_questions',{p_survey_id:s.id}),'os resultados agregados');
     if(overviewError)throw overviewError;
     const crossings=clientPublishedCrossings(publishedDocument,crossQs),crossRowsById={};
-    for(const crossing of crossings){const ids=reportsCrossingQuestionIds(crossing);const {data,error}=await sb.rpc('client_report_cross_tab',{p_survey_id:s.id,p_question_ids:ids});if(error)throw error;crossRowsById[crossing.id]=data||[];}
+    for(const crossing of crossings){const ids=reportsCrossingQuestionIds(crossing);const {data,error}=await clientWithTimeout(sb.rpc('client_report_cross_tab',{p_survey_id:s.id,p_question_ids:ids}),'os cruzamentos do relatório');if(error)throw error;crossRowsById[crossing.id]=data||[];}
     CR_CLIENT_REPORT_CACHE={surveyId:s.id,overviewRows:overviewRows||[],crossRowsById,document:publishedDocument};
     clientRenderReportOverview(out,s,qs,overviewRows||[],publishedDocument,crossings);
   }catch(ex){
@@ -1326,7 +1354,7 @@ async function clientLoadPublishedReports(){
   const wrap=document.getElementById('client-published-reports-list');if(!wrap||!sb?.rpc)return;
   const s=clientSelfSurvey();if(!s){wrap.innerHTML='<div class="empty" style="padding:14px 0">Nenhum relatório disponível.</div>';return;}
   try{
-    const {data,error}=await sb.rpc('client_published_reports',{p_survey_id:s.id});if(error)throw error;
+    const {data,error}=await clientWithTimeout(sb.rpc('client_published_reports',{p_survey_id:s.id}),'os relatórios publicados');if(error)throw error;
     const reports=data||[];
     if(!reports.length){wrap.innerHTML='<div class="empty" style="padding:14px 0">A equipe ainda não publicou um relatório final para esta pesquisa.</div>';return;}
     const rows=[];
@@ -7146,7 +7174,7 @@ window._beforeRender=function(key){
 };
 
 window._afterRender=function(key){
-  if(key!=='collect'){stopCollectLive();}if(key!=='client-results'){clientGeoStopLive();}if(key!=='client-progress'){clientProgressStopLive();}
+  if(key!=='collect'){stopCollectLive();}if(key!=='client-results'&&key!=='client-progress'){clientGeoStopLive();}if(key!=='client-progress'){clientProgressStopLive();}
   if(key!=='app-collect'){stopAcollectQuotaLive();}
   if(key!=='reports'){reportsStopLive();}
   if(key!=='communication'){chatStopRealtime();}
@@ -7162,7 +7190,7 @@ window._afterRender=function(key){
   }
   if(key==='dashboard')drawDash();
   if(key==='app-collect'&&MY_CONTRACT)initGeoCollect(); /* só inicia GPS/coleta se o contrato já estiver assinado — ver PAGES['app-collect'] */
-  if(key==='client-progress'){clientProgressStartLive();}
+  if(key==='client-progress'){clientProgressStartLive();clientResearcherProgressLoad();clientLoadReportOverview();clientLoadPublishedReports();clientGeoStartLive();responseHeatmapLoad('client');}
   if(key==='client-results'){clientLoadReportOverview();clientLoadPublishedReports();clientGeoStartLive();responseHeatmapLoad('client');}
   if(key==='reports'){reportsLoadAndRender();reportsStartLive();reportsLoadDraft();responseHeatmapLoad('master');}
   if(key==='my-earnings')renderMyRejected();

@@ -7,5 +7,5 @@ for(const token of ["'client-surveys'","Minhas pesquisas","clientSurveyListMarku
 for(const token of ['.client-surveys-page','.client-survey-list','.client-survey-card','.client-survey-details','.client-survey-details-grid','.client-survey-details-actions','@media(max-width:900px)'])assert(css.includes(token),`CSS ausente: ${token}`);
 assert(app.includes("cliente:['client-surveys','form-approval','client-progress','client-results','communication']"),'cliente não inicia pela lista de pesquisas');
 assert(app.includes("if(CURRENT_PROFILE?.role==='cliente'){button.hidden=true"),'seletor superior ainda aparece para cliente');
-assert(html.includes('20260922143000'),'cache da lista de pesquisas não atualizado');
+assert(html.includes('20260922184000'),'cache da lista de pesquisas não atualizado');
 console.log('Client surveys list smoke test OK: lista visível, ficha detalhada e acesso sem seletor superior verificados.');

@@ -1711,7 +1711,8 @@ const STATUS_PILL={
   encerrada:'<span class="pill pill-blue">● Encerrada</span>',
 };
 
-PAGES['new-survey']=()=>head(WIZ.editIndex!=null?'Editar pesquisa':'Nova pesquisa','Defina formulário, amostra com cotas e preço. A equipe é atribuída depois.')+`
+PAGES['new-survey']=()=>head(WIZ.editIndex!=null?'Editar pesquisa':'Nova pesquisa','Defina formulário, amostra com cotas e preço. A equipe é atribuída depois.',
+  '<button class="btn btn-out" onclick="surveyFormPdfDownload()">📄 Baixar formulário PDF</button>')+`
   <div class="wiz-steps" id="wizSteps"></div>
   <div id="wizBody"></div>`;
 
@@ -2635,6 +2636,7 @@ function surveyRow(s,idx,opts){
     ?`<button class="btn-ghost" onclick="chatOpenSurveyChannel('${s.id}')">Chat</button>
       <button class="btn-ghost" onclick="go('reports')">Ver relatório</button>
       <button class="btn-ghost" onclick="surveyDuplicate(${idx})">Duplicar</button>
+      <button class="btn-ghost survey-pdf-action" onclick="surveyFormPdfDownload(${idx})">📄 PDF formulário</button>
       <button class="btn-ghost" onclick="surveyReopen(${idx})">Reabrir</button>
       <button class="btn-ghost" style="color:var(--red)" onclick="surveyDelete(${idx})">Excluir</button>`
     :`${s.status==='rascunho'?`<button class="btn-ghost" style="color:var(--teal)" onclick="surveyStart(${idx})">▶ Iniciar coleta</button>`:''}
@@ -2642,6 +2644,7 @@ function surveyRow(s,idx,opts){
       <button class="btn-ghost" onclick="surveyTeam(${idx})">Equipe</button>
       <button class="btn-ghost" onclick="surveyEdit(${idx})">Editar</button>
       <button class="btn-ghost" onclick="surveyDuplicate(${idx})">Duplicar</button>
+      <button class="btn-ghost survey-pdf-action" onclick="surveyFormPdfDownload(${idx})">📄 PDF formulário</button>
       <button class="btn-ghost" onclick="surveyFinish(${idx})">Concluir</button>
       <button class="btn-ghost" style="color:var(--red)" onclick="surveyDelete(${idx})">Excluir</button>`;
   return `<tr>
@@ -2671,8 +2674,8 @@ PAGES.surveys=()=>{
     ${stat('Concluídas',String(SURVEYS.filter(s=>s.status==='encerrada').length),'em outra aba','✓','#7c3aed')}
   </div>
   <div class="card">
-    <table><thead><tr><th>Pesquisa</th><th>Formulário</th><th>Amostra</th><th>Coletado</th><th>Equipe</th><th>Status</th><th></th></tr></thead>
-    <tbody>${rows}</tbody></table>
+    <div class="survey-table-scroll"><table><thead><tr><th>Pesquisa</th><th>Formulário</th><th>Amostra</th><th>Coletado</th><th>Equipe</th><th>Status</th><th></th></tr></thead>
+    <tbody>${rows}</tbody></table></div>
   </div>
   <div class="callout" style="margin-top:16px"><b>Editar</b> reabre a pesquisa no fluxo com seus dados salvos. <b>Concluir</b> move a pesquisa para a aba Concluídas. <b>Duplicar</b> cria uma cópia como novo rascunho (formulário, amostra, cotas e preço), sem copiar equipe nem vínculo com clientes — útil para começar uma pesquisa parecida sem preencher tudo de novo.</div>`;
 };
@@ -2694,8 +2697,8 @@ PAGES['surveys-done']=()=>{
     ${stat('Total geral',String(SURVEYS.length),'todas as pesquisas','❒','#64748b')}
   </div>
   <div class="card">
-    <table><thead><tr><th>Pesquisa</th><th>Formulário</th><th>Amostra</th><th>Coletado</th><th>Equipe</th><th>Status</th><th></th></tr></thead>
-    <tbody>${rows}</tbody></table>
+    <div class="survey-table-scroll"><table><thead><tr><th>Pesquisa</th><th>Formulário</th><th>Amostra</th><th>Coletado</th><th>Equipe</th><th>Status</th><th></th></tr></thead>
+    <tbody>${rows}</tbody></table></div>
   </div>
   <div class="callout" style="margin-top:16px"><b>Reabrir</b> devolve a pesquisa para "em desenvolvimento". <b>Duplicar</b> cria uma cópia como novo rascunho, sem copiar equipe nem vínculo com clientes.</div>`;
 };
@@ -4819,6 +4822,88 @@ async function reportsSaveDraft(silent=false){
 function reportsPdfLines(doc,text,x,y,width,lineHeight=5){const lines=doc.splitTextToSize(String(text||''),width);doc.text(lines,x,y);return y+lines.length*lineHeight;}
 function reportsPdfHeader(doc,title,subtitle){const W=doc.internal.pageSize.getWidth();doc.setFillColor(15,42,86);doc.rect(0,0,W,18,'F');doc.setTextColor(255,255,255);doc.setFont('helvetica','bold');doc.setFontSize(12);doc.text('PesquisaPro',16,11);doc.setFont('helvetica','normal');doc.setFontSize(8);doc.text(subtitle||'Relatório de pesquisa',W-16,11,{align:'right'});doc.setTextColor(15,42,86);doc.setFont('helvetica','bold');doc.setFontSize(17);doc.text(title||'Relatório de resultados',16,31);return 42;}
 function reportsPdfFooter(doc){const pages=doc.internal.getNumberOfPages();for(let i=1;i<=pages;i++){doc.setPage(i);const W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight();doc.setDrawColor(220,228,238);doc.line(16,H-12,W-16,H-12);doc.setTextColor(100,116,139);doc.setFont('helvetica','normal');doc.setFontSize(8);doc.text('PesquisaPro · documento gerado pela plataforma',16,H-6);doc.text('Página '+i+' de '+pages,W-16,H-6,{align:'right'});}}
+function surveyFormPdfData(source){
+  const data=source||{};
+  return {
+    name:String(data.name||'Pesquisa sem nome'),tipo:String(data.tipo||'—'),dataIni:data.dataIni||'',dataFim:data.dataFim||'',
+    abrangencia:data.abrangencia||'estadual',estados:Array.isArray(data.estados)?data.estados:[],cidades:data.cidades||{},
+    pop:Number(data.pop)||0,questions:Array.isArray(data.questions)?data.questions.map((q,index)=>({
+      text:String(q.text||''),type:q.type||'single',opts:Array.isArray(q.opts)?q.opts.map(v=>String(v??'')):[],
+      endsInterview:Array.isArray(q.endsInterview)?q.endsInterview.map(Boolean):[],
+      fields:Array.isArray(q.fields)?q.fields.map(field=>({label:String(field.label||''),type:field.type||'open',options:Array.isArray(field.options)?field.options.map(v=>String(v??'')):[]})):[],
+    })):[],clientes:Array.isArray(data.clientes)?data.clientes.map(v=>String(v||'')).filter(Boolean):[]
+  };
+}
+function surveyFormPdfGeo(data){
+  const label=ABRANGENCIA_LABELS[data.abrangencia]||data.abrangencia||'—';
+  const states=data.estados.join(', ');
+  const cities=Object.entries(data.cidades||{}).flatMap(([uf,list])=>(Array.isArray(list)?list:[]).map(city=>city+(data.estados.length>1?' / '+uf:'')));
+  const location=[label,states,cities.length?cities.length+' cidade'+(cities.length===1?'':'s'):null].filter(Boolean);
+  return location.join(' · ')||'—';
+}
+function surveyFormPdfQuestionKind(q){return Q_TYPES[q.type]||q.type||'Pergunta';}
+function surveyFormPdfPage(doc,y,title,subtitle){
+  const H=doc.internal.pageSize.getHeight();
+  if(y+20>H-20){doc.addPage();return reportsPdfHeader(doc,title,subtitle);}
+  return y;
+}
+function surveyFormPdfWriteLines(doc,text,x,y,width,size=10,lineHeight=5){
+  doc.setFontSize(size);const lines=doc.splitTextToSize(String(text||''),width);doc.text(lines,x,y,{lineHeightFactor:lineHeight/size});return y+(lines.length*lineHeight);
+}
+function surveyFormPdfCover(doc,data,logoData){
+  const W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight(),M=16,bodyW=W-(M*2);
+  doc.setFillColor(15,42,86);doc.rect(0,0,W,H,'F');
+  if(logoData){const logoW=116,logoH=logoW*(248/960);doc.addImage(logoData,'PNG',M,22,logoW,logoH,undefined,'FAST');}
+  else{doc.setFillColor(37,99,235);doc.roundedRect(M,25,70,11,5.5,5.5,'F');doc.setTextColor(255,255,255);doc.setFont('helvetica','bold');doc.setFontSize(14);doc.text('PesquisaPro',M+35,32.5,{align:'center'});}
+  doc.setTextColor(255,255,255);doc.setFont('helvetica','bold');doc.setFontSize(27);
+  const titleLines=doc.splitTextToSize(data.name,bodyW);doc.text(titleLines.slice(0,4),M,78,{lineHeightFactor:1.08});
+  const subtitleY=78+(Math.min(titleLines.length,4)*29)+14;doc.setTextColor(219,234,254);doc.setFont('helvetica','normal');doc.setFontSize(13);doc.text('Formulário de pesquisa',M,subtitleY);
+  doc.setDrawColor(96,165,250);doc.setLineWidth(.5);doc.line(M,subtitleY+12,W-M,subtitleY+12);
+  const metaY=subtitleY+28;doc.setFillColor(24,57,110);doc.roundedRect(M,metaY,bodyW,88,4,4,'F');
+  const meta=[['TIPO',data.tipo],['PERÍODO',(data.dataIni?fmtDataBR(data.dataIni):'—')+' a '+(data.dataFim?fmtDataBR(data.dataFim):'—')],['ABRANGÊNCIA',surveyFormPdfGeo(data)],['PERGUNTAS',String(data.questions.length)],['CLIENTE(S)',data.clientes.length?data.clientes.join(', '):'A definir']];
+  let my=metaY+12;meta.forEach(([label,value])=>{doc.setTextColor(191,219,254);doc.setFont('helvetica','normal');doc.setFontSize(9);doc.text(label,M+8,my);doc.setTextColor(255,255,255);doc.setFont('helvetica','bold');doc.setFontSize(10.5);const lines=doc.splitTextToSize(String(value||'—'),bodyW-16).slice(0,2);doc.text(lines,M+8,my+7);my+=15+(lines.length>1?5:0);});
+  doc.setTextColor(191,219,254);doc.setFont('helvetica','normal');doc.setFontSize(9);doc.text('Documento preparado na plataforma PesquisaPro para revisão e envio ao cliente.',M,H-24,{maxWidth:bodyW});
+}
+function surveyFormPdfWriteQuestion(doc,data,q,index,y){
+  const W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight(),M=16,bodyW=W-(M*2),title='Formulário da pesquisa',subtitle=data.name;
+  y=surveyFormPdfPage(doc,y,title,subtitle);
+  const questionTitle=(index+1)+'. '+(q.text||'(pergunta sem texto)');
+  doc.setTextColor(15,42,86);doc.setFont('helvetica','bold');doc.setFontSize(11);
+  const titleLines=doc.splitTextToSize(questionTitle,bodyW);if(y+titleLines.length*5+15>H-20){doc.addPage();y=reportsPdfHeader(doc,title,subtitle);}
+  doc.text(titleLines,M,y,{lineHeightFactor:.95});y+=titleLines.length*5+2;
+  doc.setTextColor(100,116,139);doc.setFont('helvetica','normal');doc.setFontSize(8.5);doc.text(surveyFormPdfQuestionKind(q),M,y);y+=7;
+  const optionLine=(label,extra='')=>{
+    const text='□ '+label+(extra?'  · '+extra:'');const lines=doc.splitTextToSize(text,bodyW-4);if(y+lines.length*4.5+4>H-20){doc.addPage();y=reportsPdfHeader(doc,title,subtitle);}
+    doc.setTextColor(51,65,85);doc.setFont('helvetica','normal');doc.setFontSize(9.5);doc.text(lines,M+3,y,{lineHeightFactor:.9});y+=lines.length*4.5+2;
+  };
+  if(Q_HAS_OPTS(q.type)){
+    q.opts.filter(option=>option.trim()).forEach((option,oi)=>optionLine(option,q.endsInterview[oi]?'encerrar entrevista':''));
+  }else if(q.type==='pair'){
+    const fields=q.fields.length===2?q.fields:DEFAULT_PAIR_FIELDS();fields.forEach((field,fi)=>{y=surveyFormPdfPage(doc,y,title,subtitle);doc.setTextColor(15,42,86);doc.setFont('helvetica','bold');doc.setFontSize(9.5);doc.text((fi+1)+'. '+(field.label||'Resposta '+(fi+1)),M+3,y);y+=6;if(Q_CLOSED_FIELD_TYPES.includes(field.type)){(field.options||[]).filter(option=>option.trim()).forEach(option=>optionLine(option));}else{doc.setDrawColor(148,163,184);doc.line(M+3,y, W-M-3,y);y+=9;}});
+  }else if(q.type==='scale'){optionLine('Péssima    ① ② ③ ④ ⑤    Ótima');}
+  else if(q.type==='scale10'){optionLine('Péssima    1  2  3  4  5  6  7  8  9  10    Ótima');}
+  else if(q.type==='nps'){optionLine('0  1  2  3  4  5  6  7  8  9  10');}
+  else if(q.type==='open'){doc.setDrawColor(148,163,184);for(let i=0;i<4;i++){doc.line(M+3,y,W-M-3,y);y+=8;}}
+  else if(q.type==='number'){optionLine('Resposta numérica: ________________________________');}
+  else if(q.type==='date'){optionLine('Data: ____ / ____ / ______');}
+  doc.setDrawColor(226,232,240);doc.line(M,y+3,W-M,y+3);return y+12;
+}
+async function surveyFormPdfDownload(index){
+  try{
+    let source;
+    if(index==null){wizSave();source=JSON.parse(JSON.stringify(WIZ.data));}
+    else source=SURVEYS[Number(index)];
+    const data=surveyFormPdfData(source);
+    if(!data.questions.length){alert('Adicione pelo menos uma pergunta ao formulário antes de gerar o PDF.');return;}
+    await loadLocalAsset('jspdf');const jsPDF=window.jspdf?.jsPDF;if(!jsPDF)throw new Error('Gerador PDF indisponível.');
+    const logoData=await reportsLoadCoverLogo();const doc=new jsPDF({unit:'mm',format:'a4'});
+    surveyFormPdfCover(doc,data,logoData);doc.addPage();let y=reportsPdfHeader(doc,'Formulário da pesquisa',data.name);
+    doc.setTextColor(51,65,85);doc.setFont('helvetica','normal');doc.setFontSize(9.5);y=surveyFormPdfWriteLines(doc,'Este documento reproduz as perguntas e opções cadastradas na PesquisaPro para revisão e envio ao cliente.',16,y,178,9.5,4.8)+10;
+    data.questions.forEach((q,qi)=>{y=surveyFormPdfWriteQuestion(doc,data,q,qi,y);});reportsPdfFooter(doc);
+    const safe=data.name.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/gi,'-').replace(/^-|-$/g,'').toLowerCase()||'pesquisa';
+    const url=URL.createObjectURL(doc.output('blob'));const a=document.createElement('a');a.href=url;a.download='formulario-pesquisapro-'+safe+'.pdf';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);
+  }catch(ex){alert('Não foi possível gerar o PDF do formulário: '+(ex.message||String(ex)));console.error(ex);}
+}
 async function reportsEnsurePdfData(payload){
   const survey=reportsCurrentSurvey();if(!survey)return;
   if(payload.sections.includeOverview&&RP_REPORT_ANALYSIS_CACHE.surveyId!==survey.id||payload.sections.includeOverview&&!RP_REPORT_ANALYSIS_CACHE.overviewRows.length){const {data,error}=await sb.rpc('survey_report_all_questions',{p_survey_id:survey.id});if(error)throw error;RP_REPORT_ANALYSIS_CACHE.overviewRows=data||[];RP_REPORT_ANALYSIS_CACHE.surveyId=survey.id;}

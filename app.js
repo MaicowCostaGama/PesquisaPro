@@ -3300,6 +3300,12 @@ const RESEARCHER_INFO={
   'Renata Lima':{regional:'Noroeste',link:'…/c/rl-2k7p',meta:160,done:88,sync:'online',phone:'5538999990005'},
   'Paulo Cruz':{regional:'Norte',link:'…/c/pc-5m1q',meta:320,done:210,sync:'offline',phone:'5538999990006'},
 };
+function surveyCoveragePct(collected,sample){
+  const total=Number(sample)||0,done=Number(collected)||0;
+  if(total<=0||done<=0)return '0%';
+  const rounded=Math.round((done/total*100)*10)/10;
+  return rounded.toLocaleString('pt-BR',{minimumFractionDigits:Number.isInteger(rounded)?0:1,maximumFractionDigits:1})+'%';
+}
 PAGES.collect=()=>{
   if(!SURVEYS_LOADED)loadSurveysIfNeeded();
   if(!COLLECT_EVENTS_LOADED)loadCollectEventsIfNeeded();
@@ -3311,13 +3317,13 @@ function collectList(){
   const rows=active.map(({s,i})=>{
     const sample=surveySample(s);
     const collected=surveyCollectedCount(s);
-    const pct=sample?Math.round(collected/sample*100):0;
+    const pct=surveyCoveragePct(collected,sample);
     const team=(s.team||[]).length;
     return `<tr style="cursor:pointer" onclick="collectOpen(${i})">
       <td><b>${esc(s.name)}</b><div style="font-size:11px;color:var(--ink3)">${esc(s.created)}</div></td>
       <td>${STATUS_PILL[s.status]}</td>
       <td>${team?team+(team===1?' pesquisador':' pesquisadores'):'<span style="color:var(--ink3)">sem equipe</span>'}</td>
-      <td>${collected.toLocaleString('pt-BR')} / ${sample.toLocaleString('pt-BR')} (${pct}%)</td>
+      <td>${collected.toLocaleString('pt-BR')} / ${sample.toLocaleString('pt-BR')} (${pct})</td>
       <td><span class="pill pill-blue">Abrir →</span></td></tr>`;
   }).join('')||'<tr><td colspan="5" class="empty">Nenhuma pesquisa em andamento.</td></tr>';
   return head('Coleta e campo','Selecione uma pesquisa em andamento para ver os pesquisadores vinculados')+`

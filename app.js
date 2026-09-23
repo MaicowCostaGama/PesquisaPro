@@ -3129,12 +3129,12 @@ PAGES['survey-team']=()=>{
       ${inviteHtml}</label>`;
   }).join(''):'<div class="empty">Nenhum pesquisador cadastrado ainda. Cadastre em Usuários → Pesquisadores.</div>';
   return head('Atribuir equipe — '+s.name,'Escolha pesquisadores cadastrados ou envie link de cadastro para novos',
-    '<button class="btn btn-out" onclick="go(\'surveys\')">← Voltar</button><button class="btn btn-out" onclick="chatOpenSurveyChannel(\''+s.id+'\')">✉ Chat da pesquisa</button><button class="btn btn-fill" onclick="teamSave()">Salvar equipe</button>')+`
+    '<button class="btn btn-out" onclick="go(\'surveys\')">← Voltar</button><button class="btn btn-out" onclick="chatOpenSurveyChannel(\''+s.id+'\')">✉ Chat da pesquisa</button><button class="btn btn-out team-collection-access" onclick="collectOpen('+TEAM_IDX+')">📊 Pesquisadores na coleta</button><button class="btn btn-fill" onclick="teamSave()">Salvar equipe</button>')+`
   ${TEAM_RESEARCHER_LINK_LOADED?teamResearcherLinkMarkup():''}
   ${TEAM_COMM_SETTINGS_LOADED?teamCommunicationMarkup():''}
   <div class="grid g2" style="align-items:start">
     <div class="card">
-      <div class="card-t">Pesquisadores cadastrados</div>
+      <div style="display:flex;align-items:flex-start;gap:12px;justify-content:space-between;flex-wrap:wrap"><div><div class="card-t">Pesquisadores cadastrados</div><div class="card-d" style="margin-top:4px">Para acompanhar quem já está coletando, use <b>Pesquisadores na coleta</b> no topo ou abra o botão abaixo.</div></div><button class="btn btn-fill team-collection-access" onclick="collectOpen(${TEAM_IDX})">📊 Ver pesquisadores na coleta</button></div>
       <div class="card-d">${hasTarget?`Só é possível convidar quem tem, no cadastro, disponibilidade para ${esc(areaNote)} — pesquisadores de outras áreas ficam de fora da lista.`:`Marque quem vai trabalhar nesta pesquisa (${esc(areaNote)}, então não há restrição de área).`}</div>
       ${hasTarget&&foraCount?`<label class="pick" style="padding:6px 2px;margin-bottom:6px;cursor:pointer"><input type="checkbox" id="team-show-fora" ${TEAM_SHOW_OUT_OF_AREA?'checked':''} onchange="teamToggleShowFora(this.checked)"><span style="font-size:12px;color:var(--ink3)">Mostrar também os ${foraCount} pesquisador${foraCount>1?'es':''} fora da área (não poderão ser marcados — exceção só pelo cadastro dele)</span></label>`:''}
       ${pesqs.length?teamFiltersMarkup(pesqs,hasTarget):''}

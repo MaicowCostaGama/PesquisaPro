@@ -10,5 +10,5 @@ for(const token of ['.campaign-switcher-overlay','.campaign-switcher-dialog','.c
 assert(!html.includes("alert('Recurso ainda não configurado: troca de pesquisa/campanha')"),'placeholder antigo ainda está no cabeçalho');
 assert(app.includes("const linked=campaignSurveysForCurrentUser();"),'cliente ainda não usa pesquisas vinculadas');
 assert(app.includes('return linked.find(s=>s.id===ACTIVE_CAMPAIGN_ID)||linked[0]||null;'),'pesquisa ativa não é persistida na tela do cliente');
-assert(html.includes('20260922211000'),'cache do seletor não atualizado');
+assert(html.includes('20260922211500'),'cache do seletor não atualizado');
 console.log('Campaign switcher smoke test OK: lista de pesquisas, ficha detalhada, seleção e sem alerta placeholder.');

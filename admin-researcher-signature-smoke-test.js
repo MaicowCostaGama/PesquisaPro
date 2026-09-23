@@ -17,5 +17,5 @@ ok(migration.includes('signature_origin'),'origem da assinatura não auditada');
 ok(migration.includes('signed_by_admin'),'administrador não é registrado');
 ok(migration.includes('on conflict (researcher_id,contract_version) do nothing'),'proteção contra duplicidade ausente');
 ok(migration.includes('public.is_admin()'),'migration não limita a administradores');
-ok(html.includes('app.js?v=20260922211000'),'cache do botão administrativo não atualizado');
+ok(html.includes('app.js?v=20260922211500'),'cache do botão administrativo não atualizado');
 console.log('admin-researcher-signature-smoke-test: PASS');

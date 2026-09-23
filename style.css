@@ -1186,3 +1186,8 @@ body.lp{background:#f8faff;color:var(--ink)}
 
 /* Ações de convite da equipe: push em massa e WhatsApp completo ficam distintos */
 .team-whatsapp-invite-btn{color:#075e54!important;border-color:#a7d8cf!important;white-space:nowrap}.team-whatsapp-invite-btn:hover{background:#ecfdf8!important;border-color:#75c9bb!important}
+
+
+/* Acesso direto da equipe ao monitoramento da coleta */
+.team-collection-access{white-space:nowrap;color:#1d4ed8!important;border-color:#b9d1f5!important}.team-collection-access:hover{background:#eff6ff!important;border-color:#8db5ed!important}
+@media(max-width:680px){.team-collection-access{width:100%}}

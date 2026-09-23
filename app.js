@@ -3553,8 +3553,8 @@ function collectDetail(idx){
       <div class="card-t">Auditoria da coleta</div>
       <div class="card-d">Todas as entrevistas desta pesquisa: pesquisador, cota, coordenadas (com a distância até a coleta anterior do mesmo pesquisador), horário, intervalo desde a entrevista anterior, confirmação final e alertas de qualidade. Aproximadamente 20% podem ser selecionadas para uma confirmação curta em áudio, sempre com autorização do entrevistado. Reprove uma coleta com fraude/erro (não entra no pagamento do pesquisador) ou marque como calibração (fica fora do cálculo dos resultados, mas continua contando para o pagamento). As duas ações podem ser desfeitas a qualquer momento, aqui ou no painel acima.</div>
       <div id="auditRecordingSummary" class="recording-summary"></div>
-      <div class="audit-table-scroll-hint" role="note"><span aria-hidden="true">↔</span><span><b>Deslize horizontalmente</b> para consultar todos os detalhes. A coluna <b>Ações</b> permanece acessível à direita.</span></div>
-      <div class="audit-table-scroll" tabindex="0" aria-label="Tabela de auditoria. Deslize horizontalmente para ver todas as informações e ações.">
+      <div class="audit-table-scroll-hint" role="note"><span aria-hidden="true">✓</span><span><b>Visão completa:</b> todas as informações e ações estão organizadas na tela, sem rolagem horizontal.</span></div>
+      <div class="audit-table-scroll" tabindex="0" aria-label="Tabela de auditoria com todas as informações e ações visíveis.">
       <table class="audit-data-table"><thead><tr><th>Pesquisador</th><th>Cota</th><th>Data/hora</th><th title="Tempo desde a entrevista anterior do mesmo pesquisador">Intervalo</th><th>Coordenadas</th><th>Precisão</th><th>Status</th><th>Duração</th><th>Confirmação</th><th>Alertas</th><th class="audit-actions-header">Ações</th></tr></thead>
       <tbody id="auditBody"></tbody></table>
       </div>

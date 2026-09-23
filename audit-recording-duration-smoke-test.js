@@ -19,7 +19,8 @@ for(const token of [
   'collectionRecordingCell(e)',
   'COLLECT_EVENT_SELECT_DURATION',
   'audit-actions-evidence',
-  'audit-evidence-label'
+  'audit-evidence-label',
+  'Visão completa'
 ])assert(app.includes(token),`app sem ${token}`);
 for(const token of [
   '.audit-duration-value',
@@ -28,6 +29,8 @@ for(const token of [
   '.audit-recording-note',
   '.audit-recording-error'
 ])assert(css.includes(token),`CSS sem ${token}`);
+assert(css.includes('.audit-table-scroll{overflow-x:hidden'),'Auditoria ainda permite barra horizontal');
+assert(css.includes('table-layout:fixed'),'Auditoria sem layout compacto');
 for(const token of [
   'alter table public.collection_events',
   'add column if not exists duration_seconds integer',
@@ -36,5 +39,5 @@ for(const token of [
   'commit;'
 ])assert(migration.includes(token),`migration sem ${token}`);
 assert(!/drop table|drop column|truncate|delete from/i.test(migration),'migration contém operação destrutiva');
-assert(html.includes('app.js?v=20260922233500'),'cache não atualizado');
+assert(html.includes('app.js?v=20260922234500'),'cache não atualizado');
 console.log('Audit recording duration smoke test: PASS — duração, status, recusa e player privado verificados.');

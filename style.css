@@ -1222,3 +1222,59 @@ body.lp{background:#f8faff;color:var(--ink)}
 .audit-actions-evidence .audit-recording-loading,.audit-actions-evidence .audit-recording-note,.audit-actions-evidence .audit-recording-error{max-width:245px}
 @media(max-width:1050px){.audit-data-table .audit-actions-header,.audit-data-table .audit-actions-cell{width:250px;min-width:250px}}
 @media(max-width:640px){.audit-data-table .audit-actions-header,.audit-data-table .audit-actions-cell{width:225px;min-width:225px}.audit-actions-evidence .audit-recording-player{width:195px}}
+
+
+/* Auditoria compacta: todas as colunas cabem sem barra horizontal */
+.audit-table-scroll{overflow-x:hidden;overflow-y:visible;padding-bottom:0}
+.audit-data-table{width:100%;min-width:0;table-layout:fixed;font-size:10.5px}
+.audit-data-table th,.audit-data-table td{padding:7px 6px;line-height:1.3;overflow-wrap:anywhere}
+.audit-data-table th{font-size:9px;letter-spacing:.25px;white-space:nowrap}
+.audit-data-table th:nth-child(1),.audit-data-table td:nth-child(1){width:10%;min-width:0}
+.audit-data-table th:nth-child(2),.audit-data-table td:nth-child(2){width:7%;min-width:0}
+.audit-data-table th:nth-child(3),.audit-data-table td:nth-child(3){width:9%;min-width:0}
+.audit-data-table th:nth-child(4),.audit-data-table td:nth-child(4){width:6%;min-width:0}
+.audit-data-table th:nth-child(5),.audit-data-table td:nth-child(5){width:11%;min-width:0}
+.audit-data-table th:nth-child(6),.audit-data-table td:nth-child(6){width:5%;min-width:0}
+.audit-data-table th:nth-child(7),.audit-data-table td:nth-child(7){width:7%;min-width:0}
+.audit-data-table th:nth-child(8),.audit-data-table td:nth-child(8){width:6%;min-width:0}
+.audit-data-table th:nth-child(9),.audit-data-table td:nth-child(9){width:10%;min-width:0}
+.audit-data-table th:nth-child(10),.audit-data-table td:nth-child(10){width:8%;min-width:0}
+.audit-data-table .audit-actions-header,.audit-data-table .audit-actions-cell{position:sticky;right:0;width:21%;min-width:0;padding:6px 5px;background:#fff;box-shadow:-8px 0 14px -14px rgba(15,42,86,.8)}
+.audit-data-table .audit-actions-header{z-index:5;background:#fbfdff}
+.audit-actions-stack{min-width:0;gap:4px;white-space:normal}
+.audit-actions-stack .btn-ghost,.audit-actions-stack .conversation-btn{min-width:0;padding:5px 4px;font-size:9.5px;line-height:1.2;white-space:normal}
+.audit-actions-evidence{gap:4px;margin-bottom:5px;padding:5px 6px;font-size:9.5px}
+.audit-evidence-label{font-size:8px;letter-spacing:.25px}
+.audit-actions-evidence .audit-recording-player{width:100%;height:26px;margin-top:4px}
+.audit-actions-evidence .audit-recording-loading,.audit-actions-evidence .audit-recording-note,.audit-actions-evidence .audit-recording-error{max-width:100%;font-size:9px}
+.audit-actions-evidence .audit-recording-duration{font-size:9px}
+.audit-recording-player{width:100%;height:26px}
+.audit-recording-loading,.audit-recording-note,.audit-recording-error{max-width:100%;font-size:9px}
+
+@media(max-width:760px){
+  .audit-table-scroll{overflow-x:hidden}
+  .audit-data-table{display:block;min-width:0;font-size:11px}
+  .audit-data-table thead{display:none}
+  .audit-data-table tbody{display:grid;gap:9px}
+  .audit-data-table tbody tr{display:grid;grid-template-columns:1fr 1fr;gap:0 8px;padding:7px;border:1px solid var(--line);border-radius:10px;background:#fff}
+  .audit-data-table tbody tr:hover{background:#fff}
+  .audit-data-table tbody td{display:flex;flex-direction:column;align-items:flex-start;width:auto!important;min-width:0!important;padding:6px 4px;border:0;position:static!important;box-shadow:none!important;background:transparent!important}
+  .audit-data-table tbody td::before{font-size:8px;font-weight:800;letter-spacing:.35px;text-transform:uppercase;color:var(--ink3);margin-bottom:2px}
+  .audit-data-table tbody td:nth-child(1)::before{content:'Pesquisador'}
+  .audit-data-table tbody td:nth-child(2)::before{content:'Cota'}
+  .audit-data-table tbody td:nth-child(3)::before{content:'Data/hora'}
+  .audit-data-table tbody td:nth-child(4)::before{content:'Intervalo'}
+  .audit-data-table tbody td:nth-child(5)::before{content:'Coordenadas'}
+  .audit-data-table tbody td:nth-child(6)::before{content:'Precisão'}
+  .audit-data-table tbody td:nth-child(7)::before{content:'Status'}
+  .audit-data-table tbody td:nth-child(8)::before{content:'Duração'}
+  .audit-data-table tbody td:nth-child(9)::before{content:'Gravação'}
+  .audit-data-table tbody td:nth-child(10)::before{content:'Alertas'}
+  .audit-data-table tbody td:nth-child(11){grid-column:1/-1;padding-top:8px;border-top:1px solid var(--line)}
+  .audit-data-table tbody td:nth-child(11)::before{content:'Ações'}
+  .audit-actions-evidence{display:none}
+  .audit-actions-stack{width:100%;display:grid;grid-template-columns:repeat(3,1fr);gap:5px}
+  .audit-actions-stack .btn-ghost,.audit-actions-stack .conversation-btn{width:100%;font-size:10px}
+  .audit-data-table tbody td:nth-child(11) .audit-actions-stack .conversation-btn{grid-column:1/-1}
+  .audit-data-table tbody td:nth-child(9) .audit-recording-player{width:100%}
+}

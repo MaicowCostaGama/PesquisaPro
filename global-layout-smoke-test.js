@@ -17,8 +17,8 @@ for (const token of [
   assert(css.includes(token), `regra global de layout ausente: ${token}`);
 }
 
-assert(html.includes('style.css?v=20260922234500'), 'cache do layout não foi atualizado');
-assert(html.includes('app.js?v=20260922234500'), 'cache do app não foi atualizado');
+assert(html.includes('style.css?v=20260922235500'), 'cache do layout não foi atualizado');
+assert(html.includes('app.js?v=20260922235500'), 'cache do app não foi atualizado');
 assert(css.includes('.finance-table-scroll{'), 'rolagem horizontal de tabela financeira deve continuar localizada');
 assert(css.includes('.audit-table-scroll{'), 'rolagem horizontal da auditoria deve continuar localizada');
 assert(css.includes('.user-table-scroll{'), 'rolagem horizontal de usuários deve continuar localizada');

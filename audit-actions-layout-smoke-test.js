@@ -33,8 +33,8 @@ for (const token of [
   assert(css.includes(token), `estilo de auditoria ausente: ${token}`);
 }
 
-assert(html.includes('style.css?v=20260922234500'), 'cache do CSS da auditoria não foi atualizado');
-assert(html.includes('app.js?v=20260922234500'), 'cache do app da auditoria não foi atualizado');
+assert(html.includes('style.css?v=20260922235500'), 'cache do CSS da auditoria não foi atualizado');
+assert(html.includes('app.js?v=20260922235500'), 'cache do app da auditoria não foi atualizado');
 assert(app.includes("onclick=\"auditReject('${e.id}')\""), 'ação de reprovação ausente');
 assert(app.includes("onclick=\"auditToggleCalibration('${e.id}')\""), 'ação de calibração ausente');
 assert(app.includes('conversationButton(e.phone'), 'ação de conversa ausente');

@@ -20,5 +20,5 @@ for(const token of [
   'grant execute on function public.record_survey_invite_whatsapp_send(uuid) to authenticated'
 ])assert(migration.includes(token),`migration sem ${token}`);
 assert(!/drop table|drop column|truncate|delete from/i.test(migration),'migration contém operação destrutiva');
-assert(html.includes('app.js?v=20260922234500'),'cache do contador não atualizado');
+assert(html.includes('app.js?v=20260922235500'),'cache do contador não atualizado');
 console.log('WhatsApp invite counter smoke test: PASS — contador por pesquisa/pesquisador, RPC atômica, data do último envio e exibição na equipe.');

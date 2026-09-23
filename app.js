@@ -2921,6 +2921,26 @@ function surveyInvitationWhatsappMessage(s,u,link,groupLink=''){
     'Ao aceitar, você entrará automaticamente na equipe desta pesquisa e poderá acompanhar as orientações e coletas no seu painel. Caso não possa participar, você poderá recusar o convite no próprio aplicativo.\n\n'+
     'PesquisaPro — Pesquisa, coleta e auditoria de campo.';
 }
+function surveyInitialOrientationWhatsappMessage(s,u,groupLink=''){
+  const name=u?.name||'pesquisador(a)';
+  const groupLine=groupLink?'Entre no grupo oficial antes da primeira coleta: '+groupLink:'O link do grupo oficial será disponibilizado no seu painel antes da primeira coleta.';
+  return 'Olá, '+name+'! Aqui estão as orientações iniciais da PesquisaPro para a pesquisa "'+(s?.name||'Pesquisa')+'".\n\n'+
+    '*Antes de começar:*\n'+
+    '• Acesse '+surveyInvitationSiteUrl()+' e entre no aplicativo PesquisaPro;\n'+
+    '• Selecione a pesquisa e confira a cota disponível antes de iniciar;\n'+
+    '• Mantenha o GPS do celular ativo e permita a localização quando solicitado;\n'+
+    '• '+groupLine+'\n\n'+
+    '*Regras da coleta:*\n'+
+    '• Aborde somente pessoas dentro do perfil definido no formulário;\n'+
+    '• Leia as perguntas e registre exatamente o que a pessoa responder;\n'+
+    '• Não invente, replique, acelere ou preencha entrevistas sem falar com o entrevistado;\n'+
+    '• Não faça coletas em pontos muito próximos nem em intervalos de tempo incompatíveis com uma entrevista real;\n'+
+    '• Preserve a privacidade e nunca fotografe documentos;\n\n'+
+    '*Controle de qualidade:*\n'+
+    'O georreferenciamento, o horário e os dados da coleta podem ser verificados. Gravações curtas de voz do entrevistado poderão ser solicitadas aleatoriamente ao final de algumas entrevistas, sempre com explicação e autorização.\n\n'+
+    'Entrevistas que não respeitem o perfil, o local, o tempo ou as regras poderão ser anuladas e não serão consideradas nos resultados ou no pagamento. Pesquisadores que insistirem em descumprir as regras ou tentarem burlar os controles poderão ser desligados da operação.\n\n'+
+    'Em caso de dúvida, pare a coleta e fale com a equipe PesquisaPro. Boa coleta: precisa, respeitosa e fiel à opinião do entrevistado.';
+}
 async function copySurveyInviteLink(inviteId){
   const link=surveyInviteLink(inviteId);
   try{await navigator.clipboard.writeText(link);alert('Link do convite copiado.');}
@@ -3292,6 +3312,7 @@ PAGES.quotas=()=>head('Metas e cotas','Distribua a amostra por variáveis e acom
 /* ============ COLLECT (gestão de campo) ============ */
 /* ============ COLLECT (lista de pesquisas → pesquisadores) ============ */
 let COLLECT_IDX=null;
+let COLLECT_ORIENTATION_COUNTS={},COLLECT_ORIENTATION_COUNTS_STATUS='idle',COLLECT_ORIENTATION_COUNTS_LOADING=false;
 const RESEARCHER_INFO={
   'João Pereira':{regional:'Triângulo',link:'…/c/jp-3f9a',meta:180,done:312,sync:'online',phone:'5534999990001'},
   'Fernanda Couto':{regional:'Triângulo',link:'…/c/fc-9a4b',meta:200,done:188,sync:'online',phone:'5534999990002'},
@@ -3305,6 +3326,83 @@ function surveyCoveragePct(collected,sample){
   if(total<=0||done<=0)return '0%';
   const rounded=Math.round((done/total*100)*10)/10;
   return rounded.toLocaleString('pt-BR',{minimumFractionDigits:Number.isInteger(rounded)?0:1,maximumFractionDigits:1})+'%';
+}
+function collectionOrientationResearcher(name){
+  return USERS.find(u=>u.name===name)||null;
+}
+function collectionOrientationCountMarkup(name){
+  const user=collectionOrientationResearcher(name),id=user?.id;
+  if(COLLECT_ORIENTATION_COUNTS_STATUS==='loading')return '<span class="pill pill-gray collection-orientation-count">Orientações: carregando…</span>';
+  if(COLLECT_ORIENTATION_COUNTS_STATUS==='unavailable')return '<span class="pill pill-gray collection-orientation-count" title="Execute a migration do contador de orientações no Supabase">Orientações: indisponível</span>';
+  if(!id)return '<span class="pill pill-gray collection-orientation-count">Orientações: sem ID</span>';
+  const count=Math.max(0,Number(COLLECT_ORIENTATION_COUNTS[id]?.send_count)||0);
+  return `<span class="pill ${count?'pill-green':'pill-amber'} collection-orientation-count" title="Quantidade de vezes que as orientações iniciais foram abertas pelo WhatsApp">Orientações: ${count} envio${count===1?'':'s'}</span>`;
+}
+function collectionTeamRows(s,team){
+  return team.length?team.map(name=>{
+    const info=RESEARCHER_INFO[name]||{regional:'—',link:'…/c/xxxx',meta:0,done:0,sync:'online',phone:'5500000000000'};
+    const user=collectionOrientationResearcher(name),phone=user?.phone||info.phone||'';
+    const syncPill=info.sync==='online'?'<span class="pill pill-green">● Online</span>':'<span class="pill pill-amber">● Offline</span>';
+    const wa='https://wa.me/'+whatsappDigits(phone);
+    return `<tr>
+      <td><div style="display:flex;align-items:center;gap:9px"><div class="avatar" style="width:28px;height:28px;font-size:11px">${esc(initialsOf(name))}</div>${esc(name)}</div></td>
+      <td>${esc(info.regional)}</td>
+      <td><span class="pill pill-blue">${esc(info.link)}</span></td>
+      <td>${Number(info.done)||0} / ${Number(info.meta)||0}</td>
+      <td>${syncPill}</td>
+      <td class="collection-team-actions">
+        <div class="collection-orientation-action"><button class="btn btn-out collection-orientation-btn" ${phone?'':'disabled'} onclick="sendCollectionOrientationWhatsapp(${jsArg(name)})">✉ Enviar orientações</button>${collectionOrientationCountMarkup(name)}</div>
+        ${phone?`<a class="btn-ghost" style="color:var(--teal);display:inline-block" href="${wa}" target="_blank" rel="noopener">WhatsApp</a>`:'<span class="pill pill-gray">Sem telefone</span>'}
+      </td></tr>`;
+  }).join(''):'<tr><td colspan="6" class="empty">Nenhum pesquisador vinculado. Atribua a equipe em Minhas pesquisas.</td></tr>';
+}
+function refreshCollectionTeamRows(idx){
+  const tbody=document.getElementById('collectTeamBody'),s=SURVEYS[idx];
+  if(tbody&&s)tbody.innerHTML=collectionTeamRows(s,s.team||[]);
+}
+async function loadCollectionOrientationCounts(idx){
+  const s=SURVEYS[idx];
+  if(!s?.id||COLLECT_ORIENTATION_COUNTS_LOADING)return;
+  COLLECT_ORIENTATION_COUNTS_LOADING=true;COLLECT_ORIENTATION_COUNTS_STATUS='loading';refreshCollectionTeamRows(idx);
+  try{
+    const {data,error}=await sb.rpc('get_survey_orientation_whatsapp_counts',{p_survey_id:s.id});
+    if(error)throw error;
+    COLLECT_ORIENTATION_COUNTS={};
+    (data||[]).forEach(row=>{COLLECT_ORIENTATION_COUNTS[row.researcher_id]=row;});
+    COLLECT_ORIENTATION_COUNTS_STATUS='ready';
+  }catch(ex){
+    COLLECT_ORIENTATION_COUNTS_STATUS='unavailable';
+    console.warn('Contador de orientações indisponível; execute a migration contador-orientacoes-whatsapp-coleta.sql:',ex);
+  }
+  COLLECT_ORIENTATION_COUNTS_LOADING=false;
+  if(COLLECT_IDX===idx)refreshCollectionTeamRows(idx);
+}
+async function collectionOrientationGroupLink(surveyId){
+  try{
+    const {data,error}=await sb.from('survey_communication_settings').select('whatsapp_group_url').eq('survey_id',surveyId).maybeSingle();
+    if(error)throw error;
+    return data?.whatsapp_group_url||'';
+  }catch(ex){return '';}
+}
+async function sendCollectionOrientationWhatsapp(name){
+  const s=SURVEYS[COLLECT_IDX],user=collectionOrientationResearcher(name);
+  if(!s||!user){alert('Não foi possível identificar este pesquisador no cadastro.');return;}
+  const digits=whatsappDigits(user.phone);
+  if(!digits){alert('Este pesquisador não tem celular cadastrado.');return;}
+  const groupLink=await collectionOrientationGroupLink(s.id);
+  const message=surveyInitialOrientationWhatsappMessage(s,user,groupLink);
+  window.open('https://wa.me/'+digits+'?text='+encodeURIComponent(message),'_blank','noopener');
+  try{
+    const {data,error}=await sb.rpc('record_survey_orientation_whatsapp_send',{p_survey_id:s.id,p_researcher_id:user.id});
+    if(error)throw error;
+    const row=Array.isArray(data)?data[0]:data;
+    if(row)COLLECT_ORIENTATION_COUNTS[user.id]=row;
+    COLLECT_ORIENTATION_COUNTS_STATUS='ready';
+    refreshCollectionTeamRows(COLLECT_IDX);
+  }catch(ex){
+    console.warn('Envio aberto, mas contador de orientações indisponível; execute a migration contador-orientacoes-whatsapp-coleta.sql:',ex);
+    alert('A orientação foi aberta no WhatsApp, mas o contador ainda não está ativo. Execute a migration do contador de orientações no Supabase.');
+  }
 }
 PAGES.collect=()=>{
   if(!SURVEYS_LOADED)loadSurveysIfNeeded();
@@ -3334,27 +3432,13 @@ function collectList(){
     <tbody>${rows}</tbody></table>
   </div>`;
 }
-function collectOpen(i){COLLECT_IDX=i;COLLECT_ARMED=true;_collectMapFilters={researcher:'all',status:'all',latest:false};_collectMapDidFit=false;go('collect');}
-function collectBack(){COLLECT_IDX=null;go('collect');}
+function collectOpen(i){COLLECT_IDX=i;COLLECT_ARMED=true;COLLECT_ORIENTATION_COUNTS={};COLLECT_ORIENTATION_COUNTS_STATUS='loading';COLLECT_ORIENTATION_COUNTS_LOADING=false;_collectMapFilters={researcher:'all',status:'all',latest:false};_collectMapDidFit=false;go('collect');}
+function collectBack(){COLLECT_IDX=null;COLLECT_ORIENTATION_COUNTS={};COLLECT_ORIENTATION_COUNTS_STATUS='idle';COLLECT_ORIENTATION_COUNTS_LOADING=false;go('collect');}
 let COLLECT_ARMED=false;
 function collectDetail(idx){
   const s=SURVEYS[idx];if(!s)return collectList();
   const team=s.team||[];
-  const rows=team.length?team.map(name=>{
-    const info=RESEARCHER_INFO[name]||{regional:'—',link:'…/c/xxxx',meta:0,done:0,sync:'online',phone:'5500000000000'};
-    const syncPill=info.sync==='online'?'<span class="pill pill-green">● Online</span>':'<span class="pill pill-amber">● Offline</span>';
-    const wa='https://wa.me/'+info.phone;
-    return `<tr>
-      <td><div style="display:flex;align-items:center;gap:9px"><div class="avatar" style="width:28px;height:28px;font-size:11px">${esc(initialsOf(name))}</div>${esc(name)}</div></td>
-      <td>${esc(info.regional)}</td>
-      <td><span class="pill pill-blue">${esc(info.link)}</span></td>
-      <td>${Number(info.done)||0} / ${Number(info.meta)||0}</td>
-      <td>${syncPill}</td>
-      <td style="white-space:nowrap">
-        <button class="btn-ghost" onclick="alert('Recurso ainda não configurado: link reenviado')">Reenviar link</button>
-        <a class="btn-ghost" style="color:var(--teal);display:inline-block" href="${wa}" target="_blank" rel="noopener">WhatsApp</a>
-      </td></tr>`;
-  }).join(''):'<tr><td colspan="6" class="empty">Nenhum pesquisador vinculado. Atribua a equipe em Minhas pesquisas.</td></tr>';
+  const rows=collectionTeamRows(s,team);
   const sample=surveySample(s);
   const collected=surveyCollectedCount(s);
   const mapResearchers=[...new Set(team)].sort((a,b)=>a.localeCompare(b));
@@ -3379,9 +3463,10 @@ function collectDetail(idx){
   <div id="collectTabEquipe">
     <div class="card mb">
       <div class="card-t">Equipe vinculada</div>
-      <div class="card-d">Reenvie o link de coleta ou fale diretamente pelo WhatsApp</div>
-      <table><thead><tr><th>Pesquisador</th><th>Regional</th><th>Link</th><th>Coletado</th><th>Sync</th><th></th></tr></thead>
-      <tbody>${rows}</tbody></table>
+      <div class="card-d">Envie as orientações iniciais da pesquisa pelo WhatsApp e acompanhe quem já recebeu o material.</div>
+      <div class="callout collection-orientation-callout"><b>Orientações iniciais:</b> use o botão em cada linha para abrir a mensagem completa no WhatsApp. O contador mostra quais pesquisadores já receberam o envio inicial e quais ainda estão pendentes.</div>
+      <div class="table-scroll"><table><thead><tr><th>Pesquisador</th><th>Regional</th><th>Link</th><th>Coletado</th><th>Sync</th><th>Orientações e contato</th></tr></thead>
+      <tbody id="collectTeamBody">${rows}</tbody></table></div>
     </div>
     <div class="card">
       <div class="card-t">Controles de qualidade automáticos</div>
@@ -3568,7 +3653,9 @@ function initCollectLive(idx){
   const s=SURVEYS[idx];if(!s)return;
   (async()=>{
     if(!COLLECT_EVENTS_LOADED)await loadCollectEventsIfNeeded();
+    await loadUsersIfNeeded();
     if(COLLECT_IDX!==idx)return;
+    loadCollectionOrientationCounts(idx);
     renderLiveFeed(idx);
     renderAudit(idx);
     if(document.getElementById('collectTabMapa')&&document.getElementById('collectTabMapa').style.display!=='none'){

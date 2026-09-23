@@ -8,10 +8,10 @@ for (const token of ['.user-tabs','.user-tab.is-active','.users-empty-state','.u
 assert(!app.includes('<strong>Autocadastros pendentes</strong>')&&!app.includes('<strong>Perfis pendentes</strong>'),'a fila ainda está dividida em dois blocos');
 assert(app.includes('aria-current="${USER_TAB===t.key?\'page\':\'false\'}"'));
 assert(app.includes('USER_TAB_NEW_LABEL[tab]'));
-assert(html.includes('style.css?v=20260922222000'));
-assert(html.includes('app.js?v=20260922222000'));
-assert(html.includes('commercial.js?v=20260922222000'));
-assert(html.includes('recruitment.js?v=20260922222000'));
+assert(html.includes('style.css?v=20260922224500'));
+assert(html.includes('app.js?v=20260922224500'));
+assert(html.includes('commercial.js?v=20260922224500'));
+assert(html.includes('recruitment.js?v=20260922224500'));
 assert(app.includes('tabindex="0" aria-label="Tabela de usuários. Deslize horizontalmente para ver todas as informações."'));
 assert(app.includes('A coluna <b>Ações</b> permanece acessível à direita.'));
 assert(app.includes('class="user-data-table user-data-table-${tab}"'));

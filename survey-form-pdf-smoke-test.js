@@ -30,8 +30,8 @@ for (const token of ['.survey-pdf-action', '.survey-table-scroll', '.survey-tabl
 }
 
 assert(fs.existsSync(jspdf) && fs.statSync(jspdf).size > 100000, 'jsPDF local não encontrado');
-assert(html.includes('style.css?v=20260922222000'), 'cache do CSS não foi atualizado');
-assert(html.includes('app.js?v=20260922222000'), 'cache do app não foi atualizado');
+assert(html.includes('style.css?v=20260922224500'), 'cache do CSS não foi atualizado');
+assert(html.includes('app.js?v=20260922224500'), 'cache do app não foi atualizado');
 assert(app.includes("surveyFormPdfDownload(${idx})"), 'PDF não está disponível na lista de pesquisas');
 assert(app.includes("surveyFormPdfDownload()"), 'PDF não está disponível no editor');
 assert(!app.includes("const text='□ "), 'o PDF voltou a usar o quadrado Unicode incompatível');

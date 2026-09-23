@@ -1191,3 +1191,9 @@ body.lp{background:#f8faff;color:var(--ink)}
 /* Acesso direto da equipe ao monitoramento da coleta */
 .team-collection-access{white-space:nowrap;color:#1d4ed8!important;border-color:#b9d1f5!important}.team-collection-access:hover{background:#eff6ff!important;border-color:#8db5ed!important}.btn-fill.team-collection-access{color:#fff!important;background:#2563eb!important;border-color:#2563eb!important}.btn-fill.team-collection-access:hover{color:#fff!important;background:#1d4ed8!important;border-color:#1d4ed8!important}
 @media(max-width:680px){.team-collection-access{width:100%}}
+
+
+/* Orientações iniciais da coleta por WhatsApp */
+.collection-orientation-callout{margin:12px 0;border-color:#b9d9cf;background:linear-gradient(135deg,#f2fffb,#f8fbff)}
+.collection-team-actions{white-space:nowrap}.collection-orientation-action{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.collection-orientation-btn{color:#075e54!important;border-color:#a7d8cf!important}.collection-orientation-btn:hover{background:#ecfdf8!important;border-color:#75c9bb!important}.collection-orientation-btn:disabled{opacity:.55;cursor:not-allowed}.collection-orientation-count{font-size:10.5px}.collection-team-actions .btn-ghost{margin-top:5px}
+@media(max-width:900px){.collection-team-actions{white-space:normal}.collection-orientation-action{min-width:230px}}

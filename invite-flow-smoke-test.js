@@ -17,4 +17,7 @@ assert(sql.includes('unique (survey_id, researcher_id)'));
 assert(sql.includes('insert into public.survey_team'));
 assert(sql.includes('on conflict (survey_id, researcher_id) do nothing'));
 assert(sql.includes('grant execute on function public.respond_survey_invite(uuid, boolean) to authenticated'));
+assert(sql.includes('whatsapp_sent_count integer not null default 0'));
+assert(sql.includes('record_survey_invite_whatsapp_send'));
+assert(sql.includes('whatsapp_last_sent_at'));
 console.log('Invite flow smoke test OK: link individual, WhatsApp, aceite autenticado e vínculo em survey_team verificados.');

@@ -2856,6 +2856,25 @@ function surveyInvitationGroupText(groupLink,compact=false){
     :'O link do grupo WhatsApp será disponibilizado no seu painel antes da primeira coleta.';
 }
 function surveyInvitationSiteUrl(){return 'https://www.pesquisa-pro.com/app.html';}
+function whatsappInviteCountMarkup(invite){
+  if(!invite)return '';
+  const count=Math.max(0,Number(invite.whatsapp_sent_count)||0);
+  return `<span class="pill pill-blue whatsapp-invite-count" title="Quantidade de vezes que o convite completo foi aberto pelo botão do WhatsApp">WhatsApp: ${count} envio${count===1?'':'s'}</span>`;
+}
+async function recordSurveyInviteWhatsappSend(inviteId){
+  if(!inviteId)return null;
+  try{
+    const {data,error}=await sb.rpc('record_survey_invite_whatsapp_send',{p_invite_id:inviteId});
+    if(error)throw error;
+    const returned=Array.isArray(data)?data[0]:data;
+    const local=TEAM_INVITES.find(item=>item.id===inviteId);
+    if(local&&returned)Object.assign(local,returned);
+    return returned||null;
+  }catch(ex){
+    console.warn('Contador de WhatsApp indisponível; execute a migration contador-convites-whatsapp.sql:',ex);
+    return null;
+  }
+}
 async function teamWhatsappGroupUrl(){
   const s=SURVEYS[TEAM_IDX];if(!s?.id)return '';
   if(TEAM_COMM_SETTINGS_LOADED)return TEAM_COMM_SETTINGS?.whatsapp_group_url||'';
@@ -3054,7 +3073,9 @@ async function inviteResearcherWhatsapp(researcherId){
   const link=surveyInviteLink(inviteId);
   const groupLink=await teamWhatsappGroupUrl();
   const msg=surveyInvitationWhatsappMessage(s,u,link,groupLink);
+  const tracking=recordSurveyInviteWhatsappSend(inviteId);
   window.open('https://wa.me/'+digits+'?text='+encodeURIComponent(msg),'_blank','noopener');
+  await tracking;
   go('survey-team');
 }
 let TEAM_IDX=null;
@@ -3109,9 +3130,9 @@ PAGES['survey-team']=()=>{
     let inviteHtml='';
     if(podeConvidar){
       if(inv&&inv.status==='pendente'){
-        inviteHtml=`<span class="pill pill-amber">✉ convite enviado</span><button class="btn-ghost team-whatsapp-invite-btn" onclick="event.preventDefault();inviteResearcherWhatsapp(${jsArg(u.id)})">↗ Reenviar WhatsApp</button><button class="btn-ghost" style="font-size:11px;padding:4px 8px" onclick="event.preventDefault();copySurveyInviteLink('${inv.id}')">Copiar link</button>`;
+        inviteHtml=`<span class="pill pill-amber">✉ convite enviado</span>${whatsappInviteCountMarkup(inv)}<button class="btn-ghost team-whatsapp-invite-btn" onclick="event.preventDefault();inviteResearcherWhatsapp(${jsArg(u.id)})">↗ Reenviar WhatsApp</button><button class="btn-ghost" style="font-size:11px;padding:4px 8px" onclick="event.preventDefault();copySurveyInviteLink('${inv.id}')">Copiar link</button>`;
       }else if(inv&&inv.status==='recusado'){
-        inviteHtml=`<span class="pill pill-red">recusou o convite</span><button class="btn-ghost team-whatsapp-invite-btn" onclick="event.preventDefault();inviteResearcherWhatsapp(${jsArg(u.id)})">↗ Reenviar WhatsApp</button><button class="btn-ghost" style="font-size:11px;padding:4px 8px" onclick="event.preventDefault();copySurveyInviteLink('${inv.id}')">Copiar link</button>`;
+        inviteHtml=`<span class="pill pill-red">recusou o convite</span>${whatsappInviteCountMarkup(inv)}<button class="btn-ghost team-whatsapp-invite-btn" onclick="event.preventDefault();inviteResearcherWhatsapp(${jsArg(u.id)})">↗ Reenviar WhatsApp</button><button class="btn-ghost" style="font-size:11px;padding:4px 8px" onclick="event.preventDefault();copySurveyInviteLink('${inv.id}')">Copiar link</button>`;
       }else{
         inviteHtml=`<button class="btn btn-out team-whatsapp-invite-btn" onclick="event.preventDefault();inviteResearcherWhatsapp(${jsArg(u.id)})">✉ Convidar por WhatsApp</button>`;
       }
@@ -3146,7 +3167,7 @@ PAGES['survey-team']=()=>{
         <div class="card-t">Convites desta pesquisa</div>
         <div class="card-d">Há duas formas de convite: use o botão azul <b>Convidar por push</b> para vários pesquisadores ou o botão <b>Convidar por WhatsApp</b> na linha de cada pesquisador para abrir a mensagem completa. O aceite autenticado coloca o pesquisador automaticamente na equipe.</div>
         <div class="callout" style="margin-bottom:12px"><b>Fluxo seguro:</b> o link abre a tela de login. Depois de entrar com a própria conta, o pesquisador precisa tocar em <b>“Aceitar e entrar na equipe”</b>. Apenas o aceite autenticado grava o vínculo.</div>
-        <div class="team-invite-summary">${TEAM_INVITES.length?TEAM_INVITES.map(i=>{const u=USERS.find(x=>x.id===i.researcher_id);return `<div class="team-invite-row"><div><b>${esc(u?u.name:'Pesquisador')}</b><small>${i.status==='aceito'?'Já está na equipe':i.status==='recusado'?'Recusou o convite':'Aguardando aceite'}</small></div><div class="team-invite-actions">${i.status!=='aceito'&&u?.id?`<button class="btn btn-out team-whatsapp-invite-btn" onclick="inviteResearcherWhatsapp(${jsArg(u.id)})">${i.status==='pendente'?'↗ Reenviar WhatsApp':'✉ Enviar WhatsApp'}</button>`:''}${conversationButton(u?.phone,'Olá '+(u?.name||'pesquisador')+'! Podemos conversar sobre o convite da pesquisa?')}<span class="pill ${i.status==='aceito'?'pill-green':i.status==='recusado'?'pill-red':'pill-amber'}">${esc(i.status||'pendente')}</span></div></div>`;}).join(''):'<div class="empty" style="padding:12px 0">Nenhum convite enviado para esta pesquisa.</div>'}</div>
+        <div class="team-invite-summary">${TEAM_INVITES.length?TEAM_INVITES.map(i=>{const u=USERS.find(x=>x.id===i.researcher_id);return `<div class="team-invite-row"><div><b>${esc(u?u.name:'Pesquisador')}</b><small>${i.status==='aceito'?'Já está na equipe':i.status==='recusado'?'Recusou o convite':'Aguardando aceite'}</small></div><div class="team-invite-actions">${whatsappInviteCountMarkup(i)}${i.status!=='aceito'&&u?.id?`<button class="btn btn-out team-whatsapp-invite-btn" onclick="inviteResearcherWhatsapp(${jsArg(u.id)})">${i.status==='pendente'?'↗ Reenviar WhatsApp':'✉ Enviar WhatsApp'}</button>`:''}${conversationButton(u?.phone,'Olá '+(u?.name||'pesquisador')+'! Podemos conversar sobre o convite da pesquisa?')}<span class="pill ${i.status==='aceito'?'pill-green':i.status==='recusado'?'pill-red':'pill-amber'}">${esc(i.status||'pendente')}</span></div></div>`;}).join(''):'<div class="empty" style="padding:12px 0">Nenhum convite enviado para esta pesquisa.</div>'}</div>
       </div>
       <div class="card">
         <div class="card-t" style="font-size:13px">Ainda não tem cadastro?</div>

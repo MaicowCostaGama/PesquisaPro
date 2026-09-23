@@ -1189,5 +1189,5 @@ body.lp{background:#f8faff;color:var(--ink)}
 
 
 /* Acesso direto da equipe ao monitoramento da coleta */
-.team-collection-access{white-space:nowrap;color:#1d4ed8!important;border-color:#b9d1f5!important}.team-collection-access:hover{background:#eff6ff!important;border-color:#8db5ed!important}
+.team-collection-access{white-space:nowrap;color:#1d4ed8!important;border-color:#b9d1f5!important}.team-collection-access:hover{background:#eff6ff!important;border-color:#8db5ed!important}.btn-fill.team-collection-access{color:#fff!important;background:#2563eb!important;border-color:#2563eb!important}.btn-fill.team-collection-access:hover{color:#fff!important;background:#1d4ed8!important;border-color:#1d4ed8!important}
 @media(max-width:680px){.team-collection-access{width:100%}}

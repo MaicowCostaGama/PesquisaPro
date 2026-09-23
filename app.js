@@ -1105,12 +1105,13 @@ function clientResultsReleasedForSurvey(client,survey){
   const bySurvey=survey.clientReleaseById||{};
   return !!client.resultsReleased||!!(clientId&&bySurvey[clientId]===true);
 }
-function clientWithTimeout(request,label,timeoutMs=15000){
+const CLIENT_RPC_TIMEOUT_MS=30000;
+function clientWithTimeout(request,label,timeoutMs=CLIENT_RPC_TIMEOUT_MS){
   let timer;
   const timeout=new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('Tempo esgotado ao carregar '+label+'.')),timeoutMs);});
   return Promise.race([Promise.resolve(request),timeout]).finally(()=>clearTimeout(timer));
 }
-let CLIENT_PROGRESS_CACHE={surveyId:null,summary:null,quotas:[]};
+let CLIENT_PROGRESS_CACHE={surveyId:null,summary:null,quotas:[],quotaError:null};
 let CLIENT_PROGRESS_LOADING=false,CLIENT_PROGRESS_TIMER=null;
 let CLIENT_RESEARCHER_PROGRESS_CACHE={surveyId:null,rows:[]};
 let CLIENT_RESEARCHER_PROGRESS_LOADING=false;
@@ -1123,12 +1124,14 @@ function clientProgressStatus(done,target){
 }
 function clientProgressQuotaRows(s){
   const rows=CLIENT_PROGRESS_CACHE.quotas||[];
+  if(CLIENT_PROGRESS_CACHE.quotaError)return `<div class="callout warn" style="margin:10px 0"><b>Metas de cota indisponíveis no momento.</b><br><small>${esc(CLIENT_PROGRESS_CACHE.quotaError)}</small></div>`;
   if(!rows.length)return '<div class="empty" style="padding:15px 0">A pesquisa não possui cotas configuradas para exibição.</div>';
   const colors=['#2563eb','#059669','#ea580c','#7c3aed','#0891b2','#d97706'];
   return rows.map((row,i)=>quota(row.quotaLabel,Number(row.validCount)||0,Number(row.targetCount)||0,colors[i%colors.length])).join('');
 }
 function clientProgressCoverageRows(s){
   const rows=CLIENT_PROGRESS_CACHE.quotas||[];
+  if(CLIENT_PROGRESS_CACHE.quotaError)return `<tr><td colspan="4"><div class="callout warn"><b>Não foi possível carregar as cotas.</b><br><small>${esc(CLIENT_PROGRESS_CACHE.quotaError)}</small></div></td></tr>`;
   if(!rows.length)return '<tr><td colspan="4" class="empty">Nenhuma meta de cota real foi encontrada.</td></tr>';
   return rows.map(row=>`<tr><td><b>${esc(row.quotaLabel||'Sem cota')}</b><small style="display:block;color:var(--ink3);margin-top:3px">${esc(row.questionText||'Cota da pesquisa')}</small></td><td>${Number(row.validCount||0).toLocaleString('pt-BR')}</td><td>${Number(row.targetCount||0).toLocaleString('pt-BR')}</td><td>${clientProgressStatus(row.validCount,row.targetCount)}</td></tr>`).join('');
 }
@@ -1150,7 +1153,10 @@ async function clientResearcherProgressLoad(){
     CLIENT_RESEARCHER_PROGRESS_CACHE={surveyId:s.id,rows:(data||[]).map(row=>({researcherName:row.researcher_name||'Pesquisador não identificado',totalCount:Number(row.total_count)||0,validCount:Number(row.valid_count)||0,rejectedCount:Number(row.rejected_count)||0,lastOccurredAt:row.last_occurred_at||null}))};
     const tbody=wrap.querySelector('tbody');if(tbody)tbody.innerHTML=clientResearcherProgressRows();
   }catch(ex){
-    const tbody=wrap.querySelector('tbody');if(tbody)tbody.innerHTML=`<tr><td colspan="5"><div class="callout warn"><b>Não foi possível carregar os pesquisadores.</b><br>Execute a migration <code>deploy/progresso-pesquisadores-cliente.sql</code> no Supabase. Detalhe: ${esc(ex?.message||ex)}</div></td></tr>`;
+    const detail=String(ex?.message||ex||'');
+    const migrationHint=/function|schema cache|does not exist|permission/i.test(detail)?' Verifique se a migration <code>deploy/progresso-pesquisadores-cliente.sql</code> foi executada no Supabase.':'';
+    const timeoutHint=/Tempo esgotado/i.test(detail)?' A consulta demorou mais que o limite; os índices de monitoramento podem ainda não ter sido executados.':'';
+    const tbody=wrap.querySelector('tbody');if(tbody)tbody.innerHTML=`<tr><td colspan="5"><div class="callout warn"><b>Não foi possível carregar os pesquisadores agora.</b><br>${migrationHint}${timeoutHint}<br><small>Detalhe: ${esc(detail)}</small></div></td></tr>`;
   }finally{CLIENT_RESEARCHER_PROGRESS_LOADING=false;}
 }
 function clientProgressRender(s,c){
@@ -1173,15 +1179,19 @@ async function clientProgressLoad(){
   const c=clientSelf(),s=clientSelfSurvey();if(!c||!s||!clientResultsReleasedForSurvey(c,s))return;
   CLIENT_PROGRESS_LOADING=true;host.innerHTML='<div class="card"><div class="empty" style="padding:28px 0">Carregando dados reais da coleta…</div></div>';
   try{
-    const [{data:summary,error:summaryError},{data:quotas,error:quotaError}]=await Promise.all([
+    const [summaryResult,quotaResult]=await Promise.allSettled([
       clientWithTimeout(sb.rpc('client_collection_progress',{p_survey_id:s.id}),'o andamento da coleta'),
       clientWithTimeout(sb.rpc('client_collection_quota_progress',{p_survey_id:s.id}),'as cotas da coleta')
     ]);
-    if(summaryError)throw summaryError;if(quotaError)throw quotaError;
-    const row=summary?.[0]||{};
-    CLIENT_PROGRESS_CACHE={surveyId:s.id,summary:{validCount:row.valid_count,totalCount:row.total_count,rejectedCount:row.rejected_count,researcherCount:row.researcher_count,lastOccurredAt:row.last_occurred_at},quotas:(quotas||[]).map(r=>({questionId:r.question_id,questionText:r.question_text,quotaLabel:r.quota_label,validCount:r.valid_count,targetCount:r.target_count}))};
+    const summaryResponse=summaryResult.status==='fulfilled'?summaryResult.value:null;
+    const quotaResponse=quotaResult.status==='fulfilled'?quotaResult.value:null;
+    const summaryError=summaryResult.status==='rejected'?summaryResult.reason:summaryResponse?.error;
+    if(summaryError)throw summaryError;
+    const quotaError=quotaResult.status==='rejected'?quotaResult.reason:quotaResponse?.error;
+    const summary=summaryResponse?.data||[],quotas=quotaResponse?.data||[],row=summary[0]||{};
+    CLIENT_PROGRESS_CACHE={surveyId:s.id,summary:{validCount:row.valid_count,totalCount:row.total_count,rejectedCount:row.rejected_count,researcherCount:row.researcher_count,lastOccurredAt:row.last_occurred_at},quotas:quotas.map(r=>({questionId:r.question_id,questionText:r.question_text,quotaLabel:r.quota_label,validCount:r.valid_count,targetCount:r.target_count})),quotaError:quotaError?String(quotaError.message||quotaError):null};
     clientProgressRender(s,c);
-  }catch(ex){host.innerHTML='<div class="card"><div class="callout warn"><b>Não foi possível carregar o andamento real.</b><br>Execute a migration <code>deploy/progresso-clientes-real.sql</code> no Supabase e atualize a página. Detalhe: '+esc(ex?.message||ex)+'</div></div>';
+  }catch(ex){host.innerHTML='<div class="card"><div class="callout warn"><b>Não foi possível carregar o resumo do andamento.</b><br>Verifique as migrations de monitoramento do cliente e atualize a página. Detalhe: '+esc(ex?.message||ex)+'</div></div>';
   }finally{CLIENT_PROGRESS_LOADING=false;}
 }
 function clientProgressStartLive(){if(CLIENT_PROGRESS_TIMER)clearInterval(CLIENT_PROGRESS_TIMER);clientProgressLoad();CLIENT_PROGRESS_TIMER=setInterval(()=>{if(document.querySelector('.nav-item.on')?.dataset.key==='client-progress')clientProgressLoad();},20000);}
@@ -1337,17 +1347,21 @@ async function clientLoadReportOverview(){
   if(!clientResultsReleasedForSurvey(c,s)){out.innerHTML='<div class="card"><div class="empty">Os resultados ainda não foram liberados.</div></div>';return;}
   CR_CLIENT_REPORT_LOADING=true;out.innerHTML='<div class="empty" style="padding:28px 0">Carregando resultados agregados…</div>';
   try{
-    const {data:docs,error:docError}=await clientWithTimeout(sb.from('report_documents').select('id,title,subtitle,presentation,methodology,executive_summary,sections,status,published_at').eq('survey_id',s.id).eq('client_id',CURRENT_PROFILE?.id||c.id).eq('status','published').order('published_at',{ascending:false}).limit(1),'o relatório publicado');
-    if(docError)throw docError;
-    const publishedDocument=docs?.[0]||null;
-    const {data:overviewRows,error:overviewError}=await clientWithTimeout(sb.rpc('client_report_all_questions',{p_survey_id:s.id}),'os resultados agregados');
+    let publishedDocument=null,documentError=null;
+    try{
+      const {data:docs,error:docError}=await clientWithTimeout(sb.from('report_documents').select('id,title,subtitle,presentation,methodology,executive_summary,sections,status,published_at').eq('survey_id',s.id).eq('client_id',CURRENT_PROFILE?.id||c.id).eq('status','published').order('published_at',{ascending:false}).limit(1),'o relatório publicado');
+      if(docError)throw docError;
+      publishedDocument=docs?.[0]||null;
+    }catch(ex){documentError=ex;}
+    const {data:overviewRows,error:overviewError}=await clientWithTimeout(sb.rpc('client_report_all_questions',{p_survey_id:s.id}),'os resultados agregados',45000);
     if(overviewError)throw overviewError;
-    const crossings=clientPublishedCrossings(publishedDocument,crossQs),crossRowsById={};
-    for(const crossing of crossings){const ids=reportsCrossingQuestionIds(crossing);const {data,error}=await clientWithTimeout(sb.rpc('client_report_cross_tab',{p_survey_id:s.id,p_question_ids:ids}),'os cruzamentos do relatório');if(error)throw error;crossRowsById[crossing.id]=data||[];}
+    const crossings=clientPublishedCrossings(publishedDocument,crossQs),crossRowsById={},crossErrors=[];
+    for(const crossing of crossings){const ids=reportsCrossingQuestionIds(crossing);try{const {data,error}=await clientWithTimeout(sb.rpc('client_report_cross_tab',{p_survey_id:s.id,p_question_ids:ids}),'os cruzamentos do relatório',45000);if(error)throw error;crossRowsById[crossing.id]=data||[];}catch(ex){crossErrors.push(ex);}}
     CR_CLIENT_REPORT_CACHE={surveyId:s.id,overviewRows:overviewRows||[],crossRowsById,document:publishedDocument};
     clientRenderReportOverview(out,s,qs,overviewRows||[],publishedDocument,crossings);
   }catch(ex){
-    out.innerHTML='<div class="callout warn"><b>Não foi possível carregar o relatório completo.</b><br>Verifique se a migration de resultados para clientes foi executada no Supabase. Detalhe: '+esc(ex?.message||ex)+'</div>';
+    const detail=String(ex?.message||ex||'');
+    out.innerHTML='<div class="callout warn"><b>Não foi possível carregar os resultados agregados agora.</b><br>O restante do monitoramento continua disponível. Verifique as migrations de resultados para clientes e os índices de monitoramento. Detalhe: '+esc(detail)+'</div>';
   }finally{CR_CLIENT_REPORT_LOADING=false;}
 }
 function clientRenderReportOverview(out,survey,qs,rows,document,crossings){const byQ={};(rows||[]).forEach(r=>(byQ[r.question_id]||(byQ[r.question_id]=[])).push(r));const cards=qs.map((q,qi)=>{const data=byQ[q.dbId]||[],base=Number(data[0]?.valid_base)||0,total=data.reduce((sum,r)=>sum+Number(r.cnt||0),0),max=Math.max(1,...data.map(r=>Number(r.cnt||0)));const lines=data.length?data.map(r=>{const cnt=Number(r.cnt||0),pct=reportPercent(cnt,base||total);return `<div class="reports-answer-row"><div class="reports-answer-head"><span>${esc(r.value_label||'(sem resposta)')}</span><strong>${cnt.toLocaleString('pt-BR')} · ${pct}%</strong></div><div class="reports-answer-bar"><i style="width:${Math.min(100,Math.round((cnt/max)*100))}%"></i></div></div>`;}).join(''):'<div class="empty" style="padding:16px 0">Ainda não há respostas válidas.</div>';return `<article class="card reports-question-card"><div class="reports-question-head"><div><span class="reports-question-number">${String(qi+1).padStart(2,'0')}</span><h3>${esc(q.text||'(pergunta sem texto)')}</h3></div><span class="pill pill-blue">${base.toLocaleString('pt-BR')} válidas</span></div><div class="reports-question-meta">${esc(Q_TYPES[q.type]||q.type||'Pergunta')}</div>${lines}</article>`;}).join('');let html=`<div class="reports-overview-head"><div><h2>${esc(document?.title||'Resultados da pesquisa')}</h2><p>${esc(document?.subtitle||'Distribuição atualizada das respostas válidas, pergunta a pergunta.')}</p></div><span class="reports-count-pill">${qs.length} pergunta${qs.length===1?'':'s'}</span></div>`;if(document?.presentation)html+=`<article class="card reports-client-intro"><div class="card-t">Apresentação</div><p>${esc(document.presentation)}</p></article>`;html+=`<div class="reports-question-list">${cards}</div>`;if(document?.executive_summary)html+=`<article class="card reports-client-summary"><div class="card-t">Síntese executiva</div><p>${esc(document.executive_summary)}</p></article>`;if(crossings.length){html+=`<div class="reports-overview-head" style="margin-top:24px"><div><h2>Cruzamentos do relatório</h2><p>Matrizes percentuais sobre a base total de entrevistas válidas.</p></div><span class="reports-count-pill">${crossings.length} análise${crossings.length===1?'':'s'}</span></div>`;crossings.forEach(c=>{const rowsFor=CR_CLIENT_REPORT_CACHE.crossRowsById[c.id]||[],ids=reportsCrossingQuestionIds(c),thirdValues=ids.length>=3?clientReportCrossOrderedValues(rowsFor,2,ids[2],qs):[null];html+=`<article class="card reports-client-crossing"><div class="card-t">${esc(c.title)}</div><div class="card-d">${ids.map((id,i)=>(i+1)+'. '+esc(clientReportQuestionLabel(qs,id))).join(' · ')}</div>${thirdValues.map(tv=>clientReportCrossMatrixMarkup(clientReportCrossMatrixModel(rowsFor,ids,tv,qs),ids,qs,tv==null?'':clientReportQuestionLabel(qs,ids[2])+': '+tv)).join('')}</article>`;});}out.innerHTML=html;}

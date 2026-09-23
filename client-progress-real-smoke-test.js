@@ -20,9 +20,9 @@ const checks=[
   ['atualização automática',app.includes('clientProgressStartLive')&&app.includes('CLIENT_PROGRESS_TIMER')],
   ['monitoramento completo no andamento',app.includes('clientResearcherProgressMarkup()')&&app.includes('clientHeatmapMarkup(s)')&&app.includes('clientGeoStartLive();responseHeatmapLoad(\'client\')')],
   ['timeout contra carregamento infinito',app.includes('function clientWithTimeout')&&app.includes("'o andamento da coleta'" )],
-  ['estados de erro e vazio',clientBlock.includes('Não foi possível carregar o andamento real')&&clientBlock.includes('A pesquisa não possui cotas configuradas')],
+  ['estados de erro e vazio',app.includes('Não foi possível carregar o resumo do andamento')&&clientBlock.includes('A pesquisa não possui cotas configuradas')&&clientBlock.includes('Metas de cota indisponíveis')],
   ['sem cotas fictícias no bloco cliente',!clientBlock.includes('Homens 16–24')&&!clientBlock.includes('Vale do Mucuri')&&!clientBlock.includes('Jequitinhonha')],
-  ['cache atualizado',html.includes('20260922235500')]
+  ['cache atualizado',html.includes('20260923062000')]
 ];
 let failed=0;for(const [label,ok] of checks){console.log(`${ok?'PASS':'FAIL'} — ${label}`);if(!ok)failed++;}
 if(failed)process.exit(1);

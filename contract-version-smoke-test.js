@@ -17,5 +17,5 @@ ok(migration.includes('create or replace function public.get_current_contract_ve
 ok(migration.includes('create or replace function public.create_contract_version'),'RPC de criação não existe');
 ok(migration.includes('public.is_admin()'),'RPC de nova versão não protege administrador');
 ok(migration.includes("values (1,'v1-2026')"),'versão inicial não é preservada');
-ok(html.includes('app.js?v=20260922235500'),'cache de versão do contrato não atualizado');
+ok(html.includes('app.js?v=20260923062000'),'cache de versão do contrato não atualizado');
 console.log('contract-version-smoke-test: PASS');

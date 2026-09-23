@@ -17,7 +17,9 @@ for(const token of [
   'createSignedUrl(rec.storage_path,600)',
   'controls preload="none"',
   'collectionRecordingCell(e)',
-  'COLLECT_EVENT_SELECT_DURATION'
+  'COLLECT_EVENT_SELECT_DURATION',
+  'audit-actions-evidence',
+  'audit-evidence-label'
 ])assert(app.includes(token),`app sem ${token}`);
 for(const token of [
   '.audit-duration-value',
@@ -34,5 +36,5 @@ for(const token of [
   'commit;'
 ])assert(migration.includes(token),`migration sem ${token}`);
 assert(!/drop table|drop column|truncate|delete from/i.test(migration),'migration contém operação destrutiva');
-assert(html.includes('app.js?v=20260922233000'),'cache não atualizado');
+assert(html.includes('app.js?v=20260922233500'),'cache não atualizado');
 console.log('Audit recording duration smoke test: PASS — duração, status, recusa e player privado verificados.');

@@ -3946,7 +3946,9 @@ function renderAudit(idx){
       (e.calibration?'<div style="margin-top:5px"><span class="pill pill-blue">◎ Calibração</span></div>':'');
     const recordingCell=collectionRecordingCell(e);
     const durationCell=`<span class="audit-duration-value">${e.durationSeconds!=null?fmtInterviewDuration(e.durationSeconds):'<span class="audit-duration-missing">Não registrado</span>'}</span>`;
+    const actionsEvidence=`<div class="audit-actions-evidence"><div><span class="audit-evidence-label">Duração</span><b>${e.durationSeconds!=null?fmtInterviewDuration(e.durationSeconds):'Não registrado'}</b></div><div><span class="audit-evidence-label">Gravação</span>${collectionRecordingCell(e)}</div></div>`;
     const actionsCell=`<div class="audit-actions-stack">
+      ${actionsEvidence}
       ${conversationButton(e.phone,'Olá '+e.name+'! Podemos conversar sobre a coleta '+(e.cota||'')+'?')}
       <button class="btn-ghost" style="font-size:11px;padding:3px 8px" onclick="auditReject('${e.id}')">${rejected?'↺ Reaprovar':'✕ Reprovar'}</button>
       <button class="btn-ghost" style="font-size:11px;padding:3px 8px" onclick="auditToggleCalibration('${e.id}')">${e.calibration?'↺ Nos resultados':'◎ Calibração'}</button>

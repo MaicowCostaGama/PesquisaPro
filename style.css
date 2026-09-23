@@ -1210,3 +1210,15 @@ body.lp{background:#f8faff;color:var(--ink)}
 .audit-data-table th:nth-child(9),.audit-data-table td:nth-child(9){min-width:250px}
 .audit-data-table th:nth-child(10),.audit-data-table td:nth-child(10){min-width:285px}
 @media(max-width:640px){.audit-recording-player{width:185px}.audit-data-table th:nth-child(9),.audit-data-table td:nth-child(9){min-width:230px}}
+
+
+/* Auditoria: evidências essenciais permanecem visíveis junto das ações */
+.audit-data-table .audit-actions-header,.audit-data-table .audit-actions-cell{width:285px;min-width:285px}
+.audit-actions-evidence{display:grid;gap:7px;margin-bottom:7px;padding:8px 9px;border:1px solid #d8e7f0;border-radius:9px;background:#f7fbfd;text-align:left}
+.audit-actions-evidence>div{display:flex;flex-direction:column;gap:2px;min-width:0}
+.audit-evidence-label{font-size:9.5px;font-weight:800;letter-spacing:.45px;text-transform:uppercase;color:var(--ink3)}
+.audit-actions-evidence .audit-recording-duration{margin-top:1px}
+.audit-actions-evidence .audit-recording-player{width:245px;height:31px}
+.audit-actions-evidence .audit-recording-loading,.audit-actions-evidence .audit-recording-note,.audit-actions-evidence .audit-recording-error{max-width:245px}
+@media(max-width:1050px){.audit-data-table .audit-actions-header,.audit-data-table .audit-actions-cell{width:250px;min-width:250px}}
+@media(max-width:640px){.audit-data-table .audit-actions-header,.audit-data-table .audit-actions-cell{width:225px;min-width:225px}.audit-actions-evidence .audit-recording-player{width:195px}}

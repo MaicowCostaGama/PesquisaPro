@@ -3390,7 +3390,7 @@ function collectionTeamRows(s,team){
       <td>${syncPill}</td>
       <td class="collection-team-actions">
         <div class="collection-orientation-action"><button class="btn btn-out collection-orientation-btn" ${phone?'':'disabled'} onclick="sendCollectionOrientationWhatsapp(${jsArg(name)})">✉ Enviar orientações</button>${collectionOrientationCountMarkup(name)}</div>
-        ${phone?`<a class="btn-ghost" style="color:var(--teal);display:inline-block" href="${wa}" target="_blank" rel="noopener">WhatsApp</a>`:'<span class="pill pill-gray">Sem telefone</span>'}
+        ${phone?`<a class="btn-ghost" style="color:var(--teal);display:inline-block" href="${wa}" target="_blank" rel="noopener" title="Abre uma conversa comum; não registra o envio das orientações">Conversar no WhatsApp</a>`:'<span class="pill pill-gray">Sem telefone</span>'}
       </td></tr>`;
   }).join(''):'<tr><td colspan="6" class="empty">Nenhum pesquisador vinculado. Atribua a equipe em Minhas pesquisas.</td></tr>';
 }
@@ -3429,7 +3429,11 @@ async function sendCollectionOrientationWhatsapp(name){
   if(!digits){alert('Este pesquisador não tem celular cadastrado.');return;}
   const orientationSettings=await collectionOrientationSettings(s.id);
   const message=surveyInitialOrientationWhatsappMessage(s,user,orientationSettings.whatsapp_group_url||'',orientationSettings.orientation_message_template||'');
-  window.open('https://wa.me/'+digits+'?text='+encodeURIComponent(message),'_blank','noopener');
+  const target='https://wa.me/'+digits+'?text='+encodeURIComponent(message);
+  /* Reserva a aba durante o clique para evitar bloqueio de pop-up enquanto a
+     RPC registra o envio. A orientação só é contada depois do retorno aceito
+     pelo Supabase; a conversa comum acima não passa por este fluxo. */
+  const chatWindow=window.open('about:blank','_blank','noopener');
   try{
     const {data,error}=await sb.rpc('record_survey_orientation_whatsapp_send',{p_survey_id:s.id,p_researcher_id:user.id});
     if(error)throw error;
@@ -3437,9 +3441,11 @@ async function sendCollectionOrientationWhatsapp(name){
     if(row)COLLECT_ORIENTATION_COUNTS[user.id]=row;
     COLLECT_ORIENTATION_COUNTS_STATUS='ready';
     refreshCollectionTeamRows(COLLECT_IDX);
+    if(chatWindow&&!chatWindow.closed)chatWindow.location.href=target;else window.open(target,'_blank','noopener');
   }catch(ex){
     console.warn('Envio aberto, mas contador de orientações indisponível; execute a migration contador-orientacoes-whatsapp-coleta.sql:',ex);
-    alert('A orientação foi aberta no WhatsApp, mas o contador ainda não está ativo. Execute a migration do contador de orientações no Supabase.');
+    if(chatWindow&&!chatWindow.closed)chatWindow.location.href=target;else window.open(target,'_blank','noopener');
+    alert('A mensagem foi aberta, mas o contador não foi registrado: '+(ex.message||String(ex)));
   }
 }
 PAGES.collect=()=>{

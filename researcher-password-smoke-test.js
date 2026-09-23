@@ -27,5 +27,5 @@ assert(app.includes('exchangeCodeForSession'),'tratamento de código PKCE ausent
 assert(app.includes('setSession({access_token:accessToken,refresh_token:refreshToken})'),'tratamento do token recovery ausente');
 assert(app.includes('passwordRecoveryLinkPresent'),'detecção robusta do link de recovery ausente');
 assert(app.includes('minlength="8"'),'mínimo de senha no fluxo de recuperação ausente');
-assert(fs.readFileSync(path.join(root,'app.html'),'utf8').includes('app.js?v=20260922225900'),'cache de recovery não atualizado');
+assert(fs.readFileSync(path.join(root,'app.html'),'utf8').includes('app.js?v=20260922230900'),'cache de recovery não atualizado');
 console.log('researcher-password-smoke-test: PASS');

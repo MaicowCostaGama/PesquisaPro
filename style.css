@@ -1197,3 +1197,16 @@ body.lp{background:#f8faff;color:var(--ink)}
 .collection-orientation-callout{margin:12px 0;border-color:#b9d9cf;background:linear-gradient(135deg,#f2fffb,#f8fbff)}
 .collection-team-actions{white-space:nowrap}.collection-orientation-action{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.collection-orientation-btn{color:#075e54!important;border-color:#a7d8cf!important}.collection-orientation-btn:hover{background:#ecfdf8!important;border-color:#75c9bb!important}.collection-orientation-btn:disabled{opacity:.55;cursor:not-allowed}.collection-orientation-count{font-size:10.5px}.collection-team-actions .btn-ghost{margin-top:5px}
 @media(max-width:900px){.collection-team-actions{white-space:normal}.collection-orientation-action{min-width:230px}}
+
+
+/* Auditoria: duração da entrevista e reprodução privada da confirmação */
+.audit-duration-value{display:inline-flex;align-items:center;min-width:86px;font-weight:700;color:var(--ink2);white-space:nowrap}
+.audit-duration-missing{font-weight:400;color:var(--ink3)}
+.audit-recording-duration{margin-top:3px;font-size:10.5px;color:var(--ink3);white-space:nowrap}
+.audit-recording-player{display:block;width:205px;max-width:100%;height:30px;margin-top:6px}
+.audit-recording-loading,.audit-recording-note,.audit-recording-error{display:block;margin-top:4px;max-width:230px;font-size:10.5px;line-height:1.35;color:var(--ink3)}
+.audit-recording-error{color:var(--red,#b91c1c)}
+.audit-data-table th:nth-child(8),.audit-data-table td:nth-child(8){min-width:100px}
+.audit-data-table th:nth-child(9),.audit-data-table td:nth-child(9){min-width:250px}
+.audit-data-table th:nth-child(10),.audit-data-table td:nth-child(10){min-width:285px}
+@media(max-width:640px){.audit-recording-player{width:185px}.audit-data-table th:nth-child(9),.audit-data-table td:nth-child(9){min-width:230px}}

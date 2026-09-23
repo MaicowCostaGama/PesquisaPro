@@ -47,12 +47,18 @@ for(const token of [
   'sent_at',
   'public.is_staff()',
   'survey_team',
+  'survey_team st',
+  'st.researcher_id=p_researcher_id',
   'revoke all on table',
   'grant execute on function public.record_survey_orientation_whatsapp_send(uuid,uuid) to authenticated'
 ])assert(sql.includes(token),'migration sem '+token);
+const repairSql=fs.readFileSync('deploy/corrige-contador-orientacoes-ambiguous.sql','utf8');
+assert(repairSql.includes('from public.survey_team st'),'reparo sem alias da equipe');
+assert(repairSql.includes('hist.researcher_id'),'reparo sem alias do histórico');
+assert(!/drop table|drop column|truncate|delete from/i.test(repairSql),'reparo contém operação destrutiva');
 const editableSql=fs.readFileSync('deploy/orientacoes-iniciais-editaveis.sql','utf8');
 assert(editableSql.includes('add column if not exists orientation_message_template'),'migration editável sem coluna');
 assert(!/drop table|drop column|truncate|delete from/i.test(editableSql),'migration editável contém operação destrutiva');
 assert(!/drop table|drop column|truncate|delete from/i.test(sql),'migration contém operação destrutiva');
-assert(html.includes('app.js?v=20260922231400'),'cache não atualizado');
+assert(html.includes('app.js?v=20260922233000'),'cache não atualizado');
 console.log('Collection orientation WhatsApp smoke test: PASS — mensagem, botão, contador por pesquisador, RPCs e RLS verificados.');

@@ -3555,7 +3555,7 @@ function collectDetail(idx){
       <div id="auditRecordingSummary" class="recording-summary"></div>
       <div class="audit-table-scroll-hint" role="note"><span aria-hidden="true">↔</span><span><b>Deslize horizontalmente</b> para consultar todos os detalhes. A coluna <b>Ações</b> permanece acessível à direita.</span></div>
       <div class="audit-table-scroll" tabindex="0" aria-label="Tabela de auditoria. Deslize horizontalmente para ver todas as informações e ações.">
-      <table class="audit-data-table"><thead><tr><th>Pesquisador</th><th>Cota</th><th>Data/hora</th><th title="Tempo desde a entrevista anterior do mesmo pesquisador">Intervalo</th><th>Coordenadas</th><th>Precisão</th><th>Status</th><th>Confirmação</th><th>Alertas</th><th class="audit-actions-header">Ações</th></tr></thead>
+      <table class="audit-data-table"><thead><tr><th>Pesquisador</th><th>Cota</th><th>Data/hora</th><th title="Tempo desde a entrevista anterior do mesmo pesquisador">Intervalo</th><th>Coordenadas</th><th>Precisão</th><th>Status</th><th>Duração</th><th>Confirmação</th><th>Alertas</th><th class="audit-actions-header">Ações</th></tr></thead>
       <tbody id="auditBody"></tbody></table>
       </div>
     </div>
@@ -3580,9 +3580,13 @@ function collectTab(btn,which){
 /* ===== Coleta de campo: mapa, feed e auditoria (dados reais, tabela collection_events) ===== */
 const COLLECT_COLORS=['#2563eb','#059669','#ea580c','#7c3aed','#dc2626','#d97706'];
 const COLLECT_EVENT_SELECT_BASE='id,survey_id,researcher_id,quota_label,lat,lng,accuracy_m,occurred_at,synced,flags,status,reject_reason,rejected_at,is_calibration';
-const COLLECT_EVENT_SELECT=COLLECT_EVENT_SELECT_BASE+',recording_reservation_id,recording_required,recording_consent,recording_status,recording_error,recording_created_at';
+const COLLECT_EVENT_SELECT_DURATION=COLLECT_EVENT_SELECT_BASE+',duration_seconds';
+const COLLECT_EVENT_SELECT=COLLECT_EVENT_SELECT_DURATION+',recording_reservation_id,recording_required,recording_consent,recording_status,recording_error,recording_created_at';
+const COLLECT_EVENT_SELECT_RECORDING_NO_DURATION=COLLECT_EVENT_SELECT_BASE+',recording_reservation_id,recording_required,recording_consent,recording_status,recording_error,recording_created_at';
 let COLLECT_RECORDING_COLUMNS_AVAILABLE=true;
+let COLLECT_DURATION_COLUMN_AVAILABLE=true;
 let COLLECTION_RECORDINGS={};
+let AUDIT_AUDIO_URLS={};
 const COLLECTION_RECORDING_STAFF_ROLES=['admin','coord','gerente','admpro'];
 function collectionCanManageRecording(){return COLLECTION_RECORDING_STAFF_ROLES.includes(selectedRole);}
 async function fetchCollectionEvents({surveyId=null,ownOnly=false}={}){
@@ -3592,10 +3596,17 @@ async function fetchCollectionEvents({surveyId=null,ownOnly=false}={}){
     if(ownOnly&&CURRENT_PROFILE&&CURRENT_PROFILE.id)query=query.eq('researcher_id',CURRENT_PROFILE.id);
     return query;
   };
-  let result=await build(COLLECT_RECORDING_COLUMNS_AVAILABLE?COLLECT_EVENT_SELECT:COLLECT_EVENT_SELECT_BASE);
+  const firstSelect=COLLECT_DURATION_COLUMN_AVAILABLE
+    ?(COLLECT_RECORDING_COLUMNS_AVAILABLE?COLLECT_EVENT_SELECT:COLLECT_EVENT_SELECT_DURATION)
+    :(COLLECT_RECORDING_COLUMNS_AVAILABLE?COLLECT_EVENT_SELECT_RECORDING_NO_DURATION:COLLECT_EVENT_SELECT_BASE);
+  let result=await build(firstSelect);
+  if(result.error&&COLLECT_DURATION_COLUMN_AVAILABLE&&/duration_seconds|column|schema cache/i.test(result.error.message||'')){
+    COLLECT_DURATION_COLUMN_AVAILABLE=false;
+    result=await build(COLLECT_RECORDING_COLUMNS_AVAILABLE?COLLECT_EVENT_SELECT_RECORDING_NO_DURATION:COLLECT_EVENT_SELECT_BASE);
+  }
   if(result.error&&COLLECT_RECORDING_COLUMNS_AVAILABLE&&/recording_|column|schema cache/i.test(result.error.message||'')){
     COLLECT_RECORDING_COLUMNS_AVAILABLE=false;
-    result=await build(COLLECT_EVENT_SELECT_BASE);
+    result=await build(COLLECT_DURATION_COLUMN_AVAILABLE?COLLECT_EVENT_SELECT_DURATION:COLLECT_EVENT_SELECT_BASE);
   }
   return result;
 }
@@ -3640,6 +3651,7 @@ function collectionEventRowToEntry(row){
     recordingStatus:row.recording_status||'not_selected',
     recordingError:row.recording_error||'',
     recordingCreatedAt:row.recording_created_at?new Date(row.recording_created_at).getTime():null,
+    durationSeconds:Number.isFinite(Number(row.duration_seconds))?Math.max(0,Number(row.duration_seconds)):null,
     recordingPath:['admin','coord','gerente','admpro'].includes(selectedRole)?(row.recording_path||null):null,
   };
 }
@@ -3836,17 +3848,41 @@ function distMeters(lat1,lng1,lat2,lng2){
 function fmtDist(m){
   return m<1000?Math.round(m)+'m':(m/1000).toFixed(1)+'km';
 }
+function fmtInterviewDuration(seconds){
+  const value=Number(seconds);
+  if(!Number.isFinite(value)||value<0)return'—';
+  const total=Math.round(value),minutes=Math.floor(total/60),rest=total%60;
+  return minutes?minutes+'min '+String(rest).padStart(2,'0')+'s':rest+'s';
+}
+async function loadAuditRecordingUrl(eventId){
+  const rec=COLLECTION_RECORDINGS[eventId];
+  if(!rec?.storage_path||AUDIT_AUDIO_URLS[eventId]?.status==='loading'||AUDIT_AUDIO_URLS[eventId]?.status==='ready')return;
+  AUDIT_AUDIO_URLS[eventId]={status:'loading'};
+  try{
+    const {data,error}=await sb.storage.from('collection-recordings').createSignedUrl(rec.storage_path,600);
+    if(error||!data?.signedUrl)throw new Error(error?.message||'URL temporária indisponível');
+    AUDIT_AUDIO_URLS[eventId]={status:'ready',url:data.signedUrl};
+  }catch(ex){AUDIT_AUDIO_URLS[eventId]={status:'error',error:ex.message||'Áudio indisponível'};}
+  if(COLLECT_IDX!=null)renderAudit(COLLECT_IDX);
+}
 function collectionRecordingCell(e){
-  if(!e.recordingRequired)return'<span class="pill pill-gray">Não selecionada</span>';
+  if(!e.recordingRequired)return'<span class="pill pill-gray">Não solicitada</span>';
   const rec=COLLECTION_RECORDINGS[e.id];
   if(e.recordingStatus==='uploaded'&&rec?.storage_path){
-    const duration=rec.duration_ms?` <span style="color:var(--ink3)">${Math.round(rec.duration_ms/1000)}s</span>`:'';
-    return'<span class="pill pill-green">✓ Autorizada</span>'+duration+`<button class="btn-ghost" style="display:block;font-size:10.5px;padding:3px 7px;margin-top:5px" onclick="openCollectionRecording(${jsArg(e.id)})">▶ Ouvir 10 min</button>`;
+    const duration=rec.duration_ms!=null?`<div class="audit-recording-duration">Duração: ${fmtInterviewDuration(Number(rec.duration_ms)/1000)}</div>`:'';
+    const state=AUDIT_AUDIO_URLS[e.id];
+    if(!state)loadAuditRecordingUrl(e.id);
+    const player=state?.status==='ready'
+      ?`<audio class="audit-recording-player" controls preload="none" src="${esc(state.url)}" aria-label="Ouvir confirmação gravada"></audio>`
+      :state?.status==='error'
+        ?`<div class="audit-recording-error">${esc(state.error||'Áudio indisponível')}</div>`
+        :'<span class="audit-recording-loading">Preparando áudio…</span>';
+    return'<span class="pill pill-green">✓ Com gravação</span>'+duration+player;
   }
-  if(e.recordingStatus==='declined')return'<span class="pill pill-gray">Recusada</span>';
-  if(e.recordingStatus==='failed')return'<span class="pill pill-red">Falha técnica</span>'+(e.recordingError?`<div style="font-size:10.5px;color:var(--ink3);margin-top:3px;max-width:150px">${esc(e.recordingError)}</div>`:'');
-  if(e.recordingStatus==='pending_upload')return'<span class="pill pill-amber">Aguardando áudio</span>';
-  return'<span class="pill pill-amber">Selecionada</span>';
+  if(e.recordingStatus==='declined')return'<span class="pill pill-gray">✕ Recusada</span><div class="audit-recording-note">Sem autorização do entrevistado</div>';
+  if(e.recordingStatus==='failed')return'<span class="pill pill-red">⚠ Falha técnica</span>'+(e.recordingError?`<div class="audit-recording-note">${esc(e.recordingError)}</div>`:'');
+  if(e.recordingStatus==='pending_upload')return'<span class="pill pill-amber">⏳ Áudio pendente</span>';
+  return'<span class="pill pill-amber">Selecionada · sem áudio</span>';
 }
 async function openCollectionRecording(eventId){
   if(!collectionCanManageRecording())return;
@@ -3909,6 +3945,7 @@ function renderAudit(idx){
       (rejected?`<div style="margin-top:5px"><span class="pill pill-red" title="${esc(e.rejectReason||'')}">✕ Reprovada</span><div style="font-size:10.5px;color:var(--ink3);margin-top:2px;max-width:170px">${esc(e.rejectReason||'')}</div></div>`:'')+
       (e.calibration?'<div style="margin-top:5px"><span class="pill pill-blue">◎ Calibração</span></div>':'');
     const recordingCell=collectionRecordingCell(e);
+    const durationCell=`<span class="audit-duration-value">${e.durationSeconds!=null?fmtInterviewDuration(e.durationSeconds):'<span class="audit-duration-missing">Não registrado</span>'}</span>`;
     const actionsCell=`<div class="audit-actions-stack">
       ${conversationButton(e.phone,'Olá '+e.name+'! Podemos conversar sobre a coleta '+(e.cota||'')+'?')}
       <button class="btn-ghost" style="font-size:11px;padding:3px 8px" onclick="auditReject('${e.id}')">${rejected?'↺ Reaprovar':'✕ Reprovar'}</button>
@@ -3922,11 +3959,12 @@ function renderAudit(idx){
       <td>${Number.isFinite(e.lat)&&Number.isFinite(e.lng)?e.lat.toFixed(5)+', '+e.lng.toFixed(5):'—'}${distNote}</td>
       <td>${e.acc>0?'±'+Math.round(e.acc)+'m':'—'}</td>
       <td>${statusCell}</td>
+      <td>${durationCell}</td>
       <td>${recordingCell}</td>
       <td>${flags.length?flags.map(f=>'<span class="pill pill-red" style="margin-right:4px;white-space:nowrap">'+esc(f)+'</span>').join(''):'<span style="color:var(--ink3)">—</span>'}</td>
       <td class="audit-actions-cell">${actionsCell}</td>
     </tr>`;
-  }).join('')||'<tr><td colspan="10" class="empty">Nenhuma coleta registrada ainda.</td></tr>';
+  }).join('')||'<tr><td colspan="11" class="empty">Nenhuma coleta registrada ainda.</td></tr>';
   if(AUDIT_HIGHLIGHT_ID!=null){
     const row=el.querySelector(`tr[data-eid="${AUDIT_HIGHLIGHT_ID}"]`);
     if(row){
@@ -4776,6 +4814,7 @@ async function acollectSubmit(){
   ACOLLECT_SUBMITTING=true;
   renderAcollectActionState();
   const elapsedMs=Date.now()-ACOLLECT_STARTED_AT;
+  const elapsedSeconds=Math.max(0,Math.round(elapsedMs/1000));
   const flags=[];
   if(elapsedMs<ACOLLECT_MIN_SECONDS*1000)flags.push('Tempo de aplicação muito curto');
   const quotaLabel=ACOLLECT_SELECTED_QUOTA||null;
@@ -4785,6 +4824,7 @@ async function acollectSubmit(){
     quota_label:quotaLabel,
     lat:GEO.lat,lng:GEO.lng,accuracy_m:GEO.acc,
     occurred_at:new Date().toISOString(),
+    duration_seconds:elapsedSeconds,
     synced:true,
     flags,
     status:'valid',
@@ -4798,7 +4838,12 @@ async function acollectSubmit(){
   }
   let eventId=null;
   try{
-    const {data,error}=await sb.from('collection_events').insert(eventPayload).select().single();
+    let {data,error}=await sb.from('collection_events').insert(eventPayload).select().single();
+    if(error&&COLLECT_DURATION_COLUMN_AVAILABLE&&/duration_seconds|column|schema cache/i.test(error.message||'')){
+      COLLECT_DURATION_COLUMN_AVAILABLE=false;
+      const legacyPayload={...eventPayload};delete legacyPayload.duration_seconds;
+      ({data,error}=await sb.from('collection_events').insert(legacyPayload).select().single());
+    }
     if(error)throw new Error(error.message);
     eventId=data.id;
   }catch(ex){

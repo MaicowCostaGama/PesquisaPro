@@ -1239,7 +1239,10 @@ const STATUS_LABEL={campo:'Em campo',rascunho:'Rascunho',encerrada:'Concluída'}
    respostas: precisam ter o id real do banco (dbId) e não podem ser
    "resposta aberta" (texto livre não tem como virar gráfico/contagem) */
 function reportsQuestionsForSurvey(s){
-  return (s.questions||[]).filter(q=>q.dbId&&q.type!=='open');
+  return (s.questions||[]).filter(q=>q.dbId);
+}
+function reportsQuestionsForClient(s){
+  return reportsQuestionsForSurvey(s).filter(q=>q.type!=='open');
 }
 function reportsCrossQuestionsForSurvey(s){
   return reportsQuestionsForSurvey(s).filter(q=>q.type!=='pair'&&q.type!=='ranking');
@@ -1343,7 +1346,7 @@ function clientReportCrossMatrixMarkup(model,ids,qs,title=''){const headers=mode
 function clientPublishedCrossings(document,qs){const sec=typeof document?.sections==='string'?JSON.parse(document.sections||'{}'):document?.sections||{};const valid=new Set(qs.map(q=>q.dbId));return reportsNormalizeCrossings(sec).filter(c=>c.include!==false&&reportsCrossingQuestionIds(c).length&&reportsCrossingQuestionIds(c).every(id=>valid.has(id)));}
 async function clientLoadReportOverview(){
   const out=document.getElementById('cr-client-report');if(!out||CR_CLIENT_REPORT_LOADING)return;
-  const c=clientSelf(),s=clientSelfSurvey(),qs=reportsQuestionsForSurvey(s||{}),crossQs=reportsCrossQuestionsForSurvey(s||{});if(!c||!s||!qs.length)return;
+  const c=clientSelf(),s=clientSelfSurvey(),qs=reportsQuestionsForClient(s||{}),crossQs=reportsCrossQuestionsForSurvey(s||{});if(!c||!s||!qs.length)return;
   if(!clientResultsReleasedForSurvey(c,s)){out.innerHTML='<div class="card"><div class="empty">Os resultados ainda não foram liberados.</div></div>';return;}
   CR_CLIENT_REPORT_LOADING=true;out.innerHTML='<div class="empty" style="padding:28px 0">Carregando resultados agregados…</div>';
   try{
@@ -5110,6 +5113,12 @@ function renderReportsOverview(out,rows,qs){
   const byQ={};(rows||[]).forEach(r=>(byQ[r.question_id]||(byQ[r.question_id]=[])).push(r));
   const cards=qs.map((q,qi)=>{
     const data=byQ[q.dbId]||[];const base=Number(data[0]?.valid_base)||0;const total=data.reduce((sum,r)=>sum+Number(r.cnt||0),0);const max=Math.max(1,...data.map(r=>Number(r.cnt||0)));
+    if(q.type==='open'){
+      const answers=data.filter(r=>String(r.value_label||'').trim()&&String(r.value_label).trim()!=='(sem resposta)').slice(0,100);
+      const answerRows=answers.length?answers.map(r=>{const cnt=Number(r.cnt||0),pct=reportPercent(cnt,base||total);return `<li class="reports-open-answer"><div><p>${esc(r.value_label)}</p><small>${cnt.toLocaleString('pt-BR')} ocorrência${cnt===1?'':'s'} · ${pct}% da base válida</small></div><span class="pill pill-blue">${pct}%</span></li>`;}).join(''):'<li class="empty" style="padding:16px 0">Ainda não há respostas textuais válidas.</li>';
+      const omitted=Math.max(0,answers.length<100?0:data.filter(r=>String(r.value_label||'').trim()&&String(r.value_label).trim()!=='(sem resposta)').length-answers.length);
+      return `<article class="card reports-question-card reports-open-question-card"><div class="reports-question-head"><div><span class="reports-question-number">${String(qi+1).padStart(2,'0')}</span><h3>${esc(q.text||'(pergunta sem texto)')}</h3></div><span class="pill pill-blue">${base.toLocaleString('pt-BR')} válidas</span></div><div class="reports-question-meta">Resposta aberta · ${answers.length.toLocaleString('pt-BR')} resposta${answers.length===1?'':'s'} textuais agrupadas</div><ul class="reports-open-answer-list">${answerRows}</ul>${omitted?`<div class="reports-open-more">Exibindo as primeiras 100 respostas diferentes.</div>`:''}</article>`;
+    }
     const lines=data.length?data.map((r,i)=>{const cnt=Number(r.cnt||0),pct=reportPercent(cnt,base||total);return `<div class="reports-answer-row"><div class="reports-answer-head"><span>${esc(r.value_label||'(sem resposta)')}</span><strong>${cnt.toLocaleString('pt-BR')} · ${pct}%</strong></div><div class="reports-answer-bar"><i style="width:${Math.min(100,Math.round((cnt/max)*100))}%"></i></div></div>`;}).join(''):'<div class="empty" style="padding:16px 0">Ainda não há respostas válidas.</div>';
     return `<article class="card reports-question-card"><div class="reports-question-head"><div><span class="reports-question-number">${String(qi+1).padStart(2,'0')}</span><h3>${esc(q.text||'(pergunta sem texto)')}</h3></div><span class="pill pill-blue">${base.toLocaleString('pt-BR')} válidas</span></div><div class="reports-question-meta">${esc(Q_TYPES[q.type]||q.type||'Pergunta')}</div>${lines}</article>`;
   }).join('');

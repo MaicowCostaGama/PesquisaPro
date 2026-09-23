@@ -12,7 +12,7 @@ for(const token of [
   'teamOrientationMessageMarkup',
   'saveTeamOrientationMessage',
   'Conversar no WhatsApp',
-  'chatWindow',
+  "window.open(target,'_blank','noopener,noreferrer')",
   'record_survey_orientation_whatsapp_send',
   'A mensagem foi aberta, mas o contador não foi registrado',
   'mandatoryBlocks',
@@ -54,5 +54,5 @@ const editableSql=fs.readFileSync('deploy/orientacoes-iniciais-editaveis.sql','u
 assert(editableSql.includes('add column if not exists orientation_message_template'),'migration editável sem coluna');
 assert(!/drop table|drop column|truncate|delete from/i.test(editableSql),'migration editável contém operação destrutiva');
 assert(!/drop table|drop column|truncate|delete from/i.test(sql),'migration contém operação destrutiva');
-assert(html.includes('app.js?v=20260922230900'),'cache não atualizado');
+assert(html.includes('app.js?v=20260922231400'),'cache não atualizado');
 console.log('Collection orientation WhatsApp smoke test: PASS — mensagem, botão, contador por pesquisador, RPCs e RLS verificados.');

@@ -3430,10 +3430,10 @@ async function sendCollectionOrientationWhatsapp(name){
   const orientationSettings=await collectionOrientationSettings(s.id);
   const message=surveyInitialOrientationWhatsappMessage(s,user,orientationSettings.whatsapp_group_url||'',orientationSettings.orientation_message_template||'');
   const target='https://wa.me/'+digits+'?text='+encodeURIComponent(message);
-  /* Reserva a aba durante o clique para evitar bloqueio de pop-up enquanto a
-     RPC registra o envio. A orientação só é contada depois do retorno aceito
-     pelo Supabase; a conversa comum acima não passa por este fluxo. */
-  const chatWindow=window.open('about:blank','_blank','noopener');
+  /* Abre o destino diretamente durante o clique para que o navegador não
+     bloqueie o WhatsApp. O contador é atualizado logo depois pela RPC; a
+     conversa comum acima não passa por este fluxo. */
+  window.open(target,'_blank','noopener,noreferrer');
   try{
     const {data,error}=await sb.rpc('record_survey_orientation_whatsapp_send',{p_survey_id:s.id,p_researcher_id:user.id});
     if(error)throw error;
@@ -3441,10 +3441,8 @@ async function sendCollectionOrientationWhatsapp(name){
     if(row)COLLECT_ORIENTATION_COUNTS[user.id]=row;
     COLLECT_ORIENTATION_COUNTS_STATUS='ready';
     refreshCollectionTeamRows(COLLECT_IDX);
-    if(chatWindow&&!chatWindow.closed)chatWindow.location.href=target;else window.open(target,'_blank','noopener');
   }catch(ex){
     console.warn('Envio aberto, mas contador de orientações indisponível; execute a migration contador-orientacoes-whatsapp-coleta.sql:',ex);
-    if(chatWindow&&!chatWindow.closed)chatWindow.location.href=target;else window.open(target,'_blank','noopener');
     alert('A mensagem foi aberta, mas o contador não foi registrado: '+(ex.message||String(ex)));
   }
 }

@@ -41,6 +41,6 @@ else console.log('Migration ausente neste clone por publicação somente do cód
 for(const token of ['addEventListener(\'push\'','showNotification','notificationclick'])ok(worker.includes(token),`service worker sem ${token}`);
 ok(pushConfig.includes('PP_PUSH_PUBLIC_KEY'),'configuração pública do push ausente');
 for(const token of ['web-push','VAPID_PRIVATE_KEY','sendNotification','push_subscriptions','not authorized'])ok(edge.includes(token),`função Edge sem ${token}`);
-ok(html.includes('push-config.js?v=20260922230900'),'configuração de push sem cache novo');
-ok(html.includes('app.js?v=20260922230900'),'app sem cache novo');
+ok(html.includes('push-config.js?v=20260922231400'),'configuração de push sem cache novo');
+ok(html.includes('app.js?v=20260922231400'),'app sem cache novo');
 console.log('Survey invite push/groups smoke test: PASS — elegibilidade, convite em massa, aceite, grupo WhatsApp, canal chat, service worker, RLS e função de push verificados.');

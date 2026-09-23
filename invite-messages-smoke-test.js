@@ -32,7 +32,7 @@ for(const token of [
   'Aceitar e entrar na equipe'
 ]) assert(app.includes(token),`modelo ausente no app: ${token}`);
 for(const token of ['invite_messages?:Record<string,string>','inviteUrl.searchParams.set(\'convite\',invite.id)','invite_id:invite.id','title:\'Convite para participar da pesquisa — PesquisaPro\'']) assert(edge.includes(token),`modelo ausente no push: ${token}`);
-assert(html.includes('app.js?v=20260922224500'),'cache do app não atualizado');
-assert(html.includes('push-config.js?v=20260922224500'),'cache do push não atualizado');
+assert(html.includes('app.js?v=20260922225900'),'cache do app não atualizado');
+assert(html.includes('push-config.js?v=20260922225900'),'cache do push não atualizado');
 assert(app.indexOf('mySurveyCommunicationsMarkup()')<app.indexOf('researcherAvailableSurveysMarkup(surveysMine)'),'link do grupo não aparece antes das pesquisas disponíveis');
 console.log('Invite messages smoke test: PASS — push e WhatsApp com dados da pesquisa, regras, cotas, georreferenciamento, gravação, pagamento semanal, Pix e aceite individual.');

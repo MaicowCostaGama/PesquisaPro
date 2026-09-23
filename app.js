@@ -2856,6 +2856,7 @@ function surveyInvitationGroupText(groupLink,compact=false){
     :'O link do grupo WhatsApp será disponibilizado no seu painel antes da primeira coleta.';
 }
 function surveyInvitationSiteUrl(){return 'https://www.pesquisa-pro.com/app.html';}
+function surveyTrainingVideoUrl(){return 'https://files.manuscdn.com/user_upload_by_module/session_file/310519663067279939/aKHKhqQgQgDDwOSj.mp4';}
 function whatsappInviteCountMarkup(invite){
   if(!invite)return '';
   const count=Math.max(0,Number(invite.whatsapp_sent_count)||0);
@@ -2921,25 +2922,44 @@ function surveyInvitationWhatsappMessage(s,u,link,groupLink=''){
     'Ao aceitar, você entrará automaticamente na equipe desta pesquisa e poderá acompanhar as orientações e coletas no seu painel. Caso não possa participar, você poderá recusar o convite no próprio aplicativo.\n\n'+
     'PesquisaPro — Pesquisa, coleta e auditoria de campo.';
 }
-function surveyInitialOrientationWhatsappMessage(s,u,groupLink=''){
-  const name=u?.name||'pesquisador(a)';
-  const groupLine=groupLink?'Entre no grupo oficial antes da primeira coleta: '+groupLink:'O link do grupo oficial será disponibilizado no seu painel antes da primeira coleta.';
-  return 'Olá, '+name+'! Aqui estão as orientações iniciais da PesquisaPro para a pesquisa "'+(s?.name||'Pesquisa')+'".\n\n'+
+function surveyInitialOrientationDefaultTemplate(){
+  return 'Olá, {{pesquisador}}! Aqui estão as orientações iniciais da PesquisaPro para a pesquisa "{{pesquisa}}".\n\n'+
     '*Antes de começar:*\n'+
-    '• Acesse '+surveyInvitationSiteUrl()+' e entre no aplicativo PesquisaPro;\n'+
+    '• Acesse {{site}} e entre no aplicativo PesquisaPro;\n'+
     '• Selecione a pesquisa e confira a cota disponível antes de iniciar;\n'+
     '• Mantenha o GPS do celular ativo e permita a localização quando solicitado;\n'+
-    '• '+groupLine+'\n\n'+
+    '• {{grupo}}\n\n'+
     '*Regras da coleta:*\n'+
     '• Aborde somente pessoas dentro do perfil definido no formulário;\n'+
     '• Leia as perguntas e registre exatamente o que a pessoa responder;\n'+
     '• Não invente, replique, acelere ou preencha entrevistas sem falar com o entrevistado;\n'+
     '• Não faça coletas em pontos muito próximos nem em intervalos de tempo incompatíveis com uma entrevista real;\n'+
     '• Preserve a privacidade e nunca fotografe documentos;\n\n'+
-    '*Controle de qualidade:*\n'+
-    'O georreferenciamento, o horário e os dados da coleta podem ser verificados. Gravações curtas de voz do entrevistado poderão ser solicitadas aleatoriamente ao final de algumas entrevistas, sempre com explicação e autorização.\n\n'+
+    '*Controle de qualidade e confirmação gravada:*\n'+
+    'O georreferenciamento, o horário e os dados da coleta podem ser verificados. Algumas entrevistas solicitarão que, no final, o entrevistado grave com sua voz a confirmação de que a entrevista realmente ocorreu e de que foram feitas todas as perguntas.\n\n'+
+    'Todas as entrevistas realizadas após as 21:00 devem ter gravação de confirmação do entrevistado no final. Explique o pedido com transparência e solicite a autorização antes de gravar.\n\n'+
+    'Lembre-se: alguém pagou pela informação correta e você recebe por coletar esta informação. Quando todas as partes realizam a prática correta, todos ganham.\n\n'+
+    '*Assista a este vídeo para entender como fazer as coletas corretamente e as regras para serem consideradas aptas:*\n{{video}}\n\n'+
     'Entrevistas que não respeitem o perfil, o local, o tempo ou as regras poderão ser anuladas e não serão consideradas nos resultados ou no pagamento. Pesquisadores que insistirem em descumprir as regras ou tentarem burlar os controles poderão ser desligados da operação.\n\n'+
     'Em caso de dúvida, pare a coleta e fale com a equipe PesquisaPro. Boa coleta: precisa, respeitosa e fiel à opinião do entrevistado.';
+}
+function surveyInitialOrientationWhatsappMessage(s,u,groupLink='',template=''){
+  const groupLine=groupLink?'Entre no grupo oficial antes da primeira coleta: '+groupLink:'O link do grupo oficial será disponibilizado no seu painel antes da primeira coleta.';
+  const values={
+    pesquisador:u?.name||'pesquisador(a)',
+    pesquisa:s?.name||'Pesquisa',
+    site:surveyInvitationSiteUrl(),
+    video:surveyTrainingVideoUrl(),
+    grupo:groupLine
+  };
+  const source=String(template||'').trim()||surveyInitialOrientationDefaultTemplate();
+  let message=source.replace(/\{\{\s*(pesquisador|pesquisa|site|video|grupo)\s*\}\}/gi,(_,key)=>values[String(key).toLowerCase()]||'');
+  const mandatoryBlocks=[];
+  if(!/algumas entrevistas solicitarão/i.test(message))mandatoryBlocks.push('Algumas entrevistas solicitarão que, no final, o entrevistado grave com sua voz a confirmação de que a entrevista realmente ocorreu e de que foram feitas todas as perguntas.');
+  if(!/todas as entrevistas realizadas após as 21:00/i.test(message))mandatoryBlocks.push('Todas as entrevistas realizadas após as 21:00 devem ter gravação de confirmação do entrevistado no final.');
+  if(!/alguém pagou pela informação correta/i.test(message))mandatoryBlocks.push('Lembre-se: alguém pagou pela informação correta e você recebe por coletar esta informação. Quando todas as partes realizam a prática correta, todos ganham.');
+  if(!message.includes(surveyTrainingVideoUrl()))mandatoryBlocks.push('Assista a este vídeo para entender como fazer as coletas corretamente e as regras para serem consideradas aptas: '+surveyTrainingVideoUrl());
+  return mandatoryBlocks.length?message+'\n\n*Avisos obrigatórios da PesquisaPro:*\n'+mandatoryBlocks.join('\n\n'):message;
 }
 async function copySurveyInviteLink(inviteId){
   const link=surveyInviteLink(inviteId);
@@ -3015,6 +3035,24 @@ async function deactivateResearcherLink(){
 function teamCommunicationMarkup(){
   const url=TEAM_COMM_SETTINGS?.whatsapp_group_url||'';
   return `<div class="card mb team-communication-settings"><div class="card-t">Grupos desta pesquisa</div><div class="card-d">Depois de aceitar o convite, o pesquisador terá acesso ao chat da pesquisa e poderá abrir o grupo oficial do WhatsApp pelo link abaixo. O WhatsApp exige que cada pessoa toque no link para entrar; não há inclusão automática por número.</div><label class="lbl" for="team-whatsapp-group-url">Link de convite do grupo do WhatsApp</label><div class="team-communication-url-row"><input class="inp" id="team-whatsapp-group-url" value="${esc(url)}" placeholder="https://chat.whatsapp.com/…" inputmode="url"><button class="btn btn-out" onclick="saveTeamCommunicationSettings()">Salvar link</button></div><div class="team-communication-help">Crie o grupo no WhatsApp, copie o link de convite e cole aqui. O link será mostrado somente aos pesquisadores que aceitarem esta pesquisa.</div></div>`;
+}
+function teamOrientationMessageMarkup(){
+  const value=TEAM_COMM_SETTINGS?.orientation_message_template||surveyInitialOrientationDefaultTemplate();
+  return `<div class="card mb team-orientation-message-card"><div class="card-t">Orientações iniciais por WhatsApp</div><div class="card-d">Edite a mensagem que será aberta pelo botão <b>Enviar orientações</b> na tela Coleta e campo. O contador de envios continua separado por pesquisa e pesquisador.</div><label class="lbl" for="team-orientation-message">Mensagem padrão desta pesquisa</label><textarea class="inp team-orientation-message" id="team-orientation-message" rows="14">${esc(value)}</textarea><div class="team-communication-help">Placeholders disponíveis: <code>{{pesquisador}}</code>, <code>{{pesquisa}}</code>, <code>{{grupo}}</code>, <code>{{site}}</code> e <code>{{video}}</code>. Se apagar o conteúdo, o modelo padrão será usado.</div><button class="btn btn-fill" style="margin-top:10px" onclick="saveTeamOrientationMessage()">Salvar orientações desta pesquisa</button></div>`;
+}
+async function saveTeamOrientationMessage(){
+  const s=SURVEYS[TEAM_IDX];if(!s?.id)return;
+  const input=document.getElementById('team-orientation-message');
+  const text=(input?.value||'').trim();
+  if(text.length>12000){alert('A mensagem deve ter no máximo 12.000 caracteres.');return;}
+  try{
+    const row={survey_id:s.id,orientation_message_template:text||null,updated_by:CURRENT_PROFILE?.id||null,updated_at:new Date().toISOString()};
+    const {data,error}=await sb.from('survey_communication_settings').upsert(row,{onConflict:'survey_id'}).select().single();
+    if(error)throw error;
+    TEAM_COMM_SETTINGS={...(TEAM_COMM_SETTINGS||{}),...(data||row)};TEAM_COMM_SETTINGS_LOADED=true;
+    alert('Mensagem de orientações salva para esta pesquisa.');
+    go('survey-team');
+  }catch(ex){alert('Não foi possível salvar a mensagem. Execute a migration de orientações editáveis no Supabase.');console.error(ex);}
 }
 async function saveTeamCommunicationSettings(){
   const s=SURVEYS[TEAM_IDX];if(!s)return;
@@ -3172,7 +3210,7 @@ PAGES['survey-team']=()=>{
   return head('Atribuir equipe — '+s.name,'Escolha pesquisadores cadastrados ou envie link de cadastro para novos',
     '<button class="btn btn-out" onclick="go(\'surveys\')">← Voltar</button><button class="btn btn-out" onclick="chatOpenSurveyChannel(\''+s.id+'\')">✉ Chat da pesquisa</button><button class="btn btn-out team-collection-access" onclick="collectOpen('+TEAM_IDX+')">📊 Pesquisadores na coleta</button><button class="btn btn-fill" onclick="teamSave()">Salvar equipe</button>')+`
   ${TEAM_RESEARCHER_LINK_LOADED?teamResearcherLinkMarkup():''}
-  ${TEAM_COMM_SETTINGS_LOADED?teamCommunicationMarkup():''}
+  ${TEAM_COMM_SETTINGS_LOADED?teamCommunicationMarkup()+teamOrientationMessageMarkup():''}
   <div class="grid g2" style="align-items:start">
     <div class="card">
       <div style="display:flex;align-items:flex-start;gap:12px;justify-content:space-between;flex-wrap:wrap"><div><div class="card-t">Pesquisadores cadastrados</div><div class="card-d" style="margin-top:4px">Para acompanhar quem já está coletando, use <b>Pesquisadores na coleta</b> no topo ou abra o botão abaixo.</div></div><button class="btn btn-fill team-collection-access" onclick="collectOpen(${TEAM_IDX})">📊 Ver pesquisadores na coleta</button></div>
@@ -3377,20 +3415,20 @@ async function loadCollectionOrientationCounts(idx){
   COLLECT_ORIENTATION_COUNTS_LOADING=false;
   if(COLLECT_IDX===idx)refreshCollectionTeamRows(idx);
 }
-async function collectionOrientationGroupLink(surveyId){
+async function collectionOrientationSettings(surveyId){
   try{
-    const {data,error}=await sb.from('survey_communication_settings').select('whatsapp_group_url').eq('survey_id',surveyId).maybeSingle();
+    const {data,error}=await sb.from('survey_communication_settings').select('whatsapp_group_url,orientation_message_template').eq('survey_id',surveyId).maybeSingle();
     if(error)throw error;
-    return data?.whatsapp_group_url||'';
-  }catch(ex){return '';}
+    return data||{};
+  }catch(ex){return {};}
 }
 async function sendCollectionOrientationWhatsapp(name){
   const s=SURVEYS[COLLECT_IDX],user=collectionOrientationResearcher(name);
   if(!s||!user){alert('Não foi possível identificar este pesquisador no cadastro.');return;}
   const digits=whatsappDigits(user.phone);
   if(!digits){alert('Este pesquisador não tem celular cadastrado.');return;}
-  const groupLink=await collectionOrientationGroupLink(s.id);
-  const message=surveyInitialOrientationWhatsappMessage(s,user,groupLink);
+  const orientationSettings=await collectionOrientationSettings(s.id);
+  const message=surveyInitialOrientationWhatsappMessage(s,user,orientationSettings.whatsapp_group_url||'',orientationSettings.orientation_message_template||'');
   window.open('https://wa.me/'+digits+'?text='+encodeURIComponent(message),'_blank','noopener');
   try{
     const {data,error}=await sb.rpc('record_survey_orientation_whatsapp_send',{p_survey_id:s.id,p_researcher_id:user.id});
@@ -4067,11 +4105,16 @@ let ACOLLECT_TICK=null;
 let ACOLLECT_ANSWERS={}; /* {questionDbId: {value, locked}} — respostas de verdade da entrevista em andamento */
 let ACOLLECT_RANKING_DRAG=null;
 let ACOLLECT_RECORDING_FEATURE_AVAILABLE=null;
-let ACOLLECT_RECORDING_RESERVATION_ID=null,ACOLLECT_RECORDING_REQUIRED=false,ACOLLECT_RECORDING_CONSENT=null;
+let ACOLLECT_RECORDING_RESERVATION_ID=null,ACOLLECT_RECORDING_REQUIRED=false,ACOLLECT_RECORDING_MANDATORY_AFTER_CUTOFF=false,ACOLLECT_RECORDING_CONSENT=null;
 let ACOLLECT_RECORDING_STATUS='not_selected',ACOLLECT_RECORDING_BLOB=null,ACOLLECT_RECORDING_MIME='',ACOLLECT_RECORDING_DURATION_MS=null,ACOLLECT_RECORDING_STREAM=null,ACOLLECT_RECORDING_RECORDER=null,ACOLLECT_RECORDING_CHUNKS=[],ACOLLECT_RECORDING_PREVIEW_URL=null,ACOLLECT_RECORDING_STOP_TIMER=null,ACOLLECT_RECORDING_STARTED_AT=null,ACOLLECT_RECORDING_ERROR='';
 const ACOLLECT_RECORDING_MAX_SECONDS=12;
+const ACOLLECT_RECORDING_CUTOFF_HOUR=21;
 const ACOLLECT_MIN_SECONDS=60; /* entrevista concluída mais rápido que isso é sinalizada na auditoria */
 const ACOLLECT_SCALE_MAX={scale:5,scale10:10,nps:10}; /* nps vai de 0 a 10 (11 pontos) */
+function acollectIsAfterRecordingCutoff(date=new Date()){
+  try{return Number(new Intl.DateTimeFormat('en-US',{hour:'numeric',hour12:false,timeZone:'America/Sao_Paulo'}).format(date))>=ACOLLECT_RECORDING_CUTOFF_HOUR;}
+  catch(ex){return date.getHours()>=ACOLLECT_RECORDING_CUTOFF_HOUR;}
+}
 
 async function initGeoCollect(){
   requestGeo();
@@ -4309,6 +4352,7 @@ function acollectResetRecordingState(){
   ACOLLECT_RECORDING_FEATURE_AVAILABLE=null;
   ACOLLECT_RECORDING_RESERVATION_ID=null;
   ACOLLECT_RECORDING_REQUIRED=false;
+  ACOLLECT_RECORDING_MANDATORY_AFTER_CUTOFF=false;
   ACOLLECT_RECORDING_CONSENT=null;
   ACOLLECT_RECORDING_BLOB=null;
   ACOLLECT_RECORDING_MIME='';
@@ -4325,6 +4369,7 @@ function acollectRecordingMime(){
 async function acollectReserveRecording(){
   ACOLLECT_RECORDING_FEATURE_AVAILABLE=false;
   ACOLLECT_RECORDING_REQUIRED=false;
+  ACOLLECT_RECORDING_MANDATORY_AFTER_CUTOFF=acollectIsAfterRecordingCutoff();
   ACOLLECT_RECORDING_STATUS='not_selected';
   if(!ACOLLECT_SURVEY_ID||!CURRENT_PROFILE?.id)return;
   try{
@@ -4332,21 +4377,26 @@ async function acollectReserveRecording(){
     if(error||!data?.[0])return;
     ACOLLECT_RECORDING_FEATURE_AVAILABLE=true;
     ACOLLECT_RECORDING_RESERVATION_ID=data[0].reservation_id;
-    ACOLLECT_RECORDING_REQUIRED=data[0].recording_required===true;
+    ACOLLECT_RECORDING_REQUIRED=data[0].recording_required===true||ACOLLECT_RECORDING_MANDATORY_AFTER_CUTOFF;
     ACOLLECT_RECORDING_STATUS=ACOLLECT_RECORDING_REQUIRED?'awaiting_consent':'not_selected';
   }catch(ex){console.warn('Confirmação de áudio não disponível:',ex);}
+  if(ACOLLECT_RECORDING_MANDATORY_AFTER_CUTOFF&&!ACOLLECT_RECORDING_FEATURE_AVAILABLE){
+    ACOLLECT_RECORDING_REQUIRED=true;
+    ACOLLECT_RECORDING_STATUS='failed';
+    ACOLLECT_RECORDING_ERROR='A confirmação após 21h exige a migration de gravação atualizada no Supabase';
+  }
 }
 function renderAcollectRecording(){
   const el=document.getElementById('acollectRecording');
   if(!el)return;
-  if(!ACOLLECT_IN_PROGRESS||!ACOLLECT_RECORDING_FEATURE_AVAILABLE||!ACOLLECT_RECORDING_REQUIRED){el.innerHTML='';return;}
+  if(!ACOLLECT_IN_PROGRESS||(!ACOLLECT_RECORDING_FEATURE_AVAILABLE&&!ACOLLECT_RECORDING_MANDATORY_AFTER_CUTOFF)||!ACOLLECT_RECORDING_REQUIRED){el.innerHTML='';return;}
   if(ACOLLECT_RECORDING_STATUS==='awaiting_consent'){
     el.innerHTML=`<div class="recording-consent-card">
-      <div class="recording-consent-title">Confirmação final de qualidade</div>
+      <div class="recording-consent-title">${ACOLLECT_RECORDING_MANDATORY_AFTER_CUTOFF?'Confirmação final obrigatória após 21h':'Confirmação final de qualidade'}</div>
       <p>Esta entrevista foi selecionada para uma confirmação curta em áudio. Explique ao entrevistado que a gravação não registra o questionário inteiro, será usada somente para verificar se a pesquisa foi realizada corretamente e ficará disponível apenas para a gestão.</p>
       <p class="recording-prompt">Pergunte: “Você confirma que esta pesquisa foi realizada corretamente e que respondeu às perguntas de forma voluntária?”</p>
       <label class="recording-check"><input type="checkbox" id="acollectRecordingConsent" onchange="acollectRecordingConsentChanged(this.checked)"> O entrevistado autorizou a gravação desta confirmação final.</label>
-      <div class="recording-consent-actions"><button type="button" class="btn-ghost" onclick="acollectRecordingDecline()">Recusar / enviar sem áudio</button><button type="button" class="btn-primary" id="acollectRecordingStartBtn" disabled onclick="acollectRecordingStart()">● Gravar confirmação</button></div>
+      <div class="recording-consent-actions"><button type="button" class="btn-ghost" onclick="${ACOLLECT_RECORDING_MANDATORY_AFTER_CUTOFF?'acollectCancel()':'acollectRecordingDecline()'}">${ACOLLECT_RECORDING_MANDATORY_AFTER_CUTOFF?'Cancelar entrevista':'Recusar / enviar sem áudio'}</button><button type="button" class="btn-primary" id="acollectRecordingStartBtn" disabled onclick="acollectRecordingStart()">● Gravar confirmação</button></div>
     </div>`;
     return;
   }
@@ -4360,11 +4410,15 @@ function renderAcollectRecording(){
     return;
   }
   if(ACOLLECT_RECORDING_STATUS==='declined'){
-    el.innerHTML='<div class="recording-note"><b>Entrevista sem áudio.</b> O entrevistado não autorizou a confirmação gravada. A entrevista continua válida e pode ser enviada.</div>';
+    el.innerHTML=ACOLLECT_RECORDING_MANDATORY_AFTER_CUTOFF
+      ?'<div class="recording-note recording-note-error"><b>Confirmação obrigatória após 21h.</b> A entrevista não pode ser enviada sem a autorização e a gravação da confirmação final.</div>'
+      :'<div class="recording-note"><b>Entrevista sem áudio.</b> O entrevistado não autorizou a confirmação gravada. A entrevista continua válida e pode ser enviada.</div>';
     return;
   }
   if(ACOLLECT_RECORDING_STATUS==='failed'){
-    el.innerHTML='<div class="recording-note recording-note-error"><b>Áudio não anexado.</b> '+esc(ACOLLECT_RECORDING_ERROR||'Falha técnica na gravação')+'. A entrevista continua válida; envie sem o áudio.</div>';
+    el.innerHTML=ACOLLECT_RECORDING_MANDATORY_AFTER_CUTOFF
+      ?'<div class="recording-note recording-note-error"><b>Gravação obrigatória após 21h.</b> '+esc(ACOLLECT_RECORDING_ERROR||'Falha técnica na gravação')+'. A entrevista não pode ser enviada até a confirmação ser gravada.</div>'
+      :'<div class="recording-note recording-note-error"><b>Áudio não anexado.</b> '+esc(ACOLLECT_RECORDING_ERROR||'Falha técnica na gravação')+'. A entrevista continua válida; envie sem o áudio.</div>';
   }
 }
 function acollectRecordingConsentChanged(checked){
@@ -4372,6 +4426,10 @@ function acollectRecordingConsentChanged(checked){
   const btn=document.getElementById('acollectRecordingStartBtn');if(btn)btn.disabled=!checked;
 }
 function acollectRecordingDecline(){
+  if(ACOLLECT_RECORDING_MANDATORY_AFTER_CUTOFF){
+    alert('Após 21h, a confirmação final gravada é obrigatória para enviar a entrevista. Autorize a gravação ou cancele a entrevista.');
+    return;
+  }
   ACOLLECT_RECORDING_CONSENT=false;
   ACOLLECT_RECORDING_STATUS='declined';
   renderAcollectRecording();
@@ -4380,7 +4438,7 @@ function acollectRecordingDecline(){
 async function acollectRecordingStart(){
   if(ACOLLECT_RECORDING_CONSENT!==true||ACOLLECT_RECORDING_STATUS!=='awaiting_consent')return;
   if(!window.isSecureContext||!navigator.mediaDevices?.getUserMedia||typeof MediaRecorder==='undefined'){
-    alert('Este aparelho ou navegador não permite gravação segura de áudio. A entrevista pode ser enviada sem gravação.');
+    alert(ACOLLECT_RECORDING_MANDATORY_AFTER_CUTOFF?'Este aparelho ou navegador não permite a gravação segura obrigatória após 21h. Cancele a entrevista ou use um dispositivo compatível.':'Este aparelho ou navegador não permite gravação segura de áudio. A entrevista pode ser enviada sem gravação.');
     ACOLLECT_RECORDING_ERROR='Navegador ou contexto sem suporte seguro ao microfone';
     ACOLLECT_RECORDING_STATUS='failed';renderAcollectRecording();renderAcollectActionState();return;
   }
@@ -4421,7 +4479,7 @@ async function acollectRecordingStart(){
     acollectRecordingStopTracks();
     renderAcollectRecording();
     renderAcollectActionState();
-    alert('Não foi possível acessar o microfone. A entrevista pode ser enviada sem gravação.');
+    alert(ACOLLECT_RECORDING_MANDATORY_AFTER_CUTOFF?'Não foi possível acessar o microfone. Após 21h, a entrevista não pode ser enviada sem a confirmação gravada.':'Não foi possível acessar o microfone. A entrevista pode ser enviada sem gravação.');
   }
 }
 function acollectRecordingStopTracks(){
@@ -4542,11 +4600,14 @@ function renderAcollectActionState(){
       btn.parentNode.insertBefore(actionsEl,btn);
     }
     const missing=acollectMissingRequired().length;
-    const recordingPending=ACOLLECT_RECORDING_REQUIRED&&['awaiting_consent','recording'].includes(ACOLLECT_RECORDING_STATUS);
+    const recordingPending=ACOLLECT_RECORDING_REQUIRED&&(
+      ['awaiting_consent','recording'].includes(ACOLLECT_RECORDING_STATUS)||
+      (ACOLLECT_RECORDING_MANDATORY_AFTER_CUTOFF&&ACOLLECT_RECORDING_STATUS!=='ready')
+    );
     const submitBlocked=ACOLLECT_SUBMITTING||missing>0||recordingPending;
     actionsEl.innerHTML=`<div class="online-banner" style="margin-bottom:8px">▶ Entrevista em andamento — ${acollectElapsedLabel()}</div>
       ${missing>0?`<div style="font-size:11.5px;color:var(--ink3);margin-bottom:6px">Faltam responder ${missing} pergunta${missing>1?'s':''}</div>`:''}
-      ${recordingPending?'<div style="font-size:11.5px;color:var(--ink3);margin-bottom:6px">Conclua a confirmação final ou escolha enviar sem áudio.</div>':''}
+      ${recordingPending?`<div style="font-size:11.5px;color:var(--ink3);margin-bottom:6px">${ACOLLECT_RECORDING_MANDATORY_AFTER_CUTOFF?'Após 21h, grave a confirmação final para liberar o envio.':'Conclua a confirmação final ou escolha enviar sem áudio.'}</div>`:''}
       <button class="btn-primary" style="height:40px;font-size:14px;width:100%;${submitBlocked?'opacity:.5':''}" ${submitBlocked?'disabled':''} onclick="acollectSubmit()">${ACOLLECT_SUBMITTING?'Enviando…':'✓ Concluir e enviar'}</button>
       <button class="btn-ghost" style="width:100%;margin-top:6px" ${ACOLLECT_SUBMITTING?'disabled':''} onclick="acollectCancel()">Cancelar</button>`;
     if(hint)hint.textContent='';
@@ -4597,6 +4658,10 @@ async function acollectStart(){
   }
   acollectResetRecordingState();
   await acollectReserveRecording();
+  if(ACOLLECT_RECORDING_MANDATORY_AFTER_CUTOFF){
+    ACOLLECT_RECORDING_REQUIRED=true;
+    if(ACOLLECT_RECORDING_FEATURE_AVAILABLE)ACOLLECT_RECORDING_STATUS='awaiting_consent';
+  }
   ACOLLECT_IN_PROGRESS=true;
   acollectClearTerminationNotice();
   ACOLLECT_STARTED_AT=Date.now();
@@ -4687,10 +4752,22 @@ async function acollectUploadRecording(eventId){
 async function acollectSubmit(){
   if(!ACOLLECT_IN_PROGRESS||ACOLLECT_SUBMITTING)return;
   if(GEO.status!=='granted'){alert('A localização foi perdida — aguarde reconectar antes de enviar.');return;}
+  if(acollectIsAfterRecordingCutoff()&&!ACOLLECT_RECORDING_MANDATORY_AFTER_CUTOFF){
+    ACOLLECT_RECORDING_MANDATORY_AFTER_CUTOFF=true;
+    ACOLLECT_RECORDING_REQUIRED=true;
+    if(ACOLLECT_RECORDING_STATUS!=='ready')ACOLLECT_RECORDING_STATUS=ACOLLECT_RECORDING_FEATURE_AVAILABLE?'awaiting_consent':'failed';
+    if(!ACOLLECT_RECORDING_FEATURE_AVAILABLE)ACOLLECT_RECORDING_ERROR='A confirmação após 21h exige a migration de gravação atualizada no Supabase';
+    renderAcollectRecording();renderAcollectActionState();
+    alert('A partir das 21h, todas as entrevistas precisam da confirmação final gravada. Autorize e grave antes de enviar.');
+    return;
+  }
   const missing=acollectMissingRequired();
   if(missing.length){alert('Faltam responder '+missing.length+' pergunta(s) antes de enviar.');return;}
-  if(ACOLLECT_RECORDING_REQUIRED&&['awaiting_consent','recording'].includes(ACOLLECT_RECORDING_STATUS)){
-    alert('Conclua a confirmação final ou escolha enviar sem áudio antes de finalizar.');return;
+  if(ACOLLECT_RECORDING_REQUIRED&&(
+    ['awaiting_consent','recording'].includes(ACOLLECT_RECORDING_STATUS)||
+    (ACOLLECT_RECORDING_MANDATORY_AFTER_CUTOFF&&ACOLLECT_RECORDING_STATUS!=='ready')
+  )){
+    alert(ACOLLECT_RECORDING_MANDATORY_AFTER_CUTOFF?'Após 21h, a confirmação final gravada é obrigatória antes de finalizar.':'Conclua a confirmação final ou escolha enviar sem áudio antes de finalizar.');return;
   }
   ACOLLECT_SUBMITTING=true;
   renderAcollectActionState();

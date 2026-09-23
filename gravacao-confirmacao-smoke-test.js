@@ -4,10 +4,15 @@ const fs = require('fs');
 const app = fs.readFileSync('app.js', 'utf8');
 const css = fs.readFileSync('style.css', 'utf8');
 const migration = fs.readFileSync('deploy/gravacao-confirmacao-20pct.sql', 'utf8');
+const cutoffMigration = fs.readFileSync('deploy/gravacao-confirmacao-regra-21h.sql', 'utf8');
 const schema = fs.readFileSync('deploy/schema.sql', 'utf8');
 
 for (const token of [
   'reserve_collection_recording',
+  'acollectIsAfterRecordingCutoff',
+  'ACOLLECT_RECORDING_CUTOFF_HOUR=21',
+  'ACOLLECT_RECORDING_MANDATORY_AFTER_CUTOFF',
+  'Após 21h',
   'recordingRequired',
   'recording_consent',
   'recording_status',
@@ -37,11 +42,21 @@ for (const token of [
   'attach_collection_recording'
 ]) assert(migration.includes(token), `regra SQL ausente: ${token}`);
 
+for (const token of [
+  'America/Sao_Paulo',
+  "extract(hour from (now() at time zone 'America/Sao_Paulo')) >= 21",
+  'recording_required = true',
+  'Após 21h, a confirmação final gravada é obrigatória',
+  'recording_consent',
+  'create trigger trg_apply_collection_recording_reservation'
+]) assert(cutoffMigration.includes(token), `regra das 21h ausente: ${token}`);
+
 for (const token of ['collection_recording_reservations', 'collection_recordings', 'recording_reservation_id', 'recording_consent']) {
   assert(schema.includes(token), `schema de referência sem: ${token}`);
 }
 assert(migration.includes('ACOLLECT_RECORDING_MAX_SECONDS') === false, 'detalhe de frontend vazou para a migration');
 assert(app.includes('const ACOLLECT_RECORDING_MAX_SECONDS=12'), 'limite de 12 segundos não encontrado');
+assert(app.includes('const ACOLLECT_RECORDING_CUTOFF_HOUR=21'), 'horário de corte não encontrado');
 assert(css.includes('.recording-consent-card'), 'estilo do consentimento ausente');
 assert(css.includes('.recording-ready audio'), 'player da prévia ausente');
 assert(app.includes('1º selecione uma cota'), 'instrução de seleção de cota ausente');

@@ -13,5 +13,5 @@ assert.strictEqual(ctx.surveyCoveragePct(23,424),'5,4%');
 assert.strictEqual(ctx.surveyCoveragePct(0,1173),'0%');
 assert.strictEqual(ctx.surveyCoveragePct(1173,1173),'100%');
 assert(app.includes('surveyCoveragePct(collected,sample)'),'lista de coleta não usa o percentual corrigido');
-assert(html.includes('app.js?v=20260922224500'),'cache do percentual não atualizado');
+assert(html.includes('app.js?v=20260922225900'),'cache do percentual não atualizado');
 console.log('Collection percentage smoke test: PASS — 14/1173 aparece como 1,2% e demais casos são formatados corretamente.');

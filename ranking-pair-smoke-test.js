@@ -35,5 +35,5 @@ ok(staffReport.includes("q.type not in ('open','ranking','pair')"), 'RPC de cruz
 ok(clientReport.includes("q.type not in ('open','ranking','pair')"), 'RPC de cruzamento cliente não exclui formatos compostos');
 ok(css.includes('.collect-ranking-row')&&css.includes('.collect-pair-fields'), 'estilos da coleta ausentes');
 ok(css.includes('.q-pair-field-editor')&&css.includes('.q-format-hint'), 'estilos do editor ausentes');
-ok(html.includes('app.js?v=20260923135500')&&html.includes('style.css?v=20260923135500'), 'cache da nova versão não foi atualizado');
+ok(html.includes('app.js?v=20260925092000')&&html.includes('style.css?v=20260925092000'), 'cache da nova versão não foi atualizado');
 console.log('ranking-pair-smoke-test: PASS');

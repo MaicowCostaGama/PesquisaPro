@@ -39,5 +39,5 @@ for(const token of [
   'commit;'
 ])assert(migration.includes(token),`migration sem ${token}`);
 assert(!/drop table|drop column|truncate|delete from/i.test(migration),'migration contém operação destrutiva');
-assert(html.includes('app.js?v=20260923135500'),'cache não atualizado');
+assert(html.includes('app.js?v=20260925092000'),'cache não atualizado');
 console.log('Audit recording duration smoke test: PASS — duração, status, recusa e player privado verificados.');

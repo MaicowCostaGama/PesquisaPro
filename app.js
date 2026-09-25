@@ -2983,7 +2983,7 @@ async function copySurveyInviteLink(inviteId){
   try{await navigator.clipboard.writeText(link);alert('Link do convite copiado.');}
   catch(ex){window.prompt('Copie o link do convite:',link);}
 }
-let TEAM_INVITES=[],TEAM_INVITES_LOADED=false,TEAM_INVITES_LOADING=false;
+let TEAM_INVITES=[],TEAM_INVITES_LOADED=false,TEAM_INVITES_LOADING=false,TEAM_INVITES_LOAD_ERROR=false;
 let TEAM_COMM_SETTINGS=null,TEAM_COMM_SETTINGS_LOADED=false,TEAM_COMM_SETTINGS_LOADING=false,TEAM_BULK_INVITING=false;
 let TEAM_RESEARCHER_LINK=null,TEAM_RESEARCHER_LINK_LOADED=false,TEAM_RESEARCHER_LINK_LOADING=false,TEAM_RESEARCHER_LINK_CREATING=false;
 async function loadTeamInvitesIfNeeded(){
@@ -2992,9 +2992,10 @@ async function loadTeamInvitesIfNeeded(){
   TEAM_INVITES_LOADING=true;
   try{
     const {data,error}=await sb.from('survey_invites').select('*').eq('survey_id',s.id);
-    if(!error)TEAM_INVITES=data||[];
+    if(error)throw error;
+    TEAM_INVITES=data||[];TEAM_INVITES_LOAD_ERROR=false;
     TEAM_INVITES_LOADED=true;
-  }catch(ex){ /* sem convites carregados, a tela ainda funciona normalmente */ }
+  }catch(ex){ TEAM_INVITES_LOAD_ERROR=true;console.warn('Não foi possível carregar o histórico de convites:',ex); }
   TEAM_INVITES_LOADING=false;
   // "Atribuir equipe" não é um item do menu lateral (é aberta por um botão
   // dentro de "Pesquisas"), então não dá pra usar o mesmo truque de checar
@@ -3083,9 +3084,11 @@ async function saveTeamCommunicationSettings(){
 }
 function teamEligibleResearchers(){
   const s=SURVEYS[TEAM_IDX];if(!s)return [];
+  if(TEAM_ONLY_NEW&&(!TEAM_INVITES_LOADED||TEAM_INVITES_LOAD_ERROR))return [];
   const targets=surveyCityTargets(s),hasTarget=!!(targets.cities.size||targets.states.size),team=new Set(s.team||[]),f=TEAM_FILTERS,qq=normalizeUserSearch(f.text);
   return pesqUsers().map(u=>({u,area:pesqAreaMatch(u,targets)})).filter(({u,area})=>{
     if(team.has(u.name)||!researcherIsAvailable(u)||(hasTarget&&!area.match))return false;
+    if(TEAM_ONLY_NEW&&TEAM_INVITES.some(invite=>invite.researcher_id===u.id))return false;
     if(!teamFilterMatches(u))return false;
     const locations=researcherLocations(u);
     const text=normalizeUserSearch([u.name,area.label,...locations.map(part=>part.city),...locations.map(part=>part.uf),schoolingLabel(u.escolaridade)].join(' '));
@@ -3094,6 +3097,7 @@ function teamEligibleResearchers(){
 }
 async function inviteEligibleResearchersBulk(){
   const s=SURVEYS[TEAM_IDX];if(!s||TEAM_BULK_INVITING)return;
+  if(TEAM_ONLY_NEW&&(!TEAM_INVITES_LOADED||TEAM_INVITES_LOAD_ERROR)){alert('Aguarde o carregamento do histórico de convites antes de convidar somente novos pesquisadores.');return;}
   const eligible=teamEligibleResearchers();
   if(!eligible.length){alert('Nenhum pesquisador elegível corresponde aos filtros atuais.');return;}
   const ids=eligible.map(({u})=>u.id).filter(Boolean);
@@ -3155,6 +3159,7 @@ async function inviteResearcherWhatsapp(researcherId){
 }
 let TEAM_IDX=null;
 let TEAM_SHOW_OUT_OF_AREA=false; /* liga/desliga por pesquisa — reseta a cada entrada na tela */
+let TEAM_ONLY_NEW=false; /* mostra somente aptos que nunca receberam convite */
 let TEAM_FILTERS={text:'',state:'',city:'',schooling:''};
 function teamFilterOptions(pesqs){
   const states=new Set(),cities=new Map();
@@ -3165,9 +3170,15 @@ function teamFilterMatches(user){
   const states=researcherStateSet(user),cities=researcherCitySet(user),f=TEAM_FILTERS;
   return (!f.state||states.has(f.state))&&(!f.city||cities.has(f.city))&&(!f.schooling||user.escolaridade===f.schooling);
 }
+function teamNewInviteCount(pesqs,hasTarget){
+  if(!TEAM_INVITES_LOADED||TEAM_INVITES_LOAD_ERROR)return null;
+  const team=new Set(SURVEYS[TEAM_IDX]?.team||[]);
+  return pesqs.filter(({u,area})=>!team.has(u.name)&&researcherIsAvailable(u)&&(!hasTarget||area.match)&&!TEAM_INVITES.some(invite=>invite.researcher_id===u.id)).length;
+}
 function teamFiltersMarkup(pesqs,hasTarget){
-  const {states,cities}=teamFilterOptions(pesqs),f=TEAM_FILTERS;
-  return `<div class="team-filter-panel"><div class="team-filter-title"><div><b>Encontrar pesquisadores</b><span>Filtre por localização e escolaridade antes de convidar.</span></div><span class="pill pill-blue" id="team-available-count">— disponíveis</span></div><div class="team-filter-grid"><input class="inp" id="team-search" value="${esc(f.text)}" placeholder="Buscar por nome ou cidade…" oninput="teamSetFilter('text',this.value)"><select class="inp" aria-label="Filtrar equipe por estado" onchange="teamSetFilter('state',this.value)"><option value="">Todos os estados</option>${states.map(state=>`<option value="${esc(state)}" ${f.state===state?'selected':''}>${esc(state)}</option>`).join('')}</select><select class="inp" aria-label="Filtrar equipe por cidade" onchange="teamSetFilter('city',this.value)"><option value="">Todas as cidades</option>${cities.map(([value,label])=>`<option value="${esc(value)}" ${f.city===value?'selected':''}>${esc(label)}</option>`).join('')}</select><select class="inp" aria-label="Filtrar equipe por escolaridade" onchange="teamSetFilter('schooling',this.value)"><option value="">Todas as escolaridades</option>${SCHOOLING_OPTIONS.map(([value,label])=>`<option value="${value}" ${f.schooling===value?'selected':''}>${esc(label)}</option>`).join('')}</select></div><div class="team-filter-note">${hasTarget?'A contagem considera pesquisadores ativos, com documentos completos, cidade cadastrada e compatíveis com a área da pesquisa.':'A contagem considera pesquisadores ativos, com documentos completos e cidade cadastrada.'}</div><button class="btn btn-fill team-bulk-invite-btn" id="team-bulk-invite" type="button" onclick="inviteEligibleResearchersBulk()">⚡ Convidar pesquisadores por push</button><div class="team-filter-help">O botão azul envia convite em massa por push. Para WhatsApp, use o botão individual <b>Convidar por WhatsApp</b> na linha de cada pesquisador.</div></div>`;
+  const {states,cities}=teamFilterOptions(pesqs),f=TEAM_FILTERS,newCount=teamNewInviteCount(pesqs,hasTarget);
+  const newSummary=newCount==null?(TEAM_INVITES_LOAD_ERROR?'Não foi possível carregar o histórico de convites.':'Carregando histórico de convites…'):newCount+' pesquisador'+(newCount===1?'':'es')+' apto'+(newCount===1?'':'s')+' ainda não convidado'+(newCount===1?'':'s');
+  return `<div class="team-filter-panel"><div class="team-filter-title"><div><b>Encontrar pesquisadores</b><span>Filtre por localização e escolaridade antes de convidar.</span></div><span class="pill pill-blue" id="team-available-count">— disponíveis</span></div><div class="team-new-invite-callout"><div><strong>Novos aptos sem convite</strong><span id="team-new-invite-summary">${newSummary}</span></div><label class="team-new-invite-toggle"><input type="checkbox" id="team-only-new" ${TEAM_ONLY_NEW?'checked':''} ${TEAM_INVITES_LOADED&&!TEAM_INVITES_LOAD_ERROR?'':'disabled'} onchange="teamToggleOnlyNew(this.checked)"><span>Mostrar somente estes</span></label></div><div class="team-filter-grid"><input class="inp" id="team-search" value="${esc(f.text)}" placeholder="Buscar por nome ou cidade…" oninput="teamSetFilter('text',this.value)"><select class="inp" aria-label="Filtrar equipe por estado" onchange="teamSetFilter('state',this.value)"><option value="">Todos os estados</option>${states.map(state=>`<option value="${esc(state)}" ${f.state===state?'selected':''}>${esc(state)}</option>`).join('')}</select><select class="inp" aria-label="Filtrar equipe por cidade" onchange="teamSetFilter('city',this.value)"><option value="">Todas as cidades</option>${cities.map(([value,label])=>`<option value="${esc(value)}" ${f.city===value?'selected':''}>${esc(label)}</option>`).join('')}</select><select class="inp" aria-label="Filtrar equipe por escolaridade" onchange="teamSetFilter('schooling',this.value)"><option value="">Todas as escolaridades</option>${SCHOOLING_OPTIONS.map(([value,label])=>`<option value="${value}" ${f.schooling===value?'selected':''}>${esc(label)}</option>`).join('')}</select></div><div class="team-filter-note">${hasTarget?'A contagem considera pesquisadores ativos, com documentos completos, cidade cadastrada e compatíveis com a área da pesquisa.':'A contagem considera pesquisadores ativos, com documentos completos e cidade cadastrada.'}</div><button class="btn btn-fill team-bulk-invite-btn" id="team-bulk-invite" type="button" onclick="inviteEligibleResearchersBulk()">⚡ Convidar pesquisadores por push</button><div class="team-filter-help">O botão azul envia convite em massa por push. Com o filtro de novos aptos ativo, ele convida somente quem nunca recebeu convite. Para WhatsApp, use o botão individual <b>Convidar por WhatsApp</b> na linha de cada pesquisador.</div></div>`;
 }
 PAGES['survey-team']=()=>{
   const s=SURVEYS[TEAM_IDX];if(!s)return '<div class="empty">Pesquisa não encontrada.</div>';
@@ -3197,8 +3208,8 @@ PAGES['survey-team']=()=>{
     const foraDaArea=hasTarget&&!area.match;
     const naoSelecionavel=foraDaArea&&!on; // fora da área e nunca esteve na equipe: não pode ser marcado
     const hidden=naoSelecionavel&&!TEAM_SHOW_OUT_OF_AREA;
-    const locations=researcherLocations(u),stateKey=[...researcherStateSet(u)].join('|'),cityKey=[...researcherCitySet(u)].join('|'),searchKey=esc(normalizeUserSearch([u.name,area.label,...locations.map(part=>part.city),...locations.map(part=>part.uf),schoolingLabel(u.escolaridade)].join(' '))),available=researcherIsAvailable(u)&&(!hasTarget||area.match);
     const inv=TEAM_INVITES.find(i=>i.researcher_id===u.id);
+    const locations=researcherLocations(u),stateKey=[...researcherStateSet(u)].join('|'),cityKey=[...researcherCitySet(u)].join('|'),searchKey=esc(normalizeUserSearch([u.name,area.label,...locations.map(part=>part.city),...locations.map(part=>part.uf),schoolingLabel(u.escolaridade)].join(' '))),available=researcherIsAvailable(u)&&(!hasTarget||area.match),novoApto=TEAM_INVITES_LOADED&&!TEAM_INVITES_LOAD_ERROR&&available&&!on&&!inv;
     // convite por WhatsApp: só faz sentido oferecer pra quem pode mesmo
     // entrar na equipe (não pend, não fora da área, ainda não está na equipe)
     const podeConvidar=!on&&!pend&&!naoSelecionavel&&researcherIsAvailable(u);
@@ -3212,7 +3223,7 @@ PAGES['survey-team']=()=>{
         inviteHtml=`<button class="btn btn-out team-whatsapp-invite-btn" onclick="event.preventDefault();inviteResearcherWhatsapp(${jsArg(u.id)})">✉ Convidar por WhatsApp</button>`;
       }
     }
-    return `<label class="pick t-pesq-row" data-search="${searchKey}" data-state="${esc(stateKey)}" data-city="${esc([...researcherCitySet(u)].join('|'))}" data-schooling="${esc(u.escolaridade||'')}" data-available="${available?'1':'0'}" data-fora="${naoSelecionavel?'1':'0'}" style="${(pend||foraDaArea||!researcherIsAvailable(u))?'opacity:.7':''}${hidden?';display:none':''}">
+    return `<label class="pick t-pesq-row" data-search="${searchKey}" data-state="${esc(stateKey)}" data-city="${esc([...researcherCitySet(u)].join('|'))}" data-schooling="${esc(u.escolaridade||'')}" data-available="${available?'1':'0'}" data-new-invite="${novoApto?'1':'0'}" data-fora="${naoSelecionavel?'1':'0'}" style="${(pend||foraDaArea||!researcherIsAvailable(u))?'opacity:.7':''}${hidden?';display:none':''}">
       <input type="checkbox" class="t-pesq" value="${esc(u.name)}" ${on?'checked':''} ${(pend||naoSelecionavel||(!researcherIsAvailable(u)&&!on))?'disabled':''}>
       <div class="avatar" style="width:30px;height:30px;font-size:11px">${esc(u.name).split(' ').map(n=>n[0]).join('')}</div>
       <div style="flex:1"><div style="font-weight:600;font-size:13px">${esc(u.name)}</div>
@@ -3221,6 +3232,7 @@ PAGES['survey-team']=()=>{
       ${foraDaArea?`<span class="pill pill-gray">fora da área${on?' · já na equipe':''}</span>`:''}
       ${pend?'<span class="pill pill-amber">● aguardando aprovação</span>':''}
       ${!pend&&(!u.docFoto||!u.docComprovante)?'<span class="pill pill-red">● docs pendentes</span>':''}
+      ${novoApto?'<span class="pill pill-blue team-new-invite-pill">✦ novo · sem convite</span>':''}
       ${conversationButton(u.phone,'Olá '+u.name+'! Podemos conversar sobre a pesquisa '+s.name+'?')}
       ${inviteHtml}</label>`;
   }).join(''):'<div class="empty">Nenhum pesquisador cadastrado ainda. Cadastre em Usuários → Pesquisadores.</div>';
@@ -3252,7 +3264,7 @@ PAGES['survey-team']=()=>{
     </div>
   </div>`;
 };
-function surveyTeam(idx){TEAM_IDX=idx;TEAM_SHOW_OUT_OF_AREA=false;TEAM_FILTERS={text:'',state:'',city:'',schooling:''};TEAM_INVITES=[];TEAM_INVITES_LOADED=false;TEAM_COMM_SETTINGS=null;TEAM_COMM_SETTINGS_LOADED=false;TEAM_COMM_SETTINGS_LOADING=false;TEAM_BULK_INVITING=false;TEAM_RESEARCHER_LINK=null;TEAM_RESEARCHER_LINK_LOADED=false;TEAM_RESEARCHER_LINK_LOADING=false;TEAM_RESEARCHER_LINK_CREATING=false;go('survey-team');setTimeout(teamFilterRows,0);}
+function surveyTeam(idx){TEAM_IDX=idx;TEAM_SHOW_OUT_OF_AREA=false;TEAM_ONLY_NEW=false;TEAM_FILTERS={text:'',state:'',city:'',schooling:''};TEAM_INVITES=[];TEAM_INVITES_LOADED=false;TEAM_INVITES_LOAD_ERROR=false;TEAM_COMM_SETTINGS=null;TEAM_COMM_SETTINGS_LOADED=false;TEAM_COMM_SETTINGS_LOADING=false;TEAM_BULK_INVITING=false;TEAM_RESEARCHER_LINK=null;TEAM_RESEARCHER_LINK_LOADED=false;TEAM_RESEARCHER_LINK_LOADING=false;TEAM_RESEARCHER_LINK_CREATING=false;go('survey-team');setTimeout(teamFilterRows,0);}
 /* liga/desliga a visibilidade de quem está fora da área, sem perder o que
    já foi marcado na tela (por isso mexe direto no DOM em vez de re-renderizar
    a página inteira) — quem está fora da área nunca fica marcável por aqui,
@@ -3261,29 +3273,37 @@ function teamToggleShowFora(checked){
   TEAM_SHOW_OUT_OF_AREA=checked;
   teamFilterRows();
 }
+function teamToggleOnlyNew(checked){
+  TEAM_ONLY_NEW=checked;
+  teamFilterRows();
+}
 function teamSetFilter(key,value){TEAM_FILTERS[key]=value||'';teamFilterRows();}
 /* filtra a lista de pesquisadores sem re-renderizar (senão perderia o que já
    estava marcado enquanto a pessoa digita) e atualiza a contagem disponível. */
 function teamFilterRows(){
   const qq=normalizeUserSearch(TEAM_FILTERS.text);
   const rows=[...document.querySelectorAll('#team-picklist .t-pesq-row')];
-  let visible=0,available=0;
+  let visible=0,available=0,newAvailable=0;
   rows.forEach(row=>{
     const matchesSearch=!qq||(row.dataset.search||'').includes(qq);
     const states=(row.dataset.state||'').split('|').filter(Boolean),cities=(row.dataset.city||'').split('|').filter(Boolean);
     const matchesFilters=(!TEAM_FILTERS.state||states.includes(TEAM_FILTERS.state))&&(!TEAM_FILTERS.city||cities.includes(TEAM_FILTERS.city))&&(!TEAM_FILTERS.schooling||row.dataset.schooling===TEAM_FILTERS.schooling);
     const isFora=row.dataset.fora==='1';
-    const show=matchesSearch&&matchesFilters&&(!isFora||TEAM_SHOW_OUT_OF_AREA);
+    const isNew=row.dataset.newInvite==='1';
+    const show=matchesSearch&&matchesFilters&&(!isFora||TEAM_SHOW_OUT_OF_AREA)&&(!TEAM_ONLY_NEW||isNew);
     row.style.display=show?'':'none';
     if(show)visible++;
     if(show&&row.dataset.available==='1')available++;
+    if(matchesSearch&&matchesFilters&&isNew)newAvailable++;
   });
   const noMatch=document.getElementById('team-no-match');
   if(noMatch)noMatch.style.display=visible?'none':'';
   const count=document.getElementById('team-available-count');
-  if(count)count.textContent=available+' disponível'+(available===1?'':'is');
+  if(count)count.textContent=TEAM_ONLY_NEW?available+' novo'+(available===1?'':'s')+' apto'+(available===1?'':'s'):available+' disponível'+(available===1?'':'is');
+  const newSummary=document.getElementById('team-new-invite-summary');
+  if(newSummary&&TEAM_INVITES_LOADED)newSummary.textContent=newAvailable+' pesquisador'+(newAvailable===1?'':'es')+' apto'+(newAvailable===1?'':'s')+' ainda não convidado'+(newAvailable===1?'':'s');
   const bulk=document.getElementById('team-bulk-invite');
-  if(bulk){bulk.disabled=TEAM_BULK_INVITING||available===0;bulk.textContent=TEAM_BULK_INVITING?'Enviando convites por push…':'⚡ Convidar '+available+' pesquisador'+(available===1?' elegível':'es elegíveis')+' por push';}
+  if(bulk){bulk.disabled=TEAM_BULK_INVITING||available===0;bulk.textContent=TEAM_BULK_INVITING?'Enviando convites por push…':TEAM_ONLY_NEW?'⚡ Convidar '+available+' novo'+(available===1?'':'s')+' apto'+(available===1?'':'s')+' por push':'⚡ Convidar '+available+' pesquisador'+(available===1?' elegível':'es elegíveis')+' por push';}
 }
 async function teamSave(){
   const s=SURVEYS[TEAM_IDX];if(!s)return;

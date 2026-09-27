@@ -11,11 +11,16 @@ for (const token of [
   'loadPaymentReceiptsIfNeeded',
   'paymentReceivedValue',
   'paymentBalanceValue',
+  'saldoDevido',
   'finApprovePayment',
   'finApproveAll',
   'finRegisterPayment',
   'record_payment_receipt',
   'Histórico de recebimentos',
+  'Registrar pagamento semanal',
+  'Pagamento semanal — ',
+  'Pagamentos semanais durante a coleta',
+  'Saldo devido',
   'Extrato por pesquisa',
   'rejeitadasValor',
   'A receber',
@@ -44,15 +49,19 @@ for (const token of [
   '.finance-action-approve',
   '.finance-action-receipt',
   '.finance-to-receive',
+  '.finance-weekly-callout',
+  '.finance-balance-note',
   '.earnings-rejected-value',
   '@media(max-width:640px)'
 ]) {
   assert(css.includes(token), `estilo financeiro ausente: ${token}`);
 }
 
-assert(html.includes('app.js?v=20260925092000'), 'cache do app financeiro não foi atualizado');
-assert(html.includes('style.css?v=20260925092000'), 'cache do CSS financeiro não foi atualizado');
+assert(html.includes('app.js?v=20260927101500'), 'cache do app financeiro não foi atualizado');
+assert(html.includes('style.css?v=20260927101500'), 'cache do CSS financeiro não foi atualizado');
 assert(app.includes("r.status==='aprovado'?Math.max(0,valor-recebido):0"), 'a receber não está restrito a pagamentos aprovados');
+assert(app.includes('const saldoDevido=Math.max(0,valor-recebido)'), 'saldo devido não é abatido pelos recebimentos');
+assert(app.includes('paymentBalanceValue(r,price)'), 'saldo devido não usa o valor real das entrevistas e recibos');
 assert(app.includes("r.rejectedValor?'<div class=\"earnings-rejected-value\">"), 'rejeitadas não estão separadas no extrato');
 assert(migration.includes('grant execute on function public.record_payment_receipt(uuid, numeric, date, text) to authenticated;'), 'RPC de registro sem grant');
 

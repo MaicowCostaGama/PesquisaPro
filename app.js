@@ -6848,8 +6848,9 @@ function finTotals(idx){
   const pendingValor=rows.filter(r=>r.status!=='aprovado').reduce((a,r)=>a+r.valid*price,0);
   const recebido=rows.reduce((a,r)=>a+paymentReceivedValue(r.id),0);
   const aReceber=rows.filter(r=>r.status==='aprovado').reduce((a,r)=>a+paymentBalanceValue(r,price),0);
+  const saldoDevido=rows.reduce((a,r)=>a+paymentBalanceValue(r,price),0);
   const rejeitadoValor=rejected*price;
-  return{valid,rejected,valor,pendingValor,recebido,aReceber,rejeitadoValor,count:rows.length};
+  return{valid,rejected,valor,pendingValor,recebido,aReceber,saldoDevido,rejeitadoValor,count:rows.length};
 }
 PAGES.finance=()=>{
   if(!SURVEYS_LOADED||!PAYMENTS_LOADED||!PAYMENT_RECEIPTS_LOADED){
@@ -6867,13 +6868,14 @@ function financeList(){
   const totalPend=entries.reduce((a,e)=>a+e.t.pendingValor,0);
   const totalRecebido=entries.reduce((a,e)=>a+e.t.recebido,0);
   const totalAReceber=entries.reduce((a,e)=>a+e.t.aReceber,0);
+  const totalSaldoDevido=entries.reduce((a,e)=>a+e.t.saldoDevido,0);
   const totalValid=entries.reduce((a,e)=>a+e.t.valid,0);
   const totalPesq=entries.reduce((a,e)=>a+e.t.count,0);
   const body=entries.map(({s,i,t})=>`<tr style="cursor:pointer" onclick="financeOpen(${i})">
       <td><b>${esc(s.name)}</b><div style="margin-top:2px">${STATUS_PILL[s.status]||s.status}</div></td>
       <td>${t.count?t.count+' pesquisador'+(t.count===1?'':'es'):'<span style="color:var(--ink3)">sem coleta</span>'}</td>
       <td>${t.valid.toLocaleString('pt-BR')}</td>
-      <td><b>${brl(t.valor)}</b></td>
+      <td><b>${brl(t.valor)}</b><div class="finance-balance-inline">Saldo devido: ${brl(t.saldoDevido)}</div></td>
       <td>${t.aReceber?'<span class="pill pill-blue">'+brl(t.aReceber)+' a receber</span>':t.pendingValor?'<span class="pill pill-amber">'+brl(t.pendingValor)+' pendente</span>':(t.count?'<span class="pill pill-green">Tudo em dia</span>':'<span style="color:var(--ink3)">—</span>')}</td>
       <td><span class="pill pill-blue">Abrir →</span></td></tr>`).join('')||'<tr><td colspan="6" class="empty">Nenhuma pesquisa cadastrada.</td></tr>';
   return head('Financeiro','Pagamentos separados por pesquisa · calculado por entrevista válida coletada')+`
@@ -6882,6 +6884,7 @@ function financeList(){
     ${stat('A pagar (todas as pesquisas)',brl(totalValor),totalValid.toLocaleString('pt-BR')+' entrevistas válidas','$','#2563eb')}
     ${stat('Pendente de pagamento',brl(totalPend),'aguardando aprovação','◷','#d97706')}
     ${stat('A receber',brl(totalAReceber),'pagamentos aprovados','◷','#2563eb')}
+    ${stat('Saldo devido',brl(totalSaldoDevido),'total menos pagamentos lançados','◷','#0f766e')}
     ${stat('Recebido',brl(totalRecebido),'repasses lançados','✓','#059669')}
     ${stat('Pesquisadores remunerados',String(totalPesq),'com entrevistas válidas','☺','#059669')}
     ${stat('Valor padrão por formulário','R$ 5,00','pode variar por pesquisa','◷','#7c3aed')}
@@ -6905,11 +6908,12 @@ function financeDetail(idx){
     const valor=paymentDueValue(r,price);
     const recebido=paymentReceivedValue(r.id);
     const aReceber=r.status==='aprovado'?Math.max(0,valor-recebido):0;
+    const saldoDevido=Math.max(0,valor-recebido);
     const pixShown=maskPix(r.pixKey);
     const approveButton=r.virtual||!r.valid?'':'<button class="btn-ghost finance-action-approve" onclick="finApprovePayment('+idx+','+jsArg(r.researcherId)+')">'+(r.status==='aprovado'?'✓ Pagamento aprovado':'Aprovar pagamento')+'</button>';
-    const receiptButton=r.virtual||!r.valid||r.status!=='aprovado'||aReceber<=0?'':'<button class="btn-ghost finance-action-receipt" onclick="finRegisterPayment('+idx+','+jsArg(r.researcherId)+')">＋ Registrar pagamento</button>';
+    const receiptButton=r.virtual||!r.valid||r.status!=='aprovado'||aReceber<=0?'':'<button class="btn-ghost finance-action-receipt" onclick="finRegisterPayment('+idx+','+jsArg(r.researcherId)+')">＋ Registrar pagamento semanal</button>';
     const statusButton=r.virtual?'':'<button class="btn-ghost" onclick="finEditPayment('+idx+','+jsArg(r.researcherId)+')">Alterar status</button>';
-    return `<tr><td><b>${esc(r.name)}</b>${r.virtual?'<div class="finance-row-note">Sem pagamento criado ainda</div>':''}</td><td>${r.valid}</td><td>${r.rejected}</td><td><b>${brl(valor)}</b></td><td>${brl(recebido)}</td><td>${aReceber?'<b class="finance-to-receive">'+brl(aReceber)+'</b>':'<span class="pill pill-gray">R$ 0,00</span>'}</td><td>${pixShown||'<span style="color:var(--ink3)">—</span>'}</td><td>${st.pill}</td>
+    return `<tr><td><b>${esc(r.name)}</b>${r.virtual?'<div class="finance-row-note">Sem pagamento criado ainda</div>':''}</td><td>${r.valid}</td><td>${r.rejected}</td><td><b>${brl(valor)}</b></td><td>${brl(recebido)}</td><td>${aReceber?'<b class="finance-to-receive">'+brl(aReceber)+'</b>':'<span class="pill pill-gray">R$ 0,00</span>'}<div class="finance-balance-note">Saldo devido: ${brl(saldoDevido)}</div></td><td>${pixShown||'<span style="color:var(--ink3)">—</span>'}</td><td>${st.pill}</td>
       <td><div class="finance-row-actions">${approveButton}${receiptButton}${statusButton}</div></td></tr>`;
   }).join(''):'<tr><td colspan="9" class="empty">Nenhum pesquisador atribuído a esta pesquisa ainda — atribua a equipe em Minhas pesquisas.</td></tr>';
   return head('Financeiro — '+s.name,'Pagamento por entrevista válida coletada nesta pesquisa',
@@ -6923,11 +6927,13 @@ function financeDetail(idx){
     ${stat('Pendente',brl(t.pendingValor),'aguardando aprovação','◷','#d97706')}
     ${stat('A receber',brl(t.aReceber),'pagamentos aprovados','◷','#2563eb')}
     ${stat('Recebido',brl(t.recebido),'repasses lançados','✓','#059669')}
+    ${stat('Saldo devido',brl(t.saldoDevido),'a pagar após os repasses','◷','#0f766e')}
   </div>
   <div class="card mb">
     <div class="card-t">Pagamentos por pesquisador</div>
-    <div class="card-d">Válidos e rejeitados vêm das coletas de campo. Rejeitadas são apenas informativas e não entram em pendente, a receber ou recebido. <b>Aprovar pagamento</b> move o valor válido para “A receber”; <b>Registrar pagamento</b> lança um repasse total ou parcial com data.</div>
-    <div class="finance-table-scroll"><table class="finance-data-table"><thead><tr><th>Pesquisador</th><th>Válidos</th><th>Rejeitados</th><th>Valor aprovado</th><th>Recebido</th><th>A receber</th><th>Chave PIX</th><th>Status</th><th>Ações</th></tr></thead>
+    <div class="finance-weekly-callout"><b>Pagamentos semanais durante a coleta:</b> aprove o valor válido disponível e use <b>Registrar pagamento semanal</b> para informar quanto foi pago, a data e a referência da semana. Cada lançamento reduz imediatamente o <b>Saldo devido</b>; novas entrevistas válidas aumentam o valor devido sem apagar o histórico.</div>
+    <div class="card-d">Válidos e rejeitados vêm das coletas de campo. Rejeitadas são apenas informativas e não entram em pendente, a receber ou recebido. <b>Aprovar pagamento</b> move o valor válido para “A receber”; <b>Registrar pagamento semanal</b> lança um repasse total ou parcial com data.</div>
+    <div class="finance-table-scroll"><table class="finance-data-table"><thead><tr><th>Pesquisador</th><th>Válidos</th><th>Rejeitados</th><th>Valor aprovado</th><th>Recebido</th><th>A receber / saldo devido</th><th>Chave PIX</th><th>Status</th><th>Ações</th></tr></thead>
     <tbody>${body}</tbody></table>
     </div>
   </div>
@@ -6996,13 +7002,14 @@ async function finRegisterPayment(idx,researcherId){
   const today=new Date().toISOString().slice(0,10);
   const paidAt=prompt('Data do pagamento (AAAA-MM-DD):',today);if(paidAt==null)return;
   if(!validPaymentDate(paidAt)){alert('Informe uma data válida no formato AAAA-MM-DD.');return;}
-  const note=prompt('Observação ou referência do pagamento (opcional):','');if(note==null)return;
+  const weekLabel=paidAt.split('-').reverse().join('/');
+  const note=prompt('Observação ou referência do pagamento semanal (opcional):','Pagamento semanal — '+weekLabel);if(note==null)return;
   try{
     const {data,error}=await sb.rpc('record_payment_receipt',{p_payment_id:current.id,p_amount:amount,p_paid_at:paidAt,p_note:note.trim()||null});
     if(error)throw new Error(error.message);
     const row=Array.isArray(data)?data[0]:data;if(row)PAYMENT_RECEIPTS.unshift(paymentReceiptRowToEntry(row));
   }catch(ex){alert('Não foi possível registrar o pagamento. Verifique se a migration pagamentos-recebimentos-extrato.sql foi executada e se o valor ainda está disponível.');console.error(ex);return;}
-  alert('Pagamento registrado em '+paidAt+'.');
+  alert('Pagamento semanal registrado em '+paidAt+'. Saldo devido atualizado.');
   financeReturnToDetail(idx);
 }
 /* define o status do pagamento de um pesquisador nesta pesquisa — válidos e
@@ -7036,26 +7043,27 @@ PAGES['my-earnings']=()=>{
   const rowsData=mine.map(p=>{
     const s=SURVEYS.find(x=>x.id===p.surveyId);
     const price=s?+s.price:0;
-    const valor=paymentDueValue(p,price),recebido=paymentReceivedValue(p.id),aReceber=p.status==='aprovado'?Math.max(0,valor-recebido):0;
-    return {payment:p,survey:s?s.name:'(pesquisa removida)',valid:p.valid,rejected:p.rejected,valor,recebido,aReceber,rejectedValor:p.rejected*price,status:p.status};
+    const valor=paymentDueValue(p,price),recebido=paymentReceivedValue(p.id),aReceber=p.status==='aprovado'?Math.max(0,valor-recebido):0,saldoDevido=Math.max(0,valor-recebido);
+    return {payment:p,survey:s?s.name:'(pesquisa removida)',valid:p.valid,rejected:p.rejected,valor,recebido,aReceber,saldoDevido,rejectedValor:p.rejected*price,status:p.status};
   });
   const aReceber=rowsData.reduce((a,r)=>a+r.aReceber,0),recebido=rowsData.reduce((a,r)=>a+r.recebido,0);
   const pendente=rowsData.filter(r=>r.status==='pendente').reduce((a,r)=>a+r.valor,0),auditoria=rowsData.filter(r=>r.status==='auditoria').reduce((a,r)=>a+r.valor,0);
   const rejeitadas=rowsData.reduce((a,r)=>a+r.rejected,0),rejeitadasValor=rowsData.reduce((a,r)=>a+r.rejectedValor,0);
-  const histRows=rowsData.length?rowsData.map(r=>`<tr><td><b>${esc(r.survey)}</b></td><td>${r.valid}</td><td>${r.rejected}${r.rejectedValor?'<div class="earnings-rejected-value">'+brl(r.rejectedValor)+' não contabilizado</div>':''}</td><td>${brl(r.valor)}</td><td>${brl(r.recebido)}</td><td>${r.aReceber?'<b class="finance-to-receive">'+brl(r.aReceber)+'</b>':'<span class="pill pill-gray">R$ 0,00</span>'}</td><td>${(FIN_STATUS[r.status]||FIN_STATUS.pendente).pill}</td></tr>`).join('')
-    :'<tr><td colspan="7" class="empty">Nenhuma coleta ainda — assim que você enviar sua primeira entrevista em "Coletar (app)", aparece aqui.</td></tr>';
+  const histRows=rowsData.length?rowsData.map(r=>`<tr><td><b>${esc(r.survey)}</b></td><td>${r.valid}</td><td>${r.rejected}${r.rejectedValor?'<div class="earnings-rejected-value">'+brl(r.rejectedValor)+' não contabilizado</div>':''}</td><td>${brl(r.valor)}</td><td>${brl(r.recebido)}</td><td>${r.aReceber?'<b class="finance-to-receive">'+brl(r.aReceber)+'</b>':'<span class="pill pill-gray">R$ 0,00</span>'}</td><td><b class="finance-balance-note-value">${brl(r.saldoDevido)}</b></td><td>${(FIN_STATUS[r.status]||FIN_STATUS.pendente).pill}</td></tr>`).join('')
+    :'<tr><td colspan="8" class="empty">Nenhuma coleta ainda — assim que você enviar sua primeira entrevista em "Coletar (app)", aparece aqui.</td></tr>';
   return head('Meus ganhos','Acompanhe seus pagamentos por formulário coletado')+`
   ${paymentReceiptMigrationNotice()}
   <div class="grid g4" style="margin-bottom:16px">
     ${stat('Recebido',brl(recebido),'repasses registrados','✓','#059669')}
     ${stat('A receber',brl(aReceber),'pagamentos aprovados','$','#2563eb')}
+    ${stat('Saldo devido',brl(rowsData.reduce((a,r)=>a+r.saldoDevido,0)),'valor após pagamentos','◷','#0f766e')}
     ${stat('Pendente / revisão',brl(pendente+auditoria),'entrevistas válidas ainda não aprovadas','◷','#d97706')}
     ${stat('Rejeitadas',String(rejeitadas),brl(rejeitadasValor)+' apenas informativo','✕','#dc2626')}
   </div>
   <div class="card mb">
     <div class="card-t">Extrato por pesquisa</div>
-    <div class="card-d">Entrevistas rejeitadas aparecem somente para informação e nunca entram em pendente, a receber ou recebido. “A receber” diminui somente quando a PesquisaPro registra um pagamento.</div>
-    <div class="finance-table-scroll"><table class="finance-data-table earnings-table" style="margin-top:6px"><thead><tr><th>Pesquisa</th><th>Válidas</th><th>Rejeitadas</th><th>Valor aprovado</th><th>Recebido</th><th>A receber</th><th>Situação</th></tr></thead>
+    <div class="card-d">Entrevistas rejeitadas aparecem somente para informação e nunca entram em pendente, a receber ou recebido. Os pagamentos semanais aparecem no histórico e reduzem o <b>Saldo devido</b>; novas entrevistas válidas continuam sendo somadas automaticamente.</div>
+    <div class="finance-table-scroll"><table class="finance-data-table earnings-table" style="margin-top:6px"><thead><tr><th>Pesquisa</th><th>Válidas</th><th>Rejeitadas</th><th>Valor aprovado</th><th>Recebido</th><th>A receber</th><th>Saldo devido</th><th>Situação</th></tr></thead>
     <tbody>${histRows}</tbody></table>
     </div>
   </div>

@@ -49,6 +49,7 @@ for (const token of [
   'financeReceiptHistory',
   'finance-action-receipt-attach',
   'finance-action-receipt-history',
+  'Ver/alterar pagamentos',
   'financeDeleteReceiptById',
   'financeEditReceiptAmount',
   'finance-action-receipt-delete',
@@ -179,8 +180,8 @@ for (const token of [
   assert(css.includes(token), `estilo financeiro ausente: ${token}`);
 }
 
-assert(html.includes('app.js?v=20260930132200'), 'cache do app financeiro não foi atualizado');
-assert(html.includes('style.css?v=20260930132200'), 'cache do CSS financeiro não foi atualizado');
+assert(html.includes('app.js?v=20260930135400'), 'cache do app financeiro não foi atualizado');
+assert(html.includes('style.css?v=20260930135400'), 'cache do CSS financeiro não foi atualizado');
 assert(app.includes("r.status==='aprovado'?Math.max(0,valor-recebido):0"), 'a receber não está restrito a pagamentos aprovados');
 assert(app.includes('const saldoDevido=Math.max(0,valor-recebido)'), 'saldo devido não é abatido pelos recebimentos');
 assert(app.includes('paymentBalanceValue(r,price)'), 'saldo devido não usa o valor real das entrevistas e recibos');
@@ -192,5 +193,6 @@ assert(app.includes("sb.storage.from('payment-receipts').remove"), 'exclusão n�
 assert(app.includes("sb.rpc('update_payment_receipt_amount'"), 'alteração não chama a RPC segura');
 assert(app.includes('p_receipt_id:receipt.id'), 'alteração não identifica o recibo correto');
 assert(app.includes('O mesmo lançamento, a data, o pesquisador, o comprovante e o histórico serão preservados'), 'alteração não confirma preservação do lançamento e comprovante');
+assert(app.includes('Comprovante e ações'), 'histórico não identifica a coluna com a ação de alteração');
 
 console.log('Finance payments smoke test OK: aprovação, saldo abatido, correção de valores, comprovantes privados, RPCs, RLS e extratos por pesquisa verificados.');

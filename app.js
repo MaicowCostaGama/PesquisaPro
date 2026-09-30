@@ -252,7 +252,7 @@ async function afterLogin(user){
   chatStopRealtime();CHAT_CHANNELS=[];CHAT_CHANNELS_LOADED=false;CHAT_CHANNELS_LOADING=false;CHAT_SCHEMA_MISSING=false;CHAT_ACTIVE_CHANNEL_ID=null;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=false;CHAT_MESSAGES_LOADING=false;CHAT_SUPPORT_CHANNEL_ID=null;CHAT_SUPPORT_READY=false;CHAT_SUPPORT_LOADING=false;
   PUSH_STATUS='unknown';PUSH_STATUS_LOADING=false;PUSH_SCHEMA_MISSING=false;PUSH_SW_REGISTRATION=null;MY_COMMUNICATIONS=[];MY_COMMUNICATIONS_LOADED=false;MY_COMMUNICATIONS_LOADING=false;
   ACTIVE_CAMPAIGN_ID=null;CLIENT_SURVEY_VIEW_ID=null;
-  PAYMENTS=[];PAYMENTS_LOADED=false;PAYMENTS_LOADING=false;PAYMENT_RECEIPTS=[];PAYMENT_RECEIPTS_LOADED=false;PAYMENT_RECEIPTS_LOADING=false;PAYMENT_RECEIPTS_SCHEMA_MISSING=false;
+  PAYMENTS=[];PAYMENTS_LOADED=false;PAYMENTS_LOADING=false;PAYMENT_RECEIPTS=[];PAYMENT_RECEIPTS_LOADED=false;PAYMENT_RECEIPTS_LOADING=false;PAYMENT_RECEIPTS_SCHEMA_MISSING=false;PAYMENT_RECEIPTS_DELETE_SCHEMA_MISSING=false;
   const profileFields='id,name,email,phone,role,status,cpf,cpf_cnpj,pf_pj,birth,cidade,rua,numero,cep,contact_person,doc_url,doc_foto_url,doc_comprovante_url,pix_key,pix_doc,pix_bank,pix_ag,pix_acc,results_released,approved_at,commission_rate,commission_rate_with_indicator,recruiter_code,recruiter_capture_value,badge_public_token,badge_photo_path';
   let {data:profile,error}=await sb.from('profiles').select(profileFields).eq('id',user.id).single();
   if(error && /badge_public_token|badge_photo_path|column/i.test(error.message||'')){
@@ -288,7 +288,7 @@ async function logout(){
   chatStopRealtime();
   CHAT_CHANNELS=[];CHAT_CHANNELS_LOADED=false;CHAT_CHANNELS_LOADING=false;CHAT_SCHEMA_MISSING=false;CHAT_ACTIVE_CHANNEL_ID=null;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=false;CHAT_MESSAGES_LOADING=false;CHAT_SUPPORT_CHANNEL_ID=null;CHAT_SUPPORT_READY=false;CHAT_SUPPORT_LOADING=false;CHAT_PENDING_SURVEY_ID=null;
   RESEARCHER_PROFILE_CITIES=[];RESEARCHER_PROFILE_CITIES_DRAFT=[];RESEARCHER_PROFILE_CITIES_LOADED=false;PUSH_STATUS='unknown';PUSH_STATUS_LOADING=false;PUSH_SCHEMA_MISSING=false;PUSH_SW_REGISTRATION=null;MY_COMMUNICATIONS=[];MY_COMMUNICATIONS_LOADED=false;MY_COMMUNICATIONS_LOADING=false;CLIENT_APPROVAL_REQUEST_ID=null;CLIENT_APPROVAL_REQUEST=null;CLIENT_APPROVAL_LOADING=false;CLIENT_APPROVAL_RESPONDING=false;CLIENT_APPROVAL_SCHEMA_MISSING=false;RESEARCHER_LINK_TOKEN=null;RESEARCHER_LINK_CONTEXT=null;RESEARCHER_LINK_LOADING=false;RESEARCHER_LINK_ACCEPTING=false;
-  PAYMENTS=[];PAYMENTS_LOADED=false;PAYMENTS_LOADING=false;PAYMENT_RECEIPTS=[];PAYMENT_RECEIPTS_LOADED=false;PAYMENT_RECEIPTS_LOADING=false;PAYMENT_RECEIPTS_SCHEMA_MISSING=false;
+  PAYMENTS=[];PAYMENTS_LOADED=false;PAYMENTS_LOADING=false;PAYMENT_RECEIPTS=[];PAYMENT_RECEIPTS_LOADED=false;PAYMENT_RECEIPTS_LOADING=false;PAYMENT_RECEIPTS_SCHEMA_MISSING=false;PAYMENT_RECEIPTS_DELETE_SCHEMA_MISSING=false;
   CURRENT_PROFILE=null;
   ACTIVE_CAMPAIGN_ID=null;CLIENT_SURVEY_VIEW_ID=null;
   updateCampaignSwitcherButton();
@@ -6808,7 +6808,7 @@ PAGES.permissions=()=>head('Perfis e permissões','Defina o que cada perfil pode
 let PAYMENTS=[]; // {id, surveyId, researcherId, name, pixKey, valid, rejected, status}
 let PAYMENTS_LOADED=false,PAYMENTS_LOADING=false;
 let PAYMENT_RECEIPTS=[]; // {id,paymentId,researcherId,amount,paidAt,note,createdBy,createdAt,receiptPath,receiptName,receiptMimeType,receiptSize}
-let PAYMENT_RECEIPTS_LOADED=false,PAYMENT_RECEIPTS_LOADING=false,PAYMENT_RECEIPTS_SCHEMA_MISSING=false;
+let PAYMENT_RECEIPTS_LOADED=false,PAYMENT_RECEIPTS_LOADING=false,PAYMENT_RECEIPTS_SCHEMA_MISSING=false,PAYMENT_RECEIPTS_DELETE_SCHEMA_MISSING=false;
 const FIN_STATUS={
   aprovado:{pill:'<span class="pill pill-green">● Aprovado</span>'},
   pendente:{pill:'<span class="pill pill-amber">● Dados bancários pendentes</span>'},
@@ -6843,7 +6843,7 @@ function paymentReceiptFileLabel(receipt){
   return name.length>42?name.slice(0,39)+'…':name;
 }
 function paymentReceiptActionMarkup(receipt,context){
-  if(receipt?.receiptPath)return `<div class="payment-receipt-actions"><button type="button" class="btn-ghost payment-receipt-view" onclick="paymentReceiptOpen(${jsArg(receipt.id)})">Abrir comprovante</button><button type="button" class="btn-ghost payment-receipt-download" onclick="paymentReceiptDownload(${jsArg(receipt.id)})">Baixar</button><small title="${esc(receipt.receiptName||'')}" class="payment-receipt-name">${esc(paymentReceiptFileLabel(receipt))}</small></div>`;
+  if(receipt?.receiptPath)return `<div class="payment-receipt-actions"><button type="button" class="btn-ghost payment-receipt-view" onclick="paymentReceiptOpen(${jsArg(receipt.id)})">Abrir comprovante</button><button type="button" class="btn-ghost payment-receipt-download" onclick="paymentReceiptDownload(${jsArg(receipt.id)})">Baixar</button>${context==='staff'?`<button type="button" class="btn-ghost payment-receipt-delete" onclick="financeDeleteReceiptById(${jsArg(receipt.id)})">Excluir comprovante</button>`:''}<small title="${esc(receipt.receiptName||'')}" class="payment-receipt-name">${esc(paymentReceiptFileLabel(receipt))}</small></div>`;
   return context==='staff'
     ? `<button type="button" class="btn-ghost payment-receipt-attach" onclick="finAttachReceiptById(${jsArg(receipt.id)})">＋ Anexar comprovante</button>`
     : '<span class="payment-receipt-missing">Comprovante ainda não anexado</span>';
@@ -6851,7 +6851,8 @@ function paymentReceiptActionMarkup(receipt,context){
 function financeReceiptRowAction(paymentId){
   const receipts=paymentReceiptsFor(paymentId),pending=receipts.find(receipt=>!receipt.receiptPath);
   if(pending)return `<button type="button" class="btn-ghost finance-action-receipt-attach" onclick="finAttachReceiptById(${jsArg(pending.id)})">＋ Anexar comprovante</button>`;
-  if(receipts.length)return `<button type="button" class="btn-ghost finance-action-receipt-history" onclick="financeFocusReceiptHistory(${jsArg(paymentId)})">Ver comprovante</button>`;
+  if(receipts.length===1&&receipts[0].receiptPath)return `<div class="finance-receipt-row-actions"><button type="button" class="btn-ghost finance-action-receipt-history" onclick="financeFocusReceiptHistory(${jsArg(paymentId)})">Ver comprovante</button><button type="button" class="btn-ghost finance-action-receipt-delete" onclick="financeDeleteReceiptById(${jsArg(receipts[0].id)})">Excluir comprovante</button></div>`;
+  if(receipts.length)return `<button type="button" class="btn-ghost finance-action-receipt-history" onclick="financeFocusReceiptHistory(${jsArg(paymentId)})">Ver comprovantes</button>`;
   return '';
 }
 function paymentReceiptFileName(path){
@@ -6917,6 +6918,26 @@ function finAttachReceiptById(receiptId){
   };
   input.click();
 }
+async function financeDeleteReceiptById(receiptId){
+  if(!financeStaffCanManageReceipts())return;
+  const receipt=PAYMENT_RECEIPTS.find(item=>item.id===receiptId);if(!receipt?.receiptPath)return;
+  if(!confirm('Excluir este comprovante? O pagamento, o valor, a data e o histórico serão preservados. Depois você poderá anexar o arquivo correto.'))return;
+  try{
+    const {data,error}=await sb.rpc('detach_payment_receipt',{p_receipt_id:receipt.id,p_storage_path:receipt.receiptPath});
+    if(error)throw new Error(error.message);
+    const updated=Array.isArray(data)?data[0]:data,local=PAYMENT_RECEIPTS.find(item=>item.id===receipt.id);
+    if(local)Object.assign(local,paymentReceiptRowToEntry(updated||{...receipt,receipt_path:'',receipt_name:'',receipt_mime_type:'',receipt_size:0}));
+    const {error:storageError}=await sb.storage.from('payment-receipts').remove([receipt.receiptPath]);
+    alert(storageError
+      ? 'Comprovante retirado do histórico. O arquivo antigo não foi removido fisicamente; anexe o arquivo correto e informe o administrador se necessário.'
+      : 'Comprovante excluído. O pagamento e o histórico foram preservados; agora você pode anexar outro arquivo.');
+    if(FIN_IDX!=null)financeReturnToDetail(FIN_IDX);else go('finance');
+  }catch(ex){
+    if(/detach_payment_receipt|receipt_path|payment-receipts|schema cache|does not exist|function .* does not exist/i.test(ex.message||''))PAYMENT_RECEIPTS_DELETE_SCHEMA_MISSING=true;
+    alert('Não foi possível excluir o comprovante. Execute a migration deploy/excluir-comprovante-pagamento.sql no Supabase e tente novamente.');
+    console.error(ex);
+  }
+}
 function financeWhatsAppMessage(s,r){
   return 'Olá, '+(r?.name||'pesquisador')+'! Aqui é da PesquisaPro. Podemos conversar sobre suas coletas e pagamentos da pesquisa '+(s?.name||'')+'.';
 }
@@ -6926,8 +6947,8 @@ function financePixMarkup(r){
   return '<div class="finance-pix-cell"><code class="finance-pix-value" title="'+esc(key)+'">'+esc(key)+'</code><button type="button" class="btn-ghost finance-pix-copy" title="Copiar chave PIX" onclick="event.preventDefault();event.stopPropagation();copyTextValue('+jsArg(key)+',\'Chave PIX copiada.\')">Copiar PIX</button></div>';
 }
 function paymentReceiptMigrationNotice(){
-  return PAYMENT_RECEIPTS_SCHEMA_MISSING
-    ? '<div class="callout warn payment-ledger-warning"><b>Livro de recebimentos ainda não habilitado.</b> Execute <code>deploy/pagamentos-recebimentos-extrato.sql</code> e, para anexar comprovantes, também <code>deploy/comprovantes-pagamentos.sql</code> no Supabase.</div>'
+  return PAYMENT_RECEIPTS_SCHEMA_MISSING||PAYMENT_RECEIPTS_DELETE_SCHEMA_MISSING
+    ? '<div class="callout warn payment-ledger-warning"><b>Livro de recebimentos ainda não habilitado.</b> Execute <code>deploy/pagamentos-recebimentos-extrato.sql</code>, <code>deploy/comprovantes-pagamentos.sql</code> e, para excluir e corrigir anexos, <code>deploy/excluir-comprovante-pagamento.sql</code> no Supabase.</div>'
     : '';
 }
 async function loadPaymentsIfNeeded(){

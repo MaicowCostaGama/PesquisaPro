@@ -6,6 +6,7 @@ const css = fs.readFileSync('style.css', 'utf8');
 const html = fs.readFileSync('app.html', 'utf8');
 const migration = fs.readFileSync('deploy/pagamentos-recebimentos-extrato.sql', 'utf8');
 const receiptsMigration = fs.readFileSync('deploy/comprovantes-pagamentos.sql', 'utf8');
+const deleteReceiptMigration = fs.readFileSync('deploy/excluir-comprovante-pagamento.sql', 'utf8');
 
 for (const token of [
   'PAYMENT_RECEIPTS',
@@ -47,6 +48,11 @@ for (const token of [
   'financeReceiptHistory',
   'finance-action-receipt-attach',
   'finance-action-receipt-history',
+  'financeDeleteReceiptById',
+  'finance-action-receipt-delete',
+  'payment-receipt-delete',
+  'detach_payment_receipt',
+  'PAYMENT_RECEIPTS_DELETE_SCHEMA_MISSING',
   'payment-receipt-attach',
   'receiptPath',
   'receiptName',
@@ -90,6 +96,21 @@ for (const token of [
 }
 
 for (const token of [
+  'detach_payment_receipt',
+  'receipt_path = null',
+  'receipt_name = null',
+  'receipt_mime_type = null',
+  'receipt_size = null',
+  'p_storage_path',
+  'payment receipt not found or storage path does not match',
+  'public.is_staff()',
+  'grant execute on function public.detach_payment_receipt(uuid,text) to authenticated'
+]) {
+  assert(deleteReceiptMigration.includes(token), `regra de exclusão segura ausente: ${token}`);
+}
+assert(!deleteReceiptMigration.match(/delete\s+from\s+public\.payment_receipts/i), 'migration não pode apagar lançamentos financeiros');
+
+for (const token of [
   '.finance-table-scroll',
   '.finance-data-table',
   '.finance-row-actions',
@@ -119,6 +140,9 @@ for (const token of [
   '.payment-receipt-attach',
   '.finance-action-receipt-attach',
   '.finance-action-receipt-history',
+  '.finance-action-receipt-delete',
+  '.payment-receipt-delete',
+  '.finance-receipt-row-actions',
   '.finance-receipt-highlight',
   '.payment-receipt-name',
   '.researcher-receipt-file',
@@ -129,12 +153,15 @@ for (const token of [
   assert(css.includes(token), `estilo financeiro ausente: ${token}`);
 }
 
-assert(html.includes('app.js?v=20260930123700'), 'cache do app financeiro não foi atualizado');
-assert(html.includes('style.css?v=20260930123700'), 'cache do CSS financeiro não foi atualizado');
+assert(html.includes('app.js?v=20260930131000'), 'cache do app financeiro não foi atualizado');
+assert(html.includes('style.css?v=20260930131000'), 'cache do CSS financeiro não foi atualizado');
 assert(app.includes("r.status==='aprovado'?Math.max(0,valor-recebido):0"), 'a receber não está restrito a pagamentos aprovados');
 assert(app.includes('const saldoDevido=Math.max(0,valor-recebido)'), 'saldo devido não é abatido pelos recebimentos');
 assert(app.includes('paymentBalanceValue(r,price)'), 'saldo devido não usa o valor real das entrevistas e recibos');
 assert(app.includes("r.rejectedValor?'<div class=\"earnings-rejected-value\">"), 'rejeitadas não estão separadas no extrato');
 assert(migration.includes('grant execute on function public.record_payment_receipt(uuid, numeric, date, text) to authenticated;'), 'RPC de registro sem grant');
+assert(app.includes('O pagamento, o valor, a data e o histórico serão preservados'), 'exclusão não confirma preservação do lançamento');
+assert(app.includes("sb.rpc('detach_payment_receipt'"), 'exclusão não chama a RPC segura');
+assert(app.includes("sb.storage.from('payment-receipts').remove"), 'exclusão não remove o arquivo privado');
 
 console.log('Finance payments smoke test OK: aprovação, saldo abatido, comprovantes privados, RPCs, RLS e extratos por pesquisa verificados.');

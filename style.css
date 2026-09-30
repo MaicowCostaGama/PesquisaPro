@@ -1441,3 +1441,10 @@ body.lp{background:#f8faff;color:var(--ink)}
 .finance-receipt-highlight{animation:financeReceiptHighlight 2.2s ease-out}
 @keyframes financeReceiptHighlight{0%,100%{background:inherit}20%,65%{background:#fff4cf;box-shadow:inset 0 0 0 2px #f2c94c}}
 @media(max-width:640px){.finance-action-receipt-attach,.finance-action-receipt-history{font-size:9.5px!important}}
+
+/* Financeiro: excluir comprovante sem apagar o lançamento financeiro */
+.payment-receipt-delete,.finance-action-receipt-delete{color:#b42318!important;border-color:#f2b8b5!important;background:#fff7f6!important}
+.payment-receipt-delete:hover,.finance-action-receipt-delete:hover{border-color:#d64545!important;background:#fff0ef!important;color:#8f1717!important}
+.finance-receipt-row-actions{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.finance-receipt-row-actions .btn-ghost{font-size:10px;padding:6px 8px;white-space:nowrap}
+@media(max-width:640px){.finance-receipt-row-actions{flex-direction:column;align-items:stretch}.finance-receipt-row-actions .btn-ghost{width:100%;justify-content:center}}

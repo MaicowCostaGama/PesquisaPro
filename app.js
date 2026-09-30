@@ -3511,8 +3511,8 @@ function collectList(){
     <tbody>${rows}</tbody></table>
   </div>`;
 }
-function collectOpen(i){COLLECT_IDX=i;COLLECT_ARMED=true;COLLECT_ORIENTATION_COUNTS={};COLLECT_ORIENTATION_COUNTS_STATUS='loading';COLLECT_ORIENTATION_COUNTS_LOADING=false;_collectMapFilters={researcher:'all',status:'all',latest:false};_collectMapDidFit=false;go('collect');}
-function collectBack(){COLLECT_IDX=null;COLLECT_ORIENTATION_COUNTS={};COLLECT_ORIENTATION_COUNTS_STATUS='idle';COLLECT_ORIENTATION_COUNTS_LOADING=false;go('collect');}
+function collectOpen(i){COLLECT_IDX=i;COLLECT_ARMED=true;COLLECT_ORIENTATION_COUNTS={};COLLECT_ORIENTATION_COUNTS_STATUS='loading';COLLECT_ORIENTATION_COUNTS_LOADING=false;_collectMapFilters={researcher:'all',researcherQuery:'',status:'all',latest:false};_collectMapFocusId=null;_collectMapDidFit=false;go('collect');}
+function collectBack(){COLLECT_IDX=null;COLLECT_ORIENTATION_COUNTS={};COLLECT_ORIENTATION_COUNTS_STATUS='idle';COLLECT_ORIENTATION_COUNTS_LOADING=false;_collectMapFocusId=null;go('collect');}
 let COLLECT_ARMED=false;
 function collectDetail(idx){
   const s=SURVEYS[idx];if(!s)return collectList();
@@ -3532,9 +3532,9 @@ function collectDetail(idx){
 
   <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
     <div class="seg" id="collectTabSeg">
-      <button class="on" onclick="collectTab(this,'equipe')">Equipe</button>
-      <button onclick="collectTab(this,'mapa')">📍 Mapa ao vivo</button>
-      <button onclick="collectTab(this,'auditoria')">🔎 Auditoria</button>
+      <button class="on" data-collect-tab="equipe" onclick="collectTab(this,'equipe')">Equipe</button>
+      <button id="collectTabMapaBtn" data-collect-tab="mapa" onclick="collectTab(this,'mapa')">📍 Mapa ao vivo</button>
+      <button id="collectTabAuditoriaBtn" data-collect-tab="auditoria" onclick="collectTab(this,'auditoria')">🔎 Auditoria</button>
     </div>
     <span class="pill pill-green" style="margin-left:auto"><span style="width:6px;height:6px;border-radius:50%;background:currentColor;display:inline-block;animation:fade 1.4s ease-in-out infinite alternate"></span> Atualizando ao vivo</span>
   </div>
@@ -3566,6 +3566,7 @@ function collectDetail(idx){
         <div class="map-panel-actions"><button class="btn btn-out" onclick="collectMapFit()">⌖ Enquadrar pontos</button><button class="btn btn-out" onclick="collectMapRefresh()">↻ Atualizar</button></div>
       </div>
       <div class="map-toolbar">
+        <label class="map-filter map-filter-search"><span>Buscar pesquisador</span><input id="collectMapResearcherSearch" type="search" placeholder="Digite o nome" list="collectMapResearchers" oninput="collectMapApplyFilters()" autocomplete="off"><datalist id="collectMapResearchers">${mapResearchers.map(name=>`<option value="${esc(name)}"></option>`).join('')}</datalist></label>
         <label class="map-filter"><span>Pesquisador</span><select id="collectMapResearcher" onchange="collectMapApplyFilters()"><option value="all">Todos da equipe</option>${mapResearcherOptions}</select></label>
         <label class="map-filter"><span>Status</span><select id="collectMapStatus" onchange="collectMapApplyFilters()"><option value="all">Todos os pontos</option><option value="valid">Válidas</option><option value="rejected">Reprovadas</option><option value="calibration">Calibração</option><option value="pending">Pendentes de sync</option></select></label>
         <label class="map-check"><input type="checkbox" id="collectMapLatest" onchange="collectMapApplyFilters()"><span>Somente a última por pesquisador</span></label>
@@ -3609,7 +3610,7 @@ function collectTab(btn,which){
   });
   if(which==='mapa'){
     renderCollectMap(COLLECT_IDX);
-    setTimeout(()=>{if(_collectMap)_collectMap.invalidateSize();},60);
+    setTimeout(()=>{if(_collectMap)_collectMap.invalidateSize();if(_collectMapFocusId)focusCollectMapEvent(_collectMapFocusId);},120);
   }
   if(which==='auditoria'){renderAudit(COLLECT_IDX);}
 }
@@ -3766,12 +3767,13 @@ const COLLECT_MAP_MAX_POINTS=120; /* cada coleta fica registrada no mapa (não s
 /* dois estilos de fundo: "rua" (mapa vetorial moderno, sem key) e "satélite" (imagem de satélite) */
 const COLLECT_MAP_LAYERS={street:'roadmap',sat:'satellite'};
 let _collectMapKind='street',_collectMapTileLayer=null;
-let _collectMapMarkerLayer=[],_collectMapInfoWindow=null;
-let _collectMapDidFit=false;
-let _collectMapFilters={researcher:'all',status:'all',latest:false};
+let _collectMapMarkerLayer=[],_collectMapInfoWindow=null,_collectMapFocusMarker=null;
+let _collectMapDidFit=false,_collectMapFocusId=null;
+let _collectMapFilters={researcher:'all',researcherQuery:'',status:'all',latest:false};
 function collectMapReadFilters(){
   _collectMapFilters={
     researcher:document.getElementById('collectMapResearcher')?.value||'all',
+    researcherQuery:(document.getElementById('collectMapResearcherSearch')?.value||'').trim().toLocaleLowerCase('pt-BR'),
     status:document.getElementById('collectMapStatus')?.value||'all',
     latest:!!document.getElementById('collectMapLatest')?.checked
   };
@@ -3779,7 +3781,10 @@ function collectMapReadFilters(){
 }
 function collectMapFilterEvents(events){
   const f=_collectMapFilters;
-  let out=events.filter(e=>f.researcher==='all'||e.name===f.researcher);
+  let out=events.filter(e=>
+    (f.researcher==='all'||e.name===f.researcher)&&
+    (!f.researcherQuery||String(e.name||'').toLocaleLowerCase('pt-BR').includes(f.researcherQuery))
+  );
   if(f.status==='valid')out=out.filter(e=>e.status==='valid'&&!e.calibration);
   if(f.status==='rejected')out=out.filter(e=>e.status==='rejected');
   if(f.status==='calibration')out=out.filter(e=>e.calibration);
@@ -3816,6 +3821,7 @@ function mapDisplayPoint(e,events){
   return [e.lat+latOffset,e.lng+lngOffset];
 }
 function renderCollectMap(idx){
+  if(_collectMapFocusMarker){_collectMapFocusMarker.setMap(null);_collectMapFocusMarker=null;}
   const mapEl=document.getElementById('collectMap');if(!mapEl)return;const mapLoading=document.getElementById('collectMapLoading');
   if(!window.google?.maps?.Map){if(mapLoading){mapLoading.textContent='Preparando Google Maps…';mapLoading.style.display='flex';}loadGoogleMaps().then(()=>{if(document.getElementById('collectMap')===mapEl)renderCollectMap(idx);}).catch(error=>{if(mapLoading){mapLoading.textContent=googleMapErrorText(error);mapLoading.style.display='flex';}});return;}
   if(mapLoading)mapLoading.style.display='none';
@@ -3843,8 +3849,32 @@ let AUDIT_HIGHLIGHT_ID=null;
 function goToAuditFromMap(id){
   const e=COLLECT_EVENTS.find(x=>x.id===id);if(!e)return;
   AUDIT_HIGHLIGHT_ID=id;
-  const auditBtn=document.querySelectorAll('#collectTabSeg button')[2];
+  const auditBtn=document.getElementById('collectTabAuditoriaBtn')||document.querySelectorAll('#collectTabSeg button')[2];
   if(auditBtn)collectTab(auditBtn,'auditoria');
+}
+function goToMapFromAudit(id){
+  const e=COLLECT_EVENTS.find(x=>x.id===id);if(!e||COLLECT_IDX==null)return;
+  _collectMapFocusId=id;
+  _collectMapFilters={researcher:e.name||'all',researcherQuery:String(e.name||'').toLocaleLowerCase('pt-BR'),status:'all',latest:false};
+  const search=document.getElementById('collectMapResearcherSearch');if(search)search.value=e.name||'';
+  const researcher=document.getElementById('collectMapResearcher');if(researcher)researcher.value=e.name||'all';
+  const status=document.getElementById('collectMapStatus');if(status)status.value='all';
+  const latest=document.getElementById('collectMapLatest');if(latest)latest.checked=false;
+  const mapBtn=document.getElementById('collectTabMapaBtn')||document.querySelectorAll('#collectTabSeg button')[1];
+  if(mapBtn)collectTab(mapBtn,'mapa');
+}
+function focusCollectMapEvent(id){
+  const mapTab=document.getElementById('collectTabMapa');
+  if(!mapTab||mapTab.style.display==='none')return;
+  const e=COLLECT_EVENTS.find(x=>x.id===id);
+  if(!e||!Number.isFinite(e.lat)||!Number.isFinite(e.lng))return;
+  if(!_collectMap||!window.google?.maps?.Marker){setTimeout(()=>focusCollectMapEvent(id),220);return;}
+  const position={lat:e.lat,lng:e.lng};
+  _collectMap.setCenter(position);_collectMap.setZoom(17);
+  const marker=new google.maps.Marker({map:_collectMap,position,icon:googleBalloonIcon('#f97316'),title:`Coleta selecionada · ${e.name}`,zIndex:999});
+  _collectMapFocusMarker=marker;_collectMapFocusId=null;
+  marker.addListener('click',()=>{_collectMapInfoWindow.setContent(buildMapPopup(e,true));_collectMapInfoWindow.open({map:_collectMap,anchor:marker});});
+  _collectMapInfoWindow.setContent(buildMapPopup(e,true));_collectMapInfoWindow.open({map:_collectMap,anchor:marker});
 }
 
 function renderLiveFeed(idx){
@@ -3983,6 +4013,9 @@ function renderAudit(idx){
       (e.calibration?'<div style="margin-top:5px"><span class="pill pill-blue">◎ Calibração</span></div>':'');
     const recordingCell=collectionRecordingCell(e);
     const durationCell=`<span class="audit-duration-value">${e.durationSeconds!=null?fmtInterviewDuration(e.durationSeconds):'<span class="audit-duration-missing">Não registrado</span>'}</span>`;
+    const geoCell=Number.isFinite(e.lat)&&Number.isFinite(e.lng)
+      ?`<button type="button" class="audit-geo-link" onclick="goToMapFromAudit(${jsArg(e.id)})" title="Centralizar esta coleta no mapa"><span>${e.lat.toFixed(5)}, ${e.lng.toFixed(5)}</span><b>📍 Ver no mapa</b></button>${distNote}`
+      :'<span class="audit-geo-empty">Sem coordenadas</span>';
     const actionsEvidence=`<div class="audit-actions-evidence"><div><span class="audit-evidence-label">Duração</span><b>${e.durationSeconds!=null?fmtInterviewDuration(e.durationSeconds):'Não registrado'}</b></div><div><span class="audit-evidence-label">Gravação</span>${collectionRecordingCell(e)}</div></div>`;
     const actionsCell=`<div class="audit-actions-stack">
       ${actionsEvidence}
@@ -3995,7 +4028,7 @@ function renderAudit(idx){
       <td>${esc(e.cota)}</td>
       <td>${Number.isFinite(e.ts)?new Date(e.ts).toLocaleString('pt-BR'):'—'}</td>
       <td>${gapCell}</td>
-      <td>${Number.isFinite(e.lat)&&Number.isFinite(e.lng)?e.lat.toFixed(5)+', '+e.lng.toFixed(5):'—'}${distNote}</td>
+      <td class="audit-geo-cell">${geoCell}</td>
       <td>${e.acc>0?'±'+Math.round(e.acc)+'m':'—'}</td>
       <td>${statusCell}</td>
       <td>${durationCell}</td>

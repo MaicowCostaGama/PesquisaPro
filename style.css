@@ -1386,3 +1386,9 @@ body.lp{background:#f8faff;color:var(--ink)}
 .finance-actions-cell .finance-row-actions{min-width:270px}
 @media(max-width:1050px){.finance-data-table th.finance-actions-header,.finance-data-table td.finance-actions-cell{min-width:235px}.finance-actions-cell .finance-row-actions{min-width:220px}}
 @media(max-width:640px){.finance-table-hint{font-size:10px}.finance-data-table th.finance-actions-header,.finance-data-table td.finance-actions-cell{min-width:205px}.finance-actions-cell .finance-row-actions{min-width:190px}}
+
+
+/* Mapa de coletas: busca textual e foco da coleta selecionada */
+.map-filter-search{min-width:220px;flex:1 1 220px}.map-filter-search input{height:36px;width:100%;border:1px solid var(--line2);border-radius:9px;background:#fff;color:var(--ink2);padding:0 10px;font:600 12px var(--sans)}.map-filter-search input::placeholder{color:#93a4b8}.map-filter-search input:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-l)}
+.audit-geo-cell{min-width:126px}.audit-geo-link{display:flex;flex-direction:column;align-items:flex-start;gap:4px;border:0;background:transparent;padding:0;color:var(--ink2);font:inherit;text-align:left;cursor:pointer}.audit-geo-link span{white-space:nowrap}.audit-geo-link b{display:inline-flex;align-items:center;gap:3px;color:var(--brand-d);font-size:10px;font-weight:800;white-space:nowrap}.audit-geo-link:hover b,.audit-geo-link:focus-visible b{text-decoration:underline}.audit-geo-link:focus-visible{outline:2px solid var(--brand);outline-offset:3px;border-radius:4px}.audit-geo-empty{color:var(--ink3)}
+@media(max-width:640px){.map-filter-search{min-width:100%;flex-basis:100%}.audit-geo-link b{font-size:10.5px}}

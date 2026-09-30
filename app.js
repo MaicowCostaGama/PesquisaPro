@@ -3522,6 +3522,7 @@ function collectDetail(idx){
   const collected=surveyCollectedCount(s);
   const mapResearchers=[...new Set(team)].sort((a,b)=>a.localeCompare(b));
   const mapResearcherOptions=mapResearchers.map(name=>`<option value="${esc(name)}">${esc(name)}</option>`).join('');
+  const researcherSearchMarkup=`<div class="collect-researcher-search" role="search" aria-label="Buscar coletas por pesquisador"><label><span>Buscar pesquisador</span><input id="collectResearcherSearch" type="search" value="${esc(_collectMapFilters.researcherQuery||'')}" placeholder="Digite o nome do pesquisador" list="collectResearcherOptions" oninput="collectApplyResearcherSearch(this.value)" autocomplete="off"><datalist id="collectResearcherOptions">${mapResearchers.map(name=>`<option value="${esc(name)}"></option>`).join('')}</datalist></label><button type="button" class="btn btn-out" onclick="collectClearResearcherSearch()">Limpar</button><span id="collectResearcherSearchSummary" class="collect-researcher-search-summary">Todas as coletas</span></div>`;
   return head('Coleta e campo — '+s.name,'Pesquisadores vinculados a esta pesquisa',
     '<button class="btn btn-out" onclick="collectBack()">← Pesquisas</button><button class="btn btn-fill" onclick="alert(\'Recurso ainda não configurado: exportar dados brutos (CSV/SPSS)\')">Exportar dados</button>')+`
   <div class="grid g3" style="margin-bottom:16px">
@@ -3529,6 +3530,8 @@ function collectDetail(idx){
     ${stat('Coletado',collected.toLocaleString('pt-BR'),'de '+sample.toLocaleString('pt-BR'),'✓','#059669')}
     ${stat('Status',s.status==='campo'?'Em campo':'Rascunho','','◷','#d97706')}
   </div>
+
+  ${researcherSearchMarkup}
 
   <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
     <div class="seg" id="collectTabSeg">
@@ -3566,7 +3569,6 @@ function collectDetail(idx){
         <div class="map-panel-actions"><button class="btn btn-out" onclick="collectMapFit()">⌖ Enquadrar pontos</button><button class="btn btn-out" onclick="collectMapRefresh()">↻ Atualizar</button></div>
       </div>
       <div class="map-toolbar">
-        <label class="map-filter map-filter-search"><span>Buscar pesquisador</span><input id="collectMapResearcherSearch" type="search" placeholder="Digite o nome" list="collectMapResearchers" oninput="collectMapApplyFilters()" autocomplete="off"><datalist id="collectMapResearchers">${mapResearchers.map(name=>`<option value="${esc(name)}"></option>`).join('')}</datalist></label>
         <label class="map-filter"><span>Pesquisador</span><select id="collectMapResearcher" onchange="collectMapApplyFilters()"><option value="all">Todos da equipe</option>${mapResearcherOptions}</select></label>
         <label class="map-filter"><span>Status</span><select id="collectMapStatus" onchange="collectMapApplyFilters()"><option value="all">Todos os pontos</option><option value="valid">Válidas</option><option value="rejected">Reprovadas</option><option value="calibration">Calibração</option><option value="pending">Pendentes de sync</option></select></label>
         <label class="map-check"><input type="checkbox" id="collectMapLatest" onchange="collectMapApplyFilters()"><span>Somente a última por pesquisador</span></label>
@@ -3770,10 +3772,31 @@ let _collectMapKind='street',_collectMapTileLayer=null;
 let _collectMapMarkerLayer=[],_collectMapInfoWindow=null,_collectMapFocusMarker=null;
 let _collectMapDidFit=false,_collectMapFocusId=null;
 let _collectMapFilters={researcher:'all',researcherQuery:'',status:'all',latest:false};
+function collectResearcherFilterEvents(events){
+  const query=String(_collectMapFilters.researcherQuery||'').trim().toLocaleLowerCase('pt-BR');
+  return !query?events:events.filter(e=>String(e.name||'').toLocaleLowerCase('pt-BR').includes(query));
+}
+function collectApplyResearcherSearch(value){
+  _collectMapFilters.researcherQuery=String(value||'').trim().toLocaleLowerCase('pt-BR');
+  _collectMapDidFit=false;
+  const total=eventsForSurveyIdx(COLLECT_IDX).length;
+  const matched=collectResearcherFilterEvents(eventsForSurveyIdx(COLLECT_IDX)).length;
+  const summary=document.getElementById('collectResearcherSearchSummary');
+  if(summary)summary.textContent=_collectMapFilters.researcherQuery?`${matched} de ${total} coletas encontradas`:'Todas as coletas';
+  const mapTab=document.getElementById('collectTabMapa');
+  if(mapTab&&mapTab.style.display!=='none')renderCollectMap(COLLECT_IDX);
+  const auditTab=document.getElementById('collectTabAuditoria');
+  if(auditTab&&auditTab.style.display!=='none')renderAudit(COLLECT_IDX);
+}
+function collectClearResearcherSearch(){
+  const input=document.getElementById('collectResearcherSearch');
+  if(input)input.value='';
+  collectApplyResearcherSearch('');
+}
 function collectMapReadFilters(){
   _collectMapFilters={
     researcher:document.getElementById('collectMapResearcher')?.value||'all',
-    researcherQuery:(document.getElementById('collectMapResearcherSearch')?.value||'').trim().toLocaleLowerCase('pt-BR'),
+    researcherQuery:(document.getElementById('collectResearcherSearch')?.value||document.getElementById('collectMapResearcherSearch')?.value||'').trim().toLocaleLowerCase('pt-BR'),
     status:document.getElementById('collectMapStatus')?.value||'all',
     latest:!!document.getElementById('collectMapLatest')?.checked
   };
@@ -3987,9 +4010,10 @@ function renderAudit(idx){
   const previousOf=e=>previousById.get(e.id)||null;
   const gapOf=e=>{const prev=previousOf(e);return prev?e.ts-prev.ts:null;};
   const distOf=e=>{const prev=previousOf(e);return prev?distMeters(e.lat,e.lng,prev.lat,prev.lng):null;};
-  let events=all.slice(0,80);
+  const filteredAll=collectResearcherFilterEvents(all);
+  let events=filteredAll.slice(0,80);
   if(AUDIT_HIGHLIGHT_ID!=null&&!events.some(x=>x.id===AUDIT_HIGHLIGHT_ID)){
-    const found=all.find(x=>x.id===AUDIT_HIGHLIGHT_ID);
+    const found=filteredAll.find(x=>x.id===AUDIT_HIGHLIGHT_ID);
     if(found)events=[found,...events.slice(0,79)];
   }
   el.innerHTML=events.map(e=>{
@@ -4054,7 +4078,7 @@ function renderAuditFlagged(idx){
   const wrap=document.getElementById('auditFlaggedWrap');
   const el=document.getElementById('auditFlagged');
   if(!wrap||!el)return;
-  const flagged=eventsForSurveyIdx(idx).filter(e=>e.status==='rejected'||e.calibration)
+  const flagged=collectResearcherFilterEvents(eventsForSurveyIdx(idx)).filter(e=>e.status==='rejected'||e.calibration)
     .sort((a,b)=>(b.rejectedAt||b.ts)-(a.rejectedAt||a.ts));
   if(!flagged.length){wrap.style.display='none';el.innerHTML='';return;}
   wrap.style.display='block';

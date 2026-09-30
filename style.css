@@ -1361,3 +1361,16 @@ body.lp{background:#f8faff;color:var(--ink)}
 .finance-row-actions .conversation-btn span{white-space:nowrap}
 @media(max-width:1050px){.finance-pix-cell{min-width:185px;max-width:220px}.finance-pix-value{max-width:170px}}
 @media(max-width:640px){.finance-pix-cell{min-width:165px;max-width:190px}.finance-pix-value{max-width:150px;font-size:10px}.finance-contact-missing{font-size:10px}}
+
+
+/* Extrato do pesquisador: comprovantes separados por pesquisa */
+.researcher-receipts-by-survey{display:flex;flex-direction:column;gap:12px;margin-top:14px}
+.researcher-receipt-survey{border:1px solid #dbe7f3;border-radius:13px;background:#fbfdff;overflow:hidden}
+.researcher-receipt-survey-head{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 15px;border-bottom:1px solid #e5edf5;background:linear-gradient(135deg,#f4f9ff,#ffffff)}
+.researcher-receipt-survey-head .eyebrow{display:block;margin:0 0 3px;color:#2563a7;font-size:9.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+.researcher-receipt-survey-head h3{margin:0;color:var(--ink);font-size:14px;line-height:1.35}
+.researcher-receipt-survey-total{display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex:0 0 auto}.researcher-receipt-survey-total span{color:var(--ink3);font-size:10px}.researcher-receipt-survey-total b{color:#087f5b;font-size:15px}
+.researcher-receipt-list{display:flex;flex-direction:column;padding:0 15px}.researcher-receipt-item{padding:12px 0;border-bottom:1px solid #e9eff5}.researcher-receipt-item:last-child{border-bottom:0}
+.researcher-receipt-main{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.researcher-receipt-main>div{display:flex;flex-direction:column;gap:3px;min-width:0}.researcher-receipt-main strong{color:var(--ink);font-size:12px}.researcher-receipt-main span{color:var(--ink3);font-size:10.5px}.researcher-receipt-main>b{color:#087f5b;font-size:14px;white-space:nowrap}
+.researcher-receipt-note{display:flex;gap:8px;align-items:flex-start;margin-top:8px;font-size:10.5px;line-height:1.4}.researcher-receipt-note span{color:var(--ink3);font-weight:700}.researcher-receipt-note strong{color:var(--ink2);font-weight:600;overflow-wrap:anywhere}.researcher-receipt-empty{padding:14px 0;color:var(--ink3);font-size:11px}
+@media(max-width:640px){.researcher-receipt-survey-head{align-items:flex-start;flex-direction:column}.researcher-receipt-survey-total{align-items:flex-start}.researcher-receipt-main>b{font-size:13px}.researcher-receipt-note{flex-direction:column;gap:2px}}

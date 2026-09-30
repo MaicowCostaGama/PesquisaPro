@@ -7049,7 +7049,13 @@ PAGES['my-earnings']=()=>{
   }
   const myId=CURRENT_PROFILE&&CURRENT_PROFILE.id;
   const mine=PAYMENTS.filter(p=>p.researcherId===myId);
-  const rowsData=mine.map(p=>{
+  const paymentBySurvey=new Map(mine.map(payment=>[payment.surveyId,payment]));
+  const participatedSurveyIds=[...new Set(mine.map(payment=>payment.surveyId).concat(COLLECT_EVENTS.filter(event=>event.researcherId===myId).map(event=>event.surveyId)))];
+  const rowsData=participatedSurveyIds.map(surveyId=>{
+    const p=paymentBySurvey.get(surveyId)||(()=>{
+      const events=COLLECT_EVENTS.filter(event=>event.researcherId===myId&&event.surveyId===surveyId);
+      return {id:null,surveyId,researcherId:myId,name:CURRENT_PROFILE?.name||'',valid:events.filter(event=>event.status==='valid').length,rejected:events.filter(event=>event.status==='rejected').length,status:'pendente'};
+    })();
     const s=SURVEYS.find(x=>x.id===p.surveyId);
     const price=s?+s.price:0;
     const valor=paymentDueValue(p,price),recebido=paymentReceivedValue(p.id),aReceber=p.status==='aprovado'?Math.max(0,valor-recebido):0,saldoDevido=Math.max(0,valor-recebido);
@@ -7089,11 +7095,27 @@ PAGES['my-earnings']=()=>{
     <button class="btn btn-fill" onclick="saveMyPixData()">Salvar dados</button>
   </div>`;
 };
+function paymentReceiptDateBR(value){
+  const text=String(value||'').slice(0,10),match=text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return match?match[3]+'/'+match[2]+'/'+match[1]:(value||'—');
+}
+function paymentReceiptCreatedBR(value){
+  if(!value)return '';
+  const date=new Date(value);return Number.isNaN(date.getTime())?'':date.toLocaleString('pt-BR');
+}
 function myReceiptHistoryHtml(rowsData){
-  const paymentNames=new Map(rowsData.map(r=>[r.payment.id,r.survey]));
-  const receipts=PAYMENT_RECEIPTS.filter(r=>paymentNames.has(r.paymentId)).sort((a,b)=>String(b.paidAt).localeCompare(String(a.paidAt))||String(b.createdAt).localeCompare(String(a.createdAt)));
-  const body=receipts.length?receipts.map(r=>`<tr><td>${esc(paymentNames.get(r.paymentId)||'Pesquisa')}</td><td>${esc(r.paidAt||'—')}</td><td><b>${brl(r.amount)}</b></td><td>${esc(r.note||'—')}</td></tr>`).join(''):'<tr><td colspan="4" class="empty">Nenhum repasse registrado ainda.</td></tr>';
-  return `<div class="card mb"><div class="card-t">Histórico de recebimentos</div><div class="card-d">Aqui ficam os valores efetivamente registrados como pagos, com a data informada pela PesquisaPro.</div><div class="finance-table-scroll"><table class="finance-data-table finance-receipts-table"><thead><tr><th>Pesquisa</th><th>Data</th><th>Valor recebido</th><th>Observação</th></tr></thead><tbody>${body}</tbody></table></div></div>`;
+  const groups=rowsData.map(row=>{
+    const receipts=PAYMENT_RECEIPTS.filter(receipt=>receipt.paymentId===row.payment.id).sort((a,b)=>String(b.paidAt).localeCompare(String(a.paidAt))||String(b.createdAt).localeCompare(String(a.createdAt)));
+    return {...row,receipts};
+  }).sort((a,b)=>String(b.receipts[0]?.paidAt||'').localeCompare(String(a.receipts[0]?.paidAt||''))||String(a.survey).localeCompare(String(b.survey)));
+  const body=groups.length?groups.map(group=>{
+    const receiptBody=group.receipts.length?group.receipts.map((receipt,index)=>`<div class="researcher-receipt-item">
+      <div class="researcher-receipt-main"><div><strong>Comprovante de pagamento${group.receipts.length>1?' #'+(group.receipts.length-index):''}</strong><span>Pago em ${esc(paymentReceiptDateBR(receipt.paidAt))}${paymentReceiptCreatedBR(receipt.createdAt)?' · lançado em '+esc(paymentReceiptCreatedBR(receipt.createdAt)):''}</span></div><b>${brl(receipt.amount)}</b></div>
+      <div class="researcher-receipt-note"><span>Referência</span><strong>${esc(receipt.note||'Pagamento registrado pela PesquisaPro')}</strong></div>
+    </div>`).join(''):'<div class="researcher-receipt-empty">Nenhum pagamento registrado nesta pesquisa até o momento.</div>';
+    return `<section class="researcher-receipt-survey"><div class="researcher-receipt-survey-head"><div><span class="eyebrow">Pesquisa participante</span><h3>${esc(group.survey)}</h3></div><div class="researcher-receipt-survey-total"><span>Total recebido</span><b>${brl(group.recebido)}</b></div></div><div class="researcher-receipt-list">${receiptBody}</div></section>`;
+  }).join(''):'<div class="empty">Nenhuma pesquisa com pagamento disponível ainda.</div>';
+  return `<div class="card mb"><div class="card-t">Comprovantes de pagamento por pesquisa</div><div class="card-d">Consulte, separadamente por pesquisa, cada pagamento inserido pela PesquisaPro, com data, valor e referência do repasse.</div><div class="researcher-receipts-by-survey">${body}</div></div>`;
 }
 async function saveMyPixData(){
   if(!CURRENT_PROFILE)return;

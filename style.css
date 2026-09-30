@@ -1432,3 +1432,12 @@ body.lp{background:#f8faff;color:var(--ink)}
 .finance-pix-cell .finance-pix-value{max-width:210px}
 @media(max-width:1050px){.finance-pix-action{padding:6px}.finance-pix-action-value{font-size:9.5px}}
 @media(max-width:640px){.finance-pix-action{padding:6px}.finance-pix-action-label{font-size:8.5px}.finance-pix-action-value{font-size:9px}.finance-pix-action-copy{font-size:9.5px!important}}
+
+/* Financeiro: comprovante acessível mesmo após pagamento integral */
+.finance-action-receipt-attach{color:#7c3aed!important;border-color:#d8b4fe!important;background:#faf5ff!important}
+.finance-action-receipt-attach:hover{border-color:#a855f7!important;background:#f5edff!important}
+.finance-action-receipt-history{color:#0f766e!important;border-color:#a8dfca!important;background:#f0fdf7!important}
+.finance-action-receipt-history:hover{border-color:#4fb991!important;background:#e4f8ef!important}
+.finance-receipt-highlight{animation:financeReceiptHighlight 2.2s ease-out}
+@keyframes financeReceiptHighlight{0%,100%{background:inherit}20%,65%{background:#fff4cf;box-shadow:inset 0 0 0 2px #f2c94c}}
+@media(max-width:640px){.finance-action-receipt-attach,.finance-action-receipt-history{font-size:9.5px!important}}

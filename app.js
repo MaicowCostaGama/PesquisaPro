@@ -6848,6 +6848,12 @@ function paymentReceiptActionMarkup(receipt,context){
     ? `<button type="button" class="btn-ghost payment-receipt-attach" onclick="finAttachReceiptById(${jsArg(receipt.id)})">＋ Anexar comprovante</button>`
     : '<span class="payment-receipt-missing">Comprovante ainda não anexado</span>';
 }
+function financeReceiptRowAction(paymentId){
+  const receipts=paymentReceiptsFor(paymentId),pending=receipts.find(receipt=>!receipt.receiptPath);
+  if(pending)return `<button type="button" class="btn-ghost finance-action-receipt-attach" onclick="finAttachReceiptById(${jsArg(pending.id)})">＋ Anexar comprovante</button>`;
+  if(receipts.length)return `<button type="button" class="btn-ghost finance-action-receipt-history" onclick="financeFocusReceiptHistory(${jsArg(paymentId)})">Ver comprovante</button>`;
+  return '';
+}
 function paymentReceiptFileName(path){
   const raw=String(path||'').split('?')[0].split('/').pop()||'comprovante-pagamento';
   try{return decodeURIComponent(raw)||'comprovante-pagamento';}catch(ex){return raw;}
@@ -7055,9 +7061,10 @@ function financeDetail(idx){
     const pixAction=r.pixKey?'<div class="finance-pix-action"><span class="finance-pix-action-label">CHAVE PIX</span><code class="finance-pix-action-value" title="'+esc(r.pixKey)+'">'+esc(r.pixKey)+'</code><button type="button" class="btn-ghost finance-pix-action-copy" title="Copiar chave PIX" onclick="event.preventDefault();event.stopPropagation();copyTextValue('+jsArg(r.pixKey)+',\'Chave PIX copiada.\')">Copiar PIX</button></div>':'<span class="finance-pix-action-missing">PIX não informada</span>';
     const approveButton=r.virtual||!r.valid?'':'<button class="btn-ghost finance-action-approve" onclick="finApprovePayment('+idx+','+jsArg(r.researcherId)+')">'+(r.status==='aprovado'?'✓ Pagamento aprovado':'Aprovar pagamento')+'</button>';
     const receiptButton=r.virtual||!r.valid||r.status!=='aprovado'||aReceber<=0?'':'<button class="btn-ghost finance-action-receipt" onclick="finRegisterPayment('+idx+','+jsArg(r.researcherId)+')">＋ Registrar pagamento semanal</button>';
+    const receiptRowAction=financeReceiptRowAction(r.id);
     const statusButton=r.virtual?'':'<button class="btn-ghost" onclick="finEditPayment('+idx+','+jsArg(r.researcherId)+')">Alterar status</button>';
     return `<tr><td><b>${esc(r.name)}</b>${r.virtual?'<div class="finance-row-note">Sem pagamento criado ainda</div>':''}</td><td>${r.valid}</td><td>${r.rejected}</td><td><b>${brl(valor)}</b></td><td>${brl(recebido)}</td><td>${aReceber?'<b class="finance-to-receive">'+brl(aReceber)+'</b>':'<span class="pill pill-gray">R$ 0,00</span>'}<div class="finance-balance-note">Saldo devido: ${brl(saldoDevido)}</div></td><td>${pixShown||'<span style="color:var(--ink3)">—</span>'}</td><td>${st.pill}</td>
-      <td class="finance-actions-cell"><div class="finance-row-actions">${pixAction}${whatsappButton}${approveButton}${receiptButton}${statusButton}</div></td></tr>`;
+      <td class="finance-actions-cell"><div class="finance-row-actions">${pixAction}${whatsappButton}${approveButton}${receiptButton}${receiptRowAction}${statusButton}</div></td></tr>`;
   }).join(''):'<tr><td colspan="9" class="empty">Nenhum pesquisador atribuído a esta pesquisa ainda — atribua a equipe em Minhas pesquisas.</td></tr>';
   return head('Financeiro — '+s.name,'Pagamento por entrevista válida coletada nesta pesquisa',
     '<button class="btn btn-out" onclick="financeBack()">← Financeiro</button>'+ 
@@ -7074,7 +7081,7 @@ function financeDetail(idx){
   </div>
   <div class="card mb">
     <div class="card-t">Pagamentos por pesquisador</div>
-    <div class="finance-weekly-callout"><b>Pagamentos semanais durante a coleta:</b> aprove o valor válido disponível e use <b>Registrar pagamento semanal</b> para informar quanto foi pago, a data e a referência da semana. Cada lançamento reduz imediatamente o <b>Saldo devido</b>; novas entrevistas válidas aumentam o valor devido sem apagar o histórico.</div>
+    <div class="finance-weekly-callout"><b>Pagamentos semanais durante a coleta:</b> aprove o valor válido disponível e use <b>Registrar pagamento semanal</b> para informar quanto foi pago, a data e a referência da semana. Cada lançamento reduz imediatamente o <b>Saldo devido</b>; novas entrevistas válidas aumentam o valor devido sem apagar o histórico. Depois de pagar, use <b>Anexar comprovante</b> na própria linha ou no histórico abaixo.</div>
     <div class="card-d">Válidos e rejeitados vêm das coletas de campo. Rejeitadas são apenas informativas e não entram em pendente, a receber ou recebido. <b>Aprovar pagamento</b> move o valor válido para “A receber”; <b>Registrar pagamento semanal</b> lança um repasse total ou parcial com data. Use <b>Conversar</b> para abrir o WhatsApp do pesquisador e consulte ou copie a chave PIX nesta mesma linha.</div>
     <div class="finance-table-hint" role="note">A coluna <b>Ações / contato</b> fica fixa à direita para você sempre conseguir conversar, aprovar e registrar pagamentos.</div>
     <div class="finance-table-scroll"><table class="finance-data-table"><thead><tr><th>Pesquisador</th><th>Válidos</th><th>Rejeitados</th><th>Valor aprovado</th><th>Recebido</th><th>A receber / saldo devido</th><th>Chave PIX</th><th>Status</th><th class="finance-actions-header">Ações / contato</th></tr></thead>
@@ -7100,8 +7107,14 @@ function financeReceiptHistoryHtml(idx){
   const s=SURVEYS[idx];if(!s)return '';
   const rows=finRows(idx),byId=new Map(rows.map(r=>[r.id,r]));
   const receipts=PAYMENT_RECEIPTS.filter(receipt=>byId.has(receipt.paymentId)).sort((a,b)=>String(b.paidAt).localeCompare(String(a.paidAt))||String(b.createdAt).localeCompare(String(a.createdAt)));
-  const body=receipts.length?receipts.map(r=>`<tr><td>${esc(byId.get(r.paymentId)?.name||'(pesquisador removido)')}</td><td>${esc(paymentReceiptDateBR(r.paidAt))}</td><td><b>${brl(r.amount)}</b></td><td>${esc(r.note||'—')}</td><td>${paymentReceiptActionMarkup(r,'staff')}</td></tr>`).join(''):'<tr><td colspan="5" class="empty">Nenhum repasse lançado nesta pesquisa.</td></tr>';
-  return `<div class="card mb"><div class="card-t">Histórico de recebimentos</div><div class="card-d">Lançamentos registrados para ${esc(s.name)}. O histórico é cumulativo e não apaga as entrevistas nem as reprovações. Anexe o comprovante em cada lançamento para consulta futura.</div><div class="finance-table-scroll"><table class="finance-data-table finance-receipts-table"><thead><tr><th>Pesquisador</th><th>Data do pagamento</th><th>Valor recebido</th><th>Observação</th><th>Comprovante</th></tr></thead><tbody>${body}</tbody></table></div></div>`;
+  const body=receipts.length?receipts.map(r=>`<tr data-payment-id="${esc(r.paymentId)}"><td>${esc(byId.get(r.paymentId)?.name||'(pesquisador removido)')}</td><td>${esc(paymentReceiptDateBR(r.paidAt))}</td><td><b>${brl(r.amount)}</b></td><td>${esc(r.note||'—')}</td><td>${paymentReceiptActionMarkup(r,'staff')}</td></tr>`).join(''):'<tr><td colspan="5" class="empty">Nenhum repasse lançado nesta pesquisa.</td></tr>';
+  return `<div id="financeReceiptHistory" class="card mb"><div class="card-t">Histórico de recebimentos</div><div class="card-d">Lançamentos registrados para ${esc(s.name)}. O histórico é cumulativo e não apaga as entrevistas nem as reprovações. Anexe o comprovante em cada lançamento para consulta futura.</div><div class="finance-table-scroll"><table class="finance-data-table finance-receipts-table"><thead><tr><th>Pesquisador</th><th>Data do pagamento</th><th>Valor recebido</th><th>Observação</th><th>Comprovante</th></tr></thead><tbody>${body}</tbody></table></div></div>`;
+}
+function financeFocusReceiptHistory(paymentId){
+  const history=document.getElementById('financeReceiptHistory');if(!history)return;
+  history.scrollIntoView({behavior:'smooth',block:'center'});
+  const row=Array.from(history.querySelectorAll('tr[data-payment-id]')).find(item=>item.dataset.paymentId===String(paymentId));
+  if(row){row.classList.add('finance-receipt-highlight');setTimeout(()=>row.classList.remove('finance-receipt-highlight'),2200);}
 }
 function financeReturnToDetail(idx){FIN_IDX=idx;FIN_ARMED=true;go('finance');}
 async function finApprovePayment(idx,researcherId){

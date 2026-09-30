@@ -6766,7 +6766,7 @@ function maskPix(v){
 function paymentRowToEntry(row){
   const u=USERS.find(x=>x.id===row.researcher_id);
   return {id:row.id,surveyId:row.survey_id,researcherId:row.researcher_id,
-    name:u?u.name:'(pesquisador removido)',pixKey:u?u.pixKey:'',
+    name:u?u.name:'(pesquisador removido)',phone:u?u.phone:'',pixKey:u?u.pixKey:'',
     valid:row.valid_count||0,rejected:row.rejected_count||0,status:row.status||'pendente'};
 }
 function paymentReceiptRowToEntry(row){
@@ -6778,6 +6778,14 @@ function paymentReceiptsFor(paymentId){return PAYMENT_RECEIPTS.filter(r=>r.payme
 function paymentReceivedValue(paymentId){return paymentId?paymentReceiptsFor(paymentId).reduce((sum,r)=>sum+r.amount,0):0;}
 function paymentDueValue(row,price){return Math.max(0,(Number(row?.valid)||0)*(Number(price)||0));}
 function paymentBalanceValue(row,price){return Math.max(0,paymentDueValue(row,price)-paymentReceivedValue(row?.id));}
+function financeWhatsAppMessage(s,r){
+  return 'Olá, '+(r?.name||'pesquisador')+'! Aqui é da PesquisaPro. Podemos conversar sobre suas coletas e pagamentos da pesquisa '+(s?.name||'')+'.';
+}
+function financePixMarkup(r){
+  const key=String(r?.pixKey||'').trim();
+  if(!key)return '<span class="pill pill-amber">Não informada</span>';
+  return '<div class="finance-pix-cell"><code class="finance-pix-value">'+esc(key)+'</code><button type="button" class="btn-ghost finance-pix-copy" title="Copiar chave PIX" onclick="event.preventDefault();event.stopPropagation();copyTextValue('+jsArg(key)+',\'Chave PIX copiada.\')">Copiar</button></div>';
+}
 function paymentReceiptMigrationNotice(){
   return PAYMENT_RECEIPTS_SCHEMA_MISSING
     ? '<div class="callout warn payment-ledger-warning"><b>Livro de recebimentos ainda não habilitado.</b> Execute a migration <code>deploy/pagamentos-recebimentos-extrato.sql</code> no Supabase para liberar aprovações em lote, lançamentos pagos e extrato de recebimentos.</div>'
@@ -6837,7 +6845,7 @@ function finRows(idx){
   const covered=new Set(real.map(p=>p.researcherId));
   const virtual=(s.team||[]).map(name=>pesqUsers().find(u=>u.name===name)).filter(Boolean)
     .filter(u=>!covered.has(u.id))
-    .map(u=>({surveyId:s.id,researcherId:u.id,name:u.name,pixKey:u.pixKey||'',valid:0,rejected:0,status:'pendente',virtual:true}));
+    .map(u=>({surveyId:s.id,researcherId:u.id,name:u.name,phone:u.phone||'',pixKey:u.pixKey||'',valid:0,rejected:0,status:'pendente',virtual:true}));
   return [...real,...virtual];
 }
 function finTotals(idx){
@@ -6909,12 +6917,13 @@ function financeDetail(idx){
     const recebido=paymentReceivedValue(r.id);
     const aReceber=r.status==='aprovado'?Math.max(0,valor-recebido):0;
     const saldoDevido=Math.max(0,valor-recebido);
-    const pixShown=maskPix(r.pixKey);
+    const whatsappButton=r.phone?conversationButton(r.phone,financeWhatsAppMessage(s,r)):'<span class="finance-contact-missing">Sem telefone</span>';
+    const pixShown=financePixMarkup(r);
     const approveButton=r.virtual||!r.valid?'':'<button class="btn-ghost finance-action-approve" onclick="finApprovePayment('+idx+','+jsArg(r.researcherId)+')">'+(r.status==='aprovado'?'✓ Pagamento aprovado':'Aprovar pagamento')+'</button>';
     const receiptButton=r.virtual||!r.valid||r.status!=='aprovado'||aReceber<=0?'':'<button class="btn-ghost finance-action-receipt" onclick="finRegisterPayment('+idx+','+jsArg(r.researcherId)+')">＋ Registrar pagamento semanal</button>';
     const statusButton=r.virtual?'':'<button class="btn-ghost" onclick="finEditPayment('+idx+','+jsArg(r.researcherId)+')">Alterar status</button>';
     return `<tr><td><b>${esc(r.name)}</b>${r.virtual?'<div class="finance-row-note">Sem pagamento criado ainda</div>':''}</td><td>${r.valid}</td><td>${r.rejected}</td><td><b>${brl(valor)}</b></td><td>${brl(recebido)}</td><td>${aReceber?'<b class="finance-to-receive">'+brl(aReceber)+'</b>':'<span class="pill pill-gray">R$ 0,00</span>'}<div class="finance-balance-note">Saldo devido: ${brl(saldoDevido)}</div></td><td>${pixShown||'<span style="color:var(--ink3)">—</span>'}</td><td>${st.pill}</td>
-      <td><div class="finance-row-actions">${approveButton}${receiptButton}${statusButton}</div></td></tr>`;
+      <td><div class="finance-row-actions">${whatsappButton}${approveButton}${receiptButton}${statusButton}</div></td></tr>`;
   }).join(''):'<tr><td colspan="9" class="empty">Nenhum pesquisador atribuído a esta pesquisa ainda — atribua a equipe em Minhas pesquisas.</td></tr>';
   return head('Financeiro — '+s.name,'Pagamento por entrevista válida coletada nesta pesquisa',
     '<button class="btn btn-out" onclick="financeBack()">← Financeiro</button>'+ 
@@ -6932,8 +6941,8 @@ function financeDetail(idx){
   <div class="card mb">
     <div class="card-t">Pagamentos por pesquisador</div>
     <div class="finance-weekly-callout"><b>Pagamentos semanais durante a coleta:</b> aprove o valor válido disponível e use <b>Registrar pagamento semanal</b> para informar quanto foi pago, a data e a referência da semana. Cada lançamento reduz imediatamente o <b>Saldo devido</b>; novas entrevistas válidas aumentam o valor devido sem apagar o histórico.</div>
-    <div class="card-d">Válidos e rejeitados vêm das coletas de campo. Rejeitadas são apenas informativas e não entram em pendente, a receber ou recebido. <b>Aprovar pagamento</b> move o valor válido para “A receber”; <b>Registrar pagamento semanal</b> lança um repasse total ou parcial com data.</div>
-    <div class="finance-table-scroll"><table class="finance-data-table"><thead><tr><th>Pesquisador</th><th>Válidos</th><th>Rejeitados</th><th>Valor aprovado</th><th>Recebido</th><th>A receber / saldo devido</th><th>Chave PIX</th><th>Status</th><th>Ações</th></tr></thead>
+    <div class="card-d">Válidos e rejeitados vêm das coletas de campo. Rejeitadas são apenas informativas e não entram em pendente, a receber ou recebido. <b>Aprovar pagamento</b> move o valor válido para “A receber”; <b>Registrar pagamento semanal</b> lança um repasse total ou parcial com data. Use <b>Conversar</b> para abrir o WhatsApp do pesquisador e consulte ou copie a chave PIX nesta mesma linha.</div>
+    <div class="finance-table-scroll"><table class="finance-data-table"><thead><tr><th>Pesquisador</th><th>Válidos</th><th>Rejeitados</th><th>Valor aprovado</th><th>Recebido</th><th>A receber / saldo devido</th><th>Chave PIX</th><th>Status</th><th>Ações / contato</th></tr></thead>
     <tbody>${body}</tbody></table>
     </div>
   </div>

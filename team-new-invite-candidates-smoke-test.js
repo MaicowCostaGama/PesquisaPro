@@ -20,5 +20,5 @@ for(const token of required)assert(app.includes(token),`app.js sem ${token}`);
 assert(app.includes('TEAM_ONLY_NEW||isNew'),'filtro de novos não aplicado na lista');
 assert(app.includes('TEAM_ONLY_NEW?available+\' novo\''),'contador do filtro de novos ausente');
 assert(css.includes('.team-new-invite-callout')&&css.includes('.team-new-invite-toggle')&&css.includes('.team-new-invite-pill'),'estilos do filtro de novos ausentes');
-assert(html.includes('app.js?v=20260927101500'),'cache não atualizado');
+assert(html.includes('app.js?v=20260930091500'),'cache não atualizado');
 console.log('team-new-invite-candidates-smoke-test: PASS');

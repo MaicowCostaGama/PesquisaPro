@@ -21,6 +21,10 @@ for (const token of [
   'Pagamento semanal — ',
   'Pagamentos semanais durante a coleta',
   'Saldo devido',
+  'financeWhatsAppMessage',
+  'financePixMarkup',
+  'conversationButton(r.phone',
+  'copyTextValue',
   'Extrato por pesquisa',
   'rejeitadasValor',
   'A receber',
@@ -51,14 +55,18 @@ for (const token of [
   '.finance-to-receive',
   '.finance-weekly-callout',
   '.finance-balance-note',
+  '.finance-pix-cell',
+  '.finance-pix-value',
+  '.finance-pix-copy',
+  '.finance-contact-missing',
   '.earnings-rejected-value',
   '@media(max-width:640px)'
 ]) {
   assert(css.includes(token), `estilo financeiro ausente: ${token}`);
 }
 
-assert(html.includes('app.js?v=20260927101500'), 'cache do app financeiro não foi atualizado');
-assert(html.includes('style.css?v=20260927101500'), 'cache do CSS financeiro não foi atualizado');
+assert(html.includes('app.js?v=20260930091500'), 'cache do app financeiro não foi atualizado');
+assert(html.includes('style.css?v=20260930091500'), 'cache do CSS financeiro não foi atualizado');
 assert(app.includes("r.status==='aprovado'?Math.max(0,valor-recebido):0"), 'a receber não está restrito a pagamentos aprovados');
 assert(app.includes('const saldoDevido=Math.max(0,valor-recebido)'), 'saldo devido não é abatido pelos recebimentos');
 assert(app.includes('paymentBalanceValue(r,price)'), 'saldo devido não usa o valor real das entrevistas e recibos');

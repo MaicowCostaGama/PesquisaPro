@@ -6807,7 +6807,7 @@ PAGES.permissions=()=>head('Perfis e permissões','Defina o que cada perfil pode
    linha de verdade no banco quando a primeira coleta dele é enviada. */
 let PAYMENTS=[]; // {id, surveyId, researcherId, name, pixKey, valid, rejected, status}
 let PAYMENTS_LOADED=false,PAYMENTS_LOADING=false;
-let PAYMENT_RECEIPTS=[]; // {id,paymentId,researcherId,amount,paidAt,note,createdBy,createdAt}
+let PAYMENT_RECEIPTS=[]; // {id,paymentId,researcherId,amount,paidAt,note,createdBy,createdAt,receiptPath,receiptName,receiptMimeType,receiptSize}
 let PAYMENT_RECEIPTS_LOADED=false,PAYMENT_RECEIPTS_LOADING=false,PAYMENT_RECEIPTS_SCHEMA_MISSING=false;
 const FIN_STATUS={
   aprovado:{pill:'<span class="pill pill-green">● Aprovado</span>'},
@@ -6829,12 +6829,88 @@ function paymentRowToEntry(row){
 function paymentReceiptRowToEntry(row){
   return {id:row.id,paymentId:row.payment_id,researcherId:row.researcher_id,
     amount:Number(row.amount)||0,paidAt:row.paid_at||'',note:row.note||'',
-    createdBy:row.created_by||'',createdAt:row.created_at||''};
+    createdBy:row.created_by||'',createdAt:row.created_at||'',
+    receiptPath:row.receipt_path||'',receiptName:row.receipt_name||'',
+    receiptMimeType:row.receipt_mime_type||'',receiptSize:Number(row.receipt_size)||0};
 }
 function paymentReceiptsFor(paymentId){return PAYMENT_RECEIPTS.filter(r=>r.paymentId===paymentId);}
 function paymentReceivedValue(paymentId){return paymentId?paymentReceiptsFor(paymentId).reduce((sum,r)=>sum+r.amount,0):0;}
 function paymentDueValue(row,price){return Math.max(0,(Number(row?.valid)||0)*(Number(price)||0));}
 function paymentBalanceValue(row,price){return Math.max(0,paymentDueValue(row,price)-paymentReceivedValue(row?.id));}
+function financeStaffCanManageReceipts(){return ['admin','coord','gerente','admpro'].includes(CURRENT_PROFILE?.role||selectedRole);}
+function paymentReceiptFileLabel(receipt){
+  const name=String(receipt?.receiptName||'comprovante de pagamento');
+  return name.length>42?name.slice(0,39)+'…':name;
+}
+function paymentReceiptActionMarkup(receipt,context){
+  if(receipt?.receiptPath)return `<div class="payment-receipt-actions"><button type="button" class="btn-ghost payment-receipt-view" onclick="paymentReceiptOpen(${jsArg(receipt.id)})">Abrir comprovante</button><button type="button" class="btn-ghost payment-receipt-download" onclick="paymentReceiptDownload(${jsArg(receipt.id)})">Baixar</button><small title="${esc(receipt.receiptName||'')}" class="payment-receipt-name">${esc(paymentReceiptFileLabel(receipt))}</small></div>`;
+  return context==='staff'
+    ? `<button type="button" class="btn-ghost payment-receipt-attach" onclick="finAttachReceiptById(${jsArg(receipt.id)})">＋ Anexar comprovante</button>`
+    : '<span class="payment-receipt-missing">Comprovante ainda não anexado</span>';
+}
+function paymentReceiptFileName(path){
+  const raw=String(path||'').split('?')[0].split('/').pop()||'comprovante-pagamento';
+  try{return decodeURIComponent(raw)||'comprovante-pagamento';}catch(ex){return raw;}
+}
+async function paymentReceiptSignedUrl(receipt){
+  if(!receipt?.receiptPath)throw new Error('Comprovante ainda não anexado.');
+  const {data,error}=await sb.storage.from('payment-receipts').createSignedUrl(receipt.receiptPath,600);
+  if(error||!data?.signedUrl)throw new Error(error?.message||'URL temporária do comprovante indisponível.');
+  return data.signedUrl;
+}
+async function paymentReceiptOpen(receiptId){
+  const receipt=PAYMENT_RECEIPTS.find(item=>item.id===receiptId);if(!receipt)return;
+  const popup=window.open('about:blank','_blank','noopener');
+  try{
+    const url=await paymentReceiptSignedUrl(receipt);
+    if(popup)popup.location.href=url;else window.open(url,'_blank','noopener');
+  }catch(ex){if(popup)popup.close();alert('Não foi possível abrir o comprovante. Verifique se o arquivo existe e se a migration de comprovantes foi executada.');console.error(ex);}
+}
+async function paymentReceiptDownload(receiptId){
+  const receipt=PAYMENT_RECEIPTS.find(item=>item.id===receiptId);if(!receipt)return;
+  try{
+    const response=await fetch(await paymentReceiptSignedUrl(receipt));
+    if(!response.ok)throw new Error('download HTTP '+response.status);
+    const blob=await response.blob(),objectUrl=URL.createObjectURL(blob),link=document.createElement('a');
+    link.href=objectUrl;link.download=paymentReceiptFileName(receipt.receiptName||receipt.receiptPath);link.style.display='none';document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(objectUrl),1000);
+  }catch(ex){alert('Não foi possível baixar o comprovante. Verifique se o arquivo existe e se o bucket privado está configurado.');console.error(ex);}
+}
+function paymentReceiptExtension(file){
+  const byType={'application/pdf':'pdf','image/jpeg':'jpg','image/png':'png','image/webp':'webp'};
+  return byType[file?.type]||(String(file?.name||'').match(/\.([a-z0-9]+)$/i)?.[1]||'bin').toLowerCase();
+}
+async function paymentReceiptUpload(receiptId,file){
+  if(!receiptId||!file)return false;
+  if(PAYMENT_RECEIPTS_SCHEMA_MISSING){alert('Execute primeiro a migration deploy/comprovantes-pagamentos.sql no Supabase.');return false;}
+  const accepted=/^(application\/pdf|image\/(jpeg|png|webp))$/i.test(file.type)||/\.(pdf|jpe?g|png|webp)$/i.test(file.name||'');
+  if(!accepted){alert('Selecione um comprovante em PDF, JPG, PNG ou WebP.');return false;}
+  if(file.size>10*1024*1024){alert('O comprovante deve ter no máximo 10 MB.');return false;}
+  const ext=paymentReceiptExtension(file),randomPart=window.crypto?.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.random().toString(16).slice(2),path='receipts/'+receiptId+'/'+randomPart+'.'+ext;
+  const {error:uploadError}=await sb.storage.from('payment-receipts').upload(path,file,{contentType:file.type||'application/octet-stream',upsert:false});
+  if(uploadError)throw new Error(uploadError.message);
+  try{
+    const {data,error}=await sb.rpc('attach_payment_receipt',{p_receipt_id:receiptId,p_storage_path:path,p_file_name:file.name||('comprovante.'+ext),p_mime_type:file.type||null,p_file_size:file.size||null});
+    if(error)throw new Error(error.message);
+    const updated=Array.isArray(data)?data[0]:data,local=PAYMENT_RECEIPTS.find(item=>item.id===receiptId);
+    if(local)Object.assign(local,paymentReceiptRowToEntry(updated||{...local,receipt_path:path,receipt_name:file.name||('comprovante.'+ext),receipt_mime_type:file.type||'',receipt_size:file.size||0}));
+    return true;
+  }catch(ex){
+    await sb.storage.from('payment-receipts').remove([path]).catch(()=>{});
+    if(/attach_payment_receipt|receipt_path|payment-receipts|schema cache|does not exist|function .* does not exist/i.test(ex.message||''))PAYMENT_RECEIPTS_SCHEMA_MISSING=true;
+    throw ex;
+  }
+}
+function finAttachReceiptById(receiptId){
+  if(!financeStaffCanManageReceipts())return;
+  const receipt=PAYMENT_RECEIPTS.find(item=>item.id===receiptId);if(!receipt)return;
+  const input=document.createElement('input');input.type='file';input.accept='application/pdf,image/jpeg,image/png,image/webp';input.style.display='none';document.body.appendChild(input);
+  input.onchange=async()=>{
+    const file=input.files?.[0];input.remove();if(!file)return;
+    try{await paymentReceiptUpload(receiptId,file);alert('Comprovante anexado com segurança.');if(FIN_IDX!=null)financeReturnToDetail(FIN_IDX);else go('finance');}
+    catch(ex){alert('Não foi possível anexar o comprovante. Verifique se o bucket privado e a migration deploy/comprovantes-pagamentos.sql foram executados no Supabase e tente novamente.');console.error(ex);}
+  };
+  input.click();
+}
 function financeWhatsAppMessage(s,r){
   return 'Olá, '+(r?.name||'pesquisador')+'! Aqui é da PesquisaPro. Podemos conversar sobre suas coletas e pagamentos da pesquisa '+(s?.name||'')+'.';
 }
@@ -6845,7 +6921,7 @@ function financePixMarkup(r){
 }
 function paymentReceiptMigrationNotice(){
   return PAYMENT_RECEIPTS_SCHEMA_MISSING
-    ? '<div class="callout warn payment-ledger-warning"><b>Livro de recebimentos ainda não habilitado.</b> Execute a migration <code>deploy/pagamentos-recebimentos-extrato.sql</code> no Supabase para liberar aprovações em lote, lançamentos pagos e extrato de recebimentos.</div>'
+    ? '<div class="callout warn payment-ledger-warning"><b>Livro de recebimentos ainda não habilitado.</b> Execute <code>deploy/pagamentos-recebimentos-extrato.sql</code> e, para anexar comprovantes, também <code>deploy/comprovantes-pagamentos.sql</code> no Supabase.</div>'
     : '';
 }
 async function loadPaymentsIfNeeded(){
@@ -7023,8 +7099,8 @@ function financeReceiptHistoryHtml(idx){
   const s=SURVEYS[idx];if(!s)return '';
   const rows=finRows(idx),byId=new Map(rows.map(r=>[r.id,r]));
   const receipts=PAYMENT_RECEIPTS.filter(receipt=>byId.has(receipt.paymentId)).sort((a,b)=>String(b.paidAt).localeCompare(String(a.paidAt))||String(b.createdAt).localeCompare(String(a.createdAt)));
-  const body=receipts.length?receipts.map(r=>`<tr><td>${esc(byId.get(r.paymentId)?.name||'(pesquisador removido)')}</td><td>${esc(r.paidAt||'—')}</td><td><b>${brl(r.amount)}</b></td><td>${esc(r.note||'—')}</td></tr>`).join(''):'<tr><td colspan="4" class="empty">Nenhum repasse lançado nesta pesquisa.</td></tr>';
-  return `<div class="card mb"><div class="card-t">Histórico de recebimentos</div><div class="card-d">Lançamentos registrados para ${esc(s.name)}. O histórico é cumulativo e não apaga as entrevistas nem as reprovações.</div><div class="finance-table-scroll"><table class="finance-data-table finance-receipts-table"><thead><tr><th>Pesquisador</th><th>Data do pagamento</th><th>Valor recebido</th><th>Observação</th></tr></thead><tbody>${body}</tbody></table></div></div>`;
+  const body=receipts.length?receipts.map(r=>`<tr><td>${esc(byId.get(r.paymentId)?.name||'(pesquisador removido)')}</td><td>${esc(paymentReceiptDateBR(r.paidAt))}</td><td><b>${brl(r.amount)}</b></td><td>${esc(r.note||'—')}</td><td>${paymentReceiptActionMarkup(r,'staff')}</td></tr>`).join(''):'<tr><td colspan="5" class="empty">Nenhum repasse lançado nesta pesquisa.</td></tr>';
+  return `<div class="card mb"><div class="card-t">Histórico de recebimentos</div><div class="card-d">Lançamentos registrados para ${esc(s.name)}. O histórico é cumulativo e não apaga as entrevistas nem as reprovações. Anexe o comprovante em cada lançamento para consulta futura.</div><div class="finance-table-scroll"><table class="finance-data-table finance-receipts-table"><thead><tr><th>Pesquisador</th><th>Data do pagamento</th><th>Valor recebido</th><th>Observação</th><th>Comprovante</th></tr></thead><tbody>${body}</tbody></table></div></div>`;
 }
 function financeReturnToDetail(idx){FIN_IDX=idx;FIN_ARMED=true;go('finance');}
 async function finApprovePayment(idx,researcherId){
@@ -7076,7 +7152,7 @@ async function finRegisterPayment(idx,researcherId){
     if(error)throw new Error(error.message);
     const row=Array.isArray(data)?data[0]:data;if(row)PAYMENT_RECEIPTS.unshift(paymentReceiptRowToEntry(row));
   }catch(ex){alert('Não foi possível registrar o pagamento. Verifique se a migration pagamentos-recebimentos-extrato.sql foi executada e se o valor ainda está disponível.');console.error(ex);return;}
-  alert('Pagamento semanal registrado em '+paidAt+'. Saldo devido atualizado.');
+  alert('Pagamento semanal registrado em '+paidAt+'. Saldo devido atualizado. No histórico abaixo, use “Anexar comprovante” para guardar o comprovante deste repasse.');
   financeReturnToDetail(idx);
 }
 /* define o status do pagamento de um pesquisador nesta pesquisa — válidos e
@@ -7169,7 +7245,7 @@ function myReceiptHistoryHtml(rowsData){
   const body=groups.length?groups.map(group=>{
     const receiptBody=group.receipts.length?group.receipts.map((receipt,index)=>`<div class="researcher-receipt-item">
       <div class="researcher-receipt-main"><div><strong>Comprovante de pagamento${group.receipts.length>1?' #'+(group.receipts.length-index):''}</strong><span>Pago em ${esc(paymentReceiptDateBR(receipt.paidAt))}${paymentReceiptCreatedBR(receipt.createdAt)?' · lançado em '+esc(paymentReceiptCreatedBR(receipt.createdAt)):''}</span></div><b>${brl(receipt.amount)}</b></div>
-      <div class="researcher-receipt-note"><span>Referência</span><strong>${esc(receipt.note||'Pagamento registrado pela PesquisaPro')}</strong></div>
+      <div class="researcher-receipt-note"><span>Referência</span><strong>${esc(receipt.note||'Pagamento registrado pela PesquisaPro')}</strong></div><div class="researcher-receipt-file">${paymentReceiptActionMarkup(receipt,'researcher')}</div>
     </div>`).join(''):'<div class="researcher-receipt-empty">Nenhum pagamento registrado nesta pesquisa até o momento.</div>';
     return `<section class="researcher-receipt-survey"><div class="researcher-receipt-survey-head"><div><span class="eyebrow">Pesquisa participante</span><h3>${esc(group.survey)}</h3></div><div class="researcher-receipt-survey-total"><span>Total recebido</span><b>${brl(group.recebido)}</b></div></div><div class="researcher-receipt-list">${receiptBody}</div></section>`;
   }).join(''):'<div class="empty">Nenhuma pesquisa com pagamento disponível ainda.</div>';

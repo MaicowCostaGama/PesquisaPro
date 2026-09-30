@@ -5,6 +5,7 @@ const app = fs.readFileSync('app.js', 'utf8');
 const css = fs.readFileSync('style.css', 'utf8');
 const html = fs.readFileSync('app.html', 'utf8');
 const migration = fs.readFileSync('deploy/pagamentos-recebimentos-extrato.sql', 'utf8');
+const receiptsMigration = fs.readFileSync('deploy/comprovantes-pagamentos.sql', 'utf8');
 
 for (const token of [
   'PAYMENT_RECEIPTS',
@@ -32,6 +33,17 @@ for (const token of [
   'finance-table-hint',
   'finance-actions-header',
   'finance-actions-cell',
+  'paymentReceiptUpload',
+  'paymentReceiptOpen',
+  'paymentReceiptDownload',
+  'paymentReceiptActionMarkup',
+  'finAttachReceiptById',
+  'payment-receipt-attach',
+  'receiptPath',
+  'receiptName',
+  'Anexar comprovante',
+  'Abrir comprovante',
+  'Baixar',
   'Extrato por pesquisa',
   'rejeitadasValor',
   'A receber',
@@ -54,6 +66,21 @@ for (const token of [
 }
 
 for (const token of [
+  'payment-receipts',
+  'receipt_path',
+  'receipt_name',
+  'receipt_mime_type',
+  'receipt_size',
+  'attach_payment_receipt',
+  'gestao gerencia comprovantes de pagamento',
+  'pesquisador vê seu comprovante de pagamento',
+  '10485760',
+  'public.is_staff()'
+]) {
+  assert(receiptsMigration.includes(token), `regra de comprovante ausente: ${token}`);
+}
+
+for (const token of [
   '.finance-table-scroll',
   '.finance-data-table',
   '.finance-row-actions',
@@ -73,6 +100,13 @@ for (const token of [
   '.finance-table-hint',
   '.finance-actions-header',
   '.finance-actions-cell',
+  '.finance-receipts-table',
+  '.payment-receipt-actions',
+  '.payment-receipt-view',
+  '.payment-receipt-download',
+  '.payment-receipt-attach',
+  '.payment-receipt-name',
+  '.researcher-receipt-file',
   'position:sticky;right:0',
   '.earnings-rejected-value',
   '@media(max-width:640px)'
@@ -80,12 +114,12 @@ for (const token of [
   assert(css.includes(token), `estilo financeiro ausente: ${token}`);
 }
 
-assert(html.includes('app.js?v=20260930101100'), 'cache do app financeiro não foi atualizado');
-assert(html.includes('style.css?v=20260930101100'), 'cache do CSS financeiro não foi atualizado');
+assert(html.includes('app.js?v=20260930102500'), 'cache do app financeiro não foi atualizado');
+assert(html.includes('style.css?v=20260930102500'), 'cache do CSS financeiro não foi atualizado');
 assert(app.includes("r.status==='aprovado'?Math.max(0,valor-recebido):0"), 'a receber não está restrito a pagamentos aprovados');
 assert(app.includes('const saldoDevido=Math.max(0,valor-recebido)'), 'saldo devido não é abatido pelos recebimentos');
 assert(app.includes('paymentBalanceValue(r,price)'), 'saldo devido não usa o valor real das entrevistas e recibos');
 assert(app.includes("r.rejectedValor?'<div class=\"earnings-rejected-value\">"), 'rejeitadas não estão separadas no extrato');
 assert(migration.includes('grant execute on function public.record_payment_receipt(uuid, numeric, date, text) to authenticated;'), 'RPC de registro sem grant');
 
-console.log('Finance payments smoke test OK: aprovação individual/em lote, recebido, a receber, rejeitadas informativas, RPCs, RLS e extrato verificados.');
+console.log('Finance payments smoke test OK: aprovação, saldo abatido, comprovantes privados, RPCs, RLS e extratos por pesquisa verificados.');

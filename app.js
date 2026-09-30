@@ -6917,7 +6917,7 @@ function financeWhatsAppMessage(s,r){
 function financePixMarkup(r){
   const key=String(r?.pixKey||'').trim();
   if(!key)return '<span class="pill pill-amber">Não informada</span>';
-  return '<div class="finance-pix-cell"><code class="finance-pix-value">'+esc(key)+'</code><button type="button" class="btn-ghost finance-pix-copy" title="Copiar chave PIX" onclick="event.preventDefault();event.stopPropagation();copyTextValue('+jsArg(key)+',\'Chave PIX copiada.\')">Copiar</button></div>';
+  return '<div class="finance-pix-cell"><code class="finance-pix-value" title="'+esc(key)+'">'+esc(key)+'</code><button type="button" class="btn-ghost finance-pix-copy" title="Copiar chave PIX" onclick="event.preventDefault();event.stopPropagation();copyTextValue('+jsArg(key)+',\'Chave PIX copiada.\')">Copiar PIX</button></div>';
 }
 function paymentReceiptMigrationNotice(){
   return PAYMENT_RECEIPTS_SCHEMA_MISSING
@@ -7052,11 +7052,12 @@ function financeDetail(idx){
     const saldoDevido=Math.max(0,valor-recebido);
     const whatsappButton=r.phone?conversationButton(r.phone,financeWhatsAppMessage(s,r)):'<span class="finance-contact-missing">Sem telefone</span>';
     const pixShown=financePixMarkup(r);
+    const pixAction=r.pixKey?'<div class="finance-pix-action"><span class="finance-pix-action-label">CHAVE PIX</span><code class="finance-pix-action-value" title="'+esc(r.pixKey)+'">'+esc(r.pixKey)+'</code><button type="button" class="btn-ghost finance-pix-action-copy" title="Copiar chave PIX" onclick="event.preventDefault();event.stopPropagation();copyTextValue('+jsArg(r.pixKey)+',\'Chave PIX copiada.\')">Copiar PIX</button></div>':'<span class="finance-pix-action-missing">PIX não informada</span>';
     const approveButton=r.virtual||!r.valid?'':'<button class="btn-ghost finance-action-approve" onclick="finApprovePayment('+idx+','+jsArg(r.researcherId)+')">'+(r.status==='aprovado'?'✓ Pagamento aprovado':'Aprovar pagamento')+'</button>';
     const receiptButton=r.virtual||!r.valid||r.status!=='aprovado'||aReceber<=0?'':'<button class="btn-ghost finance-action-receipt" onclick="finRegisterPayment('+idx+','+jsArg(r.researcherId)+')">＋ Registrar pagamento semanal</button>';
     const statusButton=r.virtual?'':'<button class="btn-ghost" onclick="finEditPayment('+idx+','+jsArg(r.researcherId)+')">Alterar status</button>';
     return `<tr><td><b>${esc(r.name)}</b>${r.virtual?'<div class="finance-row-note">Sem pagamento criado ainda</div>':''}</td><td>${r.valid}</td><td>${r.rejected}</td><td><b>${brl(valor)}</b></td><td>${brl(recebido)}</td><td>${aReceber?'<b class="finance-to-receive">'+brl(aReceber)+'</b>':'<span class="pill pill-gray">R$ 0,00</span>'}<div class="finance-balance-note">Saldo devido: ${brl(saldoDevido)}</div></td><td>${pixShown||'<span style="color:var(--ink3)">—</span>'}</td><td>${st.pill}</td>
-      <td class="finance-actions-cell"><div class="finance-row-actions">${whatsappButton}${approveButton}${receiptButton}${statusButton}</div></td></tr>`;
+      <td class="finance-actions-cell"><div class="finance-row-actions">${pixAction}${whatsappButton}${approveButton}${receiptButton}${statusButton}</div></td></tr>`;
   }).join(''):'<tr><td colspan="9" class="empty">Nenhum pesquisador atribuído a esta pesquisa ainda — atribua a equipe em Minhas pesquisas.</td></tr>';
   return head('Financeiro — '+s.name,'Pagamento por entrevista válida coletada nesta pesquisa',
     '<button class="btn btn-out" onclick="financeBack()">← Financeiro</button>'+ 

@@ -1374,3 +1374,15 @@ body.lp{background:#f8faff;color:var(--ink)}
 .researcher-receipt-main{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.researcher-receipt-main>div{display:flex;flex-direction:column;gap:3px;min-width:0}.researcher-receipt-main strong{color:var(--ink);font-size:12px}.researcher-receipt-main span{color:var(--ink3);font-size:10.5px}.researcher-receipt-main>b{color:#087f5b;font-size:14px;white-space:nowrap}
 .researcher-receipt-note{display:flex;gap:8px;align-items:flex-start;margin-top:8px;font-size:10.5px;line-height:1.4}.researcher-receipt-note span{color:var(--ink3);font-weight:700}.researcher-receipt-note strong{color:var(--ink2);font-weight:600;overflow-wrap:anywhere}.researcher-receipt-empty{padding:14px 0;color:var(--ink3);font-size:11px}
 @media(max-width:640px){.researcher-receipt-survey-head{align-items:flex-start;flex-direction:column}.researcher-receipt-survey-total{align-items:flex-start}.researcher-receipt-main>b{font-size:13px}.researcher-receipt-note{flex-direction:column;gap:2px}}
+
+
+/* Financeiro: ações sempre acessíveis na lateral direita */
+.finance-table-hint{display:flex;align-items:center;gap:7px;margin:9px 0 7px;padding:8px 10px;border:1px solid #d7e7f5;border-radius:8px;background:#f7fbff;color:#356183;font-size:10.5px;line-height:1.35}
+.finance-table-scroll{position:relative}
+.finance-data-table th.finance-actions-header,.finance-data-table td.finance-actions-cell{position:sticky;right:0;z-index:4;min-width:285px;background:#fff;box-shadow:-10px 0 16px -15px rgba(15,42,72,.72)}
+.finance-data-table th.finance-actions-header{z-index:6;background:#f8fafc;color:var(--ink3);white-space:nowrap}
+.finance-data-table tbody tr:hover td.finance-actions-cell{background:#fbfdff}
+.finance-actions-cell:focus-within{z-index:7;box-shadow:-10px 0 18px -13px rgba(37,99,235,.8),0 0 0 2px rgba(37,99,235,.16)}
+.finance-actions-cell .finance-row-actions{min-width:270px}
+@media(max-width:1050px){.finance-data-table th.finance-actions-header,.finance-data-table td.finance-actions-cell{min-width:235px}.finance-actions-cell .finance-row-actions{min-width:220px}}
+@media(max-width:640px){.finance-table-hint{font-size:10px}.finance-data-table th.finance-actions-header,.finance-data-table td.finance-actions-cell{min-width:205px}.finance-actions-cell .finance-row-actions{min-width:190px}}

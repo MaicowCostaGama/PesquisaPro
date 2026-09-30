@@ -6808,7 +6808,7 @@ PAGES.permissions=()=>head('Perfis e permissões','Defina o que cada perfil pode
 let PAYMENTS=[]; // {id, surveyId, researcherId, name, pixKey, valid, rejected, status}
 let PAYMENTS_LOADED=false,PAYMENTS_LOADING=false;
 let PAYMENT_RECEIPTS=[]; // {id,paymentId,researcherId,amount,paidAt,note,createdBy,createdAt,receiptPath,receiptName,receiptMimeType,receiptSize}
-let PAYMENT_RECEIPTS_LOADED=false,PAYMENT_RECEIPTS_LOADING=false,PAYMENT_RECEIPTS_SCHEMA_MISSING=false,PAYMENT_RECEIPTS_DELETE_SCHEMA_MISSING=false;
+let PAYMENT_RECEIPTS_LOADED=false,PAYMENT_RECEIPTS_LOADING=false,PAYMENT_RECEIPTS_SCHEMA_MISSING=false,PAYMENT_RECEIPTS_DELETE_SCHEMA_MISSING=false,PAYMENT_RECEIPTS_EDIT_SCHEMA_MISSING=false;
 const FIN_STATUS={
   aprovado:{pill:'<span class="pill pill-green">● Aprovado</span>'},
   pendente:{pill:'<span class="pill pill-amber">● Dados bancários pendentes</span>'},
@@ -6843,15 +6843,15 @@ function paymentReceiptFileLabel(receipt){
   return name.length>42?name.slice(0,39)+'…':name;
 }
 function paymentReceiptActionMarkup(receipt,context){
-  if(receipt?.receiptPath)return `<div class="payment-receipt-actions"><button type="button" class="btn-ghost payment-receipt-view" onclick="paymentReceiptOpen(${jsArg(receipt.id)})">Abrir comprovante</button><button type="button" class="btn-ghost payment-receipt-download" onclick="paymentReceiptDownload(${jsArg(receipt.id)})">Baixar</button>${context==='staff'?`<button type="button" class="btn-ghost payment-receipt-delete" onclick="financeDeleteReceiptById(${jsArg(receipt.id)})">Excluir comprovante</button>`:''}<small title="${esc(receipt.receiptName||'')}" class="payment-receipt-name">${esc(paymentReceiptFileLabel(receipt))}</small></div>`;
+  if(receipt?.receiptPath)return `<div class="payment-receipt-actions"><button type="button" class="btn-ghost payment-receipt-view" onclick="paymentReceiptOpen(${jsArg(receipt.id)})">Abrir comprovante</button><button type="button" class="btn-ghost payment-receipt-download" onclick="paymentReceiptDownload(${jsArg(receipt.id)})">Baixar</button>${context==='staff'?`<button type="button" class="btn-ghost payment-receipt-edit" onclick="financeEditReceiptAmount(${jsArg(receipt.id)})">Alterar valor pago</button><button type="button" class="btn-ghost payment-receipt-delete" onclick="financeDeleteReceiptById(${jsArg(receipt.id)})">Excluir comprovante</button>`:''}<small title="${esc(receipt.receiptName||'')}" class="payment-receipt-name">${esc(paymentReceiptFileLabel(receipt))}</small></div>`;
   return context==='staff'
-    ? `<button type="button" class="btn-ghost payment-receipt-attach" onclick="finAttachReceiptById(${jsArg(receipt.id)})">＋ Anexar comprovante</button>`
+    ? `<div class="payment-receipt-actions"><button type="button" class="btn-ghost payment-receipt-attach" onclick="finAttachReceiptById(${jsArg(receipt.id)})">＋ Anexar comprovante</button><button type="button" class="btn-ghost payment-receipt-edit" onclick="financeEditReceiptAmount(${jsArg(receipt.id)})">Alterar valor pago</button></div>`
     : '<span class="payment-receipt-missing">Comprovante ainda não anexado</span>';
 }
 function financeReceiptRowAction(paymentId){
   const receipts=paymentReceiptsFor(paymentId),pending=receipts.find(receipt=>!receipt.receiptPath);
-  if(pending)return `<button type="button" class="btn-ghost finance-action-receipt-attach" onclick="finAttachReceiptById(${jsArg(pending.id)})">＋ Anexar comprovante</button>`;
-  if(receipts.length===1&&receipts[0].receiptPath)return `<div class="finance-receipt-row-actions"><button type="button" class="btn-ghost finance-action-receipt-history" onclick="financeFocusReceiptHistory(${jsArg(paymentId)})">Ver comprovante</button><button type="button" class="btn-ghost finance-action-receipt-delete" onclick="financeDeleteReceiptById(${jsArg(receipts[0].id)})">Excluir comprovante</button></div>`;
+  if(pending)return `<div class="finance-receipt-row-actions"><button type="button" class="btn-ghost finance-action-receipt-attach" onclick="finAttachReceiptById(${jsArg(pending.id)})">＋ Anexar comprovante</button><button type="button" class="btn-ghost finance-action-receipt-edit" onclick="financeEditReceiptAmount(${jsArg(pending.id)})">Alterar valor</button></div>`;
+  if(receipts.length===1&&receipts[0].receiptPath)return `<div class="finance-receipt-row-actions"><button type="button" class="btn-ghost finance-action-receipt-history" onclick="financeFocusReceiptHistory(${jsArg(paymentId)})">Ver comprovante</button><button type="button" class="btn-ghost finance-action-receipt-edit" onclick="financeEditReceiptAmount(${jsArg(receipts[0].id)})">Alterar valor</button><button type="button" class="btn-ghost finance-action-receipt-delete" onclick="financeDeleteReceiptById(${jsArg(receipts[0].id)})">Excluir comprovante</button></div>`;
   if(receipts.length)return `<button type="button" class="btn-ghost finance-action-receipt-history" onclick="financeFocusReceiptHistory(${jsArg(paymentId)})">Ver comprovantes</button>`;
   return '';
 }
@@ -6938,6 +6938,34 @@ async function financeDeleteReceiptById(receiptId){
     console.error(ex);
   }
 }
+async function financeEditReceiptAmount(receiptId){
+  if(!financeStaffCanManageReceipts())return;
+  const receipt=PAYMENT_RECEIPTS.find(item=>item.id===receiptId);if(!receipt)return;
+  const currentAmount=Number(receipt.amount)||0;
+  const raw=prompt('Novo valor pago deste lançamento (valor atual: '+brl(currentAmount)+'):',String(currentAmount.toFixed(2)).replace('.',','));
+  if(raw==null)return;
+  const amount=parsePaymentAmount(raw);
+  if(amount==null){alert('Informe um valor pago válido e maior que zero.');return;}
+  if(amount===Math.round(currentAmount*100)/100){alert('O novo valor é igual ao valor atual. Nenhuma alteração foi feita.');return;}
+  const payment=PAYMENTS.find(item=>item.id===receipt.paymentId),survey=payment&&SURVEYS.find(item=>item.id===payment.surveyId);
+  const due=payment&&survey?paymentDueValue(payment,+survey.price):null,otherReceived=payment?paymentReceivedValue(payment.id)-currentAmount:null;
+  if(due!=null&&otherReceived!=null&&Math.round((otherReceived+amount)*100)/100>Math.round(due*100)/100){
+    alert('O novo valor ultrapassa o saldo devido deste pagamento. O máximo permitido é '+brl(Math.max(0,due-otherReceived))+'.');return;
+  }
+  if(!confirm('Alterar o valor pago de '+brl(currentAmount)+' para '+brl(amount)+'?\n\nO mesmo lançamento, a data, o pesquisador, o comprovante e o histórico serão preservados. O total recebido e o saldo devido serão recalculados.'))return;
+  try{
+    const {data,error}=await sb.rpc('update_payment_receipt_amount',{p_receipt_id:receipt.id,p_amount:amount});
+    if(error)throw new Error(error.message);
+    const updated=Array.isArray(data)?data[0]:data,local=PAYMENT_RECEIPTS.find(item=>item.id===receipt.id);
+    if(local)Object.assign(local,paymentReceiptRowToEntry(updated||{...receipt,amount}));
+    alert('Valor pago alterado para '+brl(amount)+'. O saldo devido foi atualizado.');
+    if(FIN_IDX!=null)financeReturnToDetail(FIN_IDX);else go('finance');
+  }catch(ex){
+    if(/update_payment_receipt_amount|payment_receipts|schema cache|does not exist|function .* does not exist/i.test(ex.message||''))PAYMENT_RECEIPTS_EDIT_SCHEMA_MISSING=true;
+    alert('Não foi possível alterar o valor pago. Execute a migration deploy/alterar-valor-pagamento.sql no Supabase e tente novamente.');
+    console.error(ex);
+  }
+}
 function financeWhatsAppMessage(s,r){
   return 'Olá, '+(r?.name||'pesquisador')+'! Aqui é da PesquisaPro. Podemos conversar sobre suas coletas e pagamentos da pesquisa '+(s?.name||'')+'.';
 }
@@ -6947,8 +6975,8 @@ function financePixMarkup(r){
   return '<div class="finance-pix-cell"><code class="finance-pix-value" title="'+esc(key)+'">'+esc(key)+'</code><button type="button" class="btn-ghost finance-pix-copy" title="Copiar chave PIX" onclick="event.preventDefault();event.stopPropagation();copyTextValue('+jsArg(key)+',\'Chave PIX copiada.\')">Copiar PIX</button></div>';
 }
 function paymentReceiptMigrationNotice(){
-  return PAYMENT_RECEIPTS_SCHEMA_MISSING||PAYMENT_RECEIPTS_DELETE_SCHEMA_MISSING
-    ? '<div class="callout warn payment-ledger-warning"><b>Livro de recebimentos ainda não habilitado.</b> Execute <code>deploy/pagamentos-recebimentos-extrato.sql</code>, <code>deploy/comprovantes-pagamentos.sql</code> e, para excluir e corrigir anexos, <code>deploy/excluir-comprovante-pagamento.sql</code> no Supabase.</div>'
+  return PAYMENT_RECEIPTS_SCHEMA_MISSING||PAYMENT_RECEIPTS_DELETE_SCHEMA_MISSING||PAYMENT_RECEIPTS_EDIT_SCHEMA_MISSING
+    ? '<div class="callout warn payment-ledger-warning"><b>Livro de recebimentos ainda não habilitado.</b> Execute <code>deploy/pagamentos-recebimentos-extrato.sql</code>, <code>deploy/comprovantes-pagamentos.sql</code>, <code>deploy/excluir-comprovante-pagamento.sql</code> e, para corrigir o valor pago, <code>deploy/alterar-valor-pagamento.sql</code> no Supabase.</div>'
     : '';
 }
 async function loadPaymentsIfNeeded(){
@@ -7102,7 +7130,7 @@ function financeDetail(idx){
   </div>
   <div class="card mb">
     <div class="card-t">Pagamentos por pesquisador</div>
-    <div class="finance-weekly-callout"><b>Pagamentos semanais durante a coleta:</b> aprove o valor válido disponível e use <b>Registrar pagamento semanal</b> para informar quanto foi pago, a data e a referência da semana. Cada lançamento reduz imediatamente o <b>Saldo devido</b>; novas entrevistas válidas aumentam o valor devido sem apagar o histórico. Depois de pagar, use <b>Anexar comprovante</b> na própria linha ou no histórico abaixo.</div>
+    <div class="finance-weekly-callout"><b>Pagamentos semanais durante a coleta:</b> aprove o valor válido disponível e use <b>Registrar pagamento semanal</b> para informar quanto foi pago, a data e a referência da semana. Cada lançamento reduz imediatamente o <b>Saldo devido</b>; novas entrevistas válidas aumentam o valor devido sem apagar o histórico. Se houver erro no valor, use <b>Alterar valor pago</b> no lançamento correspondente; o mesmo comprovante e histórico serão preservados. Depois de pagar, use <b>Anexar comprovante</b> na própria linha ou no histórico abaixo.</div>
     <div class="card-d">Válidos e rejeitados vêm das coletas de campo. Rejeitadas são apenas informativas e não entram em pendente, a receber ou recebido. <b>Aprovar pagamento</b> move o valor válido para “A receber”; <b>Registrar pagamento semanal</b> lança um repasse total ou parcial com data. Use <b>Conversar</b> para abrir o WhatsApp do pesquisador e consulte ou copie a chave PIX nesta mesma linha.</div>
     <div class="finance-table-hint" role="note">A coluna <b>Ações / contato</b> fica fixa à direita para você sempre conseguir conversar, aprovar e registrar pagamentos.</div>
     <div class="finance-table-scroll"><table class="finance-data-table"><thead><tr><th>Pesquisador</th><th>Válidos</th><th>Rejeitados</th><th>Valor aprovado</th><th>Recebido</th><th>A receber / saldo devido</th><th>Chave PIX</th><th>Status</th><th class="finance-actions-header">Ações / contato</th></tr></thead>

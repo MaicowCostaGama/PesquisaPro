@@ -7,6 +7,7 @@ const html = fs.readFileSync('app.html', 'utf8');
 const migration = fs.readFileSync('deploy/pagamentos-recebimentos-extrato.sql', 'utf8');
 const receiptsMigration = fs.readFileSync('deploy/comprovantes-pagamentos.sql', 'utf8');
 const deleteReceiptMigration = fs.readFileSync('deploy/excluir-comprovante-pagamento.sql', 'utf8');
+const editReceiptMigration = fs.readFileSync('deploy/alterar-valor-pagamento.sql', 'utf8');
 
 for (const token of [
   'PAYMENT_RECEIPTS',
@@ -49,10 +50,15 @@ for (const token of [
   'finance-action-receipt-attach',
   'finance-action-receipt-history',
   'financeDeleteReceiptById',
+  'financeEditReceiptAmount',
   'finance-action-receipt-delete',
+  'finance-action-receipt-edit',
   'payment-receipt-delete',
+  'payment-receipt-edit',
   'detach_payment_receipt',
+  'update_payment_receipt_amount',
   'PAYMENT_RECEIPTS_DELETE_SCHEMA_MISSING',
+  'PAYMENT_RECEIPTS_EDIT_SCHEMA_MISSING',
   'payment-receipt-attach',
   'receiptPath',
   'receiptName',
@@ -111,6 +117,24 @@ for (const token of [
 assert(!deleteReceiptMigration.match(/delete\s+from\s+public\.payment_receipts/i), 'migration não pode apagar lançamentos financeiros');
 
 for (const token of [
+  'update_payment_receipt_amount',
+  'p_receipt_id uuid',
+  'p_amount numeric',
+  'public.is_staff()',
+  'v_receipt public.payment_receipts%rowtype',
+  'v_payment public.payments%rowtype',
+  'for update',
+  'v_other_received',
+  'pr.id <> v_receipt.id',
+  'updated receipt exceeds amount due',
+  'set amount = v_amount',
+  'grant execute on function public.update_payment_receipt_amount(uuid, numeric) to authenticated'
+]) {
+  assert(editReceiptMigration.includes(token), `regra de alteração de valor ausente: ${token}`);
+}
+assert(!editReceiptMigration.match(/delete\s+from\s+public\.(payment_receipts|payments)/i), 'migration de correção não pode apagar pagamentos ou lançamentos');
+
+for (const token of [
   '.finance-table-scroll',
   '.finance-data-table',
   '.finance-row-actions',
@@ -141,7 +165,9 @@ for (const token of [
   '.finance-action-receipt-attach',
   '.finance-action-receipt-history',
   '.finance-action-receipt-delete',
+  '.finance-action-receipt-edit',
   '.payment-receipt-delete',
+  '.payment-receipt-edit',
   '.finance-receipt-row-actions',
   '.finance-receipt-highlight',
   '.payment-receipt-name',
@@ -153,8 +179,8 @@ for (const token of [
   assert(css.includes(token), `estilo financeiro ausente: ${token}`);
 }
 
-assert(html.includes('app.js?v=20260930131000'), 'cache do app financeiro não foi atualizado');
-assert(html.includes('style.css?v=20260930131000'), 'cache do CSS financeiro não foi atualizado');
+assert(html.includes('app.js?v=20260930132200'), 'cache do app financeiro não foi atualizado');
+assert(html.includes('style.css?v=20260930132200'), 'cache do CSS financeiro não foi atualizado');
 assert(app.includes("r.status==='aprovado'?Math.max(0,valor-recebido):0"), 'a receber não está restrito a pagamentos aprovados');
 assert(app.includes('const saldoDevido=Math.max(0,valor-recebido)'), 'saldo devido não é abatido pelos recebimentos');
 assert(app.includes('paymentBalanceValue(r,price)'), 'saldo devido não usa o valor real das entrevistas e recibos');
@@ -163,5 +189,8 @@ assert(migration.includes('grant execute on function public.record_payment_recei
 assert(app.includes('O pagamento, o valor, a data e o histórico serão preservados'), 'exclusão não confirma preservação do lançamento');
 assert(app.includes("sb.rpc('detach_payment_receipt'"), 'exclusão não chama a RPC segura');
 assert(app.includes("sb.storage.from('payment-receipts').remove"), 'exclusão não remove o arquivo privado');
+assert(app.includes("sb.rpc('update_payment_receipt_amount'"), 'alteração não chama a RPC segura');
+assert(app.includes('p_receipt_id:receipt.id'), 'alteração não identifica o recibo correto');
+assert(app.includes('O mesmo lançamento, a data, o pesquisador, o comprovante e o histórico serão preservados'), 'alteração não confirma preservação do lançamento e comprovante');
 
-console.log('Finance payments smoke test OK: aprovação, saldo abatido, comprovantes privados, RPCs, RLS e extratos por pesquisa verificados.');
+console.log('Finance payments smoke test OK: aprovação, saldo abatido, correção de valores, comprovantes privados, RPCs, RLS e extratos por pesquisa verificados.');

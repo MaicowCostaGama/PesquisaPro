@@ -1,8 +1,8 @@
 /* ============================================================
-   RECRUTAMENTO — links, QR Codes, ranking e captações
+   RECRUTAMENTO — links, QR Codes, ranking, captações e indicações
    ------------------------------------------------------------
-   O cadastro público usa a RPC submit_recruiter_signup. Sem API do
-   WhatsApp, a notificação abre uma mensagem pronta para envio manual.
+   O cadastro público usa RPCs seguras. Sem API do WhatsApp, a
+   notificação abre uma mensagem pronta para envio manual.
    ============================================================ */
 (function(){
   const PUBLIC_ORIGIN=()=>{
@@ -12,7 +12,7 @@
   const BUSINESS_WHATSAPP='5531996683030';
   let RECRUITMENT_LOADED=false;
   let RECRUITMENT_LOADING=false;
-  let RECRUITMENT_DATA={recruiters:[],signups:[],captures:[]};
+  let RECRUITMENT_DATA={recruiters:[],signups:[],captures:[],referrals:[],referralSchemaMissing:false};
   let RECRUITMENT_PROMISE=null;
 
   const money=v=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
@@ -32,6 +32,7 @@
     return {total:signups.length,approved,pending,rejected,due,paid,captures:caps};
   };
   const signupStatus=s=>({novo:'<span class="pill pill-blue">● Novo</span>',diligencia:'<span class="pill pill-amber">● Em diligência</span>',aprovado:'<span class="pill pill-green">● Aprovado</span>',reprovado:'<span class="pill pill-red">● Reprovado</span>'}[s]||s||'—');
+  const referralStatus=s=>({link_gerado:'<span class="pill pill-blue">Link gerado</span>',enviado:'<span class="pill pill-amber">Link enviado</span>',cadastro_recebido:'<span class="pill pill-blue">Cadastro recebido</span>',aprovado:'<span class="pill pill-green">Aprovado</span>',reprovado:'<span class="pill pill-red">Reprovado</span>',cancelado:'<span class="pill pill-gray">Cancelado</span>'}[s]||'<span class="pill pill-gray">Indicação</span>');
   const captureStatus=s=>({pendente:'<span class="pill pill-amber">Pendente</span>',a_receber:'<span class="pill pill-blue">A receber</span>',paga:'<span class="pill pill-green">Paga</span>',cancelada:'<span class="pill pill-red">Cancelada</span>'}[s]||s||'—');
 
   async function loadRecruitment(){
@@ -49,14 +50,19 @@
         const captureQuery=management()
           ? sb.from('recruiter_captures').select('id,signup_id,recruiter_id,recruiter_code,candidate_name,candidate_phone,candidate_city,capture_value,status,created_at,approved_at,paid_at').order('created_at',{ascending:false})
           : sb.from('recruiter_captures').select('id,signup_id,recruiter_id,recruiter_code,candidate_name,candidate_phone,candidate_city,capture_value,status,created_at,approved_at,paid_at').eq('recruiter_id',CURRENT_PROFILE?.id||'00000000-0000-0000-0000-000000000000').order('created_at',{ascending:false});
-        const [r,s,c]=await Promise.all([recruiterQuery,signupQuery,captureQuery]);
+        const referralQuery=management()
+          ? sb.from('researcher_referrals').select('id,referral_token,referrer_id,referrer_name,referred_name,referred_phone,referred_email,referred_city,note,status,signup_id,referred_profile_id,created_at,sent_at,submitted_at').order('created_at',{ascending:false})
+          : Promise.resolve({data:[],error:null});
+        const [r,s,c,ref]=await Promise.all([recruiterQuery,signupQuery,captureQuery,referralQuery]);
         const err=[r,s,c].find(x=>x&&x.error);
         if(err)throw new Error(err.error.message);
-        RECRUITMENT_DATA={recruiters:r.data||[],signups:s.data||[],captures:c.data||[]};
+        const referralSchemaMissing=!!(ref?.error&&/researcher_referrals|schema cache|does not exist|relation .* does not exist/i.test(ref.error.message||''));
+        if(ref?.error&&!referralSchemaMissing)console.warn('Indicações não carregadas:',ref.error.message);
+        RECRUITMENT_DATA={recruiters:r.data||[],signups:s.data||[],captures:c.data||[],referrals:referralSchemaMissing?[]:(ref?.data||[]),referralSchemaMissing};
         RECRUITMENT_LOADED=true;
       }catch(ex){
         console.error('Erro ao carregar recrutamento:',ex);
-        RECRUITMENT_DATA={recruiters:[],signups:[],captures:[],error:ex.message};
+        RECRUITMENT_DATA={recruiters:[],signups:[],captures:[],referrals:[],referralSchemaMissing:false,error:ex.message};
       }finally{
         RECRUITMENT_LOADING=false;
         RECRUITMENT_PROMISE=null;
@@ -68,8 +74,8 @@
   }
 
   function managementPage(){
-    if(!RECRUITMENT_LOADED){loadRecruitment();return head('Recrutamento','Links, QR Codes e desempenho de captação')+'<div class="card"><div class="empty">Carregando recrutadores e captações…</div></div>';}
-    if(RECRUITMENT_DATA.error)return head('Recrutamento','Links, QR Codes e desempenho de captação')+'<div class="callout warn">Não foi possível carregar o módulo. Execute a migration <b>deploy/recrutamento.sql</b> no Supabase e tente novamente.<br><small>'+esc(RECRUITMENT_DATA.error)+'</small></div>';
+    if(!RECRUITMENT_LOADED){loadRecruitment();return head('Recrutamento','Links, QR Codes e desempenho de captação')+'<div class="card"><div class="empty">Carregando recrutadores, captações e indicações…</div></div>';}
+    if(RECRUITMENT_DATA.error)return head('Recrutamento','Links, QR Codes e desempenho de captação')+'<div class="callout warn">Não foi possível carregar o módulo. Execute as migrations de recrutamento e tente novamente.<br><small>'+esc(RECRUITMENT_DATA.error)+'</small></div>';
     const recruiters=RECRUITMENT_DATA.recruiters;
     const total=RECRUITMENT_DATA.signups.length;
     const approved=RECRUITMENT_DATA.signups.filter(s=>s.status==='aprovado').length;
@@ -93,11 +99,16 @@
       const r=recruiterById(s.recruiter_id);
       return `<tr><td><b>${esc(s.name)}</b><div class="table-sub">${esc(s.email||'')} · ${esc(s.cidade||'')}</div></td><td>${esc(r?.name||s.recruiter_code||'—')}</td><td>${signupStatus(s.status)}</td><td>${date(s.sent_at)}</td><td><button class="btn-ghost" onclick="recruitmentNotifySignup(${jsArg(s.id)})">WhatsApp</button></td></tr>`;
     }).join('');
+    const referralRows=RECRUITMENT_DATA.referrals.slice(0,30).map(referral=>`<tr><td><b>${esc(referral.referrer_name||'Pesquisador removido')}</b><div class="table-sub">${referral.referrer_id?'ID preservado':'perfil não disponível'}</div></td><td><b>${esc(referral.referred_name||'—')}</b><div class="table-sub">${esc(referral.referred_email||'')} · ${esc(referral.referred_city||'')}</div></td><td>${esc(referral.referred_phone||'—')}</td><td>${referralStatus(referral.status)}</td><td>${date(referral.created_at)}</td><td>${referral.submitted_at?date(referral.submitted_at):'—'}</td><td><button class="btn-ghost" onclick="recruitmentNotifyReferral(${jsArg(referral.id)})">WhatsApp</button></td></tr>`).join('');
+    const referralSection=RECRUITMENT_DATA.referralSchemaMissing
+      ? `<section class="card recruitment-section recruitment-referrals-section"><div class="card-t">Indicações feitas por pesquisadores</div><div class="callout warn" style="margin-top:10px">Execute a migration <code>deploy/indicacao-pesquisador.sql</code> para visualizar quem indicou quem e acompanhar os cadastros vindos desses links.</div></section>`
+      : `<section class="card recruitment-section recruitment-referrals-section"><div class="section-heading"><div><div class="card-t">Indicações feitas por pesquisadores</div><div class="card-d">Origem rastreável dos novos pesquisadores: quem indicou, quem foi indicado e se o cadastro já foi recebido.</div></div><span class="pill pill-blue">${RECRUITMENT_DATA.referrals.length} indicaç${RECRUITMENT_DATA.referrals.length===1?'ão':'ões'}</span></div><div class="user-table-scroll"><table><thead><tr><th>Quem indicou</th><th>Pesquisador indicado</th><th>WhatsApp</th><th>Status</th><th>Indicado em</th><th>Cadastro</th><th></th></tr></thead><tbody>${referralRows||'<tr><td colspan="7" class="empty">Nenhuma indicação registrada ainda.</td></tr>'}</tbody></table></div></section>`;
     return `<div class="recruitment-page">${head('Recrutamento','Capte pesquisadores por link, QR Code e acompanhe quem mais trouxe cadastros',`<button class="btn btn-out" onclick="go('users');setTimeout(()=>userSetTab('recrutador'),0)">Gerenciar perfis</button><button class="btn btn-fill" onclick="go('users');setTimeout(()=>{userSetTab('recrutador');userOpen('new')},0)">＋ Novo recrutador</button>`)}
       <div class="recruitment-hero"><div><span class="eyebrow">CENTRAL DE CAPTAÇÃO</span><h2>Transforme cada recrutador em um canal rastreável</h2><p>Crie um link individual, compartilhe por WhatsApp e saiba quantos pesquisadores cada parceiro trouxe.</p></div><div class="recruitment-hero-icon">${icon3d('♙','#0f766e')}</div></div>
       <div class="grid g4 recruitment-stat-grid">${stat('Recrutadores',String(recruiters.length),'perfis ativos e cadastrados','♙','#0f766e')}${stat('Cadastros captados',String(total),'atribuídos a um link','↗','#2563eb')}${stat('Aprovados',String(approved),'liberados para atuar','✓','#059669')}${stat('A pagar',money(due),'captações aprovadas','R$','#d97706')}</div>
       <section class="card recruitment-section"><div class="section-heading"><div><div class="card-t">Ranking de captação</div><div class="card-d">Ordenado por pesquisadores aprovados, depois por volume total de cadastros.</div></div><button class="btn btn-out" onclick="recruitmentReload()">Atualizar dados</button></div><div class="recruiter-grid">${cards}</div></section>
       <section class="card recruitment-section"><div class="section-heading"><div><div class="card-t">Últimos cadastros por recrutador</div><div class="card-d">A notificação abaixo abre o WhatsApp com a mensagem pronta para o número Business configurado.</div></div><span class="pill pill-blue">${pending} pendentes</span></div><div class="user-table-scroll"><table><thead><tr><th>Pesquisador</th><th>Recrutador</th><th>Status</th><th>Entrada</th><th></th></tr></thead><tbody>${signupRows||'<tr><td colspan="5" class="empty">Nenhum cadastro atribuído a recrutador ainda.</td></tr>'}</tbody></table></div></section>
+      ${referralSection}
       <div class="callout recruitment-notice">Sem API do WhatsApp, o sistema registra a captação automaticamente e abre o WhatsApp com a mensagem preenchida. O envio final depende do clique em <b>Enviar</b> no aplicativo.</div>
     </div>`;
   }
@@ -118,12 +129,13 @@
 
   PAGES.recruitment=()=>{if(!roleAllowed())return head('Recrutamento','Área restrita')+'<div class="callout warn">Seu perfil não possui acesso a esta área.</div>';return management()?managementPage():personalPage();};
   window.recruitmentLink=recruiterLink;
-  window.recruitmentReload=function(){RECRUITMENT_LOADED=false;RECRUITMENT_DATA={recruiters:[],signups:[],captures:[]};loadRecruitment();go('recruitment');};
+  window.recruitmentReload=function(){RECRUITMENT_LOADED=false;RECRUITMENT_DATA={recruiters:[],signups:[],captures:[],referrals:[],referralSchemaMissing:false};loadRecruitment();go('recruitment');};
   window.recruitmentRefreshQrs=renderRecruitmentQrs;
   window.recruitmentCopyLink=function(id){const r=recruiterById(id);if(!r)return;const link=recruiterLink(r);navigator.clipboard?.writeText(link).then(()=>alert('Link copiado.')).catch(()=>window.prompt('Copie o link do recrutador:',link));};
   window.recruitmentCopyPersonalLink=function(){const link=recruiterLink({recruiter_code:CURRENT_PROFILE?.recruiterCode});navigator.clipboard?.writeText(link).then(()=>alert('Link copiado.')).catch(()=>window.prompt('Copie o link:',link));};
   window.recruitmentShare=function(id){const r=recruiterById(id);if(!r)return;const link=recruiterLink(r);const msg='Olá! Este é o link de cadastro do recrutador '+r.name+' na PesquisaPro: '+link;window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank','noopener');};
   window.recruitmentNotifySignup=function(id){const s=RECRUITMENT_DATA.signups.find(x=>x.id===id);if(!s)return;const r=recruiterById(s.recruiter_id);const msg='Novo cadastro de pesquisador via recrutador.\n\nNome: '+s.name+'\nCidade: '+(s.cidade||'não informada')+'\nRecrutador: '+(r?.name||s.recruiter_code||'não identificado')+'\nStatus: '+(s.status||'novo')+'\n\nAcesse o painel PesquisaPro para revisar.';window.open('https://wa.me/'+BUSINESS_WHATSAPP+'?text='+encodeURIComponent(msg),'_blank','noopener');};
+  window.recruitmentNotifyReferral=function(id){const referral=RECRUITMENT_DATA.referrals.find(x=>x.id===id);if(!referral)return;const msg='Indicação de pesquisador na PesquisaPro.\n\nQuem indicou: '+(referral.referrer_name||'não identificado')+'\nPessoa indicada: '+(referral.referred_name||'')+'\nWhatsApp: '+(referral.referred_phone||'não informado')+'\nCidade: '+(referral.referred_city||'não informada')+'\nStatus: '+(referral.status||'link_gerado')+'\n\nAcesse o painel PesquisaPro para acompanhar.';window.open('https://wa.me/'+BUSINESS_WHATSAPP+'?text='+encodeURIComponent(msg),'_blank','noopener');};
   function renderRecruitmentQrs(){
     if(!management()||!RECRUITMENT_LOADED)return;
     const boxes=document.querySelectorAll('.recruiter-qr[data-recruiter-id]');if(!boxes.length)return;

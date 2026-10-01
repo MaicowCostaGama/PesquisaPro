@@ -7,7 +7,7 @@
   <meta name="description" content="Cadastro de pesquisador indicado pela PesquisaPro.">
   <title>Cadastro de pesquisador — PesquisaPro</title>
   <link rel="icon" type="image/png" sizes="64x64" href="assets/favicon-64.png">
-  <link rel="stylesheet" href="style.css?v=20260831020000">
+  <link rel="stylesheet" href="style.css?v=20261001005500">
   <style>
     body.signup-public{min-height:100vh;background:linear-gradient(135deg,#eff6ff 0%,#f8fafc 52%,#ecfeff 100%);color:#0f172a}
     .signup-shell{width:min(760px,calc(100% - 32px));margin:34px auto 56px}
@@ -59,6 +59,7 @@
         <p class="signup-value-note"><strong>Importante:</strong> o cadastro não garante participação imediata nem renda fixa. As oportunidades dependem de pesquisas abertas, cidade, perfil, cotas e aprovação das entrevistas. Os valores e critérios serão apresentados antes da participação.</p>
       </section>
       <div id="signup-loading" class="signup-status show">Validando o link de indicação…</div>
+      <div id="signup-attribution"></div>
       <form id="signup-form" style="display:none" novalidate>
         <div class="signup-form-grid">
           <div class="signup-field full"><label for="name">Nome completo *</label><input id="name" name="name" autocomplete="name" required></div>
@@ -84,10 +85,10 @@
   </main>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="supabase-client.js"></script>
-  <script src="public-cities.js?v=20260831020100"></script>
+  <script src="public-cities.js?v=20261001005500"></script>
   <script>
     (()=>{
-      const params=new URLSearchParams(location.search);const code=(params.get('recrutador')||'').trim();
+      const params=new URLSearchParams(location.search);const code=(params.get('recrutador')||'').trim(),referralToken=(params.get('indicacao')||'').trim();
       const $=id=>document.getElementById(id);
       const loading=$('signup-loading'),form=$('signup-form'),status=$('signup-status');
       const maxCities=5,maxFileBytes=10*1024*1024;
@@ -130,12 +131,13 @@
       async function boot(){
         renderCities();bindFileLabel('doc-foto','doc-foto-name');bindFileLabel('doc-comprovante','doc-comprovante-name');
         $('city-search').addEventListener('input',ev=>renderCities(ev.target.value));
-        if(!code){loading.className='signup-status show err';loading.textContent='Este link não contém um recrutador válido. Solicite um novo link à pessoa que fez a indicação.';return;}
+        if(!code&&!referralToken){loading.className='signup-status show err';loading.textContent='Este link não contém um recrutador ou uma indicação válida. Solicite um novo link à pessoa que fez a indicação.';return;}
         try{
-          const {data,error}=await sb.rpc('recruiter_public_info',{p_code:code});
+          const {data,error}=referralToken?await sb.rpc('researcher_referral_public_info',{p_token:referralToken}):await sb.rpc('recruiter_public_info',{p_code:code});
           if(error)throw new Error(error.message);
           const r=Array.isArray(data)?data[0]:data;
-          if(!r){loading.className='signup-status show err';loading.textContent='Link de recrutador inválido ou inativo.';return;}
+          if(!r){loading.className='signup-status show err';loading.textContent=referralToken?'Link de indicação inválido, expirado ou já utilizado.':'Link de recrutador inválido ou inativo.';return;}
+          $('signup-attribution').innerHTML=referralToken?`<div class="signup-recruiter"><span class="signup-recruiter-badge">✓</span><div><strong>Você foi indicado(a) por ${r.referrer_name||'um pesquisador da PesquisaPro'}</strong><small>Preencha seu cadastro para entrar na rede de pesquisadores. A indicação não substitui a análise e aprovação da equipe.</small></div></div>`:`<div class="signup-recruiter"><span class="signup-recruiter-badge">♙</span><div><strong>Cadastro por convite de recrutamento</strong><small>Seu cadastro será associado ao canal de recrutamento informado.</small></div></div>`;
           loading.style.display='none';form.style.display='block';
         }catch(ex){loading.className='signup-status show err';loading.textContent='Não foi possível validar este link agora. Tente novamente em instantes.';console.error(ex);}
       }
@@ -158,7 +160,8 @@
           const authUserId=authData?.user?.id;
           if(!authUserId)throw new Error('Não foi possível criar o acesso com este e-mail. Verifique se o e-mail já possui uma conta ou use a recuperação de senha.');
           btn.textContent='Enviando cadastro…';
-          const {error}=await sb.rpc('submit_recruiter_signup',{p_recruiter_code:code,p_name:name,p_cpf:$('cpf').value.trim()||null,p_birth:$('birth').value||null,p_email:email,p_phone:phone,p_cidade:cidade,p_rua:$('rua').value.trim()||null,p_numero:$('numero').value.trim()||null,p_cep:$('cep').value.trim()||null,p_cidades_atuacao:selectedCities,p_doc_foto_url:fotoPath,p_doc_comprovante_url:comprovantePath,p_auth_user_id:authUserId});
+          const payload={p_auth_user_id:authUserId,p_name:name,p_cpf:$('cpf').value.trim()||null,p_birth:$('birth').value||null,p_email:email,p_phone:phone,p_cidade:cidade,p_rua:$('rua').value.trim()||null,p_numero:$('numero').value.trim()||null,p_cep:$('cep').value.trim()||null,p_cidades_atuacao:selectedCities,p_doc_foto_url:fotoPath,p_doc_comprovante_url:comprovantePath};
+          const {error}=referralToken?await sb.rpc('submit_researcher_referral_signup',{p_referral_token:referralToken,...payload}):await sb.rpc('submit_recruiter_signup',{p_recruiter_code:code,...payload});
           if(error)throw new Error(error.message);
           await sb.auth.signOut();
           form.style.display='none';setStatus('Cadastro enviado com sucesso. Seu acesso foi criado. A equipe PesquisaPro fará a análise dos documentos e, após a aprovação, você poderá entrar com a senha definida.',true);

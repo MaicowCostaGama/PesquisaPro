@@ -1454,3 +1454,29 @@ body.lp{background:#f8faff;color:var(--ink)}
 .payment-receipt-edit:hover,.finance-action-receipt-edit:hover{border-color:#e59a45;background:#fff0d8;color:#7c2d12}
 .payment-receipt-actions .payment-receipt-edit{order:3}
 @media(max-width:640px){.payment-receipt-actions .payment-receipt-edit,.finance-receipt-row-actions .finance-action-receipt-edit{width:100%;justify-content:center}}
+
+/* Indicação de pesquisadores: formulário no perfil e rastreio na gestão. */
+.researcher-referrals-card{border-color:#b7e4df;background:linear-gradient(135deg,#ffffff,#f7fffd)}
+.researcher-referral-form{margin-top:14px;padding:16px;border:1px solid #d9eeeb;border-radius:14px;background:#f8fffe}
+.researcher-referral-form .btn{margin-top:2px}
+.researcher-referral-consent{display:flex;align-items:flex-start;gap:8px;margin:0 0 14px;color:var(--ink2);font-size:11px;line-height:1.45}
+.researcher-referral-consent input{margin-top:2px;accent-color:#0f766e}
+.researcher-referral-consent label{cursor:pointer}
+.researcher-referral-list{display:grid;gap:9px;margin-top:16px}
+.researcher-referral-item{padding:13px;border:1px solid #e2eceb;border-radius:13px;background:#fff}
+.researcher-referral-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.researcher-referral-top strong{display:block;color:var(--ink);font-size:13px}
+.researcher-referral-top span{display:block;color:var(--ink3);font-size:11px;margin-top:3px}
+.researcher-referral-meta{margin-top:8px;color:var(--ink3);font-size:11px}
+.researcher-referral-actions{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}
+.researcher-referral-actions .btn,.researcher-referral-actions .btn-ghost{font-size:11px;padding:7px 10px}
+.recruitment-referrals-section{border-color:#cfe5ff}
+.recruitment-referrals-section .user-table-scroll{margin-top:14px}
+.recruitment-referrals-section table{min-width:940px}
+.recruitment-referrals-section td,.recruitment-referrals-section th{vertical-align:top}
+@media(max-width:640px){
+  .researcher-referral-form{padding:12px}
+  .researcher-referral-top{flex-direction:column;gap:6px}
+  .researcher-referral-actions{display:grid;grid-template-columns:1fr}
+  .researcher-referral-actions .btn,.researcher-referral-actions .btn-ghost{width:100%;justify-content:center}
+}

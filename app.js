@@ -54,6 +54,10 @@ let RESEARCHER_PROFILE_CITIES_DRAFT=[];
 let RESEARCHER_PROFILE_CITIES_LOADED=false;
 let RESEARCHER_PROFILE_CITIES_LOADING=false;
 let RESEARCHER_PROFILE_SAVING=false;
+let RESEARCHER_REFERRALS=[];
+let RESEARCHER_REFERRALS_LOADED=false;
+let RESEARCHER_REFERRALS_LOADING=false;
+let RESEARCHER_REFERRALS_SCHEMA_MISSING=false;
 let RESEARCHER_BADGE_UPLOADING=false;
 let PASSWORD_RECOVERY_MODE=false;
 let PUSH_STATUS='unknown',PUSH_STATUS_LOADING=false,PUSH_SCHEMA_MISSING=false,PUSH_SW_REGISTRATION=null;
@@ -742,6 +746,75 @@ async function loadResearcherProfileCities(){
     if(key==='researcher-profile')go(key);
   }
 }
+async function loadResearcherReferrals(){
+  if(!CURRENT_PROFILE?.id||CURRENT_PROFILE.role!=='pesq'||RESEARCHER_REFERRALS_LOADED||RESEARCHER_REFERRALS_LOADING)return;
+  RESEARCHER_REFERRALS_LOADING=true;
+  try{
+    const {data,error}=await sb.from('researcher_referrals').select('*').eq('referrer_id',CURRENT_PROFILE.id).order('created_at',{ascending:false});
+    if(error)throw new Error(error.message);
+    RESEARCHER_REFERRALS=data||[];
+  }catch(ex){
+    RESEARCHER_REFERRALS=[];
+    if(/researcher_referrals|create_researcher_referral|schema cache|does not exist|relation .* does not exist/i.test(ex.message||''))RESEARCHER_REFERRALS_SCHEMA_MISSING=true;
+    console.error('Não foi possível carregar indicações:',ex);
+  }finally{
+    RESEARCHER_REFERRALS_LOADED=true;RESEARCHER_REFERRALS_LOADING=false;
+    const key=document.querySelector('.nav-item.on')?.dataset.key;
+    if(key==='researcher-profile')go(key);
+  }
+}
+function researcherReferralLink(referral){
+  if(!referral?.referral_token)return '';
+  const url=new URL('cadastro.html',window.location.href);url.searchParams.set('indicacao',referral.referral_token);return url.href;
+}
+function researcherReferralStatus(status){
+  return {link_gerado:'<span class="pill pill-blue">Link gerado</span>',enviado:'<span class="pill pill-amber">Link enviado</span>',cadastro_recebido:'<span class="pill pill-blue">Cadastro recebido</span>',aprovado:'<span class="pill pill-green">Aprovado</span>',reprovado:'<span class="pill pill-red">Reprovado</span>',cancelado:'<span class="pill pill-gray">Cancelado</span>'}[status]||'<span class="pill pill-gray">Indicação</span>';
+}
+function researcherReferralDate(value){return value?new Date(value).toLocaleDateString('pt-BR'):'—';}
+function researcherReferralsMarkup(){
+  if(RESEARCHER_REFERRALS_SCHEMA_MISSING)return '<section class="card mb researcher-referrals-card"><div class="card-t">Indicar outro pesquisador</div><div class="callout warn" style="margin-top:10px">Esta área ainda não está habilitada. A gestão deve executar a migration <code>deploy/indicacao-pesquisador.sql</code> no Supabase.</div></section>';
+  const rows=RESEARCHER_REFERRALS.length?RESEARCHER_REFERRALS.map(referral=>{
+    const link=researcherReferralLink(referral);
+    return `<article class="researcher-referral-item"><div class="researcher-referral-top"><div><strong>${esc(referral.referred_name||'Pessoa indicada')}</strong><span>${esc(referral.referred_phone||'')}${referral.referred_city?' · '+esc(referral.referred_city):''}</span></div>${researcherReferralStatus(referral.status)}</div><div class="researcher-referral-meta">Criada em ${esc(researcherReferralDate(referral.created_at))}${referral.submitted_at?' · cadastro em '+esc(researcherReferralDate(referral.submitted_at)):''}</div><div class="researcher-referral-actions"><button class="btn-ghost" type="button" onclick="researcherReferralCopy(${jsArg(referral.id)})">Copiar link</button><button class="btn btn-out" type="button" onclick="researcherReferralWhatsapp(${jsArg(referral.id)})">Enviar por WhatsApp</button></div></article>`;
+  }).join(''):'<div class="empty">Você ainda não indicou nenhum pesquisador.</div>';
+  return `<section class="card mb researcher-referrals-card"><div class="card-t">Indicar outra pessoa para ser pesquisador</div><div class="card-d">Preencha os dados básicos, gere um link individual e envie para a pessoa. O cadastro passará pela mesma análise e aprovação dos demais pesquisadores.</div><div class="researcher-referral-form"><div class="field-row mb"><div><label class="lbl" for="researcher-referral-name">Nome da pessoa *</label><input class="inp" id="researcher-referral-name" placeholder="Nome completo"></div><div><label class="lbl" for="researcher-referral-phone">Celular / WhatsApp *</label><input class="inp" id="researcher-referral-phone" inputmode="tel" placeholder="(00) 00000-0000"></div></div><div class="field-row mb"><div><label class="lbl" for="researcher-referral-email">E-mail</label><input class="inp" id="researcher-referral-email" type="email" placeholder="Opcional"></div><div><label class="lbl" for="researcher-referral-city">Cidade</label><input class="inp" id="researcher-referral-city" placeholder="Cidade/UF"></div></div><div class="mb"><label class="lbl" for="researcher-referral-note">Observação</label><textarea class="inp" id="researcher-referral-note" rows="2" placeholder="Opcional — como você conhece esta pessoa ou em que região ela atua"></textarea></div><div class="researcher-referral-consent"><input type="checkbox" id="researcher-referral-consent"><label for="researcher-referral-consent">Confirmo que tenho autorização para compartilhar o contato desta pessoa com a PesquisaPro.</label></div><button class="btn btn-fill" type="button" onclick="createResearcherReferral()">＋ Gerar link de indicação</button></div><div class="researcher-referral-list">${rows}</div></section>`;
+}
+async function createResearcherReferral(){
+  if(!CURRENT_PROFILE?.id||CURRENT_PROFILE.role!=='pesq')return;
+  const get=id=>(document.getElementById(id)?.value||'').trim();
+  const name=get('researcher-referral-name'),phone=get('researcher-referral-phone'),email=get('researcher-referral-email'),city=get('researcher-referral-city'),note=get('researcher-referral-note'),consent=document.getElementById('researcher-referral-consent');
+  if(!name||!phone){alert('Informe o nome e o celular/WhatsApp da pessoa indicada.');return;}
+  if(!consent?.checked){alert('Confirme que você tem autorização para compartilhar o contato desta pessoa.');return;}
+  try{
+    const {data,error}=await sb.rpc('create_researcher_referral',{p_referred_name:name,p_referred_phone:phone,p_referred_email:email||null,p_referred_city:city||null,p_note:note||null});
+    if(error)throw new Error(error.message);
+    const row=Array.isArray(data)?data[0]:data;if(row)RESEARCHER_REFERRALS.unshift(row);
+    alert('Indicação criada. Agora copie ou envie o link para '+name+'.');
+    go('researcher-profile');
+  }catch(ex){
+    if(/create_researcher_referral|researcher_referrals|schema cache|does not exist|relation .* does not exist/i.test(ex.message||''))RESEARCHER_REFERRALS_SCHEMA_MISSING=true;
+    alert('Não foi possível criar a indicação. A gestão precisa executar a migration deploy/indicacao-pesquisador.sql no Supabase.');console.error(ex);go('researcher-profile');
+  }
+}
+async function markResearcherReferralSent(referralId){
+  const {data,error}=await sb.rpc('mark_researcher_referral_sent',{p_referral_id:referralId});
+  if(error)throw new Error(error.message);
+  const updated=Array.isArray(data)?data[0]:data,local=RESEARCHER_REFERRALS.find(item=>item.id===referralId);if(local&&updated)Object.assign(local,updated);
+  return updated||local;
+}
+async function researcherReferralCopy(referralId){
+  const referral=RESEARCHER_REFERRALS.find(item=>item.id===referralId),link=researcherReferralLink(referral);if(!link)return;
+  try{await navigator.clipboard.writeText(link);await markResearcherReferralSent(referralId);alert('Link copiado. Envie para a pessoa indicada pelo canal de sua preferência.');go('researcher-profile');}
+  catch(ex){window.prompt('Copie o link de indicação:',link);console.error(ex);}
+}
+async function researcherReferralWhatsapp(referralId){
+  const referral=RESEARCHER_REFERRALS.find(item=>item.id===referralId),link=researcherReferralLink(referral);if(!referral||!link)return;
+  const digits=String(referral.referred_phone||'').replace(/\D/g,'');
+  const message='Olá, '+(referral.referred_name||'')+'! Estou te indicando para ser pesquisador(a) na PesquisaPro. Faça seu cadastro pelo link: '+link;
+  const target=digits?('https://wa.me/'+(digits.length<=11?'55'+digits:digits)+'?text='+encodeURIComponent(message)):('https://wa.me/?text='+encodeURIComponent(message));
+  window.open(target,'_blank','noopener');
+  try{await markResearcherReferralSent(referralId);go('researcher-profile');}catch(ex){console.error(ex);}
+}
 function researcherProfileCityKey(value){return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();}
 function researcherProfileCitiesMarkup(){
   const selected=RESEARCHER_PROFILE_CITIES_DRAFT||[];
@@ -770,7 +843,7 @@ function researcherProfileCityRemove(city){
 }
 PAGES['researcher-profile']=()=>{
   if(CURRENT_PROFILE?.role!=='pesq')return head('Meus dados','Área disponível apenas para pesquisadores')+'<div class="empty">Este recurso está disponível no perfil de pesquisador.</div>';
-  if(!RESEARCHER_PROFILE_CITIES_LOADED){loadResearcherProfileCities();return head('Meus dados','Carregando seus dados cadastrais…')+'<div class="empty">Carregando…</div>';}
+  if(!RESEARCHER_PROFILE_CITIES_LOADED||!RESEARCHER_REFERRALS_LOADED){if(!RESEARCHER_PROFILE_CITIES_LOADED)loadResearcherProfileCities();if(!RESEARCHER_REFERRALS_LOADED)loadResearcherReferrals();return head('Meus dados','Carregando seus dados cadastrais…')+'<div class="empty">Carregando…</div>';}
   const p=CURRENT_PROFILE||{};
   return head('Meus dados','Corrija seus dados cadastrais e mantenha suas cidades de atuação atualizadas')+`<div class="researcher-profile-page">
     <div class="callout mb"><strong>Você pode corrigir seus dados pessoais e de contato.</strong> CPF, e-mail, status, aprovação e documentos oficiais permanecem protegidos e são atualizados somente pela gestão. O PIX é opcional e pode ser informado depois.</div>
@@ -788,6 +861,7 @@ PAGES['researcher-profile']=()=>{
     </div>
     <section class="card mb"><div class="card-t">Cidades em que pode atuar *</div><div class="card-d">Escolha de uma a cinco cidades. Essas informações ajudam a equipe a encontrar pesquisas compatíveis.</div><div id="researcher-profile-cities-wrap">${researcherProfileCitiesMarkup()}</div></section>
     <section class="card mb researcher-profile-chat-card"><div><div class="card-t">Atendimento PesquisaPro</div><div class="card-d">Fale diretamente com a equipe PesquisaPro em um chat privado para tirar dúvidas, receber orientações e relatar problemas de execução.</div></div><button class="btn btn-out" onclick="go('communication')">✉ Abrir chat privado</button></section>
+    ${researcherReferralsMarkup()}
     <section class="card mb"><div class="card-t">Dados de pagamento <span class="pill pill-gray">Opcional</span></div><div class="card-d">Você pode informar ou corrigir o PIX agora ou depois. Ele será usado somente para repasses aprovados.</div>
       <div class="field-row mb"><div><label class="lbl">Chave PIX</label><input class="inp" id="researcher-profile-pix-key" value="${esc(p.pix_key||'')}" placeholder="CPF, e-mail, celular ou chave aleatória"></div><div><label class="lbl">Banco</label><input class="inp" id="researcher-profile-pix-bank" value="${esc(p.pix_bank||'')}"></div></div>
       <div class="field-row"><div><label class="lbl">CPF/CNPJ do titular</label><input class="inp" id="researcher-profile-pix-doc" value="${esc(p.pix_doc||'')}"></div><div><label class="lbl">Agência / conta</label><input class="inp" id="researcher-profile-pix-account" value="${esc([p.pix_ag,p.pix_acc].filter(Boolean).join(' / '))}"></div></div>

@@ -3612,6 +3612,7 @@ function collectDetail(idx){
       <button class="on" data-collect-tab="equipe" onclick="collectTab(this,'equipe')">Equipe</button>
       <button id="collectTabMapaBtn" data-collect-tab="mapa" onclick="collectTab(this,'mapa')">📍 Mapa ao vivo</button>
       <button id="collectTabAuditoriaBtn" data-collect-tab="auditoria" onclick="collectTab(this,'auditoria')">🔎 Auditoria</button>
+      <button id="collectTabMetasBtn" data-collect-tab="metas" onclick="collectTab(this,'metas')">🎯 Metas de cotas</button>
     </div>
     <span class="pill pill-green" style="margin-left:auto"><span style="width:6px;height:6px;border-radius:50%;background:currentColor;display:inline-block;animation:fade 1.4s ease-in-out infinite alternate"></span> Atualizando ao vivo</span>
   </div>
@@ -3673,13 +3674,23 @@ function collectDetail(idx){
       <tbody id="auditBody"></tbody></table>
       </div>
     </div>
+  </div>
+
+  <div id="collectTabMetas" style="display:none">
+    <div class="card collect-quota-progress-card">
+      <div class="collect-quota-progress-head">
+        <div><div class="map-eyebrow">ACOMPANHAMENTO DE CAMPO</div><div class="card-t">Metas de cotas</div><div class="card-d">Veja o avanço de cada cota desta pesquisa com base nas entrevistas válidas registradas.</div></div>
+        <button type="button" class="btn btn-out" onclick="collectQuotaProgressRefresh()">↻ Atualizar metas</button>
+      </div>
+      <div id="collectQuotaProgressBody"><div class="empty" style="padding:28px 0">Carregando metas reais…</div></div>
+    </div>
   </div>`;
 }
 
 function collectTab(btn,which){
   document.querySelectorAll('#collectTabSeg button').forEach(b=>b.classList.remove('on'));
   btn.classList.add('on');
-  const map={equipe:'collectTabEquipe',mapa:'collectTabMapa',auditoria:'collectTabAuditoria'};
+  const map={equipe:'collectTabEquipe',mapa:'collectTabMapa',auditoria:'collectTabAuditoria',metas:'collectTabMetas'};
   Object.entries(map).forEach(([k,id])=>{
     const el=document.getElementById(id);
     if(el)el.style.display=(k===which)?'block':'none';
@@ -3689,6 +3700,44 @@ function collectTab(btn,which){
     setTimeout(()=>{if(_collectMap)_collectMap.invalidateSize();if(_collectMapFocusId)focusCollectMapEvent(_collectMapFocusId);},120);
   }
   if(which==='auditoria'){renderAudit(COLLECT_IDX);}
+  if(which==='metas'){renderCollectQuotaProgress(COLLECT_IDX);}
+}
+
+function collectQuotaProgressRows(idx){
+  const s=SURVEYS[idx];
+  if(!s)return {quotas:[],done:0,target:0};
+  const quotas=surveyQuotas(s);
+  const events=eventsForSurveyIdx(idx).filter(e=>e.status==='valid'&&!e.calibration&&e.cota);
+  const counts={};
+  events.forEach(e=>{counts[e.cota]=(counts[e.cota]||0)+1;});
+  const rows=quotas.map(q=>{
+    const collected=Math.min(counts[q.label]||0,q.target);
+    const remaining=Math.max(0,q.target-collected);
+    const pct=q.target?Math.min(100,Math.round(collected/q.target*100)):0;
+    return {...q,collected,remaining,pct};
+  });
+  return {quotas:rows,done:rows.reduce((sum,row)=>sum+row.collected,0),target:rows.reduce((sum,row)=>sum+row.target,0)};
+}
+function collectQuotaStatus(row){
+  if(row.pct>=100)return '<span class="pill pill-green">✓ Meta atingida</span>';
+  if(row.pct<50)return '<span class="pill pill-red">● Atenção</span>';
+  return '<span class="pill pill-amber">● Em andamento</span>';
+}
+function renderCollectQuotaProgress(idx){
+  const host=document.getElementById('collectQuotaProgressBody');if(!host)return;
+  const s=SURVEYS[idx];if(!s){host.innerHTML='<div class="empty" style="padding:20px 0">Selecione uma pesquisa para acompanhar as metas.</div>';return;}
+  if(COLLECT_EVENTS_LOADING&&!COLLECT_EVENTS_LOADED){host.innerHTML='<div class="empty" style="padding:28px 0">Carregando entrevistas válidas…</div>';return;}
+  const {quotas,done,target}=collectQuotaProgressRows(idx);
+  if(!quotas.length){host.innerHTML='<div class="collect-quota-empty"><strong>Esta pesquisa não possui metas de cotas configuradas.</strong><span>As entrevistas podem ser acompanhadas livremente na aba Equipe e na Auditoria.</span></div>';return;}
+  const overallPct=target?Math.min(100,Math.round(done/target*100)):0;
+  const updated=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  const colors=['#2563eb','#059669','#ea580c','#7c3aed','#0891b2','#d97706'];
+  host.innerHTML=`<div class="collect-quota-summary"><div class="collect-quota-summary-main"><span>Avanço geral das cotas</span><strong>${done.toLocaleString('pt-BR')} <small>de ${target.toLocaleString('pt-BR')}</small></strong><div class="bar collect-quota-overall-bar"><span style="width:${overallPct}%"></span></div><em>${overallPct}% da meta consolidada · ${Math.max(0,target-done).toLocaleString('pt-BR')} entrevista${target-done===1?'':'s'} restante${target-done===1?'':'s'}</em></div><div class="collect-quota-summary-stats"><div><b>${quotas.length}</b><span>cotas configuradas</span></div><div><b>${quotas.filter(row=>row.pct>=100).length}</b><span>metas atingidas</span></div></div></div><div class="collect-quota-grid">${quotas.map((row,i)=>`<article class="collect-quota-item"><div class="collect-quota-item-head"><div><strong>${esc(row.label)}</strong><small>${esc(row.questionText||'Cota da pesquisa')}</small></div>${collectQuotaStatus(row)}</div><div class="collect-quota-item-numbers"><b>${row.collected.toLocaleString('pt-BR')}</b><span>de ${row.target.toLocaleString('pt-BR')} entrevistas</span><strong>${row.remaining.toLocaleString('pt-BR')} restante${row.remaining===1?'':'s'}</strong></div><div class="bar collect-quota-bar"><span style="width:${row.pct}%;background:${colors[i%colors.length]}"></span></div><div class="collect-quota-item-foot"><span>${row.pct}% preenchida</span><span>Atualizado às ${updated}</span></div></article>`).join('')}</div><div class="collect-quota-note">O acompanhamento considera somente entrevistas <b>válidas</b> e exclui reprovações e calibrações. A atualização acompanha o mesmo ciclo de 20 segundos da tela de coleta.</div>`;
+}
+function collectQuotaProgressRefresh(){
+  if(COLLECT_IDX==null)return;
+  renderCollectQuotaProgress(COLLECT_IDX);
+  pollCollectEvents(COLLECT_IDX);
 }
 
 /* ===== Coleta de campo: mapa, feed e auditoria (dados reais, tabela collection_events) ===== */
@@ -3811,10 +3860,12 @@ async function pollCollectEvents(idx){
   }catch(ex){return;}
   if(COLLECT_IDX!==idx)return; // usuário já saiu dessa pesquisa enquanto a busca rodava
   renderLiveFeed(idx);
-  const mapaTab=document.getElementById('collectTabMapa');
-  if(mapaTab&&mapaTab.style.display!=='none')renderCollectMap(idx);
-  const audTab=document.getElementById('collectTabAuditoria');
-  if(audTab&&audTab.style.display!=='none')renderAudit(idx);
+    const mapaTab=document.getElementById('collectTabMapa');
+    if(mapaTab&&mapaTab.style.display!=='none')renderCollectMap(idx);
+    const audTab=document.getElementById('collectTabAuditoria');
+    if(audTab&&audTab.style.display!=='none')renderAudit(idx);
+    const metasTab=document.getElementById('collectTabMetas');
+    if(metasTab&&metasTab.style.display!=='none')renderCollectQuotaProgress(idx);
 }
 function initCollectLive(idx){
   stopCollectLive();
@@ -3826,6 +3877,7 @@ function initCollectLive(idx){
     loadCollectionOrientationCounts(idx);
     renderLiveFeed(idx);
     renderAudit(idx);
+    renderCollectQuotaProgress(idx);
     if(document.getElementById('collectTabMapa')&&document.getElementById('collectTabMapa').style.display!=='none'){
       renderCollectMap(idx);
     }
@@ -4305,7 +4357,7 @@ function surveyQuotas(s){
       if(pct==null)return;
       const oi=+oiStr;
       const label=(q.opts&&q.opts[oi])||('Opção '+(oi+1));
-      out.push({label,pct,target:Math.max(1,Math.round(sample*pct/100)),questionDbId:q.dbId,questionType:q.type});
+      out.push({label,pct,target:Math.max(1,Math.round(sample*pct/100)),questionText:q.text||'',questionDbId:q.dbId,questionType:q.type});
     });
   });
   return out;

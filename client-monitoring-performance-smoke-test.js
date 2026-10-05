@@ -23,5 +23,5 @@ for(const token of [
   'idx_report_documents_client_survey_status'
 ])assert(sql.includes(token),`migration sem ${token}`);
 assert(!/drop table|drop column|truncate|delete from/i.test(sql),'migration contém operação destrutiva');
-assert(html.includes('app.js?v=20261005162000'),'cache não atualizado');
+assert(html.includes('app.js?v=20261005202100'),'cache não atualizado');
 console.log('Client monitoring performance smoke test: PASS — consultas parciais, timeouts e índices verificados.');

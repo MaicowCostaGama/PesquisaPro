@@ -1451,6 +1451,7 @@ body.lp{background:#f8faff;color:var(--ink)}
 
 /* Correção segura de valor já pago: ação exclusiva da gestão, visível também em telas estreitas. */
 .payment-receipt-edit,.finance-action-receipt-edit{color:#9a3412;border-color:#f2c08a;background:#fff8ed}
+.finance-action-approve:disabled{opacity:.58;color:#64748b;border-color:#cbd5e1;background:#f8fafc;cursor:not-allowed}
 .payment-receipt-edit:hover,.finance-action-receipt-edit:hover{border-color:#e59a45;background:#fff0d8;color:#7c2d12}
 .payment-receipt-actions .payment-receipt-edit{order:3}
 @media(max-width:640px){.payment-receipt-actions .payment-receipt-edit,.finance-receipt-row-actions .finance-action-receipt-edit{width:100%;justify-content:center}}

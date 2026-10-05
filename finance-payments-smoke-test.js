@@ -54,6 +54,8 @@ for (const token of [
   'financeEditReceiptAmount',
   'finance-action-receipt-delete',
   'finance-action-receipt-edit',
+  'finance-action-approve',
+  'Ainda não há entrevistas válidas para aprovar',
   'payment-receipt-delete',
   'payment-receipt-edit',
   'detach_payment_receipt',
@@ -167,6 +169,7 @@ for (const token of [
   '.finance-action-receipt-history',
   '.finance-action-receipt-delete',
   '.finance-action-receipt-edit',
+  '.finance-action-approve:disabled',
   '.payment-receipt-delete',
   '.payment-receipt-edit',
   '.finance-receipt-row-actions',
@@ -180,8 +183,8 @@ for (const token of [
   assert(css.includes(token), `estilo financeiro ausente: ${token}`);
 }
 
-assert(html.includes('app.js?v=20261005162000'), 'cache do app financeiro não foi atualizado');
-assert(html.includes('style.css?v=20261005162000'), 'cache do CSS financeiro não foi atualizado');
+assert(html.includes('app.js?v=20261005202100'), 'cache do app financeiro não foi atualizado');
+assert(html.includes('style.css?v=20261005202100'), 'cache do CSS financeiro não foi atualizado');
 assert(app.includes("r.status==='aprovado'?Math.max(0,valor-recebido):0"), 'a receber não está restrito a pagamentos aprovados');
 assert(app.includes('const saldoDevido=Math.max(0,valor-recebido)'), 'saldo devido não é abatido pelos recebimentos');
 assert(app.includes('paymentBalanceValue(r,price)'), 'saldo devido não usa o valor real das entrevistas e recibos');

@@ -2650,7 +2650,9 @@ async function wizCreate(){
   try{ wizSave(); }catch(err){}
   const d=WIZ.data;
   const isNew=WIZ.editIndex==null;
+  const existingSurvey=!isNew?SURVEYS[WIZ.editIndex]:null;
   const row=snapshotToSurveyRow(d);
+  if(existingSurvey?.status)row.status=existingSurvey.status;
   const busyBtn=document.querySelector('#wizBody .btn-fill');
   if(busyBtn)busyBtn.disabled=true;
   try{
@@ -7513,7 +7515,9 @@ function financeDetail(idx){
     const whatsappButton=r.phone?conversationButton(r.phone,financeWhatsAppMessage(s,r)):'<span class="finance-contact-missing">Sem telefone</span>';
     const pixShown=financePixMarkup(r);
     const pixAction=r.pixKey?'<div class="finance-pix-action"><span class="finance-pix-action-label">CHAVE PIX</span><code class="finance-pix-action-value" title="'+esc(r.pixKey)+'">'+esc(r.pixKey)+'</code><button type="button" class="btn-ghost finance-pix-action-copy" title="Copiar chave PIX" onclick="event.preventDefault();event.stopPropagation();copyTextValue('+jsArg(r.pixKey)+',\'Chave PIX copiada.\')">Copiar PIX</button></div>':'<span class="finance-pix-action-missing">PIX não informada</span>';
-    const approveButton=r.virtual||!r.valid?'':'<button class="btn-ghost finance-action-approve" onclick="finApprovePayment('+idx+','+jsArg(r.researcherId)+')">'+(r.status==='aprovado'?'✓ Pagamento aprovado':'Aprovar pagamento')+'</button>';
+    const approveButton=r.virtual||!r.valid
+      ?'<button type="button" class="btn-ghost finance-action-approve" disabled title="Ainda não há entrevistas válidas para aprovar">Aprovar pagamento</button>'
+      :'<button type="button" class="btn-ghost finance-action-approve" onclick="finApprovePayment('+idx+','+jsArg(r.researcherId)+')">'+(r.status==='aprovado'?'✓ Pagamento aprovado':'Aprovar pagamento')+'</button>';
     const receiptButton=r.virtual||!r.valid||r.status!=='aprovado'||aReceber<=0?'':'<button class="btn-ghost finance-action-receipt" onclick="finRegisterPayment('+idx+','+jsArg(r.researcherId)+')">＋ Registrar pagamento semanal</button>';
     const receiptRowAction=financeReceiptRowAction(r.id);
     const statusButton=r.virtual?'':'<button class="btn-ghost" onclick="finEditPayment('+idx+','+jsArg(r.researcherId)+')">Alterar status</button>';

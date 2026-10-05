@@ -1511,7 +1511,7 @@ function renderDistributionOutput(out,rows,canvasId,setChart,prevChart){
 const WIZ={step:1,total:7,editIndex:null,
   data:{name:'',tipo:'Eleitoral / intenção de voto',dataIni:'',dataFim:'',abrangencia:'estadual',estados:[],cidades:{},
     pop:1000000,err:'0.03',conf:'1.96',prop:50,price:5,priceRemote:8,clientPrice:12,clientes:[],
-    formStarted:false,questions:[],quotas:{},quotaOff:{},remote:{},clientReleaseById:{}}};
+    formStarted:false,questions:[],quotas:{},quotaOff:{},remote:{},clientReleaseById:{},minimumCollectionSeconds:null}};
 let WIZ_QID=1;
 const Q_TYPES={single:'Escolha única',multi:'Múltipla escolha',ranking:'Ranking de preferências',pair:'Duas respostas',scale:'Escala 1–5',scale10:'Escala 1–10',nps:'NPS 0–10',open:'Resposta aberta',number:'Número',date:'Data'};
 const Q_HAS_OPTS=t=>t==='single'||t==='multi'||t==='ranking';
@@ -1542,7 +1542,7 @@ const ABRANGENCIA_CFG={
 function blankSurveyData(){
   return {name:'',tipo:'Eleitoral / intenção de voto',dataIni:'',dataFim:'',abrangencia:'estadual',estados:[],cidades:{},
     pop:1000000,err:'0.03',conf:'1.96',prop:50,price:5,priceRemote:8,clientPrice:12,clientes:[],
-    formStarted:false,questions:[],quotas:{},quotaOff:{},remote:{},clientReleaseById:{}};
+    formStarted:false,questions:[],quotas:{},quotaOff:{},remote:{},clientReleaseById:{},minimumCollectionSeconds:null};
 }
 
 /* store de pesquisas — carregado do Supabase (ver bloco "PESQUISAS — carregamento
@@ -1588,7 +1588,7 @@ function surveyRowToSnapshot(row,questionRows,clientCompanyNames,teamNames){
       if(typeof options==='string'){try{options=JSON.parse(options);}catch(ex){options=[];}}
       return {id:field.id,label:field.label||'',type:field.type||'open',options:Array.isArray(options)?options.map(v=>String(v??'')):[]};
     });
-    return {id:localId,dbId:q.id,text:q.text||'',type:q.type||'single',opts:opts.map(o=>o.label||''),endsInterview:opts.map(o=>!!o.ends_interview),fields:fields.length===2?fields:DEFAULT_PAIR_FIELDS(),isRegion:!!q.is_region};
+    return {id:localId,dbId:q.id,text:q.text||'',type:q.type||'single',difficulty:Math.min(5,Math.max(1,Number(q.difficulty)||3)),opts:opts.map(o=>o.label||''),endsInterview:opts.map(o=>!!o.ends_interview),fields:fields.length===2?fields:DEFAULT_PAIR_FIELDS(),isRegion:!!q.is_region};
   });
   return {
     id:row.id,
@@ -1603,6 +1603,7 @@ function surveyRowToSnapshot(row,questionRows,clientCompanyNames,teamNames){
     clientIds:(row.survey_clients||[]).map(sc=>sc.client_id), /* ids reais dos clientes vinculados — usado para o cliente logado achar sua própria pesquisa sem depender de nome/USERS carregado */
     clientReleaseById:Object.fromEntries((row.survey_clients||[]).filter(sc=>sc.client_id).map(sc=>[sc.client_id,!!sc.results_released])),
     formStarted:!!row.form_started,formApprovalRequired:!!row.form_approval_required,questions,quotas,quotaOff,remote,
+    minimumCollectionSeconds:Number.isFinite(Number(row.minimum_collection_seconds))&&Number(row.minimum_collection_seconds)>0?Math.round(Number(row.minimum_collection_seconds)):null,
     collected:row.collected||0,status:row.status||'rascunho',
     created:fmtRelativo(row.created_at),
     team:teamNames||[],coord:'',isNew:false,
@@ -1615,6 +1616,7 @@ function snapshotToSurveyRow(d){
     populacao:+d.pop||0,margem_erro:d.err?+d.err:null,nivel_confianca:d.conf?+d.conf:null,
     proporcao:+d.prop||50,price:+d.price||0,price_remote:+d.priceRemote||0,client_price:+d.clientPrice||0,
     form_started:!!d.formStarted,status:d.status||'rascunho',form_approval_required:!!d.formApprovalRequired,
+    minimum_collection_seconds:Number.isFinite(Number(d.minimumCollectionSeconds))&&Number(d.minimumCollectionSeconds)>0?Math.round(Number(d.minimumCollectionSeconds)):null,
   };
 }
 /* atualiza perguntas/opções sem apagar perguntas que já possuem respostas.
@@ -1623,6 +1625,7 @@ function snapshotToSurveyRow(d){
 async function syncSurveyQuestionsAndOptions(surveyId,d){
   SURVEY_END_CONDITION_SCHEMA_MISSING=false;
   let activeColumnAvailable=true;
+  let difficultyColumnAvailable=true;
   const existingResult=await sb.from('survey_questions').select('id').eq('survey_id',surveyId);
   if(existingResult.error)throw new Error('Não foi possível ler as perguntas atuais: '+existingResult.error.message);
   const existingIds=(existingResult.data||[]).map(row=>row.id);
@@ -1638,17 +1641,31 @@ async function syncSurveyQuestionsAndOptions(surveyId,d){
     const q=questions[i];
     const baseQuestionPayload={
       survey_id:surveyId,position:i,text:q.text||'',type:q.type||'single',is_region:!!q.isRegion,
+      difficulty:Math.min(5,Math.max(1,Number(q.difficulty)||3)),
     };
     let questionResult;
     if(q.dbId&&existingIds.includes(q.dbId)){
-      const updatePayload=activeColumnAvailable?{...baseQuestionPayload,is_active:true}:baseQuestionPayload;
+      const updatePayload={...(difficultyColumnAvailable?baseQuestionPayload:(()=>{const {difficulty,...legacy}=baseQuestionPayload;return legacy;})()),...(activeColumnAvailable?{is_active:true}:{})};
       questionResult=await sb.from('survey_questions').update(updatePayload).eq('id',q.dbId).eq('survey_id',surveyId).select().single();
+      if(questionResult.error&&difficultyColumnAvailable&&/difficulty|schema cache|column .* does not exist/i.test(questionResult.error.message||'')){
+        difficultyColumnAvailable=false;
+        const {difficulty,...legacyPayload}=baseQuestionPayload;
+        questionResult=await sb.from('survey_questions').update(activeColumnAvailable?{...legacyPayload,is_active:true}:legacyPayload).eq('id',q.dbId).eq('survey_id',surveyId).select().single();
+      }
       if(questionResult.error&&activeColumnAvailable&&/is_active|schema cache|column .* does not exist/i.test(questionResult.error.message||'')){
         activeColumnAvailable=false;
-        questionResult=await sb.from('survey_questions').update(baseQuestionPayload).eq('id',q.dbId).eq('survey_id',surveyId).select().single();
+        const legacyPayload={...baseQuestionPayload};
+        if(!difficultyColumnAvailable)delete legacyPayload.difficulty;
+        delete legacyPayload.is_active;
+        questionResult=await sb.from('survey_questions').update(legacyPayload).eq('id',q.dbId).eq('survey_id',surveyId).select().single();
       }
     }else{
-      questionResult=await sb.from('survey_questions').insert(baseQuestionPayload).select().single();
+      questionResult=await sb.from('survey_questions').insert(difficultyColumnAvailable?baseQuestionPayload:(()=>{const {difficulty,...legacy}=baseQuestionPayload;return legacy;})()).select().single();
+      if(questionResult.error&&difficultyColumnAvailable&&/difficulty|schema cache|column .* does not exist/i.test(questionResult.error.message||'')){
+        difficultyColumnAvailable=false;
+        const {difficulty,...legacyPayload}=baseQuestionPayload;
+        questionResult=await sb.from('survey_questions').insert(legacyPayload).select().single();
+      }
     }
     const {data:qRow,error:qErr}=questionResult;
     if(qErr)throw new Error('Não foi possível salvar as perguntas: '+qErr.message);
@@ -2030,6 +2047,7 @@ WIZ_BODY[2]=()=>{
   <div class="q-order-hint"><span aria-hidden="true">⠿</span> Arraste a alça pontilhada para mudar a ordem. Se preferir, use as setas em cada pergunta.</div>
   <div class="q-condition-hint"><span aria-hidden="true">!</span> Nas perguntas de escolha, marque <b>encerrar</b> ao lado de uma resposta para avisar o pesquisador e encerrar a entrevista quando ela for selecionada.</div>
   <div class="q-format-hint"><span aria-hidden="true">↕</span> <b>Ranking de preferências</b> registra a ordem completa das opções. <b>Duas respostas</b> cria dois subcampos independentes, abertos ou fechados.</div>
+  <div class="q-duration-hint"><span aria-hidden="true">⏱</span> Defina a dificuldade de cada pergunta. Ela será usada para calcular o tempo mínimo da entrevista e proteger a qualidade da coleta.</div>
   <div id="q-list"></div>
   <div class="add-q">
     <span style="font-size:12px;font-weight:600;color:var(--ink2)">Adicionar pergunta:</span>
@@ -2204,12 +2222,14 @@ function qRender(){
     const quotaCtl=canQuota
       ?`<button class="q-quota-btn ${quotaOn?'on':''}" title="Definir se esta pergunta terá cota controlada na amostra (ajustável em detalhe no passo Cotas)" onclick="qToggleQuota(${q.id})">${quotaOn?'✓ cota':'sem cota'}</button>`
       :'';
+    const difficultyCtl=`<label class="q-difficulty-control" title="Dificuldade usada no tempo mínimo"><span>Dificuldade</span><select onchange="qDifficulty(${q.id},this.value)">${[['1','Fácil'],['2','Leve'],['3','Média'],['4','Difícil'],['5','Muito difícil']].map(([value,label])=>`<option value="${value}" ${Number(q.difficulty||3)===Number(value)?'selected':''}>${value} · ${label}</option>`).join('')}</select></label>`;
     return `<div class="q-card ${q.isRegion?'is-region':''}" data-qid="${q.id}" ondragover="qDragOver(event,${q.id})" ondrop="qDrop(event,${q.id})">
       <div class="qc-head">
         <span class="q-num">${i+1}</span>
         <input class="q-text-inp" value="${esc(q.text)}" oninput="qText(${q.id},this.value)" placeholder="Digite o enunciado da pergunta">
         ${regionCtl}
         ${quotaCtl}
+        ${difficultyCtl}
         ${typeCtl}
         <div class="q-order-controls" aria-label="Ordenar pergunta ${i+1}">
           <button type="button" class="q-order-btn" ${i===0?'disabled':''} onclick="qMove(${q.id},-1)" title="Mover para cima" aria-label="Mover pergunta ${i+1} para cima">↑</button>
@@ -2237,12 +2257,13 @@ function fmtDataBR(iso){
 }
 function qFind(id){return WIZ.data.questions.find(q=>q.id===id);}
 function qAdd(type){
-  const q={id:WIZ_QID++,text:'',type,opts:Q_HAS_OPTS(type)?['',''] :[],endsInterview:Q_HAS_OPTS(type)?[false,false]:[],fields:type==='pair'?DEFAULT_PAIR_FIELDS():[]};
+  const q={id:WIZ_QID++,text:'',type,difficulty:3,opts:Q_HAS_OPTS(type)?['',''] :[],endsInterview:Q_HAS_OPTS(type)?[false,false]:[],fields:type==='pair'?DEFAULT_PAIR_FIELDS():[]};
   WIZ.data.questions.push(q);qRender();
   setTimeout(()=>{const inputs=document.querySelectorAll('.q-text-inp');if(inputs.length)inputs[inputs.length-1].focus();},30);
 }
 function qDel(id){WIZ.data.questions=WIZ.data.questions.filter(q=>q.id!==id);qRender();}
 function qText(id,v){const q=qFind(id);if(q)q.text=v;}
+function qDifficulty(id,v){const q=qFind(id);if(q)q.difficulty=Math.min(5,Math.max(1,Number(v)||3));}
 function qEnsurePairFields(q){if(!q)return;const current=Array.isArray(q.fields)?q.fields:[];q.fields=[0,1].map(i=>{const f=current[i]||DEFAULT_PAIR_FIELDS()[i];return {label:String(f.label||'Resposta '+(i+1)),type:Q_CLOSED_FIELD_TYPES.includes(f.type)?f.type:'open',options:Array.isArray(f.options)?f.options.map(v=>String(v??'')):[]};});}
 function qType(id,v){const q=qFind(id);if(!q)return;q.type=v;if(Q_HAS_OPTS(v)&&q.opts.length===0){q.opts=['',''];q.endsInterview=[false,false];}if(v==='pair')qEnsurePairFields(q);if(!Q_HAS_OPTS(v)||v!=='single')q.isRegion=false;qRender();}
 function qOpt(id,oi,v){const q=qFind(id);if(q){q.opts[oi]=v;if(!String(v||'').trim()&&q.endsInterview)q.endsInterview[oi]=false;}}
@@ -2636,8 +2657,12 @@ async function wizCreate(){
     let surveyId;
     if(isNew){
       let result=await sb.from('surveys').insert(row).select().single();
+      if(result.error&&/minimum_collection_seconds|schema cache|column .* does not exist/i.test(result.error.message||'')){
+        const {minimum_collection_seconds,...legacyRow}=row;
+        result=await sb.from('surveys').insert(legacyRow).select().single();
+      }
       if(result.error&&/form_approval_required|schema cache|column .* does not exist/i.test(result.error.message||'')){
-        const {form_approval_required,...legacyRow}=row;
+        const {form_approval_required,minimum_collection_seconds,...legacyRow}=row;
         result=await sb.from('surveys').insert(legacyRow).select().single();
       }
       if(result.error)throw new Error(result.error.message);
@@ -2645,8 +2670,12 @@ async function wizCreate(){
     }else{
       surveyId=SURVEYS[WIZ.editIndex].id;
       let result=await sb.from('surveys').update(row).eq('id',surveyId);
+      if(result.error&&/minimum_collection_seconds|schema cache|column .* does not exist/i.test(result.error.message||'')){
+        const {minimum_collection_seconds,...legacyRow}=row;
+        result=await sb.from('surveys').update(legacyRow).eq('id',surveyId);
+      }
       if(result.error&&/form_approval_required|schema cache|column .* does not exist/i.test(result.error.message||'')){
-        const {form_approval_required,...legacyRow}=row;
+        const {form_approval_required,minimum_collection_seconds,...legacyRow}=row;
         result=await sb.from('surveys').update(legacyRow).eq('id',surveyId);
       }
       if(result.error)throw new Error(result.error.message);
@@ -2865,7 +2894,7 @@ function surveyEdit(idx){
     tipo:s.tipo||'Eleitoral / intenção de voto',dataIni:s.dataIni||'',dataFim:s.dataFim||'',
     abrangencia:s.abrangencia||'estadual',estados:s.estados||[],cidades:s.cidades||{},
     pop:s.pop,err:s.err,conf:s.conf,prop:s.prop,price:s.price,priceRemote:s.priceRemote,clientes:linkedClientes,
-    formStarted:s.formStarted!==false,formApprovalRequired:!!s.formApprovalRequired,questions:s.questions||[],clientPrice:s.clientPrice!=null?s.clientPrice:12,quotas:s.quotas||{},quotaOff:s.quotaOff||{},remote:s.remote||{},clientReleaseById:s.clientReleaseById||{}
+    formStarted:s.formStarted!==false,formApprovalRequired:!!s.formApprovalRequired,questions:s.questions||[],clientPrice:s.clientPrice!=null?s.clientPrice:12,quotas:s.quotas||{},quotaOff:s.quotaOff||{},remote:s.remote||{},clientReleaseById:s.clientReleaseById||{},minimumCollectionSeconds:s.minimumCollectionSeconds||null
   }));
   WIZ_QID=(WIZ.data.questions.reduce((m,q)=>Math.max(m,q.id),0)||0)+1;
   go('new-survey');
@@ -3794,6 +3823,7 @@ function collectDetail(idx){
   </div>
 
   <div id="collectTabAuditoria" style="display:none">
+    ${auditMinimumDurationMarkup(s)}
     <div id="auditFlaggedWrap" class="card mb" style="display:none">
       <div class="card-t">Reprovações e calibrações desta pesquisa</div>
       <div class="card-d">Coletas marcadas na auditoria abaixo. Desfaça a qualquer momento — a coleta volta a valer normalmente.</div>
@@ -4272,6 +4302,48 @@ function fmtInterviewDuration(seconds){
   if(!Number.isFinite(value)||value<0)return'—';
   const total=Math.round(value),minutes=Math.floor(total/60),rest=total%60;
   return minutes?minutes+'min '+String(rest).padStart(2,'0')+'s':rest+'s';
+}
+const AUDIT_DIFFICULTY_SECONDS={single:12,multi:18,ranking:22,pair:32,scale:8,scale10:10,nps:10,open:45,number:10,date:8};
+function surveyAutomaticMinimumSeconds(s){
+  const questions=(s?.questions||[]).filter(q=>q.dbId||q.text);
+  const total=questions.reduce((sum,q)=>{
+    const type=q.type||'single',optionCount=(q.opts||[]).filter(value=>String(value||'').trim()).length;
+    let base=AUDIT_DIFFICULTY_SECONDS[type]||15;
+    if(type==='multi')base+=Math.min(8,optionCount)*2;
+    if(type==='ranking')base+=Math.min(10,optionCount)*4;
+    const difficulty=Math.min(5,Math.max(1,Number(q.difficulty)||3));
+    const multiplier=[0,.75,.9,1,1.25,1.5][difficulty]||1;
+    return sum+(base*multiplier);
+  },0);
+  return Math.max(30,Math.min(3600,Math.ceil((30+total)/5)*5));
+}
+function surveyEffectiveMinimumSeconds(s){
+  const override=Number(s?.minimumCollectionSeconds);
+  return Number.isFinite(override)&&override>=30?Math.min(3600,Math.round(override)):surveyAutomaticMinimumSeconds(s);
+}
+function auditMinimumDurationMarkup(s){
+  const automatic=surveyAutomaticMinimumSeconds(s),override=Number(s?.minimumCollectionSeconds),effective=surveyEffectiveMinimumSeconds(s);
+  const hasOverride=Number.isFinite(override)&&override>=30;
+  const questionCount=(s?.questions||[]).length;
+  return `<div class="card mb audit-minimum-duration-card" id="auditMinimumRule">
+    <div class="audit-minimum-duration-head"><div><div class="map-eyebrow">REGRA DE QUALIDADE</div><div class="card-t">Tempo mínimo para esta coleta</div><div class="card-d">A duração começa ao iniciar a entrevista e termina em “Concluir e enviar”. A regra é aplicada no banco: coletas abaixo do tempo efetivo são mantidas no histórico, mas entram como <b>reprovadas</b> e não geram pagamento.</div></div><span class="audit-minimum-badge">${fmtInterviewDuration(effective)}</span></div>
+    <div class="audit-minimum-duration-grid"><div><span class="audit-minimum-label">Cálculo automático do formulário</span><strong>${fmtInterviewDuration(automatic)}</strong><small>${questionCount} pergunta${questionCount===1?'':'s'} · dificuldade 1 a 5</small></div><div><label class="audit-minimum-label" for="auditMinimumDurationInput">Ajuste manual opcional</label><div class="audit-minimum-input-row"><input class="inp" id="auditMinimumDurationInput" type="number" min="30" max="3600" step="5" value="${hasOverride?override:''}" placeholder="${automatic}" aria-describedby="auditMinimumDurationHelp"><span>segundos</span></div><small id="auditMinimumDurationHelp">${hasOverride?'Valor manual ativo. Limpe o campo para voltar ao cálculo automático.':'Deixe vazio para usar o cálculo automático.'}</small></div><div class="audit-minimum-current"><span class="audit-minimum-label">Regra aplicada agora</span><strong>${fmtInterviewDuration(effective)}</strong><small>${hasOverride?'Manual':'Automática'}</small></div></div>
+    <div class="audit-minimum-duration-actions"><button type="button" class="btn btn-fill" onclick="saveAuditMinimumDuration(${s?SURVEYS.indexOf(s):'null'})">Salvar tempo mínimo</button><span class="audit-minimum-duration-note">O pesquisador verá o motivo completo no histórico de coletas reprovadas.</span></div>
+  </div>`;
+}
+async function saveAuditMinimumDuration(idx){
+  const s=SURVEYS[idx];if(!s)return;
+  const input=document.getElementById('auditMinimumDurationInput');
+  const raw=String(input?.value||'').trim();
+  const seconds=raw===''?null:Number(raw);
+  if(seconds!==null&&(!Number.isInteger(seconds)||seconds<30||seconds>3600)){alert('Informe um tempo inteiro entre 30 e 3600 segundos ou deixe vazio para o cálculo automático.');return;}
+  try{
+    const {data,error}=await sb.rpc('save_survey_minimum_collection_seconds',{p_survey_id:s.id,p_seconds:seconds});
+    if(error)throw new Error(error.message);
+    s.minimumCollectionSeconds=Number.isFinite(Number(data))&&Number(data)>=30?Number(data):null;
+    const wrap=document.getElementById('auditMinimumRule');if(wrap)wrap.outerHTML=auditMinimumDurationMarkup(s);
+    alert(s.minimumCollectionSeconds?`Tempo mínimo manual salvo: ${fmtInterviewDuration(s.minimumCollectionSeconds)}.`:'Tempo mínimo automático reativado com base no formulário.');
+  }catch(ex){alert('Não foi possível salvar o tempo mínimo. Execute a migration tempo-minimo-coleta-auditoria.sql no Supabase e tente novamente. Detalhe: '+ex.message);}
 }
 async function loadAuditRecordingUrl(eventId){
   const rec=COLLECTION_RECORDINGS[eventId];
@@ -5261,7 +5333,7 @@ async function acollectSubmit(){
     eventPayload.recording_status=ACOLLECT_RECORDING_STATUS==='failed'?'failed':ACOLLECT_RECORDING_STATUS==='declined'?'declined':'not_selected';
     eventPayload.recording_error=ACOLLECT_RECORDING_ERROR||null;
   }
-  let eventId=null;
+  let eventId=null,serverRejectedReason='';
   try{
     let {data,error}=await sb.from('collection_events').insert(eventPayload).select().single();
     if(error&&COLLECT_DURATION_COLUMN_AVAILABLE&&/duration_seconds|column|schema cache/i.test(error.message||'')){
@@ -5271,6 +5343,7 @@ async function acollectSubmit(){
     }
     if(error)throw new Error(error.message);
     eventId=data.id;
+    if(data.status==='rejected')serverRejectedReason=String(data.reject_reason||'A duração registrada ficou abaixo do tempo mínimo desta pesquisa.');
   }catch(ex){
     ACOLLECT_SUBMITTING=false;
     renderAcollectActionState();
@@ -5306,9 +5379,11 @@ async function acollectSubmit(){
   renderGeoLog();
   const msg=document.getElementById('acollectMsg');
   if(msg){
-    msg.innerHTML=recordingResult.ok
-      ?'<div class="online-banner">✓ Coleta enviada com sucesso</div>'
-      :'<div class="offline-banner">✓ Coleta enviada; a confirmação de áudio não pôde ser anexada.</div>';
+    msg.innerHTML=serverRejectedReason
+      ?`<div class="offline-banner collection-rejection-message"><b>✕ Coleta rejeitada automaticamente.</b><span>${esc(serverRejectedReason)}</span><small>O registro foi preservado para auditoria. Consulte “Meus ganhos” para ver este motivo novamente.</small></div>`
+      :recordingResult.ok
+        ?'<div class="online-banner">✓ Coleta enviada com sucesso</div>'
+        :'<div class="offline-banner">✓ Coleta enviada; a confirmação de áudio não pôde ser anexada.</div>';
     setTimeout(()=>{if(msg)msg.innerHTML='';},4000);
   }
 }
@@ -7668,6 +7743,7 @@ function renderMyRejected(){
       </div>
       <div style="font-size:11.5px;color:var(--ink3);margin-top:2px">${esc(e.cota)} · ${new Date(e.ts).toLocaleString('pt-BR')}</div>
       <div style="font-size:12.5px;margin-top:4px"><b>Motivo:</b> ${esc(e.rejectReason||'—')}</div>
+      ${String(e.rejectReason||'').toLocaleLowerCase('pt-BR').includes('tempo mínimo')||String(e.rejectReason||'').toLocaleLowerCase('pt-BR').includes('tempo minimo')?'<div class="collection-rejection-tag">Regra automática de qualidade do formulário</div>':''}
     </div>`;
   }).join('');
 }

@@ -198,6 +198,8 @@ for (const token of [
   '.finance-summary-grid',
   '.finance-status-pending',
   '.finance-value-pending',
+  'finance-data-table th.finance-actions-header,.finance-data-table td.finance-actions-cell{position:static!important',
+  'overflow-x:auto;overflow-y:visible',
   '.payment-receipt-delete',
   '.payment-receipt-edit',
   '.finance-receipt-row-actions',
@@ -211,8 +213,8 @@ for (const token of [
   assert(css.includes(token), `estilo financeiro ausente: ${token}`);
 }
 
-assert(html.includes('app.js?v=20261005203500'), 'cache do app financeiro não foi atualizado');
-assert(html.includes('style.css?v=20261005203500'), 'cache do CSS financeiro não foi atualizado');
+assert(html.includes('app.js?v=20261005205000'), 'cache do app financeiro não foi atualizado');
+assert(html.includes('style.css?v=20261005205000'), 'cache do CSS financeiro não foi atualizado');
 assert(app.includes('paymentApprovedBalanceValue(r,price)'), 'a receber não está restrito ao valor aprovado');
 assert(app.includes('const saldoDevido=Math.max(0,valor-recebido)'), 'saldo devido não é abatido pelos recebimentos');
 assert(app.includes('paymentBalanceValue(r,price)'), 'saldo devido não usa o valor real das entrevistas e recibos');

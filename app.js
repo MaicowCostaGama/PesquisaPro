@@ -3462,6 +3462,9 @@ PAGES.quotas=()=>head('Metas e cotas','Distribua a amostra por variáveis e acom
 /* ============ COLLECT (lista de pesquisas → pesquisadores) ============ */
 let COLLECT_IDX=null;
 let COLLECT_ORIENTATION_COUNTS={},COLLECT_ORIENTATION_COUNTS_STATUS='idle',COLLECT_ORIENTATION_COUNTS_LOADING=false;
+let COLLECT_TEAM_INVITES=[],COLLECT_TEAM_INVITES_LOADED=false,COLLECT_TEAM_INVITES_LOADING=false,COLLECT_TEAM_INVITES_LOAD_ERROR=false;
+let COLLECT_FUNNEL_TAB='available';
+let COLLECT_FUNNEL_SEARCH={available:'',invited:'',accepted:'',team:''};
 const RESEARCHER_INFO={
   'João Pereira':{regional:'Triângulo',link:'…/c/jp-3f9a',meta:180,done:312,sync:'online',phone:'5534999990001'},
   'Fernanda Couto':{regional:'Triângulo',link:'…/c/fc-9a4b',meta:200,done:188,sync:'online',phone:'5534999990002'},
@@ -3478,6 +3481,133 @@ function surveyCoveragePct(collected,sample){
 }
 function collectionOrientationResearcher(name){
   return USERS.find(u=>u.name===name)||null;
+}
+const COLLECTION_FUNNEL_STAGES={
+  available:{label:'Disponível para convite',short:'Disponíveis',icon:'✦'},
+  invited:{label:'Convidados',short:'Convidados',icon:'✉'},
+  accepted:{label:'Novos aceitos',short:'Aceitos',icon:'✓'},
+  team:{label:'Já na equipe',short:'Na equipe',icon:'◎'}
+};
+function collectionFunnelEntries(idx){
+  const s=SURVEYS[idx];if(!s)return {available:[],invited:[],accepted:[],team:[]};
+  const targets=surveyCityTargets(s),hasTarget=!!(targets.cities.size||targets.states.size);
+  const teamNames=new Set(s.team||[]);
+  const invitesById=new Map(COLLECT_TEAM_INVITES.map(invite=>[invite.researcher_id,invite]));
+  const entries={available:[],invited:[],accepted:[],team:[]};
+  pesqUsers().forEach(user=>{
+    const invite=invitesById.get(user.id)||null;
+    const area=pesqAreaMatch(user,targets);
+    const eligible=researcherIsAvailable(user)&&(!hasTarget||area.match);
+    const isTeam=teamNames.has(user.name);
+    const orientationCount=invite?.status==='aceito'&&user.id
+      ?Math.max(0,Number(COLLECT_ORIENTATION_COUNTS[user.id]?.send_count)||0):0;
+    const stage=invite?.status==='aceito'&&orientationCount===0?'accepted':
+      isTeam?'team':invite?'invited':eligible?'available':null;
+    if(!stage)return;
+    entries[stage].push({user,invite,area,eligible,orientationCount});
+  });
+  Object.values(entries).forEach(list=>list.sort((a,b)=>a.user.name.localeCompare(b.user.name,'pt-BR')));
+  return entries;
+}
+function collectionFunnelWhatsAppButton(entry,s,stage){
+  const user=entry.user;
+  if(!user.phone)return '<span class="pill pill-gray">Sem WhatsApp cadastrado</span>';
+  const context=stage==='available'
+    ?'Olá '+user.name+'! Podemos conversar sobre o convite da pesquisa '+s.name+'?'
+    :stage==='accepted'
+      ?'Olá '+user.name+'! Podemos conversar sobre as orientações iniciais da pesquisa '+s.name+'?'
+      :'Olá '+user.name+'! Podemos conversar sobre a pesquisa '+s.name+'?';
+  return `<button type="button" class="btn-ghost conversation-btn" title="Abrir conversa no WhatsApp" onclick="event.preventDefault();event.stopPropagation();clientWhatsAppMsg(${jsArg(user.phone)},${jsArg(context)})">${icon3d('☏','#0f766e')}<span>Conversar no WhatsApp</span></button>`;
+}
+function collectionFunnelStageActions(entry,s,stage){
+  const user=entry.user;
+  const actions=[];
+  if(stage==='available')actions.push(`<button type="button" class="btn btn-out team-whatsapp-invite-btn" onclick="inviteCollectionFunnelResearcher(${jsArg(user.id)})">✉ Convidar por WhatsApp</button>`);
+  if(stage==='invited'&&entry.invite?.id)actions.push(`<button type="button" class="btn btn-out team-whatsapp-invite-btn" onclick="inviteCollectionFunnelResearcher(${jsArg(user.id)})">↗ Reenviar convite</button>`);
+  if(stage==='accepted')actions.push(`<button type="button" class="btn btn-fill collection-funnel-orientation-btn" ${user.phone?'':'disabled'} onclick="sendCollectionOrientationWhatsapp(${jsArg(user.name)})">✉ Enviar orientações iniciais</button>`);
+  actions.push(collectionFunnelWhatsAppButton(entry,s,stage));
+  return actions.filter(Boolean).join('');
+}
+function collectionFunnelCard(entry,s,stage){
+  const user=entry.user,area=entry.area?.label||'Área não informada';
+  const status=stage==='available'?'<span class="pill pill-blue">Apto para convite</span>':stage==='invited'?`<span class="pill pill-amber">${entry.invite?.status==='recusado'?'Recusou · pode reenviar':'Aguardando aceite'}</span>`:stage==='accepted'?'<span class="pill pill-green">Aceitou · falta orientação</span>':'<span class="pill pill-green">Vinculado à pesquisa</span>';
+  const extra=stage==='accepted'?`<small class="collection-funnel-orientation-count">Orientações: ${entry.orientationCount} envio${entry.orientationCount===1?'':'s'}</small>`:entry.invite?.status==='pendente'?`<small class="collection-funnel-orientation-count">Convite por WhatsApp: ${Math.max(0,Number(entry.invite?.whatsapp_sent_count)||0)} envio${Number(entry.invite?.whatsapp_sent_count)===1?'':'s'}</small>`:'';
+  return `<article class="collection-funnel-person"><div class="collection-funnel-person-main"><div class="avatar" style="width:34px;height:34px;font-size:12px">${esc(initialsOf(user.name))}</div><div class="collection-funnel-person-copy"><div class="collection-funnel-person-title"><strong>${esc(user.name)}</strong>${status}</div><span>${esc(area)} · ${esc(schoolingLabel(user.escolaridade))}</span>${extra}</div></div><div class="collection-funnel-person-actions">${collectionFunnelStageActions(entry,s,stage)}</div></article>`;
+}
+function collectionFunnelPanelMarkup(stage,entries,s){
+  const search=COLLECT_FUNNEL_SEARCH[stage]||'';
+  const query=normalizeUserSearch(search);
+  const filtered=entries.filter(entry=>!query||normalizeUserSearch(entry.user.name).includes(query));
+  const title=COLLECTION_FUNNEL_STAGES[stage].label;
+  const helper=stage==='available'?'Pesquisadores ativos, com cadastro completo e compatíveis com a área da pesquisa.':stage==='invited'?'Convites pendentes ou recusados. Use o WhatsApp para reenviar e acompanhar o aceite.':stage==='accepted'?'Aceitaram o convite, mas ainda não receberam o envio das orientações iniciais.':'Pesquisadores já vinculados à equipe desta pesquisa.';
+  return `<section class="collection-funnel-panel ${COLLECT_FUNNEL_TAB===stage?'is-active':''}" data-funnel-panel="${stage}" ${COLLECT_FUNNEL_TAB===stage?'':'hidden'}><div class="collection-funnel-panel-head"><div><h3>${title}</h3><p>${helper}</p></div><label class="collection-funnel-search"><span>Buscar por nome</span><input type="search" value="${esc(search)}" placeholder="Digite o nome do pesquisador" oninput="collectFunnelSetSearch('${stage}',this.value)" autocomplete="off"></label></div>${COLLECT_ORIENTATION_COUNTS_STATUS==='unavailable'&&stage==='accepted'?'<div class="callout warn collection-funnel-warning">O contador de orientações ainda não está disponível no banco. Execute a migration de orientações para separar com precisão quem já recebeu a mensagem.</div>':''}<div class="collection-funnel-list">${filtered.length?filtered.map(entry=>collectionFunnelCard(entry,s,stage)).join(''):`<div class="collection-funnel-empty">${query?'Nenhum pesquisador corresponde a esta busca.':'Nenhum pesquisador neste estágio do funil.'}</div>`}</div></section>`;
+}
+function renderCollectionTeamFunnel(idx){
+  const host=document.getElementById('collectionTeamFunnel');if(!host)return;
+  const s=SURVEYS[idx];if(!s)return;
+  const entries=collectionFunnelEntries(idx);
+  const tabs=Object.entries(COLLECTION_FUNNEL_STAGES).map(([key,meta])=>`<button type="button" class="collection-funnel-tab ${COLLECT_FUNNEL_TAB===key?'is-active':''}" onclick="collectFunnelTab('${key}')"><span>${meta.icon}</span><b>${meta.short}</b><em>${entries[key].length}</em></button>`).join('');
+  host.innerHTML=`<div class="collection-funnel-heading"><div><span class="eyebrow">PIPELINE DA EQUIPE</span><h2>Funil de recrutamento e ativação</h2><p>Acompanhe quem pode ser convidado, quem recebeu convite, quem aceitou e quem já está pronto para coletar.</p></div><span class="pill pill-green">${Object.values(entries).reduce((sum,list)=>sum+list.length,0)} pesquisadores no acompanhamento</span></div><div class="collection-funnel-tabs" role="tablist" aria-label="Estágios da equipe">${tabs}</div>${Object.keys(COLLECTION_FUNNEL_STAGES).map(stage=>collectionFunnelPanelMarkup(stage,entries[stage],s)).join('')}</div>`;
+}
+function collectFunnelTab(stage){
+  if(!COLLECTION_FUNNEL_STAGES[stage])return;
+  COLLECT_FUNNEL_TAB=stage;renderCollectionTeamFunnel(COLLECT_IDX);
+}
+function collectFunnelSetSearch(stage,value){
+  if(!COLLECTION_FUNNEL_STAGES[stage])return;
+  COLLECT_FUNNEL_SEARCH[stage]=value||'';renderCollectionTeamFunnel(COLLECT_IDX);
+  const input=document.querySelector(`[data-funnel-panel="${stage}"] .collection-funnel-search input`);
+  if(input){input.focus();input.setSelectionRange(input.value.length,input.value.length);}
+}
+async function inviteCollectionFunnelResearcher(researcherId){
+  const s=SURVEYS[COLLECT_IDX],user=USERS.find(item=>item.id===researcherId);
+  if(!s||!user)return;
+  const digits=whatsappDigits(user.phone);
+  if(!digits){alert('Este pesquisador não tem celular cadastrado.');return;}
+  let inviteId='';
+  try{
+    const {data:existing,error:selectError}=await sb.from('survey_invites').select('*').eq('survey_id',s.id).eq('researcher_id',researcherId);
+    if(selectError)throw new Error(selectError.message);
+    const row=(existing||[])[0];
+    if(row?.status==='aceito'){alert('Este pesquisador já aceitou o convite desta pesquisa.');return;}
+    if(row){
+      const {error}=await sb.from('survey_invites').update({status:'pendente',invited_by:CURRENT_PROFILE?.id||null,invited_at:new Date().toISOString(),responded_at:null}).eq('id',row.id);
+      if(error)throw new Error(error.message);
+      row.status='pendente';row.invited_at=new Date().toISOString();inviteId=row.id;
+      const local=COLLECT_TEAM_INVITES.find(item=>item.id===row.id);if(local)Object.assign(local,row);
+    }else{
+      const {data:inserted,error}=await sb.from('survey_invites').insert({survey_id:s.id,researcher_id:researcherId,invited_by:CURRENT_PROFILE?.id||null,status:'pendente'}).select().single();
+      if(error)throw new Error(error.message);
+      COLLECT_TEAM_INVITES.push(inserted);inviteId=inserted.id;
+    }
+  }catch(ex){alert('Não foi possível criar o convite: '+ex.message);return;}
+  const link=surveyInviteLink(inviteId),settings=await collectionOrientationSettings(s.id);
+  const message=surveyInvitationWhatsappMessage(s,user,link,settings.whatsapp_group_url||'');
+  const tracking=sb.rpc('record_survey_invite_whatsapp_send',{p_invite_id:inviteId}).then(({data,error})=>{
+    if(!error){const row=Array.isArray(data)?data[0]:data;const local=COLLECT_TEAM_INVITES.find(item=>item.id===inviteId);if(local&&row)Object.assign(local,row);}
+  }).catch(ex=>console.warn('Contador do convite por WhatsApp indisponível:',ex));
+  window.open('https://wa.me/'+digits+'?text='+encodeURIComponent(message),'_blank','noopener');
+  await tracking;
+  renderCollectionTeamFunnel(COLLECT_IDX);
+}
+async function loadCollectionTeamFunnelIfNeeded(idx,force=false){
+  const s=SURVEYS[idx];if(!s?.id||COLLECT_TEAM_INVITES_LOADING||(!force&&COLLECT_TEAM_INVITES_LOADED))return;
+  if(!USERS_LOADED)await loadUsersIfNeeded();
+  COLLECT_TEAM_INVITES_LOADING=true;
+  try{
+    const {data,error}=await sb.from('survey_invites').select('*').eq('survey_id',s.id);
+    if(error)throw error;
+    COLLECT_TEAM_INVITES=data||[];COLLECT_TEAM_INVITES_LOADED=true;COLLECT_TEAM_INVITES_LOAD_ERROR=false;
+  }catch(ex){COLLECT_TEAM_INVITES_LOAD_ERROR=true;console.warn('Não foi possível carregar o funil da equipe:',ex);}
+  COLLECT_TEAM_INVITES_LOADING=false;
+  if(COLLECT_IDX===idx)renderCollectionTeamFunnel(idx);
+}
+async function refreshCollectionTeamFunnelLive(idx){
+  if(!document.getElementById('collectionTeamFunnel'))return;
+  await loadCollectionTeamFunnelIfNeeded(idx,true);
+  if(COLLECT_IDX!==idx||COLLECT_ORIENTATION_COUNTS_LOADING)return;
+  COLLECT_ORIENTATION_COUNTS_STATUS='idle';
+  await loadCollectionOrientationCounts(idx);
 }
 function collectionOrientationCountMarkup(name){
   const user=collectionOrientationResearcher(name),id=user?.id;
@@ -3508,6 +3638,7 @@ function collectionTeamRows(s,team){
 function refreshCollectionTeamRows(idx){
   const tbody=document.getElementById('collectTeamBody'),s=SURVEYS[idx];
   if(tbody&&s)tbody.innerHTML=collectionTeamRows(s,s.team||[]);
+  renderCollectionTeamFunnel(idx);
 }
 async function loadCollectionOrientationCounts(idx){
   const s=SURVEYS[idx];
@@ -3585,13 +3716,15 @@ function collectList(){
     <tbody>${rows}</tbody></table>
   </div>`;
 }
-function collectOpen(i){COLLECT_IDX=i;COLLECT_ARMED=true;COLLECT_ORIENTATION_COUNTS={};COLLECT_ORIENTATION_COUNTS_STATUS='loading';COLLECT_ORIENTATION_COUNTS_LOADING=false;_collectMapFilters={researcher:'all',researcherQuery:'',status:'all',latest:false};_collectMapFocusId=null;_collectMapDidFit=false;go('collect');}
-function collectBack(){COLLECT_IDX=null;COLLECT_ORIENTATION_COUNTS={};COLLECT_ORIENTATION_COUNTS_STATUS='idle';COLLECT_ORIENTATION_COUNTS_LOADING=false;_collectMapFocusId=null;go('collect');}
+function collectOpen(i){COLLECT_IDX=i;COLLECT_ARMED=true;COLLECT_ORIENTATION_COUNTS={};COLLECT_ORIENTATION_COUNTS_STATUS='loading';COLLECT_ORIENTATION_COUNTS_LOADING=false;COLLECT_TEAM_INVITES=[];COLLECT_TEAM_INVITES_LOADED=false;COLLECT_TEAM_INVITES_LOADING=false;COLLECT_TEAM_INVITES_LOAD_ERROR=false;COLLECT_FUNNEL_TAB='available';COLLECT_FUNNEL_SEARCH={available:'',invited:'',accepted:'',team:''};_collectMapFilters={researcher:'all',researcherQuery:'',status:'all',latest:false};_collectMapFocusId=null;_collectMapDidFit=false;go('collect');}
+function collectBack(){COLLECT_IDX=null;COLLECT_ORIENTATION_COUNTS={};COLLECT_ORIENTATION_COUNTS_STATUS='idle';COLLECT_ORIENTATION_COUNTS_LOADING=false;COLLECT_TEAM_INVITES=[];COLLECT_TEAM_INVITES_LOADED=false;COLLECT_TEAM_INVITES_LOADING=false;COLLECT_TEAM_INVITES_LOAD_ERROR=false;_collectMapFocusId=null;go('collect');}
 let COLLECT_ARMED=false;
 function collectDetail(idx){
   const s=SURVEYS[idx];if(!s)return collectList();
   const team=s.team||[];
   const rows=collectionTeamRows(s,team);
+  if(!COLLECT_TEAM_INVITES_LOADED)loadCollectionTeamFunnelIfNeeded(idx);
+  if(COLLECT_ORIENTATION_COUNTS_STATUS==='idle')loadCollectionOrientationCounts(idx);
   const sample=surveySample(s);
   const collected=surveyCollectedCount(s);
   const mapResearchers=[...new Set(team)].sort((a,b)=>a.localeCompare(b));
@@ -3622,6 +3755,7 @@ function collectDetail(idx){
       <div class="card-t">Equipe vinculada</div>
       <div class="card-d">Envie as orientações iniciais da pesquisa pelo WhatsApp e acompanhe quem já recebeu o material.</div>
       <div class="callout collection-orientation-callout"><b>Orientações iniciais:</b> use o botão em cada linha para abrir a mensagem completa no WhatsApp. O contador mostra quais pesquisadores já receberam o envio inicial e quais ainda estão pendentes.</div>
+      <div id="collectionTeamFunnel" class="collection-funnel-card"><div class="empty" style="padding:18px 0">Carregando funil da equipe…</div></div>
       <div class="table-scroll"><table><thead><tr><th>Pesquisador</th><th>Regional</th><th>Link</th><th>Coletado</th><th>Sync</th><th>Orientações e contato</th></tr></thead>
       <tbody id="collectTeamBody">${rows}</tbody></table></div>
     </div>
@@ -3860,7 +3994,8 @@ async function pollCollectEvents(idx){
   }catch(ex){return;}
   if(COLLECT_IDX!==idx)return; // usuário já saiu dessa pesquisa enquanto a busca rodava
   renderLiveFeed(idx);
-    const mapaTab=document.getElementById('collectTabMapa');
+  refreshCollectionTeamFunnelLive(idx);
+  const mapaTab=document.getElementById('collectTabMapa');
     if(mapaTab&&mapaTab.style.display!=='none')renderCollectMap(idx);
     const audTab=document.getElementById('collectTabAuditoria');
     if(audTab&&audTab.style.display!=='none')renderAudit(idx);

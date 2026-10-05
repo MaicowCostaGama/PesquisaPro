@@ -12,7 +12,7 @@ assert.match(app,/id="collectTabMetas"/,'painel da aba de metas ausente');
 assert.match(app,/function collectQuotaProgressRows/,'cálculo das linhas de metas ausente');
 assert.match(app,/function renderCollectQuotaProgress/,'renderer da aba de metas ausente');
 assert.match(app,/function collectQuotaProgressRefresh/,'ação de atualização das metas ausente');
-assert.match(app,/const map=\{equipe:'collectTabEquipe',mapa:'collectTabMapa',auditoria:'collectTabAuditoria',metas:'collectTabMetas'\}/,'navegação não alterna para metas');
+assert.match(app,/const map=\{equipe:'collectTabEquipe',mapa:'collectTabMapa',auditoria:'collectTabAuditoria',metas:'collectTabMetas',evolucao:'collectTabEvolucao'\}/,'navegação de coleta não contém metas e evolução');
 assert.match(app,/if\(which==='metas'\)\{renderCollectQuotaProgress\(COLLECT_IDX\);\}/,'troca de aba não carrega metas');
 assert.match(app,/filter\(e=>e\.status==='valid'&&!e\.calibration&&e\.cota\)/,'metas não filtram entrevistas válidas');
 assert.match(app,/remaining=Math\.max\(0,q\.target-collected\)/,'faltante da meta não é calculado');
@@ -24,6 +24,6 @@ assert.match(css,/\.collect-quota-progress-card/,'estilo do painel de metas ause
 assert.match(css,/\.collect-quota-grid/,'grade de metas ausente');
 assert.match(css,/\.collect-quota-item/,'cartão individual de cota ausente');
 assert.match(css,/@media\(max-width:600px\)\{\.collect-quota-grid\{grid-template-columns:1fr\}/,'metas sem responsividade móvel');
-assert.match(html,/app\.js\?v=20261005145500/,'cache do app não atualizado');
-assert.match(html,/style\.css\?v=20261005145500/,'cache do CSS não atualizado');
+assert.match(html,/app\.js\?v=20261005151000/,'cache do app não atualizado');
+assert.match(html,/style\.css\?v=20261005151000/,'cache do CSS não atualizado');
 console.log('collection-quota-progress-smoke-test: OK');

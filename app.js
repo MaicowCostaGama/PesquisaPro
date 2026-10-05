@@ -3716,8 +3716,8 @@ function collectList(){
     <tbody>${rows}</tbody></table>
   </div>`;
 }
-function collectOpen(i){COLLECT_IDX=i;COLLECT_ARMED=true;COLLECT_ORIENTATION_COUNTS={};COLLECT_ORIENTATION_COUNTS_STATUS='loading';COLLECT_ORIENTATION_COUNTS_LOADING=false;COLLECT_TEAM_INVITES=[];COLLECT_TEAM_INVITES_LOADED=false;COLLECT_TEAM_INVITES_LOADING=false;COLLECT_TEAM_INVITES_LOAD_ERROR=false;COLLECT_FUNNEL_TAB='available';COLLECT_FUNNEL_SEARCH={available:'',invited:'',accepted:'',team:''};_collectMapFilters={researcher:'all',researcherQuery:'',status:'all',latest:false};_collectMapFocusId=null;_collectMapDidFit=false;go('collect');}
-function collectBack(){COLLECT_IDX=null;COLLECT_ORIENTATION_COUNTS={};COLLECT_ORIENTATION_COUNTS_STATUS='idle';COLLECT_ORIENTATION_COUNTS_LOADING=false;COLLECT_TEAM_INVITES=[];COLLECT_TEAM_INVITES_LOADED=false;COLLECT_TEAM_INVITES_LOADING=false;COLLECT_TEAM_INVITES_LOAD_ERROR=false;_collectMapFocusId=null;go('collect');}
+function collectOpen(i){COLLECT_IDX=i;COLLECT_ARMED=true;COLLECT_ORIENTATION_COUNTS={};COLLECT_ORIENTATION_COUNTS_STATUS='loading';COLLECT_ORIENTATION_COUNTS_LOADING=false;COLLECT_TEAM_INVITES=[];COLLECT_TEAM_INVITES_LOADED=false;COLLECT_TEAM_INVITES_LOADING=false;COLLECT_TEAM_INVITES_LOAD_ERROR=false;COLLECT_FUNNEL_TAB='available';COLLECT_FUNNEL_SEARCH={available:'',invited:'',accepted:'',team:''};COLLECT_EVOLUTION_MODE='day';disposeCollectEvolutionChart();_collectMapFilters={researcher:'all',researcherQuery:'',status:'all',latest:false};_collectMapFocusId=null;_collectMapDidFit=false;go('collect');}
+function collectBack(){COLLECT_IDX=null;COLLECT_ORIENTATION_COUNTS={};COLLECT_ORIENTATION_COUNTS_STATUS='idle';COLLECT_ORIENTATION_COUNTS_LOADING=false;COLLECT_TEAM_INVITES=[];COLLECT_TEAM_INVITES_LOADED=false;COLLECT_TEAM_INVITES_LOADING=false;COLLECT_TEAM_INVITES_LOAD_ERROR=false;disposeCollectEvolutionChart();_collectMapFocusId=null;go('collect');}
 let COLLECT_ARMED=false;
 function collectDetail(idx){
   const s=SURVEYS[idx];if(!s)return collectList();
@@ -3746,6 +3746,7 @@ function collectDetail(idx){
       <button id="collectTabMapaBtn" data-collect-tab="mapa" onclick="collectTab(this,'mapa')">📍 Mapa ao vivo</button>
       <button id="collectTabAuditoriaBtn" data-collect-tab="auditoria" onclick="collectTab(this,'auditoria')">🔎 Auditoria</button>
       <button id="collectTabMetasBtn" data-collect-tab="metas" onclick="collectTab(this,'metas')">🎯 Metas de cotas</button>
+      <button id="collectTabEvolucaoBtn" data-collect-tab="evolucao" onclick="collectTab(this,'evolucao')">📈 Evolução da coleta</button>
     </div>
     <span class="pill pill-green" style="margin-left:auto"><span style="width:6px;height:6px;border-radius:50%;background:currentColor;display:inline-block;animation:fade 1.4s ease-in-out infinite alternate"></span> Atualizando ao vivo</span>
   </div>
@@ -3818,13 +3819,25 @@ function collectDetail(idx){
       </div>
       <div id="collectQuotaProgressBody"><div class="empty" style="padding:28px 0">Carregando metas reais…</div></div>
     </div>
+  </div>
+
+  <div id="collectTabEvolucao" style="display:none">
+    <div class="card collect-evolution-card">
+      <div class="collect-evolution-head">
+        <div><div class="map-eyebrow">RITMO DE CAMPO</div><div class="card-t">Evolução da coleta</div><div class="card-d">Acompanhe quantas entrevistas válidas foram realizadas ao longo do tempo, por dia ou por mês.</div></div>
+        <div class="collect-evolution-actions"><div class="seg collect-evolution-mode" id="collectEvolutionMode"><button type="button" class="on" data-evolution-mode="day" onclick="collectEvolutionModeSet(this,'day')">Por dia</button><button type="button" data-evolution-mode="month" onclick="collectEvolutionModeSet(this,'month')">Por mês</button></div><button type="button" class="btn btn-out" onclick="collectEvolutionRefresh()">↻ Atualizar</button></div>
+      </div>
+      <div id="collectEvolutionSummary" class="collect-evolution-summary"></div>
+      <div class="collect-evolution-chart-wrap"><canvas id="collectEvolutionChart" role="img" aria-label="Gráfico da evolução das coletas válidas"></canvas><div id="collectEvolutionEmpty" class="empty" style="display:none">Ainda não há entrevistas válidas suficientes para montar a evolução.</div></div>
+      <div id="collectEvolutionNote" class="collect-evolution-note">Considera somente entrevistas válidas, como o indicador Coletado. Reprovações ficam fora; calibrações permanecem no volume coletado, mas não entram nas metas de cotas. As datas usam o horário local da coleta.</div>
+    </div>
   </div>`;
 }
 
 function collectTab(btn,which){
   document.querySelectorAll('#collectTabSeg button').forEach(b=>b.classList.remove('on'));
   btn.classList.add('on');
-  const map={equipe:'collectTabEquipe',mapa:'collectTabMapa',auditoria:'collectTabAuditoria',metas:'collectTabMetas'};
+  const map={equipe:'collectTabEquipe',mapa:'collectTabMapa',auditoria:'collectTabAuditoria',metas:'collectTabMetas',evolucao:'collectTabEvolucao'};
   Object.entries(map).forEach(([k,id])=>{
     const el=document.getElementById(id);
     if(el)el.style.display=(k===which)?'block':'none';
@@ -3835,6 +3848,7 @@ function collectTab(btn,which){
   }
   if(which==='auditoria'){renderAudit(COLLECT_IDX);}
   if(which==='metas'){renderCollectQuotaProgress(COLLECT_IDX);}
+  if(which==='evolucao'){renderCollectEvolution(COLLECT_IDX);}
 }
 
 function collectQuotaProgressRows(idx){
@@ -3871,6 +3885,57 @@ function renderCollectQuotaProgress(idx){
 function collectQuotaProgressRefresh(){
   if(COLLECT_IDX==null)return;
   renderCollectQuotaProgress(COLLECT_IDX);
+  pollCollectEvents(COLLECT_IDX);
+}
+
+let COLLECT_EVOLUTION_MODE='day',_collectEvolutionChart=null;
+function collectEvolutionKey(ts,mode){
+  const date=new Date(ts),year=date.getFullYear(),month=String(date.getMonth()+1).padStart(2,'0');
+  return mode==='month'?year+'-'+month:year+'-'+month+'-'+String(date.getDate()).padStart(2,'0');
+}
+function collectEvolutionLabel(key,mode){
+  const parts=key.split('-').map(Number),date=new Date(parts[0],parts[1]-1,mode==='month'?1:parts[2]);
+  return mode==='month'?date.toLocaleDateString('pt-BR',{month:'short',year:'numeric'}).replace('.',''):date.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'});
+}
+function collectEvolutionSeries(idx,mode){
+  const valid=eventsForSurveyIdx(idx).filter(event=>event.status==='valid'&&Number.isFinite(Number(event.ts)));
+  const counts=new Map();
+  valid.forEach(event=>{const key=collectEvolutionKey(event.ts,mode);counts.set(key,(counts.get(key)||0)+1);});
+  const keys=[...counts.keys()].sort();
+  return {valid,rows:keys.map(key=>({key,label:collectEvolutionLabel(key,mode),count:counts.get(key)||0}))};
+}
+function collectEvolutionSummaryMarkup(series){
+  if(!series.rows.length)return '';
+  const total=series.valid.length,peak=series.rows.reduce((best,row)=>row.count>best.count?row:best,series.rows[0]);
+  const first=series.rows[0].label,last=series.rows[series.rows.length-1].label,average=(total/series.rows.length).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1});
+  return `<div class="collect-evolution-stat"><span>Total válido</span><strong>${total.toLocaleString('pt-BR')}</strong><small>entrevistas</small></div><div class="collect-evolution-stat"><span>Período</span><strong>${esc(first)}${first===last?'':' — '+esc(last)}</strong><small>primeiro e último registro</small></div><div class="collect-evolution-stat"><span>Média no período</span><strong>${average}</strong><small>por ${COLLECT_EVOLUTION_MODE==='month'?'mês':'dia'}</small></div><div class="collect-evolution-stat"><span>Maior volume</span><strong>${peak.count.toLocaleString('pt-BR')}</strong><small>${esc(peak.label)}</small></div>`;
+}
+function disposeCollectEvolutionChart(){
+  if(_collectEvolutionChart){try{_collectEvolutionChart.destroy();}catch(ex){} _collectEvolutionChart=null;}
+}
+function renderCollectEvolution(idx){
+  const host=document.getElementById('collectEvolutionSummary'),canvas=document.getElementById('collectEvolutionChart'),empty=document.getElementById('collectEvolutionEmpty');
+  if(!host||!canvas)return;
+  if(COLLECT_EVENTS_LOADING&&!COLLECT_EVENTS_LOADED){host.innerHTML='<div class="empty" style="grid-column:1/-1;padding:16px 0">Carregando histórico de coletas…</div>';if(empty)empty.style.display='none';return;}
+  const series=collectEvolutionSeries(idx,COLLECT_EVOLUTION_MODE);
+  host.innerHTML=collectEvolutionSummaryMarkup(series);
+  disposeCollectEvolutionChart();
+  if(!series.rows.length){canvas.style.display='none';if(empty)empty.style.display='';return;}
+  canvas.style.display='';if(empty)empty.style.display='none';
+  if(typeof Chart==='undefined'){
+    loadLocalAsset('chart').then(()=>{if(document.getElementById('collectEvolutionChart')===canvas)renderCollectEvolution(idx);}).catch(()=>{});
+    return;
+  }
+  _collectEvolutionChart=new Chart(canvas,{type:'line',data:{labels:series.rows.map(row=>row.label),datasets:[{label:'Entrevistas válidas',data:series.rows.map(row=>row.count),borderColor:'#2563eb',backgroundColor:'rgba(37,99,235,.13)',fill:true,tension:.3,pointRadius:series.rows.length>30?1.5:3,pointHoverRadius:5,borderWidth:2}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{callbacks:{label:context=>' '+context.parsed.y.toLocaleString('pt-BR')+' entrevista'+(context.parsed.y===1?'':'s')}}},scales:{y:{beginAtZero:true,precision:0,ticks:{precision:0},grid:{color:'#e2e8f0'}},x:{grid:{display:false},ticks:{maxTicksLimit:COLLECT_EVOLUTION_MODE==='month'?18:16,maxRotation:0}}}}});
+}
+function collectEvolutionModeSet(btn,mode){
+  COLLECT_EVOLUTION_MODE=mode==='month'?'month':'day';
+  document.querySelectorAll('#collectEvolutionMode button').forEach(item=>item.classList.toggle('on',item===btn));
+  renderCollectEvolution(COLLECT_IDX);
+}
+function collectEvolutionRefresh(){
+  if(COLLECT_IDX==null)return;
+  renderCollectEvolution(COLLECT_IDX);
   pollCollectEvents(COLLECT_IDX);
 }
 
@@ -4001,6 +4066,8 @@ async function pollCollectEvents(idx){
     if(audTab&&audTab.style.display!=='none')renderAudit(idx);
     const metasTab=document.getElementById('collectTabMetas');
     if(metasTab&&metasTab.style.display!=='none')renderCollectQuotaProgress(idx);
+    const evolutionTab=document.getElementById('collectTabEvolucao');
+    if(evolutionTab&&evolutionTab.style.display!=='none')renderCollectEvolution(idx);
 }
 function initCollectLive(idx){
   stopCollectLive();
@@ -4013,6 +4080,7 @@ function initCollectLive(idx){
     renderLiveFeed(idx);
     renderAudit(idx);
     renderCollectQuotaProgress(idx);
+    renderCollectEvolution(idx);
     if(document.getElementById('collectTabMapa')&&document.getElementById('collectTabMapa').style.display!=='none'){
       renderCollectMap(idx);
     }
@@ -8257,7 +8325,7 @@ window._beforeRender=function(key){
 };
 
 window._afterRender=function(key){
-  if(key!=='collect'){stopCollectLive();}if(key!=='client-results'&&key!=='client-progress'){clientGeoStopLive();}if(key!=='client-progress'){clientProgressStopLive();}
+  if(key!=='collect'){stopCollectLive();disposeCollectEvolutionChart();}if(key!=='client-results'&&key!=='client-progress'){clientGeoStopLive();}if(key!=='client-progress'){clientProgressStopLive();}
   if(key!=='app-collect'){stopAcollectQuotaLive();}
   if(key!=='reports'){reportsStopLive();}
   if(key!=='communication'){chatStopRealtime();}

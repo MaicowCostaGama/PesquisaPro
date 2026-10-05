@@ -7215,7 +7215,7 @@ PAGES.permissions=()=>head('Perfis e permissões','Defina o que cada perfil pode
 let PAYMENTS=[]; // {id, surveyId, researcherId, name, pixKey, valid, rejected, status}
 let PAYMENTS_LOADED=false,PAYMENTS_LOADING=false;
 let PAYMENT_RECEIPTS=[]; // {id,paymentId,researcherId,amount,paidAt,note,createdBy,createdAt,receiptPath,receiptName,receiptMimeType,receiptSize}
-let PAYMENT_RECEIPTS_LOADED=false,PAYMENT_RECEIPTS_LOADING=false,PAYMENT_RECEIPTS_SCHEMA_MISSING=false,PAYMENT_RECEIPTS_DELETE_SCHEMA_MISSING=false,PAYMENT_RECEIPTS_EDIT_SCHEMA_MISSING=false;
+let PAYMENT_RECEIPTS_LOADED=false,PAYMENT_RECEIPTS_LOADING=false,PAYMENT_RECEIPTS_SCHEMA_MISSING=false,PAYMENT_RECEIPTS_DELETE_SCHEMA_MISSING=false,PAYMENT_RECEIPTS_EDIT_SCHEMA_MISSING=false,PAYMENT_INCREMENT_SCHEMA_MISSING=false;
 const FIN_STATUS={
   aprovado:{pill:'<span class="pill pill-green">● Aprovado</span>'},
   pendente:{pill:'<span class="pill pill-amber">● Dados bancários pendentes</span>'},
@@ -7229,9 +7229,12 @@ function maskPix(v){
 }
 function paymentRowToEntry(row){
   const u=USERS.find(x=>x.id===row.researcher_id);
+  const valid=Number(row.valid_count)||0;
+  const approvedRaw=row.approved_valid_count==null?(row.status==='aprovado'?valid:0):Number(row.approved_valid_count)||0;
   return {id:row.id,surveyId:row.survey_id,researcherId:row.researcher_id,
     name:u?u.name:'(pesquisador removido)',phone:u?u.phone:'',pixKey:u?u.pixKey:'',
-    valid:row.valid_count||0,rejected:row.rejected_count||0,status:row.status||'pendente'};
+    valid,rejected:Number(row.rejected_count)||0,status:row.status||'pendente',
+    approvedValidCount:Math.max(0,Math.min(valid,approvedRaw))};
 }
 function paymentReceiptRowToEntry(row){
   return {id:row.id,paymentId:row.payment_id,researcherId:row.researcher_id,
@@ -7244,6 +7247,11 @@ function paymentReceiptsFor(paymentId){return PAYMENT_RECEIPTS.filter(r=>r.payme
 function paymentReceivedValue(paymentId){return paymentId?paymentReceiptsFor(paymentId).reduce((sum,r)=>sum+r.amount,0):0;}
 function paymentDueValue(row,price){return Math.max(0,(Number(row?.valid)||0)*(Number(price)||0));}
 function paymentBalanceValue(row,price){return Math.max(0,paymentDueValue(row,price)-paymentReceivedValue(row?.id));}
+function paymentApprovedValidValue(row){if(row?.status!=='aprovado')return 0;return Math.max(0,Math.min(Number(row?.valid)||0,Number(row?.approvedValidCount)||0));}
+function paymentPendingValidValue(row){return Math.max(0,(Number(row?.valid)||0)-paymentApprovedValidValue(row));}
+function paymentApprovedDueValue(row,price){return Math.max(0,paymentApprovedValidValue(row)*(Number(price)||0));}
+function paymentApprovedBalanceValue(row,price){return Math.max(0,paymentApprovedDueValue(row,price)-paymentReceivedValue(row?.id));}
+function paymentPendingDueValue(row,price){return Math.max(0,paymentDueValue(row,price)-paymentApprovedDueValue(row,price));}
 function financeStaffCanManageReceipts(){return ['admin','coord','gerente','admpro'].includes(CURRENT_PROFILE?.role||selectedRole);}
 function paymentReceiptFileLabel(receipt){
   const name=String(receipt?.receiptName||'comprovante de pagamento');
@@ -7382,8 +7390,8 @@ function financePixMarkup(r){
   return '<div class="finance-pix-cell"><code class="finance-pix-value" title="'+esc(key)+'">'+esc(key)+'</code><button type="button" class="btn-ghost finance-pix-copy" title="Copiar chave PIX" onclick="event.preventDefault();event.stopPropagation();copyTextValue('+jsArg(key)+',\'Chave PIX copiada.\')">Copiar PIX</button></div>';
 }
 function paymentReceiptMigrationNotice(){
-  return PAYMENT_RECEIPTS_SCHEMA_MISSING||PAYMENT_RECEIPTS_DELETE_SCHEMA_MISSING||PAYMENT_RECEIPTS_EDIT_SCHEMA_MISSING
-    ? '<div class="callout warn payment-ledger-warning"><b>Livro de recebimentos ainda não habilitado.</b> Execute <code>deploy/pagamentos-recebimentos-extrato.sql</code>, <code>deploy/comprovantes-pagamentos.sql</code>, <code>deploy/excluir-comprovante-pagamento.sql</code> e, para corrigir o valor pago, <code>deploy/alterar-valor-pagamento.sql</code> no Supabase.</div>'
+  return PAYMENT_RECEIPTS_SCHEMA_MISSING||PAYMENT_RECEIPTS_DELETE_SCHEMA_MISSING||PAYMENT_RECEIPTS_EDIT_SCHEMA_MISSING||PAYMENT_INCREMENT_SCHEMA_MISSING
+    ? '<div class="callout warn payment-ledger-warning"><b>Livro de recebimentos ainda não habilitado.</b> Execute <code>deploy/pagamentos-recebimentos-extrato.sql</code>, <code>deploy/comprovantes-pagamentos.sql</code>, <code>deploy/excluir-comprovante-pagamento.sql</code>, <code>deploy/alterar-valor-pagamento.sql</code> e <code>deploy/aprovacao-incremental-pagamentos.sql</code> no Supabase.</div>'
     : '';
 }
 async function loadPaymentsIfNeeded(){
@@ -7448,12 +7456,13 @@ function finTotals(idx){
   const valid=rows.reduce((a,r)=>a+r.valid,0);
   const rejected=rows.reduce((a,r)=>a+r.rejected,0);
   const valor=rows.reduce((a,r)=>a+r.valid*price,0);
-  const pendingValor=rows.filter(r=>r.status!=='aprovado').reduce((a,r)=>a+r.valid*price,0);
+  const pendingValor=rows.reduce((a,r)=>a+paymentPendingDueValue(r,price),0);
   const recebido=rows.reduce((a,r)=>a+paymentReceivedValue(r.id),0);
-  const aReceber=rows.filter(r=>r.status==='aprovado').reduce((a,r)=>a+paymentBalanceValue(r,price),0);
+  const aReceber=rows.reduce((a,r)=>a+paymentApprovedBalanceValue(r,price),0);
   const saldoDevido=rows.reduce((a,r)=>a+paymentBalanceValue(r,price),0);
+  const aprovado=rows.reduce((a,r)=>a+paymentApprovedDueValue(r,price),0);
   const rejeitadoValor=rejected*price;
-  return{valid,rejected,valor,pendingValor,recebido,aReceber,saldoDevido,rejeitadoValor,count:rows.length};
+  return{valid,rejected,valor,aprovado,pendingValor,recebido,aReceber,saldoDevido,rejeitadoValor,count:rows.length};
 }
 PAGES.finance=()=>{
   if(!SURVEYS_LOADED||!PAYMENTS_LOADED||!PAYMENT_RECEIPTS_LOADED){
@@ -7509,40 +7518,45 @@ function financeDetail(idx){
   const body=rows.length?rows.map(r=>{
     const st=FIN_STATUS[r.status]||FIN_STATUS.pendente;
     const valor=paymentDueValue(r,price);
+    const aprovado=paymentApprovedDueValue(r,price);
+    const pendingValid=paymentPendingValidValue(r),pendingValue=paymentPendingDueValue(r,price);
     const recebido=paymentReceivedValue(r.id);
-    const aReceber=r.status==='aprovado'?Math.max(0,valor-recebido):0;
+    const aReceber=paymentApprovedBalanceValue(r,price);
     const saldoDevido=Math.max(0,valor-recebido);
     const whatsappButton=r.phone?conversationButton(r.phone,financeWhatsAppMessage(s,r)):'<span class="finance-contact-missing">Sem telefone</span>';
     const pixShown=financePixMarkup(r);
     const pixAction=r.pixKey?'<div class="finance-pix-action"><span class="finance-pix-action-label">CHAVE PIX</span><code class="finance-pix-action-value" title="'+esc(r.pixKey)+'">'+esc(r.pixKey)+'</code><button type="button" class="btn-ghost finance-pix-action-copy" title="Copiar chave PIX" onclick="event.preventDefault();event.stopPropagation();copyTextValue('+jsArg(r.pixKey)+',\'Chave PIX copiada.\')">Copiar PIX</button></div>':'<span class="finance-pix-action-missing">PIX não informada</span>';
-    const approveButton=r.virtual||!r.valid
-      ?'<button type="button" class="btn-ghost finance-action-approve" disabled title="Ainda não há entrevistas válidas para aprovar">Aprovar pagamento</button>'
-      :'<button type="button" class="btn-ghost finance-action-approve" onclick="finApprovePayment('+idx+','+jsArg(r.researcherId)+')">'+(r.status==='aprovado'?'✓ Pagamento aprovado':'Aprovar pagamento')+'</button>';
+    const approveButton=r.virtual||!pendingValid
+      ?'<button type="button" class="btn-ghost finance-action-approve" disabled title="'+(r.virtual?'O pagamento será criado quando houver uma coleta válida':'Não há novas entrevistas aguardando aprovação')+'">'+(r.status==='aprovado'?'✓ Tudo aprovado':'Aprovar pagamento')+'</button>'
+      :'<button type="button" class="btn-ghost finance-action-approve" onclick="finApprovePayment('+idx+','+jsArg(r.researcherId)+')">'+(r.status==='aprovado'?'Aprovar novas coletas':'Aprovar pagamento')+'</button>';
     const receiptButton=r.virtual||!r.valid||r.status!=='aprovado'||aReceber<=0?'':'<button class="btn-ghost finance-action-receipt" onclick="finRegisterPayment('+idx+','+jsArg(r.researcherId)+')">＋ Registrar pagamento semanal</button>';
     const receiptRowAction=financeReceiptRowAction(r.id);
     const statusButton=r.virtual?'':'<button class="btn-ghost" onclick="finEditPayment('+idx+','+jsArg(r.researcherId)+')">Alterar status</button>';
-    return `<tr><td><b>${esc(r.name)}</b>${r.virtual?'<div class="finance-row-note">Sem pagamento criado ainda</div>':''}</td><td>${r.valid}</td><td>${r.rejected}</td><td><b>${brl(valor)}</b></td><td>${brl(recebido)}</td><td>${aReceber?'<b class="finance-to-receive">'+brl(aReceber)+'</b>':'<span class="pill pill-gray">R$ 0,00</span>'}<div class="finance-balance-note">Saldo devido: ${brl(saldoDevido)}</div></td><td>${pixShown||'<span style="color:var(--ink3)">—</span>'}</td><td>${st.pill}</td>
+    const approvalNote=pendingValid?'<div class="finance-status-sub finance-status-pending">'+pendingValid+' nova'+(pendingValid===1?'':'s')+' · '+brl(pendingValue)+' aguardando aprovação</div>':(r.approvedValidCount?'<div class="finance-status-sub finance-status-approved">'+r.approvedValidCount+' entrevista'+(r.approvedValidCount===1?'':'s')+' aprovada'+(r.approvedValidCount===1?'':'s')+'</div>':'');
+    return `<tr class="${pendingValid?'finance-row-has-pending':''}"><td><b>${esc(r.name)}</b>${r.virtual?'<div class="finance-row-note">Sem pagamento criado ainda</div>':''}</td><td>${r.valid}</td><td>${r.rejected}</td><td><b>${brl(valor)}</b><div class="finance-value-breakdown">Aprovado: ${brl(aprovado)}</div>${pendingValue?'<div class="finance-value-pending">Pendente: '+brl(pendingValue)+'</div>':''}</td><td>${brl(recebido)}</td><td>${aReceber?'<b class="finance-to-receive">'+brl(aReceber)+'</b>':'<span class="pill pill-gray">R$ 0,00</span>'}<div class="finance-balance-note">Saldo devido: ${brl(saldoDevido)}</div></td><td>${pixShown||'<span style="color:var(--ink3)">—</span>'}</td><td>${st.pill}${approvalNote}</td>
       <td class="finance-actions-cell"><div class="finance-row-actions">${pixAction}${whatsappButton}${approveButton}${receiptButton}${receiptRowAction}${statusButton}</div></td></tr>`;
   }).join(''):'<tr><td colspan="9" class="empty">Nenhum pesquisador atribuído a esta pesquisa ainda — atribua a equipe em Minhas pesquisas.</td></tr>';
   return head('Financeiro — '+s.name,'Pagamento por entrevista válida coletada nesta pesquisa',
     '<button class="btn btn-out" onclick="financeBack()">← Financeiro</button>'+ 
     (rows.length?'<button class="btn btn-out" onclick="finApproveAll('+idx+')">✓ Aprovar todos os pagamentos</button><button class="btn btn-out" onclick="alert(\'A exportação de remessa bancária será adicionada em uma etapa posterior.\')">Exportar remessa</button>':''))+`
   ${paymentReceiptMigrationNotice()}
-  <div class="grid g4" style="margin-bottom:16px">
+  <div class="grid g4 finance-summary-grid" style="margin-bottom:16px">
     ${stat('A pagar nesta pesquisa',brl(t.valor),t.valid.toLocaleString('pt-BR')+' entrevistas válidas','$','#2563eb')}
     ${stat('Pesquisadores',String(t.count),'com coleta nesta pesquisa','☺','#059669')}
     ${stat('Valor por formulário',brl(price),'região remota: '+brl(priceRemote),'◷','#7c3aed')}
-    ${stat('Pendente',brl(t.pendingValor),'aguardando aprovação','◷','#d97706')}
+    ${stat('Pendente',brl(t.pendingValor),'novas coletas para aprovar','◷','#d97706')}
     ${stat('A receber',brl(t.aReceber),'pagamentos aprovados','◷','#2563eb')}
     ${stat('Recebido',brl(t.recebido),'repasses lançados','✓','#059669')}
     ${stat('Saldo devido',brl(t.saldoDevido),'a pagar após os repasses','◷','#0f766e')}
   </div>
-  <div class="card mb">
+  <div class="finance-approval-banner"><div class="finance-approval-banner-icon">✓</div><div><b>Aprovação por etapas</b><span>Os recebimentos parciais continuam registrados. Quando surgirem novas entrevistas válidas, o botão <b>Aprovar novas coletas</b> aparece somente para o valor ainda não aprovado.</span></div><div class="finance-approval-banner-total"><small>Total devido</small><strong>${brl(t.valor)}</strong></div></div>
+  <div class="card mb finance-payments-card">
     <div class="card-t">Pagamentos por pesquisador</div>
     <div class="finance-weekly-callout"><b>Pagamentos semanais durante a coleta:</b> aprove o valor válido disponível e use <b>Registrar pagamento semanal</b> para informar quanto foi pago, a data e a referência da semana. Cada lançamento reduz imediatamente o <b>Saldo devido</b>; novas entrevistas válidas aumentam o valor devido sem apagar o histórico. Se houver erro no valor, use <b>Alterar valor pago</b> no lançamento correspondente; o mesmo comprovante e histórico serão preservados. Depois de pagar, use <b>Anexar comprovante</b> na própria linha ou no histórico abaixo.</div>
     <div class="card-d">Válidos e rejeitados vêm das coletas de campo. Rejeitadas são apenas informativas e não entram em pendente, a receber ou recebido. <b>Aprovar pagamento</b> move o valor válido para “A receber”; <b>Registrar pagamento semanal</b> lança um repasse total ou parcial com data. Use <b>Conversar</b> para abrir o WhatsApp do pesquisador e consulte ou copie a chave PIX nesta mesma linha.</div>
-    <div class="finance-table-hint" role="note">A coluna <b>Ações / contato</b> fica fixa à direita para você sempre conseguir conversar, aprovar e registrar pagamentos.</div>
-    <div class="finance-table-scroll"><table class="finance-data-table"><thead><tr><th>Pesquisador</th><th>Válidos</th><th>Rejeitados</th><th>Valor aprovado</th><th>Recebido</th><th>A receber / saldo devido</th><th>Chave PIX</th><th>Status</th><th class="finance-actions-header">Ações / contato</th></tr></thead>
+    <div class="finance-table-hint" role="note">A coluna <b>Ações / contato</b> fica fixa à direita para você sempre conseguir conversar, aprovar novas coletas e registrar pagamentos.</div>
+    <div class="finance-payment-legend"><span><i class="finance-legend-dot finance-legend-green"></i> Aprovado</span><span><i class="finance-legend-dot finance-legend-amber"></i> Novas coletas</span><span><i class="finance-legend-dot finance-legend-blue"></i> A receber</span><span><i class="finance-legend-dot finance-legend-gray"></i> Já recebido</span></div>
+    <div class="finance-table-scroll"><table class="finance-data-table"><thead><tr><th>Pesquisador</th><th>Válidos</th><th>Rejeitados</th><th>Total devido</th><th>Recebido</th><th>A receber / saldo</th><th>Chave PIX</th><th>Status</th><th class="finance-actions-header">Ações / contato</th></tr></thead>
     <tbody>${body}</tbody></table>
     </div>
   </div>
@@ -7577,23 +7591,31 @@ function financeFocusReceiptHistory(paymentId){
 function financeReturnToDetail(idx){FIN_IDX=idx;FIN_ARMED=true;go('finance');}
 async function finApprovePayment(idx,researcherId){
   const s=SURVEYS[idx],current=finRows(idx).find(r=>r.researcherId===researcherId);if(!s||!current||current.virtual||!current.valid)return;
-  if(current.status==='aprovado'){alert('Este pagamento já está aprovado e disponível em “A receber”.');return;}
-  const due=paymentDueValue(current,+s.price);
-  if(!confirm('Aprovar '+brl(due)+' para '+current.name+'? O valor ficará em “A receber” até um repasse ser registrado.'))return;
-  try{await saveFinStatus(s.id,researcherId,'aprovado');}catch(ex){alert('Não foi possível aprovar o pagamento: '+ex.message);return;}
+  const pendingValid=paymentPendingValidValue(current);if(!pendingValid){alert('Não há novas entrevistas aguardando aprovação para este pesquisador.');return;}
+  const pendingDue=paymentPendingDueValue(current,+s.price);
+  if(!confirm('Aprovar '+brl(pendingDue)+' de '+pendingValid+' nova'+(pendingValid===1?'':'s')+' entrevista'+(pendingValid===1?'':'s')+' para '+current.name+'? O valor ficará em “A receber” até um repasse ser registrado.'))return;
+  try{
+    const {data,error}=await sb.rpc('approve_payment_increment',{p_payment_id:current.id});
+    if(error)throw new Error(error.message);
+    const updated=Array.isArray(data)?data[0]:data;
+    if(updated)Object.assign(current,paymentRowToEntry(updated));else{current.approvedValidCount=current.valid;current.status='aprovado';}
+  }catch(ex){
+    if(/approve_payment_increment|approved_valid_count|schema cache|does not exist|function .* does not exist/i.test(ex.message||''))PAYMENT_INCREMENT_SCHEMA_MISSING=true;
+    alert('Não foi possível aprovar as novas coletas. Execute a migration deploy/aprovacao-incremental-pagamentos.sql no Supabase e tente novamente.');console.error(ex);return;
+  }
   financeReturnToDetail(idx);
 }
 async function finApproveAll(idx){
   const s=SURVEYS[idx];if(!s)return;
-  const eligible=finRows(idx).filter(r=>!r.virtual&&r.valid&&r.status!=='aprovado');
+  const eligible=finRows(idx).filter(r=>!r.virtual&&paymentPendingValidValue(r)>0);
   if(!eligible.length){alert('Não há pagamentos pendentes de aprovação nesta pesquisa.');return;}
-  const total=eligible.reduce((sum,r)=>sum+paymentDueValue(r,+s.price),0);
+  const total=eligible.reduce((sum,r)=>sum+paymentPendingDueValue(r,+s.price),0);
   if(!confirm('Aprovar '+eligible.length+' pagamento(s), no total de '+brl(total)+'? Os valores ficarão em “A receber”.'))return;
   try{
     const {data,error}=await sb.rpc('approve_payment_batch',{p_survey_id:s.id});
     if(error)throw new Error(error.message);
     const approvedCount=Number(data)||eligible.length;
-    PAYMENTS.filter(p=>p.surveyId===s.id&&p.valid>0).forEach(p=>{p.status='aprovado';});
+    PAYMENTS.filter(p=>p.surveyId===s.id&&paymentPendingValidValue(p)>0).forEach(p=>{p.status='aprovado';p.approvedValidCount=p.valid;});
     alert(approvedCount+' pagamento(s) aprovado(s).');
   }catch(ex){alert('Não foi possível aprovar em lote. Execute a migration pagamentos-recebimentos-extrato.sql no Supabase e tente novamente.');console.error(ex);return;}
   financeReturnToDetail(idx);
@@ -7610,7 +7632,7 @@ function validPaymentDate(value){
 async function finRegisterPayment(idx,researcherId){
   const s=SURVEYS[idx],current=finRows(idx).find(r=>r.researcherId===researcherId);if(!s||!current||current.virtual||current.status!=='aprovado')return;
   if(PAYMENT_RECEIPTS_SCHEMA_MISSING){alert('Execute primeiro a migration deploy/pagamentos-recebimentos-extrato.sql no Supabase.');return;}
-  const due=paymentDueValue(current,+s.price),received=paymentReceivedValue(current.id),balance=Math.max(0,due-received);if(balance<=0){alert('Este pagamento já foi recebido integralmente.');return;}
+  const due=paymentApprovedDueValue(current,+s.price),received=paymentReceivedValue(current.id),balance=Math.max(0,due-received);if(balance<=0){alert(paymentPendingValidValue(current)>0?'Há novas entrevistas aguardando aprovação antes de registrar outro repasse.':'Este pagamento já foi recebido integralmente.');return;}
   const amount=parsePaymentAmount(prompt('Valor pago para '+current.name+' (máximo '+brl(balance)+'). Pagamentos parciais são permitidos:',String(balance.toFixed(2)).replace('.',',')));
   if(amount==null){alert('Informe um valor pago válido.');return;}
   if(amount>balance){alert('O valor informado ultrapassa o saldo a receber de '+brl(balance)+'.');return;}

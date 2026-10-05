@@ -24,6 +24,6 @@ assert.match(css,/\.collect-quota-progress-card/,'estilo do painel de metas ause
 assert.match(css,/\.collect-quota-grid/,'grade de metas ausente');
 assert.match(css,/\.collect-quota-item/,'cartão individual de cota ausente');
 assert.match(css,/@media\(max-width:600px\)\{\.collect-quota-grid\{grid-template-columns:1fr\}/,'metas sem responsividade móvel');
-assert.match(html,/app\.js\?v=20261005202100/,'cache do app não atualizado');
-assert.match(html,/style\.css\?v=20261005202100/,'cache do CSS não atualizado');
+assert.match(html,/app\.js\?v=20261005203500/,'cache do app não atualizado');
+assert.match(html,/style\.css\?v=20261005203500/,'cache do CSS não atualizado');
 console.log('collection-quota-progress-smoke-test: OK');

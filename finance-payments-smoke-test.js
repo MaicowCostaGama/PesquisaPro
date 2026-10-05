@@ -8,12 +8,18 @@ const migration = fs.readFileSync('deploy/pagamentos-recebimentos-extrato.sql', 
 const receiptsMigration = fs.readFileSync('deploy/comprovantes-pagamentos.sql', 'utf8');
 const deleteReceiptMigration = fs.readFileSync('deploy/excluir-comprovante-pagamento.sql', 'utf8');
 const editReceiptMigration = fs.readFileSync('deploy/alterar-valor-pagamento.sql', 'utf8');
+const incrementalApprovalMigration = fs.readFileSync('deploy/aprovacao-incremental-pagamentos.sql', 'utf8');
 
 for (const token of [
   'PAYMENT_RECEIPTS',
   'loadPaymentReceiptsIfNeeded',
   'paymentReceivedValue',
   'paymentBalanceValue',
+  'paymentApprovedValidValue',
+  'paymentPendingValidValue',
+  'paymentApprovedDueValue',
+  'paymentApprovedBalanceValue',
+  'paymentPendingDueValue',
   'saldoDevido',
   'finApprovePayment',
   'finApproveAll',
@@ -55,7 +61,11 @@ for (const token of [
   'finance-action-receipt-delete',
   'finance-action-receipt-edit',
   'finance-action-approve',
-  'Ainda não há entrevistas válidas para aprovar',
+  'Aprovar novas coletas',
+  'finance-approval-banner',
+  'finance-payment-legend',
+  'finance-summary-grid',
+  'Não há novas entrevistas aguardando aprovação',
   'payment-receipt-delete',
   'payment-receipt-edit',
   'detach_payment_receipt',
@@ -138,6 +148,19 @@ for (const token of [
 assert(!editReceiptMigration.match(/delete\s+from\s+public\.(payment_receipts|payments)/i), 'migration de correção não pode apagar pagamentos ou lançamentos');
 
 for (const token of [
+  'approved_valid_count',
+  'approve_payment_increment',
+  'no new interviews to approve',
+  'receipt exceeds approved amount',
+  'least(coalesce(v_payment.approved_valid_count',
+  'grant execute on function public.approve_payment_increment(uuid) to authenticated',
+  'create or replace function public.approve_payment_batch(p_survey_id uuid)'
+]) {
+  assert(incrementalApprovalMigration.includes(token), `regra de aprovação incremental ausente: ${token}`);
+}
+assert(!incrementalApprovalMigration.match(/delete\s+from\s+public\.(payment_receipts|payments)/i), 'migration incremental não pode apagar pagamentos ou recibos');
+
+for (const token of [
   '.finance-table-scroll',
   '.finance-data-table',
   '.finance-row-actions',
@@ -170,6 +193,11 @@ for (const token of [
   '.finance-action-receipt-delete',
   '.finance-action-receipt-edit',
   '.finance-action-approve:disabled',
+  '.finance-approval-banner',
+  '.finance-payment-legend',
+  '.finance-summary-grid',
+  '.finance-status-pending',
+  '.finance-value-pending',
   '.payment-receipt-delete',
   '.payment-receipt-edit',
   '.finance-receipt-row-actions',
@@ -183,17 +211,19 @@ for (const token of [
   assert(css.includes(token), `estilo financeiro ausente: ${token}`);
 }
 
-assert(html.includes('app.js?v=20261005202100'), 'cache do app financeiro não foi atualizado');
-assert(html.includes('style.css?v=20261005202100'), 'cache do CSS financeiro não foi atualizado');
-assert(app.includes("r.status==='aprovado'?Math.max(0,valor-recebido):0"), 'a receber não está restrito a pagamentos aprovados');
+assert(html.includes('app.js?v=20261005203500'), 'cache do app financeiro não foi atualizado');
+assert(html.includes('style.css?v=20261005203500'), 'cache do CSS financeiro não foi atualizado');
+assert(app.includes('paymentApprovedBalanceValue(r,price)'), 'a receber não está restrito ao valor aprovado');
 assert(app.includes('const saldoDevido=Math.max(0,valor-recebido)'), 'saldo devido não é abatido pelos recebimentos');
 assert(app.includes('paymentBalanceValue(r,price)'), 'saldo devido não usa o valor real das entrevistas e recibos');
+assert(app.includes('paymentPendingDueValue(r,price)'), 'novas coletas não estão separadas do valor já aprovado');
 assert(app.includes("r.rejectedValor?'<div class=\"earnings-rejected-value\">"), 'rejeitadas não estão separadas no extrato');
 assert(migration.includes('grant execute on function public.record_payment_receipt(uuid, numeric, date, text) to authenticated;'), 'RPC de registro sem grant');
 assert(app.includes('O pagamento, o valor, a data e o histórico serão preservados'), 'exclusão não confirma preservação do lançamento');
 assert(app.includes("sb.rpc('detach_payment_receipt'"), 'exclusão não chama a RPC segura');
 assert(app.includes("sb.storage.from('payment-receipts').remove"), 'exclusão não remove o arquivo privado');
 assert(app.includes("sb.rpc('update_payment_receipt_amount'"), 'alteração não chama a RPC segura');
+assert(app.includes("sb.rpc('approve_payment_increment'"), 'aprovação incremental não chama a RPC segura');
 assert(app.includes('p_receipt_id:receipt.id'), 'alteração não identifica o recibo correto');
 assert(app.includes('O mesmo lançamento, a data, o pesquisador, o comprovante e o histórico serão preservados'), 'alteração não confirma preservação do lançamento e comprovante');
 assert(app.includes('Comprovante e ações'), 'histórico não identifica a coluna com a ação de alteração');

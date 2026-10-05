@@ -3971,6 +3971,7 @@ function collectEvolutionRefresh(){
 
 /* ===== Coleta de campo: mapa, feed e auditoria (dados reais, tabela collection_events) ===== */
 const COLLECT_COLORS=['#2563eb','#059669','#ea580c','#7c3aed','#dc2626','#d97706'];
+const COLLECT_MIN_DURATION_REJECTION_MESSAGE='Tempo de coleta não corresponde ao tempo mínimo necessário a uma coleta real';
 const COLLECT_EVENT_SELECT_BASE='id,survey_id,researcher_id,quota_label,lat,lng,accuracy_m,occurred_at,synced,flags,status,reject_reason,rejected_at,is_calibration';
 const COLLECT_EVENT_SELECT_DURATION=COLLECT_EVENT_SELECT_BASE+',duration_seconds';
 const COLLECT_EVENT_SELECT=COLLECT_EVENT_SELECT_DURATION+',recording_reservation_id,recording_required,recording_consent,recording_status,recording_error,recording_created_at';
@@ -5343,7 +5344,7 @@ async function acollectSubmit(){
     }
     if(error)throw new Error(error.message);
     eventId=data.id;
-    if(data.status==='rejected')serverRejectedReason=String(data.reject_reason||'A duração registrada ficou abaixo do tempo mínimo desta pesquisa.');
+    if(data.status==='rejected')serverRejectedReason=COLLECT_MIN_DURATION_REJECTION_MESSAGE;
   }catch(ex){
     ACOLLECT_SUBMITTING=false;
     renderAcollectActionState();

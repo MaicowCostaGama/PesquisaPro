@@ -3,6 +3,7 @@ const fs=require('fs');
 const app=fs.readFileSync('app.js','utf8');
 const css=fs.readFileSync('style.css','utf8');
 const migration=fs.readFileSync('deploy/tempo-minimo-coleta-auditoria.sql','utf8');
+const correction=fs.readFileSync('deploy/atualizar-mensagem-tempo-minimo-coleta.sql','utf8');
 const html=fs.readFileSync('app.html','utf8');
 
 for(const token of [
@@ -12,9 +13,10 @@ for(const token of [
   'surveyEffectiveMinimumSeconds',
   'auditMinimumDurationMarkup',
   'saveAuditMinimumDuration',
-  "save_survey_minimum_collection_seconds",
+  'save_survey_minimum_collection_seconds',
   'serverRejectedReason',
-  'Coleta rejeitada automaticamente',
+  'COLLECT_MIN_DURATION_REJECTION_MESSAGE',
+  'Tempo de coleta não corresponde ao tempo mínimo necessário a uma coleta real',
   'collection-rejection-tag'
 ])assert(app.includes(token),`app sem ${token}`);
 
@@ -39,13 +41,15 @@ for(const token of [
   'difficulty between 1 and 5',
   'enforce_collection_minimum_duration',
   "before insert on public.collection_events",
-  "new.status := 'rejected'",
-  'new.reject_reason := format',
+  'new.status := \'rejected\'',
+  "new.reject_reason := 'Tempo de coleta não corresponde ao tempo mínimo necessário a uma coleta real'",
   "array_append(coalesce(new.flags, '{}'::text[])",
   'grant execute on function public.save_survey_minimum_collection_seconds(uuid, integer) to authenticated',
   'begin;',
   'commit;'
 ])assert(migration.includes(token),`migration sem ${token}`);
+assert(correction.includes("new.reject_reason := 'Tempo de coleta não corresponde ao tempo mínimo necessário a uma coleta real'"),'migration corretiva sem mensagem exata');
 assert(!/drop\s+table|drop\s+column|truncate|delete\s+from/i.test(migration),'migration contém operação destrutiva');
-assert(html.includes('app.js?v=20261005154000'),'cache não atualizado');
+assert(!/drop\s+table|drop\s+column|truncate|delete\s+from/i.test(correction),'migration corretiva contém operação destrutiva');
+assert(html.includes('app.js?v=20261005162000'),'cache não atualizado');
 console.log('Collection minimum duration smoke test: PASS — dificuldade, cálculo, ajuste, trigger seguro e mensagem verificados.');

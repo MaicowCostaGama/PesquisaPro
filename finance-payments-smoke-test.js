@@ -215,8 +215,8 @@ for (const token of [
   assert(css.includes(token), `estilo financeiro ausente: ${token}`);
 }
 
-assert(html.includes('app.js?v=20261005213500'), 'cache do app financeiro não foi atualizado');
-assert(html.includes('style.css?v=20261005213500'), 'cache do CSS financeiro não foi atualizado');
+assert(html.includes('app.js?v=20261005214500'), 'cache do app financeiro não foi atualizado');
+assert(html.includes('style.css?v=20261005214500'), 'cache do CSS financeiro não foi atualizado');
 assert(app.includes('paymentApprovedBalanceValue(r,price)'), 'a receber não está restrito ao valor aprovado');
 assert(app.includes('const saldoDevido=Math.max(0,valor-recebido)'), 'saldo devido não é abatido pelos recebimentos');
 assert(app.includes('paymentBalanceValue(r,price)'), 'saldo devido não usa o valor real das entrevistas e recibos');
@@ -255,5 +255,8 @@ assert(app.includes('const totalPesq=new Set(entries.flatMap(({i})=>finRows(i).m
 assert(app.includes("stat('PAGAMENTOS PARCIAIS REALIZADOS',brl(totalRecebido)"), 'pagamentos parciais gerais não usam repasses realizados');
 assert(app.includes("stat('PAGAMENTOS A APROVAR',brl(totalPend)"), 'aprovações gerais não usam o pendente agregado');
 assert(app.includes("stat('FALTA PAGAR',brl(totalSaldoDevido)"), 'falta pagar geral não usa o saldo agregado');
+assert(app.includes('Ganho total do pesquisador'), 'novo rótulo de ganho total não foi aplicado');
+assert(!app.includes('<small>Total devido</small>'), 'rótulo antigo Total devido ainda aparece no banner financeiro');
+assert(!app.includes('<th>Total devido</th>'), 'rótulo antigo Total devido ainda aparece na tabela financeira');
 
 console.log('Finance payments smoke test OK: aprovação, saldo abatido, correção de valores, comprovantes privados, RPCs, RLS e extratos por pesquisa verificados.');

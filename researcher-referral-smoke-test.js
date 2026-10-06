@@ -40,9 +40,9 @@ assert.match(migration,/using \(referrer_id = auth\.uid\(\)\)/,'pesquisador não
 assert.match(migration,/grant execute on function public\.researcher_referral_public_info\(text\) to anon, authenticated/,'link público sem acesso anon');
 assert.match(migration,/grant execute on function public\.submit_researcher_referral_signup\(/,'RPC de cadastro sem grant');
 assert.doesNotMatch(migration,/drop table|delete from public\.(profiles|signups|researcher_referrals)/i,'migration contém exclusão destrutiva');
-assert.match(html,/app\.js\?v=20261006150000/,'cache do app não atualizado');
-assert.match(html,/recruitment\.js\?v=20261006150000/,'cache do recrutamento não atualizado');
-assert.match(cadastro,/style\.css\?v=20261006150000/,'cache do cadastro não atualizado');
+assert.match(html,/app\.js\?v=20261006163500/,'cache do app não atualizado');
+assert.match(html,/recruitment\.js\?v=20261006163500/,'cache do recrutamento não atualizado');
+assert.match(cadastro,/style\.css\?v=20261006163500/,'cache do cadastro não atualizado');
 assert.match(css,/researcher-referrals-card/,'CSS do perfil de indicação ausente');
 assert.match(css,/recruitment-referrals-section/,'CSS da tabela de indicações ausente');
 console.log('researcher-referral-smoke-test: OK');

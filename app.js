@@ -49,7 +49,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261006150000';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261006163500';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -8230,50 +8230,63 @@ PAGES['contract-template']=()=>head('Modelos de contrato','Use seu próprio mode
 
 /* template data + behaviour */
 const TPL_FIELDS=[
-  ['{contratada_razao}','Razão social (sua empresa)'],
-  ['{contratada_cnpj}','CNPJ (sua empresa)'],
-  ['{contratada_endereco}','Endereço (sua empresa)'],
+  ['{contratada_razao}','Razão social da contratante'],
+  ['{contratante_programa}','Programa/plataforma'],
+  ['{contratada_cnpj}','CNPJ da contratante'],
+  ['{contratada_endereco}','Endereço da contratante'],
   ['{nome}','Nome do contratado'],
   ['{cpf}','CPF do contratado'],
   ['{funcao}','Função'],
-  ['{regional}','Regional / pólo'],
-  ['{valor_form}','Valor por formulário'],
+  ['{regional}','Regional / polo'],
+  ['{valor_form}','Valor por formulário válido'],
+  ['{valor_remoto}','Valor de coleta remota'],
   ['{pesquisa}','Nome da pesquisa'],
+  ['{aceite_pesquisa}','Declaração de aceite do valor da pesquisa'],
+  ['{versao_contrato}','Versão do contrato'],
   ['{data}','Data'],
   ['{cidade}','Cidade'],
 ];
 const TPL_SAMPLE={
-  '{contratada_razao}':'Instituto de Pesquisa [Sua Empresa] Ltda',
-  '{contratada_cnpj}':'00.000.000/0001-00',
-  '{contratada_endereco}':'Av. Afonso Pena, 1000 — Belo Horizonte/MG',
+  '{contratada_razao}':'Versus Soluções em Gestão',
+  '{contratante_programa}':'PesquisaPro',
+  '{contratada_cnpj}':'26.643.308/0001-49',
+  '{contratada_endereco}':'Avenida Trinta e um de Março, nº 861, Loja 07, São João del Rei/MG',
   '{nome}':'João Pereira','{cpf}':'123.456.789-00','{funcao}':'Pesquisador de campo',
-  '{regional}':'Triângulo','{valor_form}':'R$ 5,00','{pesquisa}':'Pesquisa Eleitoral MG 2026',
-  '{data}':'24/06/2026','{cidade}':'Belo Horizonte/MG'
+  '{regional}':'Região definida na pesquisa','{valor_form}':'R$ 5,00','{valor_remoto}':'R$ 8,00',
+  '{pesquisa}':'Pesquisa Eleitoral MG 2026',
+  '{aceite_pesquisa}':'Aceite eletrônico registrado com concordância do valor exibido para esta pesquisa',
+  '{versao_contrato}':'v2-2026-pesquisador','{data}':'06/10/2026','{cidade}':'São João del Rei/MG'
 };
 const TPL_TEXTS={
-  pesq:`CONTRATO DE PRESTAÇÃO DE SERVIÇOS DE PESQUISA DE CAMPO
+  pesq:`CONTRATO-QUADRO DE PRESTAÇÃO DE SERVIÇOS DE PESQUISA DE CAMPO
 
-CONTRATANTE: {contratada_razao}, CNPJ {contratada_cnpj}, com sede em {contratada_endereco}.
+CONTRATANTE: {contratada_razao}, por meio do programa {contratante_programa}, CNPJ {contratada_cnpj}, com endereço em {contratada_endereco}.
 
 CONTRATADO: {nome}, CPF {cpf}, na função de {funcao}, atuando na regional {regional}.
 
 OBJETO: aplicação de questionários da {pesquisa}.
 
-REMUNERAÇÃO: o CONTRATADO será remunerado em {valor_form} por formulário válido, conforme critérios de auditoria de qualidade definidos pela CONTRATANTE.
+REMUNERAÇÃO: o CONTRATADO será remunerado em {valor_form} por formulário válido. Se houver modalidade remota, será aplicado {valor_remoto}. O aceite da pesquisa registra a concordância com o valor exibido.
+
+REGRAS: GPS, área da pesquisa, distância mínima de 15 metros apenas para a mesma pesquisa, tempo mínimo, auditoria e gravações de confirmação quando solicitadas, inclusive obrigatoriamente após as 21h.
+
+ACEITE ESPECÍFICO: {aceite_pesquisa}
+
+VERSÃO: {versao_contrato}
 
 {cidade}, {data}.`,
   coord:`CONTRATO DE COORDENAÇÃO DE PESQUISA
 
-CONTRATANTE: {contratada_razao}, CNPJ {contratada_cnpj}.
+CONTRATANTE: {contratada_razao}, por meio do programa {contratante_programa}, CNPJ {contratada_cnpj}.
 
 CONTRATADO: {nome}, CPF {cpf}, na função de {funcao}, responsável pela regional {regional}.
 
-OBJETO: coordenação de equipe de campo da {pesquisa}, incluindo supervisão de pesquisadores e controle de cotas.
+OBJETO: coordenação de equipe de campo de {pesquisa}, incluindo supervisão de pesquisadores, cotas, integridade e regras de auditoria.
 
 {cidade}, {data}.`,
   blank:`[Cole ou escreva seu contrato aqui]
 
-Use os campos como {nome}, {cpf} e {valor_form} onde quiser que o sistema preencha automaticamente.`
+Use os campos como {nome}, {cpf}, {pesquisa}, {valor_form}, {aceite_pesquisa} e {versao_contrato} onde quiser que o sistema preencha automaticamente.`
 };
 function loadTpl(which){
   document.getElementById('tpl-text').value=TPL_TEXTS[which]||'';
@@ -8323,7 +8336,7 @@ function renderTplPreview(){
    precisar assinar a nova versão antes de conseguir coletar de novo; a
    assinatura da versão antiga continua guardada, intacta, para histórico.
 */
-let CONTRACT_VERSION='v1-2026';
+let CONTRACT_VERSION='v2-2026-pesquisador';
 let CONTRACT_SETTINGS_LOADED=false,CONTRACT_SETTINGS_LOADING=false;
 async function loadContractSettingsIfNeeded(){
   if(CONTRACT_SETTINGS_LOADED||CONTRACT_SETTINGS_LOADING)return;
@@ -8362,30 +8375,34 @@ async function createContractVersion(){
   }catch(ex){alert('Não foi possível criar a nova versão: '+ex.message+'\\n\\nExecute a migration contratos-versoes.sql no Supabase e tente novamente.');}
 }
 const EMPRESA_CONTRATO={
-  razao:'[RAZÃO SOCIAL DA CONTRATANTE LTDA.]',
-  cnpj:'[00.000.000/0001-00]',
-  endereco:'[endereço completo da sede]',
-  representante:'[nome do responsável legal pela CONTRATANTE]',
+  razao:'Versus Soluções em Gestão',
+  programa:'PesquisaPro',
+  cnpj:'26.643.308/0001-49',
+  endereco:'Avenida Trinta e um de Março, nº 861, Loja 07, São João del Rei/MG',
+  representante:'seu representante legal devidamente identificado no ato da assinatura',
 };
 function contractClauses(nome,cpf,cidade){
   const c=EMPRESA_CONTRATO;
   return [
-    {t:'Das partes',p:`De um lado, ${c.razao}, inscrita no CNPJ sob o nº ${c.cnpj}, com sede em ${c.endereco}, doravante denominada CONTRATANTE, neste ato representada por ${c.representante}; e de outro lado ${nome||'[nome do pesquisador]'}, portador(a) do CPF nº ${cpf||'[CPF não informado]'}, pessoa física, autônomo(a), doravante denominado(a) CONTRATADO(A), têm entre si justo e contratado o presente Contrato de Prestação de Serviços Autônomos de Coleta de Dados de Pesquisa ("Contrato"), que se regerá pelas cláusulas seguintes.`},
-    {t:'1ª. Do objeto',p:'O presente Contrato tem por objeto a prestação, pelo(a) CONTRATADO(A), de serviços autônomos e eventuais de aplicação de questionários e coleta de dados em campo (entrevistas presenciais georreferenciadas, e eventualmente remotas), para pesquisas de opinião, mercado ou similares realizadas pela CONTRATANTE ou por seus clientes, por meio da plataforma eletrônica PesquisaPro (aplicativo/site).'},
-    {t:'2ª. Da adesão por pesquisa e do caráter de contrato-quadro',p:'Este Contrato é firmado uma única vez e vigora, sem necessidade de nova assinatura, para todas as pesquisas que a CONTRATANTE vier a disponibilizar ao(à) CONTRATADO(A) na plataforma. Cada pesquisa específica é oferecida ao(à) CONTRATADO(A) como um convite individual, do qual constam, no mínimo: (i) a cidade ou região de atuação; (ii) o valor pago por formulário/entrevista válida (coleta presencial e, quando houver, coleta remota); e (iii) o período estimado de coleta. O(A) CONTRATADO(A) tem plena liberdade para aceitar ou recusar cada convite, sem qualquer penalidade, e a aceitação eletrônica de um convite específico dentro do aplicativo constitui a ordem de serviço daquela pesquisa, regida pelas condições gerais deste Contrato.'},
-    {t:'3ª. Da natureza autônoma e da ausência de vínculo empregatício',p:'As partes reconhecem e declaram, para todos os fins de direito, que a relação ora estabelecida é de natureza exclusivamente civil e autônoma, não gerando, em nenhuma hipótese, vínculo empregatício entre as partes, nos termos do art. 442-B da Consolidação das Leis do Trabalho (CLT), com redação dada pela Lei nº 13.467/2017, tampouco vínculo de qualquer outra natureza. Não há relação de subordinação jurídica, hierárquica ou disciplinar entre as partes: o(a) CONTRATADO(A) organiza livremente sua rotina, define seus próprios horários de trabalho dentro do período de coleta de cada pesquisa, utiliza equipamento e meio de locomoção próprios, e pode, a qualquer tempo, recusar convites, aceitar convites de outras pesquisas — inclusive de concorrentes da CONTRATANTE — e prestar serviços a terceiros, não havendo exclusividade nem pessoalidade obrigatória. A remuneração é feita exclusivamente por produção aprovada (formulário/entrevista válida), nunca por jornada, o que reforça o caráter autônomo da prestação. Em razão dessa natureza, não são devidos pela CONTRATANTE ao(à) CONTRATADO(A) 13º salário, férias, aviso prévio, FGTS, adicionais ou qualquer outra verba de natureza trabalhista, sendo de responsabilidade exclusiva do(a) CONTRATADO(A) o recolhimento dos tributos e contribuições incidentes sobre os valores recebidos, inclusive perante o INSS na qualidade de contribuinte individual/autônomo, e perante a Receita Federal, quando aplicável.'},
-    {t:'4ª. Da remuneração e das condições de pagamento',p:'O(A) CONTRATADO(A) receberá, por cada entrevista/formulário considerado válido e aprovado, o valor informado no convite da respectiva pesquisa no momento em que este for aceito, podendo esse valor variar entre pesquisas e entre coleta presencial e coleta remota. O pagamento correspondente a cada pesquisa é devido somente após o encerramento da coleta daquela pesquisa e a conclusão da auditoria de qualidade das entrevistas nela realizadas, sendo calculado exclusivamente sobre os formulários aprovados (não reprovados), conforme demonstrativo disponibilizado ao(à) CONTRATADO(A) na tela "Meus ganhos" do aplicativo. Os valores serão pagos via PIX, na chave informada pelo(a) próprio(a) CONTRATADO(A) em seu cadastro na plataforma, sendo de sua exclusiva responsabilidade mantê-la correta e atualizada. Formulários ainda pendentes de auditoria na data de encerramento de uma pesquisa serão pagos assim que a respectiva auditoria for concluída.'},
-    {t:'5ª. Dos critérios de validação e reprovação das coletas',p:'Considera-se válida a entrevista que atender, cumulativamente, aos seguintes critérios, verificados eletronicamente pela plataforma e/ou por auditoria da equipe da CONTRATANTE: (i) georreferenciamento obrigatório, com coordenadas de GPS registradas dentro da área geográfica definida para a pesquisa e para a cota respondida, observadas as regras de proximidade e de distância mínima entre coletas de um mesmo pesquisador estabelecidas pela CONTRATANTE para coibir fraudes; (ii) tempo mínimo de aplicação do questionário, sendo entrevistas concluídas abaixo do tempo mínimo estipulado sinalizadas para auditoria e passíveis de reprovação; (iii) ausência de duplicidade de entrevistado e/ou de dispositivo utilizado; e (iv) ausência de indícios de fraude, inconsistência ou preenchimento de má-fé. A CONTRATANTE, por seus administradores e coordenadores, poderá reprovar, de forma justificada e com o motivo registrado no aplicativo, qualquer entrevista que não atenda a esses critérios, hipótese em que ela não será remunerada. A reprovação de entrevistas não gera, por si só, qualquer outra penalidade contratual ao(à) CONTRATADO(A), ressalvada a hipótese de fraude comprovada, que autoriza a rescisão imediata deste Contrato, sem prejuízo das demais medidas cabíveis.'},
-    {t:'6ª. Das obrigações do(a) CONTRATADO(A)',p:'Sem que isso implique subordinação, o(a) CONTRATADO(A) se compromete a: (i) aplicar os questionários com honestidade, zelo e fidelidade às respostas efetivamente obtidas dos entrevistados; (ii) manter ativa a localização (GPS) do dispositivo durante toda a aplicação; (iii) manter atualizados seus dados cadastrais e de pagamento na plataforma; (iv) preservar o sigilo do conteúdo dos questionários e da metodologia das pesquisas perante terceiros; e (v) tratar os entrevistados e seus dados pessoais com respeito e em conformidade com a legislação aplicável.'},
-    {t:'7ª. Das obrigações da CONTRATANTE',p:'A CONTRATANTE se compromete a: (i) disponibilizar ao(à) CONTRATADO(A), pela plataforma, informações claras sobre cada convite de pesquisa antes de sua aceitação, incluindo valor por formulário, área geográfica e cotas; (ii) disponibilizar, na tela "Meus ganhos", o resultado da auditoria de cada entrevista enviada; e (iii) efetuar o pagamento dos formulários aprovados na forma e no prazo previstos na Cláusula 4ª.'},
-    {t:'8ª. Da proteção de dados pessoais (LGPD)',p:'As partes se comprometem a tratar os dados pessoais a que tiverem acesso em razão deste Contrato — inclusive os dados pessoais dos entrevistados coletados durante as pesquisas e os dados pessoais do(a) próprio(a) CONTRATADO(A) — em conformidade com a Lei nº 13.709/2018 (Lei Geral de Proteção de Dados Pessoais), utilizando-os exclusivamente para as finalidades de execução das pesquisas e da relação contratual ora firmada, vedados o uso, a cópia, a divulgação ou o compartilhamento para qualquer outra finalidade.'},
-    {t:'9ª. Da confidencialidade e da propriedade dos dados coletados',p:'Todos os dados, respostas e informações coletados durante a execução das pesquisas são de propriedade exclusiva da CONTRATANTE e/ou de seus clientes, não podendo o(a) CONTRATADO(A) deles se utilizar, copiá-los, divulgá-los ou reproduzi-los, no todo ou em parte, para qualquer finalidade diversa da execução deste Contrato, mesmo após o seu término.'},
-    {t:'10ª. Da vigência e da rescisão',p:'Este Contrato vigora por prazo indeterminado a partir da data de sua assinatura eletrônica, podendo ser rescindido, a qualquer tempo e sem necessidade de justificativa, por qualquer das partes, mediante simples comunicação — inclusive por e-mail ou pela própria plataforma —, sem multa ou aviso prévio, dada a natureza autônoma e não exclusiva da prestação de serviços. A rescisão não afeta o direito do(a) CONTRATADO(A) ao pagamento das entrevistas já aprovadas até a data da rescisão, tampouco desobriga as partes das cláusulas de confidencialidade e proteção de dados, que permanecem vigentes após o término do Contrato.'},
-    {t:'11ª. Da assinatura eletrônica',p:'As partes reconhecem, desde já, a validade jurídica e a força probatória da assinatura eletrônica utilizada para a celebração deste Contrato, nos termos do art. 10, §2º, da Medida Provisória nº 2.200-2, de 24 de agosto de 2001, e do art. 107 do Código Civil (Lei nº 10.406/2002), que consagra a liberdade das formas de manifestação de vontade. A aceitação eletrônica deste Contrato pelo(a) CONTRATADO(A), realizada dentro da plataforma mediante identificação (nome e CPF cadastrados), declaração expressa de concordância e registro de data, hora, endereço IP (quando disponível) e do resumo criptográfico (hash) do texto exato então apresentado, é havida pelas partes como manifestação de vontade válida, inequívoca e suficiente para todos os efeitos deste Contrato, dispensando-se a assinatura manuscrita ou por certificado digital ICP-Brasil.'},
-    {t:'12ª. Do foro',p:`Fica eleito o foro da comarca de ${cidade||'domicílio da CONTRATANTE'}, com renúncia expressa a qualquer outro, por mais privilegiado que seja, para dirimir quaisquer dúvidas ou controvérsias oriundas deste Contrato.`},
+    {t:'Das partes',p:`De um lado, ${c.razao}, por meio do programa ${c.programa}, inscrita no CNPJ sob o nº ${c.cnpj}, com endereço na ${c.endereco}, doravante denominada CONTRATANTE, neste ato representada por ${c.representante}; e de outro lado ${nome||'[nome do pesquisador]'}, portador(a) do CPF nº ${cpf||'[CPF não informado]'}, pessoa física, autônomo(a), doravante denominado(a) CONTRATADO(A), têm entre si justo e contratado o presente Contrato-Quadro de Prestação de Serviços Autônomos de Coleta de Dados de Pesquisa, que se regerá pelas cláusulas seguintes.`},
+    {t:'1ª. Do objeto',p:'O presente Contrato tem por objeto a prestação autônoma, eventual e não exclusiva de serviços de aplicação de questionários e coleta de dados em campo, por meio da plataforma PesquisaPro, incluindo entrevistas presenciais georreferenciadas e, quando expressamente disponibilizadas, coletas remotas, para pesquisas de opinião, mercado, satisfação ou similares realizadas pela CONTRATANTE ou por seus clientes.'},
+    {t:'2ª. Do contrato-quadro e da adesão a cada pesquisa',p:'Este instrumento é um contrato-quadro e é assinado uma única vez para estabelecer as condições gerais aplicáveis às pesquisas disponibilizadas ao(à) CONTRATADO(A). Cada pesquisa constitui uma oportunidade independente de prestação de serviço e será apresentada no aplicativo com, no mínimo, seu nome, período, área geográfica, regras de cota, modalidade de coleta e remuneração. O(A) CONTRATADO(A) poderá aceitar ou recusar cada convite livremente. O aceite eletrônico de uma pesquisa no aplicativo constitui a ordem de serviço específica e registra a concordância com as condições exibidas para aquela pesquisa.'},
+    {t:'3ª. Da remuneração variável e da concordância com o valor',p:'O valor da remuneração é definido pela CONTRATANTE para cada pesquisa e pode ser diferente entre pesquisas, modalidades ou regiões. Antes do aceite, o aplicativo exibirá o valor por formulário/entrevista válida — inclusive eventual valor específico para coleta remota — e o aceite do convite registrará que o(a) CONTRATADO(A) leu e concordou com esse valor. O valor aceito não será alterado retroativamente para as coletas realizadas sob aquela ordem de serviço. A remuneração é devida exclusivamente por entrevista/formulário aprovado na auditoria, não sendo devidos valores por coleta rejeitada, cancelada ou ainda pendente de validação.'},
+    {t:'4ª. Da natureza autônoma e da ausência de vínculo empregatício',p:'As partes reconhecem que a relação é exclusivamente civil e autônoma, sem vínculo empregatício, subordinação jurídica, hierárquica ou disciplinar, nos termos da legislação aplicável, inclusive do art. 442-B da CLT quando cabível. O(A) CONTRATADO(A) organiza sua rotina, escolhe os convites que deseja aceitar, utiliza seus próprios equipamentos e meios de locomoção e pode prestar serviços a terceiros, inexistindo exclusividade. A remuneração é por produção aprovada, e não por jornada. Tributos, contribuições e obrigações fiscais incidentes sobre os valores recebidos serão tratados conforme a legislação aplicável e a situação do(a) CONTRATADO(A).'},
+    {t:'5ª. Do pagamento e da chave PIX',p:'Os pagamentos serão processados semanalmente, conforme o fluxo financeiro da CONTRATANTE, após a aprovação das entrevistas válidas e a apuração do saldo disponível de cada pesquisa. O pagamento será realizado pela chave PIX informada pelo(a) CONTRATADO(A) no cadastro. É obrigação do(a) CONTRATADO(A) manter nome, CPF e chave PIX corretos e atualizados. Pagamentos parciais, datas, comprovantes, valores recebidos, saldo a receber e entrevistas rejeitadas serão demonstrados no extrato do aplicativo. Entrevistas rejeitadas não compõem o valor pendente, o valor a receber ou o valor recebido.'},
+    {t:'6ª. Das regras de localização e integridade da coleta',p:'A localização do dispositivo é obrigatória durante a coleta. A entrevista somente poderá ser iniciada dentro da cidade, estado, região ou área definida para a pesquisa e para a respectiva cota. Para a mesma pesquisa, o sistema bloqueará o início de uma nova coleta quando ela estiver a menos de 15 (quinze) metros da coleta anterior não reprovada do mesmo pesquisador, como medida de integridade e prevenção a registros artificiais. Essa comparação é feita por pesquisador e por pesquisa: coletas de pesquisas diferentes podem ocorrer no mesmo local, sem que a trava de 15 metros de uma pesquisa impeça a outra. O(A) CONTRATADO(A) não poderá tentar contornar GPS, permissões de localização ou regras de área.'},
+    {t:'7ª. Do tempo mínimo, auditoria e rejeição',p:'Cada pesquisa poderá estabelecer tempo mínimo de coleta conforme a quantidade, o tipo e a dificuldade das perguntas. Entrevistas concluídas abaixo do tempo mínimo serão submetidas à auditoria e poderão ser rejeitadas com o registro do motivo no aplicativo, inclusive com a mensagem: “Tempo de coleta não corresponde ao tempo mínimo necessário a uma coleta real”. Também poderão ser rejeitadas entrevistas com duplicidade, inconsistências, respostas incompatíveis, uso indevido do aplicativo ou qualquer indício de fraude. A rejeição justificada não gera pagamento daquela coleta; indícios comprovados de fraude poderão ensejar o desligamento do(a) CONTRATADO(A) e a adoção das medidas cabíveis.'},
+    {t:'8ª. Das gravações de confirmação',p:'Para verificar a autenticidade das entrevistas, a plataforma poderá solicitar aleatoriamente uma gravação de voz do entrevistado ao final da coleta, confirmando que a entrevista ocorreu e que as perguntas foram realizadas. Em toda entrevista iniciada após as 21h00, a gravação de confirmação do entrevistado ao final será obrigatória, conforme a regra da pesquisa. O(A) CONTRATADO(A) deverá explicar a solicitação ao entrevistado, respeitar sua manifestação e registrar no aplicativo eventual recusa. A ausência injustificada de gravação obrigatória, a gravação incompatível ou a falsificação de qualquer evidência poderá levar à auditoria e à rejeição da entrevista.'},
+    {t:'9ª. Das obrigações do(a) CONTRATADO(A)',p:'Sem que isso implique subordinação, o(a) CONTRATADO(A) obriga-se a: (i) entrevistar pessoas reais e registrar fielmente suas respostas; (ii) seguir o questionário, as cotas, as orientações e os limites geográficos da pesquisa; (iii) manter GPS e internet disponíveis quando exigidos pelo aplicativo; (iv) não compartilhar sua conta, dispositivo ou credenciais; (v) não criar entrevistas, respostas, localizações ou gravações fictícias; (vi) manter seus dados cadastrais e PIX atualizados; (vii) preservar a confidencialidade; e (viii) tratar entrevistados com respeito, transparência e observância da legislação aplicável.'},
+    {t:'10ª. Das obrigações da CONTRATANTE',p:'A CONTRATANTE disponibilizará no aplicativo as informações essenciais de cada pesquisa antes do aceite, incluindo valor por formulário, área de atuação, período, cotas e regras específicas; manterá o registro do aceite e da auditoria; informará, sempre que possível, o motivo de eventual rejeição; e efetuará o pagamento das entrevistas aprovadas conforme as condições deste instrumento e do extrato da pesquisa.'},
+    {t:'11ª. Da proteção de dados pessoais',p:'As partes tratarão os dados pessoais dos entrevistados, do(a) CONTRATADO(A) e de terceiros em conformidade com a Lei nº 13.709/2018 (LGPD) e demais normas aplicáveis, limitando o uso ao necessário para execução, segurança, auditoria, pagamento e prestação de contas das pesquisas. É vedado copiar, comercializar, divulgar, publicar ou compartilhar dados, respostas, gravações, coordenadas ou documentos fora das finalidades autorizadas.'},
+    {t:'12ª. Da confidencialidade e da propriedade dos dados',p:'Questionários, respostas, gravações, coordenadas, cotas, metodologias, relatórios e demais informações obtidas na execução das pesquisas são confidenciais e pertencem à CONTRATANTE e/ou a seus clientes, conforme o caso. O(A) CONTRATADO(A) não poderá utilizá-los para finalidade própria ou de terceiros, inclusive após o encerramento deste contrato.'},
+    {t:'13ª. Da vigência, suspensão e rescisão',p:'Este Contrato vigora por prazo indeterminado a partir do aceite eletrônico e não obriga o(a) CONTRATADO(A) a aceitar pesquisas futuras. Qualquer parte poderá encerrá-lo mediante comunicação pela plataforma ou outro meio idôneo. A CONTRATANTE poderá suspender o acesso a novas coletas ou rescindir imediatamente o contrato em caso de fraude, falsificação, compartilhamento de conta, violação de confidencialidade, manipulação de GPS, reincidência de coletas incompatíveis ou descumprimento grave das regras. O encerramento não prejudica o pagamento das entrevistas já aprovadas nem extingue as obrigações de confidencialidade e proteção de dados.'},
+    {t:'14ª. Da assinatura eletrônica e dos registros',p:'A aceitação eletrônica deste contrato pelo(a) CONTRATADO(A), realizada mediante sua conta autenticada, nome e CPF cadastrados, declaração expressa de concordância e registro de data, hora, versão do contrato, endereço IP quando disponível e resumo criptográfico (hash) do texto apresentado, constitui manifestação de vontade válida para os fins deste instrumento. O aceite de cada convite de pesquisa também registrará a remuneração específica exibida e aceita para aquela pesquisa.'},
+    {t:'15ª. Do foro',p:`Fica eleito o foro da comarca de São João del Rei/MG, ressalvadas as regras legais de competência aplicáveis, para dirimir dúvidas ou controvérsias oriundas deste Contrato.`},
   ];
 }
-const CONTRACT_TITLE='CONTRATO DE PRESTAÇÃO DE SERVIÇOS AUTÔNOMOS DE COLETA DE DADOS DE PESQUISA';
+const CONTRACT_TITLE='CONTRATO-QUADRO DE PRESTAÇÃO DE SERVIÇOS AUTÔNOMOS DE COLETA DE DADOS — PESQUISAPRO';
 function contractHtml(nome,cpf,cidade){
   return '<div style="text-align:center;font-weight:700;font-size:14px;color:var(--ink)">'+esc(CONTRACT_TITLE)+'</div>'+
     contractClauses(nome,cpf,cidade).map(c=>`<h3>${esc(c.t)}</h3><p style="margin:0 0 10px;text-align:justify">${esc(c.p)}</p>`).join('');
@@ -8498,7 +8515,7 @@ function loadMyInvitesIfNeeded(){
 }
 function researcherProfileInvitesMarkup(){
   const invites=MY_INVITES||[];
-  return `<section class="card mb researcher-profile-invites" aria-labelledby="researcher-profile-invites-title"><div class="researcher-profile-invites-head"><div><div class="card-t" id="researcher-profile-invites-title">Convites para participar de pesquisas</div><div class="card-d">Quando a gestão enviar um convite pelo aplicativo, ele aparecerá aqui. Leia a pesquisa e aceite somente se realmente puder participar.</div></div><span class="pill ${invites.length?'pill-amber':'pill-gray'}">${invites.length} pendente${invites.length===1?'':'s'}</span></div>${invites.length?`<div class="researcher-profile-invite-list">${invites.map(inv=>{const survey=SURVEYS.find(item=>item.id===inv.survey_id),busy=MY_INVITE_RESPONDING===inv.id;return `<article class="researcher-profile-invite-row"><div class="researcher-profile-invite-copy"><div class="researcher-profile-invite-title"><strong>${esc(survey?.name||'Pesquisa convidada')}</strong><span class="pill pill-amber">Aguardando sua resposta</span></div><p>${survey?esc(survey.tipo||'Convite para participar da equipe de coleta.'):'Convite para participar da equipe de coleta.'}</p><small>Ao aceitar, você entra na equipe da pesquisa e poderá receber as orientações iniciais.</small></div><div class="researcher-profile-invite-actions"><button type="button" class="btn btn-fill" ${busy?'disabled':''} onclick="respondMyInvite(${jsArg(inv.id)},true)">${busy?'Processando…':'✓ Aceitar e entrar na equipe'}</button><button type="button" class="btn btn-ghost" ${busy?'disabled':''} onclick="respondMyInvite(${jsArg(inv.id)},false)">Recusar</button></div></article>`;}).join('')}</div>`:'<div class="researcher-profile-invites-empty"><strong>Nenhum convite pendente</strong><span>Quando a gestão convidar você pelo aplicativo, o convite aparecerá nesta área e também no Meu painel.</span></div>'}</section>`;
+  return `<section class="card mb researcher-profile-invites" aria-labelledby="researcher-profile-invites-title"><div class="researcher-profile-invites-head"><div><div class="card-t" id="researcher-profile-invites-title">Convites para participar de pesquisas</div><div class="card-d">Quando a gestão enviar um convite pelo aplicativo, ele aparecerá aqui. Confira o valor e as regras antes de responder.</div></div><span class="pill ${invites.length?'pill-amber':'pill-gray'}">${invites.length} pendente${invites.length===1?'':'s'}</span></div>${invites.length?`<div class="researcher-profile-invite-list">${invites.map(inv=>{const survey=SURVEYS.find(item=>item.id===inv.survey_id),busy=MY_INVITE_RESPONDING===inv.id,price=survey?Number(survey.price)||0:0,remotePrice=survey?Number(survey.priceRemote)||0:0,priceText=survey?(price>0?brl(price):'valor informado no convite'):'valor da pesquisa';return `<article class="researcher-profile-invite-row"><div class="researcher-profile-invite-copy"><div class="researcher-profile-invite-title"><strong>${esc(survey?.name||'Pesquisa convidada')}</strong><span class="pill pill-amber">Aguardando sua resposta</span></div><p>${survey?esc(survey.tipo||'Convite para participar da equipe de coleta.'):'Convite para participar da equipe de coleta.'}</p><div class="callout" style="margin:8px 0 6px;padding:9px 11px"><b>Valor por formulário válido: ${esc(priceText)}</b>${remotePrice>0?' · Coleta remota: '+esc(brl(remotePrice)):''}</div><small>Ao aceitar, você declara que leu as regras da pesquisa e concorda com o valor exibido para esta pesquisa. O aceite fica registrado no aplicativo; pesquisas diferentes podem ter valores diferentes.</small></div><div class="researcher-profile-invite-actions"><button type="button" class="btn btn-fill" ${busy?'disabled':''} onclick="respondMyInvite(${jsArg(inv.id)},true)">${busy?'Processando…':'✓ Aceitar e concordar com o valor'}</button><button type="button" class="btn btn-ghost" ${busy?'disabled':''} onclick="respondMyInvite(${jsArg(inv.id)},false)">Recusar</button></div></article>`;}).join('')}</div>`:'<div class="researcher-profile-invites-empty"><strong>Nenhum convite pendente</strong><span>Quando a gestão convidar você pelo aplicativo, o convite aparecerá nesta área e também no Meu painel.</span></div>'}</section>`;
 }
 let MY_INVITE_RESPONDING=null; /* id do convite sendo respondido agora — trava os botões pra não clicar 2x */
 async function respondMyInvite(inviteId,accept){
@@ -8582,7 +8599,7 @@ PAGES['my-contract']=()=>{
     </div>
     <label style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px;color:var(--ink2);cursor:pointer;margin-bottom:14px">
       <input type="checkbox" id="contractAgree" style="margin-top:3px">
-      <span>Li e concordo integralmente com os termos acima, em especial quanto à <b>ausência de vínculo empregatício</b> (Cláusula 3ª) e às <b>condições de pagamento</b> (Cláusulas 4ª e 5ª), e reconheço a validade desta assinatura eletrônica (Cláusula 11ª).</span>
+      <span>Li e concordo integralmente com os termos acima, em especial quanto à <b>ausência de vínculo empregatício</b>, às <b>regras de integridade, auditoria e gravação</b> e às <b>condições de pagamento</b>. Sei que cada pesquisa terá valor próprio, exibido antes do aceite do convite, e reconheço a validade desta assinatura eletrônica.</span>
     </label>
     <div id="contractSignMsg"></div>
     <button class="btn btn-accent" id="contractSignBtn" style="font-size:15px;padding:12px 22px" onclick="signContract()"${cpf?'':' disabled'}>✎ Assinar eletronicamente</button>
@@ -8653,12 +8670,12 @@ PAGES.company=()=>head('Dados da empresa','Informações usadas em contratos e r
   <div class="grid g2">
     <div class="card">
       <div class="card-t">Identificação</div>
-      <div class="mb"><label class="lbl">Razão social <span class="pill pill-gray">🔒 fixo</span></label><input class="inp" value="PesquisaPro Pesquisas e Opinião Ltda" disabled style="background:var(--bg);color:var(--ink3);cursor:not-allowed"></div>
+      <div class="mb"><label class="lbl">Razão social <span class="pill pill-gray">🔒 fixo</span></label><input class="inp" value="Versus Soluções em Gestão — programa PesquisaPro" disabled style="background:var(--bg);color:var(--ink3);cursor:not-allowed"></div>
       <div class="field-row mb">
-        <div><label class="lbl">CNPJ</label><input class="inp" value="00.000.000/0001-00"></div>
+        <div><label class="lbl">CNPJ</label><input class="inp" value="26.643.308/0001-49"></div>
         <div><label class="lbl">Inscrição estadual <span class="pill pill-gray">🔒 fixo</span></label><input class="inp" value="Isento" disabled style="background:var(--bg);color:var(--ink3);cursor:not-allowed"></div>
       </div>
-      <div class="mb"><label class="lbl">Endereço</label><input class="inp" value="Av. Afonso Pena, 1000 — Belo Horizonte/MG"></div>
+      <div class="mb"><label class="lbl">Endereço</label><input class="inp" value="Avenida Trinta e um de Março, nº 861, Loja 07, São João del Rei/MG"></div>
       <div class="field-row"><div><label class="lbl">Telefone</label><input class="inp" value="(31) 99668-3030"></div><div><label class="lbl">E-mail</label><input class="inp" value="contato@pesquisapro.com.br"></div></div>
     </div>
     <div class="card">
@@ -8916,7 +8933,8 @@ PAGES['researcher-link-invite']=()=>{
   const context=RESEARCHER_LINK_CONTEXT;
   if(!context.valid)return head('Convite de pesquisa','Convite indisponível')+'<div class="card"><div class="callout warn">'+esc(context.reason||'Este link não está disponível.')+'</div></div>';
   const canAccept=!!context.eligible&&!context.already_member;
-  return head('Convite de pesquisa',context.survey_name||'Pesquisa')+`<section class="card researcher-link-invite-card"><div class="researcher-link-icon">✉</div><div class="card-t">Você foi convidado(a) para participar desta pesquisa</div><p class="researcher-link-survey-name">${esc(context.survey_name||'Pesquisa')}</p><div class="callout ${canAccept?'':'warn'}">${esc(context.reason||'')}</div>${context.expires_at?`<div class="card-d">Este link expira em ${esc(new Date(context.expires_at).toLocaleString('pt-BR'))}.</div>`:''}<div class="researcher-link-actions">${context.already_member?'<button class="btn btn-fill" onclick="go(\'dashboard-pesq\')">Abrir meu painel</button>':canAccept?'<button class="btn btn-fill" onclick="acceptResearcherLinkInvite()">✓ Aceitar e entrar na equipe</button>':'<button class="btn btn-out" onclick="go(\'researcher-profile\')">Atualizar meu perfil</button>'}</div><p class="card-d" style="margin-top:14px">Ao aceitar, você entra automaticamente na equipe da pesquisa e terá acesso ao chat de orientações. O grupo de WhatsApp, quando configurado, será disponibilizado no seu painel.</p></section>`;
+  const price=Number(context.price)||0,remotePrice=Number(context.price_remote)||0;
+  return head('Convite de pesquisa',context.survey_name||'Pesquisa')+`<section class="card researcher-link-invite-card"><div class="researcher-link-icon">✉</div><div class="card-t">Você foi convidado(a) para participar desta pesquisa</div><p class="researcher-link-survey-name">${esc(context.survey_name||'Pesquisa')}</p><div class="callout ${canAccept?'':'warn'}">${esc(context.reason||'')}</div>${price||remotePrice?`<div class="callout" style="margin-top:10px"><b>Valor por formulário válido: ${brl(price)}</b>${remotePrice?' · Coleta remota: '+brl(remotePrice):''}</div>`:''}${context.expires_at?`<div class="card-d">Este link expira em ${esc(new Date(context.expires_at).toLocaleString('pt-BR'))}.</div>`:''}<div class="researcher-link-actions">${context.already_member?'<button class="btn btn-fill" onclick="go(\'dashboard-pesq\')">Abrir meu painel</button>':canAccept?'<button class="btn btn-fill" onclick="acceptResearcherLinkInvite()">✓ Aceitar e concordar com o valor</button>':'<button class="btn btn-out" onclick="go(\'researcher-profile\')">Atualizar meu perfil</button>'}</div><p class="card-d" style="margin-top:14px">Ao aceitar, você entra automaticamente na equipe da pesquisa e declara que leu as regras e concorda com o valor exibido. O aceite ficará registrado no aplicativo. O grupo de WhatsApp, quando configurado, será disponibilizado no seu painel.</p></section>`;
 };
 async function acceptResearcherLinkInvite(){
   if(RESEARCHER_LINK_ACCEPTING||!RESEARCHER_LINK_TOKEN)return;

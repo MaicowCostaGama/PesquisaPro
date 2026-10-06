@@ -30,7 +30,7 @@ for(const token of [
   '@media(max-width:720px)',
   '@media(max-width:420px)'
 ])assert(css.includes(token),`CSS sem ${token}`);
-assert(html.includes('app.js?v=20261006150000'),'cache do app não atualizado');
-assert(html.includes('style.css?v=20261006150000'),'cache do CSS não atualizado');
+assert(html.includes('app.js?v=20261006163500'),'cache do app não atualizado');
+assert(html.includes('style.css?v=20261006163500'),'cache do CSS não atualizado');
 assert(!/create table|alter table|drop table|delete from/i.test(app),'o convite interno não deve alterar ou apagar tabelas pelo frontend');
 console.log('researcher-app-invite-smoke-test: PASS');

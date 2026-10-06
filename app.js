@@ -49,7 +49,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261006163500';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261006171000';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -5175,7 +5175,7 @@ function renderAcollectRecording(){
     return;
   }
   if(ACOLLECT_RECORDING_STATUS==='recording'){
-    el.innerHTML=`<div class="recording-consent-card recording-active"><div class="recording-consent-title">Gravando confirmação final</div><p>Grave apenas a resposta curta do entrevistado. O áudio será interrompido automaticamente em ${ACOLLECT_RECORDING_MAX_SECONDS} segundos.</p><div class="recording-timer" id="acollectRecordingTimer">00:00</div><button type="button" class="btn-danger" onclick="acollectRecordingStop()">■ Parar gravação</button></div>`;
+    el.innerHTML=`<div class="recording-consent-card recording-active"><div class="recording-consent-title">Gravando confirmação final</div><p>Grave apenas a resposta curta do entrevistado. A gravação será encerrada automaticamente.</p><button type="button" class="btn-danger" onclick="acollectRecordingStop()">■ Parar gravação</button></div>`;
     return;
   }
   if(ACOLLECT_RECORDING_STATUS==='ready'){
@@ -5351,6 +5351,7 @@ function acollectElapsedLabel(){
   return s<60?s+'s':Math.floor(s/60)+'min '+String(s%60).padStart(2,'0')+'s';
 }
 function acollectStartTicking(){
+  if(selectedRole==='pesq')return;
   if(ACOLLECT_TICK)return;
   ACOLLECT_TICK=setInterval(()=>{
     const banner=document.querySelector('#acollectActions .online-banner');
@@ -5379,13 +5380,16 @@ function renderAcollectActionState(){
       (ACOLLECT_RECORDING_MANDATORY_AFTER_CUTOFF&&ACOLLECT_RECORDING_STATUS!=='ready')
     );
     const submitBlocked=ACOLLECT_SUBMITTING||missing>0||recordingPending;
-    actionsEl.innerHTML=`<div class="online-banner" style="margin-bottom:8px">▶ Entrevista em andamento — ${acollectElapsedLabel()}</div>
+    const showInterviewTimer=selectedRole!=='pesq';
+    const interviewBanner=showInterviewTimer?`<div class="online-banner" style="margin-bottom:8px">▶ Entrevista em andamento — ${acollectElapsedLabel()}</div>`:'<div class="online-banner" style="margin-bottom:8px">▶ Entrevista em andamento</div>';
+    actionsEl.innerHTML=`${interviewBanner}
       ${missing>0?`<div style="font-size:11.5px;color:var(--ink3);margin-bottom:6px">Faltam responder ${missing} pergunta${missing>1?'s':''}</div>`:''}
       ${recordingPending?`<div style="font-size:11.5px;color:var(--ink3);margin-bottom:6px">${ACOLLECT_RECORDING_MANDATORY_AFTER_CUTOFF?'Após 21h, grave a confirmação final para liberar o envio.':'Conclua a confirmação final ou escolha enviar sem áudio.'}</div>`:''}
       <button class="btn-primary" style="height:40px;font-size:14px;width:100%;${submitBlocked?'opacity:.5':''}" ${submitBlocked?'disabled':''} onclick="acollectSubmit()">${ACOLLECT_SUBMITTING?'Enviando…':'✓ Concluir e enviar'}</button>
       <button class="btn-ghost" style="width:100%;margin-top:6px" ${ACOLLECT_SUBMITTING?'disabled':''} onclick="acollectCancel()">Cancelar</button>`;
     if(hint)hint.textContent='';
-    acollectStartTicking();
+    if(showInterviewTimer)acollectStartTicking();
+    else if(ACOLLECT_TICK){clearInterval(ACOLLECT_TICK);ACOLLECT_TICK=null;}
     return;
   }
   if(actionsEl)actionsEl.innerHTML='';

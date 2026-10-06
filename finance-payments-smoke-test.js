@@ -32,9 +32,6 @@ for (const token of [
   'Saldo devido',
   'financeWhatsAppMessage',
   'financePixMarkup',
-  'finance-pix-action',
-  'finance-pix-action-value',
-  'finance-pix-action-copy',
   'Copiar PIX',
   'conversationButton(r.phone',
   'copyTextValue',
@@ -200,6 +197,9 @@ for (const token of [
   '.finance-value-pending',
   'finance-data-table th.finance-actions-header,.finance-data-table td.finance-actions-cell{position:static!important',
   'overflow-x:auto;overflow-y:visible',
+  '.finance-payments-card .finance-data-table tbody tr',
+  'grid-template-columns:repeat(6,minmax(0,1fr))',
+  '.finance-payments-card .finance-actions-cell .finance-row-actions',
   '.payment-receipt-delete',
   '.payment-receipt-edit',
   '.finance-receipt-row-actions',
@@ -213,8 +213,8 @@ for (const token of [
   assert(css.includes(token), `estilo financeiro ausente: ${token}`);
 }
 
-assert(html.includes('app.js?v=20261005205000'), 'cache do app financeiro não foi atualizado');
-assert(html.includes('style.css?v=20261005205000'), 'cache do CSS financeiro não foi atualizado');
+assert(html.includes('app.js?v=20261005211000'), 'cache do app financeiro não foi atualizado');
+assert(html.includes('style.css?v=20261005211000'), 'cache do CSS financeiro não foi atualizado');
 assert(app.includes('paymentApprovedBalanceValue(r,price)'), 'a receber não está restrito ao valor aprovado');
 assert(app.includes('const saldoDevido=Math.max(0,valor-recebido)'), 'saldo devido não é abatido pelos recebimentos');
 assert(app.includes('paymentBalanceValue(r,price)'), 'saldo devido não usa o valor real das entrevistas e recibos');
@@ -229,5 +229,7 @@ assert(app.includes("sb.rpc('approve_payment_increment'"), 'aprovação incremen
 assert(app.includes('p_receipt_id:receipt.id'), 'alteração não identifica o recibo correto');
 assert(app.includes('O mesmo lançamento, a data, o pesquisador, o comprovante e o histórico serão preservados'), 'alteração não confirma preservação do lançamento e comprovante');
 assert(app.includes('Comprovante e ações'), 'histórico não identifica a coluna com a ação de alteração');
+assert(app.includes('Cada pesquisador aparece em um cartão completo'), 'orientação do novo layout financeiro ausente');
+assert(!app.includes('const pixAction='), 'chave PIX duplicada dentro das ações financeiras');
 
 console.log('Finance payments smoke test OK: aprovação, saldo abatido, correção de valores, comprovantes privados, RPCs, RLS e extratos por pesquisa verificados.');

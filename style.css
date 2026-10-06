@@ -1642,3 +1642,36 @@ body.researcher-update-lock{overflow:hidden}
 @media(max-width:780px){.recruiter-finance-capture-values{grid-template-columns:repeat(2,minmax(0,1fr))}.recruiter-receipt-line{grid-template-columns:1fr auto}.recruiter-payment-receipt-actions{grid-column:1/-1;justify-content:flex-start}.recruiter-receipt-name{max-width:100%}}
 @media(max-width:520px){.recruiter-finance-summary{grid-template-columns:1fr 1fr}.recruiter-finance-capture{padding:11px}.recruiter-finance-capture-main{align-items:flex-start;flex-direction:column;gap:7px}.recruiter-finance-capture-values{grid-template-columns:1fr 1fr;gap:10px 7px}.recruiter-finance-capture-values b{font-size:13px}.recruiter-receipt-line{grid-template-columns:1fr}.recruiter-receipt-line>span:nth-child(2){justify-self:start}.recruiter-payment-receipt-actions{grid-column:auto;justify-content:flex-start}}
 @media(prefers-reduced-motion:reduce){.btn-finance:hover,.btn-finance:focus-visible,.recruiter-card:hover{transform:none}}
+
+
+/* ---------- CONVITES INTERNOS NO PERFIL DO PESQUISADOR ---------- */
+.researcher-profile-invites{border-color:#cfe0f5;background:linear-gradient(145deg,#ffffff 0%,#f8fbff 70%,#f1fffb 100%)}
+.researcher-profile-invites-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding-bottom:13px;border-bottom:1px solid #e1eaf4}
+.researcher-profile-invites-head .card-d{max-width:720px}
+.researcher-profile-invite-list{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+.researcher-profile-invite-row{display:flex;align-items:center;justify-content:space-between;gap:15px;padding:13px 14px;border:1px solid #d7e5f2;border-radius:13px;background:#fff;box-shadow:0 4px 12px rgba(18,35,63,.035)}
+.researcher-profile-invite-copy{min-width:0}
+.researcher-profile-invite-title{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.researcher-profile-invite-title strong{color:var(--ink);font-size:13px}
+.researcher-profile-invite-title .pill{font-size:9px;padding:3px 7px}
+.researcher-profile-invite-copy p{margin:5px 0 2px;color:var(--ink2);font-size:11.5px}
+.researcher-profile-invite-copy small{color:var(--ink3);font-size:10.5px;line-height:1.4}
+.researcher-profile-invite-actions{display:flex;align-items:center;justify-content:flex-end;gap:7px;flex:0 0 auto;flex-wrap:wrap}
+.researcher-profile-invite-actions .btn{min-height:35px;padding:8px 11px;font-size:11px;white-space:nowrap}
+.researcher-profile-invites-empty{display:flex;flex-direction:column;gap:4px;margin-top:12px;padding:15px;border:1px dashed #c8dbea;border-radius:11px;background:#f8fbff;color:var(--ink3);font-size:11px;line-height:1.45}
+.researcher-profile-invites-empty strong{color:var(--ink2);font-size:12px}
+.team-inapp-invite-btn{color:#075e54!important;border-color:#9edbd1!important;background:#effcf9!important}
+.team-inapp-invite-btn:hover,.team-inapp-invite-btn:focus-visible{border-color:#5dc2b1!important;background:#e2faf4!important;color:#064e46!important}
+.team-inapp-invite-btn:disabled{opacity:.55;cursor:not-allowed}
+@media(max-width:720px){
+  .researcher-profile-invites-head{align-items:flex-start;flex-direction:column}
+  .researcher-profile-invites-head>.pill{align-self:flex-start}
+  .researcher-profile-invite-row{align-items:stretch;flex-direction:column}
+  .researcher-profile-invite-actions{justify-content:flex-start;width:100%}
+  .researcher-profile-invite-actions .btn{flex:1 1 180px}
+}
+@media(max-width:420px){
+  .researcher-profile-invites{padding:13px 11px}
+  .researcher-profile-invite-actions{display:grid;grid-template-columns:1fr}
+  .researcher-profile-invite-actions .btn{width:100%}
+}

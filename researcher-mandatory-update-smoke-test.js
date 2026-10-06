@@ -5,7 +5,7 @@ const root=__dirname;
 const html=fs.readFileSync(path.join(root,'app.html'),'utf8');
 const app=fs.readFileSync(path.join(root,'app.js'),'utf8');
 const css=fs.readFileSync(path.join(root,'style.css'),'utf8');
-const version='20261006174000';
+const version='20261006184500';
 const assertHas=(source,token,message)=>assert.ok(source.includes(token),message||`Token ausente: ${token}`);
 assertHas(html,`name="pesquisapro-app-version" content="${version}"`,'versão obrigatória ausente no HTML');
 assertHas(html,'id="researcherUpdateRequired"','overlay de atualização obrigatória ausente');

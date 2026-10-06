@@ -50,7 +50,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261006174000';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261006184500';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -753,11 +753,11 @@ PAGES.dashboard=()=>{
   if(!COLLECT_EVENTS_LOADED)loadCollectEventsIfNeeded();
   if(!ALL_CONTRACTS_LOADED)loadAllContractsIfNeeded();
   if(!COMPANY_SIGNATURE_LOADED)loadCompanySignatureIfNeeded();
-  const emCampo=SURVEYS.filter(s=>s.status==='campo').length;
-  const emEdicao=SURVEYS.filter(s=>s.status==='rascunho').length;
-  const finalizadas=SURVEYS.filter(s=>s.status==='encerrada').length;
+  const emCampo=SURVEYS.filter(s=>!s.archivedAt&&s.status==='campo').length;
+  const emEdicao=SURVEYS.filter(s=>!s.archivedAt&&s.status==='rascunho').length;
+  const finalizadas=SURVEYS.filter(s=>!s.archivedAt&&s.status==='encerrada').length;
   const pesqAtivosList=USERS.filter(u=>u.role==='pesq'&&u.status==='ativo');
-  const entrevistas=SURVEYS.reduce((sum,s)=>sum+surveyCollectedCount(s),0);
+  const entrevistas=SURVEYS.filter(s=>!s.archivedAt).reduce((sum,s)=>sum+surveyCollectedCount(s),0);
   const clientesAtendidos=USERS.filter(u=>u.role==='cliente'&&u.status==='ativo').length;
   const cadastrosAprovar=SIGNUPS.filter(s=>['novo','diligencia'].includes(s.status)).length;
   const signedIds=new Set(ALL_CONTRACTS.map(c=>c.researcher_id));
@@ -1109,7 +1109,8 @@ PAGES['dashboard-pesq']=()=>{
     return head('Meu painel',subtitulo)+'<div class="empty">Carregando seus dados…</div>';
   }
   const myId=CURRENT_PROFILE&&CURRENT_PROFILE.id;
-  const myPayments=PAYMENTS.filter(p=>p.researcherId===myId);
+  const myPayments=PAYMENTS.filter(p=>p.researcherId===myId&&!SURVEYS.find(x=>x.id===p.surveyId)?.archivedAt);
+  const visibleMyInvites=(MY_INVITES||[]).filter(inv=>!SURVEYS.find(x=>x.id===inv.survey_id)?.archivedAt);
   const aReceber=myPayments.filter(p=>p.status==='aprovado').reduce((sum,p)=>{
     const s=SURVEYS.find(x=>x.id===p.surveyId);return sum+p.valid*(s?+s.price:0);
   },0);
@@ -1119,10 +1120,10 @@ PAGES['dashboard-pesq']=()=>{
   const entrevistasAprovadas=myPayments.reduce((sum,p)=>sum+(Number(p.valid)||0),0);
   const surveysMine=acollectMySurveys();
   const earningsHtml=`<section class="researcher-earnings-hero" aria-labelledby="researcher-earnings-title"><div class="researcher-earnings-copy"><span class="eyebrow">SEU DESEMPENHO</span><h2 id="researcher-earnings-title">Ganhos com pesquisas</h2><p>Valor das entrevistas aprovadas pela auditoria.</p><strong class="researcher-earnings-value">${brl(aReceber)}</strong></div><div class="researcher-earnings-side"><div class="researcher-earnings-metric"><span>Entrevistas aprovadas</span><strong>${entrevistasAprovadas}</strong></div><div class="researcher-earnings-metric"><span>Em análise</span><strong>${brl(ganhosEmAnalise)}</strong></div><button class="btn btn-ghost" type="button" onclick="go('my-earnings')">Ver meus ganhos →</button></div></section>`;
-  const invitesHtml=(MY_INVITES_LOADED&&MY_INVITES.length)?`<div class="card mb">
-    <div class="card-t">Convite${MY_INVITES.length>1?'s':''} para pesquisa${MY_INVITES.length>1?'s':''}</div>
+  const invitesHtml=(MY_INVITES_LOADED&&visibleMyInvites.length)?`<div class="card mb">
+    <div class="card-t">Convite${visibleMyInvites.length>1?'s':''} para pesquisa${visibleMyInvites.length>1?'s':''}</div>
     <div class="card-d">Você foi convidado(a) pelo administrador — aceite para entrar na equipe e liberar a coleta.</div>
-    ${MY_INVITES.map(inv=>{
+    ${visibleMyInvites.map(inv=>{
       const sv=SURVEYS.find(x=>x.id===inv.survey_id);
       const busy=MY_INVITE_RESPONDING===inv.id;
       const focused=INVITE_FOCUS_ID===inv.id;
@@ -1162,10 +1163,10 @@ function campaignSurveysForCurrentUser(){
   if(!CURRENT_PROFILE)return[];
   if(CURRENT_PROFILE.role==='cliente'){
     const client=clientSelf();
-    return SURVEYS.filter(s=>(s.clientIds||[]).includes(CURRENT_PROFILE.id)||(client?.surveys||[]).includes(s.name));
+    return SURVEYS.filter(s=>!s.archivedAt&&((s.clientIds||[]).includes(CURRENT_PROFILE.id)||(client?.surveys||[]).includes(s.name)));
   }
   if(CURRENT_PROFILE.role==='pesq')return typeof acollectMySurveys==='function'?acollectMySurveys():[];
-  return SURVEYS.filter(s=>s.status!=='encerrada');
+  return SURVEYS.filter(s=>!s.archivedAt&&s.status!=='encerrada');
 }
 function activeCampaignSurvey(){
   const available=campaignSurveysForCurrentUser();
@@ -1683,7 +1684,7 @@ function surveyRowToSnapshot(row,questionRows,clientCompanyNames,teamNames){
     clientReleaseById:Object.fromEntries((row.survey_clients||[]).filter(sc=>sc.client_id).map(sc=>[sc.client_id,!!sc.results_released])),
     formStarted:!!row.form_started,formApprovalRequired:!!row.form_approval_required,questions,quotas,quotaOff,remote,
     minimumCollectionSeconds:Number.isFinite(Number(row.minimum_collection_seconds))&&Number(row.minimum_collection_seconds)>0?Math.round(Number(row.minimum_collection_seconds)):null,
-    collected:row.collected||0,status:row.status||'rascunho',
+    collected:row.collected||0,status:row.status||'rascunho',archivedAt:row.archived_at||null,
     created:fmtRelativo(row.created_at),
     team:teamNames||[],coord:'',isNew:false,
   };
@@ -1880,7 +1881,7 @@ async function loadSurveysIfNeeded(){
   refreshClientSurveyLinks();
   const onKey=document.querySelector('.nav-item.on');
   const k=onKey&&onKey.dataset.key;
-  if(k==='surveys'||k==='surveys-done'||k==='dashboard'||k==='dashboard-pesq'||k==='researcher-profile'||k==='survey-team'||k==='client-surveys'||k==='client-progress'||k==='client-results'||k==='reports'||k==='communication'||k==='researcher-ranking')go(k);
+  if(k==='surveys'||k==='surveys-done'||k==='surveys-archived'||k==='dashboard'||k==='dashboard-pesq'||k==='researcher-profile'||k==='survey-team'||k==='client-surveys'||k==='client-progress'||k==='client-results'||k==='reports'||k==='communication'||k==='researcher-ranking')go(k);
 }
 function surveySample(s){
   return Math.ceil(sampleSize(s&&s.pop,s&&s.err,s&&s.conf,s&&s.prop)*1.1);
@@ -1896,6 +1897,7 @@ const STATUS_PILL={
   campo:'<span class="pill pill-green">● Em campo</span>',
   rascunho:'<span class="pill pill-gray">● Rascunho</span>',
   encerrada:'<span class="pill pill-blue">● Encerrada</span>',
+  arquivada:'<span class="pill pill-gray">● Arquivada</span>',
 };
 
 PAGES['new-survey']=()=>head(WIZ.editIndex!=null?'Editar pesquisa':'Nova pesquisa','Defina formulário, amostra com cotas e preço. A equipe é atribuída depois.',
@@ -2788,7 +2790,7 @@ async function wizCreate(){
 function refreshClientSurveyLinks(){
   if(!USERS_LOADED||!SURVEYS_LOADED)return;
   clienteUsers().forEach(c=>{
-    c.surveys=SURVEYS.filter(s=>(s.clientes||[]).includes(c.company)).map(s=>s.name);
+    c.surveys=SURVEYS.filter(s=>!s.archivedAt&&(s.clientes||[]).includes(c.company)).map(s=>s.name);
   });
 }
 
@@ -2833,13 +2835,20 @@ function surveyRow(s,idx,opts){
   const coll=s.status==='rascunho'&&s.collected===0?'—':s.collected.toLocaleString('pt-BR')+' ('+pct+'%)';
   const tag=s.isNew?' <span class="pill pill-amber" style="font-size:9px;padding:1px 6px">nova</span>':'';
   const teamN=(s.team||[]).length;
-  const actions=opts&&opts.done
+  const isArchived=!!s.archivedAt;
+  const actions=isArchived
+    ?`<button class="btn-ghost" onclick="chatOpenSurveyChannel('${s.id}')">Chat</button>
+      <button class="btn-ghost" onclick="go('reports')">Ver relatório</button>
+      <button class="btn-ghost" onclick="surveyDuplicate(${idx})">Duplicar</button>
+      <button class="btn-ghost survey-pdf-action" onclick="surveyFormPdfDownload(${idx})">📄 PDF formulário</button>
+      <button class="btn-ghost" style="color:var(--teal)" onclick="surveyRestore(${idx})">Restaurar</button>`
+    :opts&&opts.done
     ?`<button class="btn-ghost" onclick="chatOpenSurveyChannel('${s.id}')">Chat</button>
       <button class="btn-ghost" onclick="go('reports')">Ver relatório</button>
       <button class="btn-ghost" onclick="surveyDuplicate(${idx})">Duplicar</button>
       <button class="btn-ghost survey-pdf-action" onclick="surveyFormPdfDownload(${idx})">📄 PDF formulário</button>
       <button class="btn-ghost" onclick="surveyReopen(${idx})">Reabrir</button>
-      <button class="btn-ghost" style="color:var(--red)" onclick="surveyDelete(${idx})">Excluir</button>`
+      <button class="btn-ghost" style="color:var(--red)" onclick="surveyArchive(${idx})">Arquivar</button>`
     :`${s.status==='rascunho'?`<button class="btn-ghost" style="color:var(--teal)" onclick="surveyStart(${idx})">▶ Iniciar coleta</button>`:''}
       <button class="btn-ghost" onclick="chatOpenSurveyChannel('${s.id}')">Chat</button>
       <button class="btn-ghost" onclick="surveyTeam(${idx})">Equipe</button>
@@ -2847,38 +2856,37 @@ function surveyRow(s,idx,opts){
       <button class="btn-ghost" onclick="surveyDuplicate(${idx})">Duplicar</button>
       <button class="btn-ghost survey-pdf-action" onclick="surveyFormPdfDownload(${idx})">📄 PDF formulário</button>
       <button class="btn-ghost" onclick="surveyFinish(${idx})">Concluir</button>
-      <button class="btn-ghost" style="color:var(--red)" onclick="surveyDelete(${idx})">Excluir</button>`;
+      <button class="btn-ghost" style="color:var(--red)" onclick="surveyArchive(${idx})">Arquivar</button>`;
   return `<tr>
     <td><b>${esc(s.name)}</b>${tag}<div style="font-size:11px;color:var(--ink3)">${esc(s.created)}</div></td>
     <td>${s.questions.length} ${s.questions.length===1?'pergunta':'perguntas'}</td>
     <td>${sample.toLocaleString('pt-BR')}</td>
     <td>${coll}</td>
     <td>${teamN?teamN+(teamN===1?' pessoa':' pessoas'):'<span style="color:var(--ink3)">não atribuída</span>'}</td>
-    <td>${STATUS_PILL[s.status]}</td>
+    <td>${isArchived?STATUS_PILL.arquivada:(STATUS_PILL[s.status]||STATUS_PILL.rascunho)}</td>
     <td style="white-space:nowrap">${actions}</td></tr>`;
 }
-
 PAGES.surveys=()=>{
   if(!SURVEYS_LOADED){
     loadSurveysIfNeeded();
     return head('Minhas pesquisas','Pesquisas em desenvolvimento (rascunho e em campo).')+'<div class="empty">Carregando pesquisas do banco de dados…</div>';
   }
-  const inDev=SURVEYS.map((s,idx)=>({s,idx})).filter(x=>x.s.status!=='encerrada');
+  const inDev=SURVEYS.map((s,idx)=>({s,idx})).filter(x=>!x.s.archivedAt&&x.s.status!=='encerrada');
   const rows=inDev.map(x=>surveyRow(x.s,x.idx)).join('')
     ||'<tr><td colspan="7" class="empty">Nenhuma pesquisa em desenvolvimento. Clique em “+ Nova pesquisa”.</td></tr>';
   return head('Minhas pesquisas','Pesquisas em desenvolvimento (rascunho e em campo).',
-  '<button class="btn btn-out" onclick="go(\'surveys-done\')">Ver concluídas</button><button class="btn btn-fill" onclick="newSurvey()">+ Nova pesquisa</button>')+`
+  '<button class="btn btn-out" onclick="go(\'surveys-done\')">Ver concluídas</button><button class="btn btn-out" onclick="go(\'surveys-archived\')">Arquivadas</button><button class="btn btn-fill" onclick="newSurvey()">+ Nova pesquisa</button>')+`
   <div class="grid g4" style="margin-bottom:16px">
     ${stat('Em desenvolvimento',String(inDev.length),'rascunho + em campo','❒','#2563eb')}
-    ${stat('Em campo',String(SURVEYS.filter(s=>s.status==='campo').length),'coletando agora','◷','#059669')}
-    ${stat('Rascunhos',String(SURVEYS.filter(s=>s.status==='rascunho').length),'aguardando início','✎','#d97706')}
-    ${stat('Concluídas',String(SURVEYS.filter(s=>s.status==='encerrada').length),'em outra aba','✓','#7c3aed')}
+    ${stat('Em campo',String(SURVEYS.filter(s=>!s.archivedAt&&s.status==='campo').length),'coletando agora','◷','#059669')}
+    ${stat('Rascunhos',String(SURVEYS.filter(s=>!s.archivedAt&&s.status==='rascunho').length),'aguardando início','✎','#d97706')}
+    ${stat('Concluídas',String(SURVEYS.filter(s=>!s.archivedAt&&s.status==='encerrada').length),'em outra aba','✓','#7c3aed')}
   </div>
   <div class="card">
     <div class="survey-table-scroll"><table><thead><tr><th>Pesquisa</th><th>Formulário</th><th>Amostra</th><th>Coletado</th><th>Equipe</th><th>Status</th><th></th></tr></thead>
     <tbody>${rows}</tbody></table></div>
   </div>
-  <div class="callout" style="margin-top:16px"><b>Editar</b> reabre a pesquisa no fluxo com seus dados salvos. <b>Concluir</b> move a pesquisa para a aba Concluídas. <b>Duplicar</b> cria uma cópia como novo rascunho (formulário, amostra, cotas e preço), sem copiar equipe nem vínculo com clientes — útil para começar uma pesquisa parecida sem preencher tudo de novo.</div>`;
+  <div class="callout" style="margin-top:16px"><b>Editar</b> reabre a pesquisa no fluxo com seus dados salvos. <b>Arquivar</b> retira a pesquisa da operação e do financeiro pendente sem apagar histórico. <b>Duplicar</b> cria uma cópia como novo rascunho, sem copiar equipe nem vínculo com clientes.</div>`;
 };
 
 PAGES['surveys-done']=()=>{
@@ -2886,22 +2894,38 @@ PAGES['surveys-done']=()=>{
     loadSurveysIfNeeded();
     return head('Pesquisas concluídas','Pesquisas encerradas — acesse os relatórios ou reabra se precisar.')+'<div class="empty">Carregando pesquisas do banco de dados…</div>';
   }
-  const done=SURVEYS.map((s,idx)=>({s,idx})).filter(x=>x.s.status==='encerrada');
+  const done=SURVEYS.map((s,idx)=>({s,idx})).filter(x=>!x.s.archivedAt&&x.s.status==='encerrada');
   const rows=done.map(x=>surveyRow(x.s,x.idx,{done:true})).join('')
     ||'<tr><td colspan="7" class="empty">Nenhuma pesquisa concluída ainda.</td></tr>';
   return head('Pesquisas concluídas','Pesquisas encerradas — acesse os relatórios ou reabra se precisar.',
-  '<button class="btn btn-out" onclick="go(\'surveys\')">← Em desenvolvimento</button>')+`
+  '<button class="btn btn-out" onclick="go(\'surveys\')">← Em desenvolvimento</button><button class="btn btn-out" onclick="go(\'surveys-archived\')">Arquivadas</button>')+`
   <div class="grid g4" style="margin-bottom:16px">
     ${stat('Concluídas',String(done.length),'encerradas','✓','#7c3aed')}
     ${stat('Coletas totais',done.reduce((a,x)=>a+(x.s.collected||0),0).toLocaleString('pt-BR'),'somadas','◫','#059669')}
-    ${stat('Em desenvolvimento',String(SURVEYS.length-done.length),'na outra aba','❒','#2563eb')}
-    ${stat('Total geral',String(SURVEYS.length),'todas as pesquisas','❒','#64748b')}
+    ${stat('Em desenvolvimento',String(SURVEYS.filter(s=>!s.archivedAt&&s.status!=='encerrada').length),'na outra aba','❒','#2563eb')}
+    ${stat('Arquivadas',String(SURVEYS.filter(s=>!!s.archivedAt).length),'histórico preservado','▤','#64748b')}
   </div>
   <div class="card">
     <div class="survey-table-scroll"><table><thead><tr><th>Pesquisa</th><th>Formulário</th><th>Amostra</th><th>Coletado</th><th>Equipe</th><th>Status</th><th></th></tr></thead>
     <tbody>${rows}</tbody></table></div>
   </div>
-  <div class="callout" style="margin-top:16px"><b>Reabrir</b> devolve a pesquisa para "em desenvolvimento". <b>Duplicar</b> cria uma cópia como novo rascunho, sem copiar equipe nem vínculo com clientes.</div>`;
+  <div class="callout" style="margin-top:16px"><b>Reabrir</b> devolve a pesquisa para "em desenvolvimento". <b>Arquivadas</b> preserva histórico e comprovantes, mas não entra no financeiro pendente. <b>Duplicar</b> cria uma cópia como novo rascunho.</div>`;
+};
+
+PAGES['surveys-archived']=()=>{
+  if(!SURVEYS_LOADED){loadSurveysIfNeeded();return head('Pesquisas arquivadas','Histórico preservado fora das listas operacionais.')+'<div class="empty">Carregando pesquisas do banco de dados…</div>';}
+  const archived=SURVEYS.map((s,idx)=>({s,idx})).filter(x=>!!x.s.archivedAt);
+  const rows=archived.map(x=>surveyRow(x.s,x.idx,{archived:true})).join('')
+    ||'<tr><td colspan="7" class="empty">Nenhuma pesquisa arquivada.</td></tr>';
+  return head('Pesquisas arquivadas','Coletas, respostas, pagamentos e comprovantes continuam preservados.',
+    '<button class="btn btn-out" onclick="go(\'surveys\')">← Em desenvolvimento</button><button class="btn btn-out" onclick="go(\'surveys-done\')">Concluídas</button>')+`
+  <div class="grid g3" style="margin-bottom:16px">
+    ${stat('Arquivadas',String(archived.length),'fora da operação','▤','#64748b')}
+    ${stat('Coletas preservadas',archived.reduce((a,x)=>a+surveyCollectedCount(x.s),0).toLocaleString('pt-BR'),'histórico mantido','◫','#0891b2')}
+    ${stat('Financeiro pendente',brl(0),'não contabilizado','✓','#059669')}
+  </div>
+  <div class="card"><div class="survey-table-scroll"><table><thead><tr><th>Pesquisa</th><th>Formulário</th><th>Amostra</th><th>Coletado</th><th>Equipe</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></div>
+  <div class="callout" style="margin-top:16px"><b>Arquivamento não apaga dados.</b> A pesquisa não aceita novas coletas nem aparece no financeiro operacional. Use <b>Restaurar</b> para recolocá-la na operação.</div>`;
 };
 
 async function surveyStart(idx){
@@ -2953,19 +2977,31 @@ async function surveyDuplicate(idx){
   }catch(ex){alert('Não foi possível duplicar: '+ex.message);return;}
   go('surveys');
 }
-async function surveyDelete(idx){
+async function surveyArchive(idx){
   const s=SURVEYS[idx];
-  if(!confirm('Excluir a pesquisa "'+s.name+'"? Esta ação não pode ser desfeita.'))return;
+  if(!s?.id)return;
+  if(!confirm('Arquivar a pesquisa "'+s.name+'"? Coletas, respostas, pagamentos e comprovantes serão preservados, mas ela sairá da operação e do financeiro pendente.'))return;
   try{
-    if(s.id){
-      const {error}=await sb.from('surveys').delete().eq('id',s.id);
-      if(error)throw new Error(error.message);
-    }
-  }catch(ex){alert('Não foi possível excluir: '+ex.message);return;}
-  SURVEYS.splice(idx,1);
+    const {error}=await sb.rpc('archive_survey',{p_survey_id:s.id});
+    if(error)throw new Error(error.message);
+  }catch(ex){alert('Não foi possível arquivar: '+ex.message+'\n\nExecute a migration deploy/arquivar-pesquisa.sql no Supabase.');return;}
+  s.archivedAt=new Date().toISOString();
   refreshClientSurveyLinks();
   go('surveys');
 }
+async function surveyRestore(idx){
+  const s=SURVEYS[idx];
+  if(!s?.id)return;
+  if(!confirm('Restaurar a pesquisa "'+s.name+'" para as listas operacionais?'))return;
+  try{
+    const {error}=await sb.rpc('restore_survey',{p_survey_id:s.id});
+    if(error)throw new Error(error.message);
+  }catch(ex){alert('Não foi possível restaurar: '+ex.message+'\n\nExecute a migration deploy/arquivar-pesquisa.sql no Supabase.');return;}
+  s.archivedAt=null;
+  refreshClientSurveyLinks();
+  go('surveys-archived');
+}
+function surveyDelete(idx){return surveyArchive(idx);}
 function surveyEdit(idx){
   const s=SURVEYS[idx];
   WIZ.editIndex=idx;WIZ.editArmed=true;WIZ.step=1;
@@ -3850,7 +3886,7 @@ PAGES.collect=()=>{
   return collectDetail(COLLECT_IDX);
 };
 function collectList(){
-  const active=SURVEYS.map((s,i)=>({s,i})).filter(x=>x.s.status==='campo'||x.s.status==='rascunho');
+  const active=SURVEYS.map((s,i)=>({s,i})).filter(x=>!x.s.archivedAt&&(x.s.status==='campo'||x.s.status==='rascunho'));
   const rows=active.map(({s,i})=>{
     const sample=surveySample(s);
     const collected=surveyCollectedCount(s);
@@ -4850,6 +4886,7 @@ async function acollectServerStartValidation(s){
     const row=Array.isArray(data)?data[0]:data;
     if(row?.allowed===false){
       if(row.code==='too_close')return {ok:false,message:COLLECT_TOO_CLOSE_MESSAGE,detail:Number.isFinite(Number(row.distance_m))?'Distância calculada: '+fmtDist(Number(row.distance_m))+' da coleta anterior desta pesquisa.':''};
+      if(row.code==='survey_archived')return {ok:false,message:'Esta pesquisa está arquivada e não aceita novas coletas.'};
       if(row.code==='not_authorized')return {ok:false,message:'Esta pesquisa não está disponível para o seu perfil de pesquisador.'};
       return {ok:false,message:'Não foi possível liberar esta coleta. Confira a pesquisa e tente novamente.'};
     }
@@ -4924,7 +4961,7 @@ function stopAcollectQuotaLive(){
    aplica RLS de verdade); em produção o RLS já restringe isso sozinho */
 function acollectMySurveys(){
   if(!CURRENT_PROFILE)return[];
-  return SURVEYS.filter(s=>s.status==='campo'&&(s.team||[]).includes(CURRENT_PROFILE.name));
+  return SURVEYS.filter(s=>!s.archivedAt&&s.status==='campo'&&(s.team||[]).includes(CURRENT_PROFILE.name));
 }
 function renderAcollectSurveyPicker(){
   const wrap=document.getElementById('acollectSurveyPicker');
@@ -7589,6 +7626,7 @@ const FIN_STATUS={
   aprovado:{pill:'<span class="pill pill-green">● Aprovado</span>'},
   pendente:{pill:'<span class="pill pill-amber">● Dados bancários pendentes</span>'},
   auditoria:{pill:'<span class="pill pill-blue">● Em auditoria</span>'},
+  arquivado:{pill:'<span class="pill pill-gray">● Arquivada · fora do pendente</span>'},
 };
 let FIN_IDX=null,FIN_ARMED=false;
 const brl=v=>'R$ '+(+v||0).toLocaleString('pt-BR',{minimumFractionDigits:2});
@@ -7840,11 +7878,12 @@ PAGES.finance=()=>{
     if(!PAYMENT_RECEIPTS_LOADED)loadPaymentReceiptsIfNeeded();
     return head('Financeiro','Pagamentos separados por pesquisa · calculado por entrevista válida coletada')+'<div class="empty">Carregando dados financeiros…</div>';
   }
+  if(FIN_IDX!=null&&SURVEYS[FIN_IDX]?.archivedAt)FIN_IDX=null;
   if(FIN_IDX!=null)return financeDetail(FIN_IDX);
   return financeList();
 };
 function financeList(){
-  const entries=SURVEYS.map((s,i)=>({s,i,t:finTotals(i)}));
+  const entries=SURVEYS.map((s,i)=>({s,i,t:finTotals(i)})).filter(entry=>!entry.s.archivedAt);
   const totalValor=entries.reduce((a,e)=>a+e.t.valor,0);
   const totalPend=entries.reduce((a,e)=>a+e.t.pendingValor,0);
   const totalRecebido=entries.reduce((a,e)=>a+e.t.recebido,0);
@@ -8050,9 +8089,10 @@ PAGES['my-earnings']=()=>{
       return {id:null,surveyId,researcherId:myId,name:CURRENT_PROFILE?.name||'',valid:events.filter(event=>event.status==='valid').length,rejected:events.filter(event=>event.status==='rejected').length,status:'pendente'};
     })();
     const s=SURVEYS.find(x=>x.id===p.surveyId);
+    const archived=!!s?.archivedAt||!s;
     const price=s?+s.price:0;
-    const valor=paymentDueValue(p,price),recebido=paymentReceivedValue(p.id),aReceber=p.status==='aprovado'?Math.max(0,valor-recebido):0,saldoDevido=Math.max(0,valor-recebido);
-    return {payment:p,survey:s?s.name:'(pesquisa removida)',valid:p.valid,rejected:p.rejected,valor,recebido,aReceber,saldoDevido,rejectedValor:p.rejected*price,status:p.status};
+    const valor=archived?0:paymentDueValue(p,price),recebido=paymentReceivedValue(p.id),aReceber=archived?0:(p.status==='aprovado'?Math.max(0,valor-recebido):0),saldoDevido=archived?0:Math.max(0,valor-recebido);
+    return {payment:p,survey:s?(archived?s.name+' (arquivada)':s.name):'(pesquisa removida)',valid:p.valid,rejected:p.rejected,valor,recebido,aReceber,saldoDevido,rejectedValor:archived?0:p.rejected*price,status:archived?'arquivado':p.status};
   });
   const aReceber=rowsData.reduce((a,r)=>a+r.aReceber,0),recebido=rowsData.reduce((a,r)=>a+r.recebido,0);
   const pendente=rowsData.filter(r=>r.status==='pendente').reduce((a,r)=>a+r.valor,0),auditoria=rowsData.filter(r=>r.status==='auditoria').reduce((a,r)=>a+r.valor,0);
@@ -8624,7 +8664,7 @@ function loadMyInvitesIfNeeded(){
   return MY_INVITES_LOAD_PROMISE;
 }
 function researcherProfileInvitesMarkup(){
-  const invites=MY_INVITES||[];
+  const invites=(MY_INVITES||[]).filter(inv=>!SURVEYS.find(item=>item.id===inv.survey_id)?.archivedAt);
   return `<section class="card mb researcher-profile-invites" aria-labelledby="researcher-profile-invites-title"><div class="researcher-profile-invites-head"><div><div class="card-t" id="researcher-profile-invites-title">Convites para participar de pesquisas</div><div class="card-d">Quando a gestão enviar um convite pelo aplicativo, ele aparecerá aqui. Confira o valor e as regras antes de responder.</div></div><span class="pill ${invites.length?'pill-amber':'pill-gray'}">${invites.length} pendente${invites.length===1?'':'s'}</span></div>${invites.length?`<div class="researcher-profile-invite-list">${invites.map(inv=>{const survey=SURVEYS.find(item=>item.id===inv.survey_id),busy=MY_INVITE_RESPONDING===inv.id,price=survey?Number(survey.price)||0:0,remotePrice=survey?Number(survey.priceRemote)||0:0,priceText=survey?(price>0?brl(price):'valor informado no convite'):'valor da pesquisa';return `<article class="researcher-profile-invite-row"><div class="researcher-profile-invite-copy"><div class="researcher-profile-invite-title"><strong>${esc(survey?.name||'Pesquisa convidada')}</strong><span class="pill pill-amber">Aguardando sua resposta</span></div><p>${survey?esc(survey.tipo||'Convite para participar da equipe de coleta.'):'Convite para participar da equipe de coleta.'}</p><div class="callout" style="margin:8px 0 6px;padding:9px 11px"><b>Valor por formulário válido: ${esc(priceText)}</b>${remotePrice>0?' · Coleta remota: '+esc(brl(remotePrice)):''}</div><small>Ao aceitar, você declara que leu as regras da pesquisa e concorda com o valor exibido para esta pesquisa. O aceite fica registrado no aplicativo; pesquisas diferentes podem ter valores diferentes.</small></div><div class="researcher-profile-invite-actions"><button type="button" class="btn btn-fill" ${busy?'disabled':''} onclick="respondMyInvite(${jsArg(inv.id)},true)">${busy?'Processando…':'✓ Aceitar e concordar com o valor'}</button><button type="button" class="btn btn-ghost" ${busy?'disabled':''} onclick="respondMyInvite(${jsArg(inv.id)},false)">Recusar</button></div></article>`;}).join('')}</div>`:'<div class="researcher-profile-invites-empty"><strong>Nenhum convite pendente</strong><span>Quando a gestão convidar você pelo aplicativo, o convite aparecerá nesta área e também no Meu painel.</span></div>'}</section>`;
 }
 let MY_INVITE_RESPONDING=null; /* id do convite sendo respondido agora — trava os botões pra não clicar 2x */

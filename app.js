@@ -7482,7 +7482,7 @@ function financeList(){
   const totalAReceber=entries.reduce((a,e)=>a+e.t.aReceber,0);
   const totalSaldoDevido=entries.reduce((a,e)=>a+e.t.saldoDevido,0);
   const totalValid=entries.reduce((a,e)=>a+e.t.valid,0);
-  const totalPesq=entries.reduce((a,e)=>a+e.t.count,0);
+  const totalPesq=new Set(entries.flatMap(({i})=>finRows(i).map(r=>r.researcherId).filter(Boolean))).size;
   const body=entries.map(({s,i,t})=>`<tr style="cursor:pointer" onclick="financeOpen(${i})">
       <td><b>${esc(s.name)}</b><div style="margin-top:2px">${STATUS_PILL[s.status]||s.status}</div></td>
       <td>${t.count?t.count+' pesquisador'+(t.count===1?'':'es'):'<span style="color:var(--ink3)">sem coleta</span>'}</td>
@@ -7492,14 +7492,12 @@ function financeList(){
       <td><span class="pill pill-blue">Abrir →</span></td></tr>`).join('')||'<tr><td colspan="6" class="empty">Nenhuma pesquisa cadastrada.</td></tr>';
   return head('Financeiro','Pagamentos separados por pesquisa · calculado por entrevista válida coletada')+`
   ${paymentReceiptMigrationNotice()}
-  <div class="grid g4" style="margin-bottom:16px">
-    ${stat('A pagar (todas as pesquisas)',brl(totalValor),totalValid.toLocaleString('pt-BR')+' entrevistas válidas','$','#2563eb')}
-    ${stat('Pendente de pagamento',brl(totalPend),'aguardando aprovação','◷','#d97706')}
-    ${stat('A receber',brl(totalAReceber),'pagamentos aprovados','◷','#2563eb')}
-    ${stat('Saldo devido',brl(totalSaldoDevido),'total menos pagamentos lançados','◷','#0f766e')}
-    ${stat('Recebido',brl(totalRecebido),'repasses lançados','✓','#059669')}
-    ${stat('Pesquisadores remunerados',String(totalPesq),'com entrevistas válidas','☺','#059669')}
-    ${stat('Valor padrão por formulário','R$ 5,00','pode variar por pesquisa','◷','#7c3aed')}
+  <div class="grid finance-overview-summary" style="margin-bottom:16px">
+    ${stat('TOTAL A PAGAR EM TODAS AS PESQUISAS',brl(totalValor),totalValid.toLocaleString('pt-BR')+' entrevistas válidas','$','#2563eb')}
+    ${stat('QUANTIDADE DE PESQUISADORES',String(totalPesq),'pesquisadores únicos com registros','☺','#059669')}
+    ${stat('PAGAMENTOS PARCIAIS REALIZADOS',brl(totalRecebido),'repasses já lançados','◐','#059669')}
+    ${stat('PAGAMENTOS A APROVAR',brl(totalPend),'novas coletas aguardando aprovação','◷','#d97706')}
+    ${stat('FALTA PAGAR',brl(totalSaldoDevido),'total devido menos pagamentos lançados','◉','#0f766e')}
   </div>
   <div class="card">
     <div class="card-t">Pesquisas</div>

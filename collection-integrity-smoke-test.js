@@ -30,6 +30,6 @@ assert(!/delete\s+from\s+public\.(collection_events|collection_answers|payments)
 assert(!/drop\s+table/i.test(sql),'migration contém drop table');
 assert(css.includes('.collection-integrity-message'),'mensagem de bloqueio sem estilo dedicado');
 assert(css.includes('.finance-table-scroll'),'CSS financeiro completo não foi preservado');
-assert(html.includes('app.js?v=20261006092500'),'cache do app não foi atualizado');
-assert(html.includes('style.css?v=20261006092500'),'cache do CSS não foi atualizado');
+assert(html.includes('app.js?v=20261006094000'),'cache do app não foi atualizado');
+assert(html.includes('style.css?v=20261006094000'),'cache do CSS não foi atualizado');
 console.log('collection-integrity-smoke-test: OK');

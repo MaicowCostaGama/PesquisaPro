@@ -49,6 +49,8 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261006094000';
+let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
 let RESEARCHER_PROFILE_CITIES_LOADED=false;
@@ -65,6 +67,73 @@ let MY_COMMUNICATIONS=[],MY_COMMUNICATIONS_LOADED=false,MY_COMMUNICATIONS_LOADIN
 let CLIENT_APPROVAL_REQUEST_ID=null,CLIENT_APPROVAL_REQUEST=null,CLIENT_APPROVAL_REQUEST_LOADED=false,CLIENT_APPROVAL_LOADING=false,CLIENT_APPROVAL_RESPONDING=false,CLIENT_APPROVAL_SCHEMA_MISSING=false;
 let RESEARCHER_LINK_TOKEN=null,RESEARCHER_LINK_CONTEXT=null,RESEARCHER_LINK_LOADING=false,RESEARCHER_LINK_ACCEPTING=false;
 let ADMIN_APPROVAL_STATUS_BY_CLIENT={},ADMIN_APPROVAL_STATUS_LOADING={},ADMIN_APPROVAL_STATUS_LOADED={};
+
+function researcherUpdateVersionFromHtml(html){
+  const match=String(html||'').match(/name=["']pesquisapro-app-version["'][^>]*content=["']([^"']+)["']/i);
+  return match?.[1]||'';
+}
+function researcherUpdateIsStale(latest){
+  const current=Number(APP_BUILD_VERSION),remote=Number(latest);
+  return Boolean(latest&&Number.isFinite(remote)&&Number.isFinite(current)&&remote>current);
+}
+function researcherUpdateOverlay(){return document.getElementById('researcherUpdateRequired');}
+function researcherUpdateStatus(message){
+  const el=document.getElementById('researcherUpdateStatus');if(el)el.textContent=message;
+}
+function forceResearcherAppReload(){
+  if(CURRENT_PROFILE?.role!=='pesq')return;
+  if(ACOLLECT_IN_PROGRESS){RESEARCHER_UPDATE_PENDING=true;researcherUpdateStatus('A atualização será feita depois que a entrevista terminar.');return;}
+  if(RESEARCHER_UPDATE_TIMER){clearTimeout(RESEARCHER_UPDATE_TIMER);RESEARCHER_UPDATE_TIMER=null;}
+  const target=RESEARCHER_UPDATE_TARGET_VERSION||'latest';
+  try{sessionStorage.setItem('pesquisapro-update-attempt',target);}catch(ex){}
+  researcherUpdateStatus('Recarregando o aplicativo…');
+  const url=new URL(window.location.href);url.searchParams.set('pp_reload',String(Date.now()));
+  window.setTimeout(()=>window.location.replace(url.toString()),120);
+}
+function showResearcherUpdateRequired(latest){
+  if(CURRENT_PROFILE?.role!=='pesq')return;
+  RESEARCHER_UPDATE_PENDING=true;RESEARCHER_UPDATE_TARGET_VERSION=latest||'';
+  const overlay=researcherUpdateOverlay();
+  if(!overlay)return;
+  if(ACOLLECT_IN_PROGRESS){
+    overlay.hidden=false;overlay.classList.add('is-pending');document.body.classList.remove('researcher-update-lock');
+    researcherUpdateStatus('A atualização será feita depois que a entrevista terminar.');
+    return;
+  }
+  overlay.classList.remove('is-pending');
+  overlay.hidden=false;document.body.classList.add('researcher-update-lock');
+  let alreadyAttempted=false;try{alreadyAttempted=sessionStorage.getItem('pesquisapro-update-attempt')===RESEARCHER_UPDATE_TARGET_VERSION;}catch(ex){}
+  if(alreadyAttempted){researcherUpdateStatus('Se a tela não atualizar, toque em “Atualizar agora” novamente.');return;}
+  researcherUpdateStatus('Recarregamento automático em alguns instantes…');
+  if(!RESEARCHER_UPDATE_TIMER)RESEARCHER_UPDATE_TIMER=window.setTimeout(forceResearcherAppReload,1800);
+}
+async function checkResearcherAppVersion(){
+  if(CURRENT_PROFILE?.role!=='pesq'||RESEARCHER_UPDATE_CHECKING)return false;
+  RESEARCHER_UPDATE_CHECKING=true;
+  try{
+    const response=await fetch('app.html?pp_version_check='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
+    if(!response.ok)return false;
+    const latest=researcherUpdateVersionFromHtml(await response.text());
+    if(researcherUpdateIsStale(latest)){showResearcherUpdateRequired(latest);return true;}
+  }catch(ex){console.warn('Não foi possível verificar a versão do aplicativo:',ex);}
+  finally{RESEARCHER_UPDATE_CHECKING=false;}
+  return false;
+}
+function startResearcherVersionMonitor(){
+  if(CURRENT_PROFILE?.role!=='pesq')return;
+  if(RESEARCHER_VERSION_MONITOR)clearInterval(RESEARCHER_VERSION_MONITOR);
+  RESEARCHER_VERSION_MONITOR=window.setInterval(()=>{checkResearcherAppVersion();},60000);
+}
+function stopResearcherVersionMonitor(){
+  if(RESEARCHER_VERSION_MONITOR){clearInterval(RESEARCHER_VERSION_MONITOR);RESEARCHER_VERSION_MONITOR=null;}
+  if(RESEARCHER_UPDATE_TIMER){clearTimeout(RESEARCHER_UPDATE_TIMER);RESEARCHER_UPDATE_TIMER=null;}
+  RESEARCHER_UPDATE_PENDING=false;RESEARCHER_UPDATE_TARGET_VERSION='';
+  const overlay=researcherUpdateOverlay();if(overlay){overlay.hidden=true;overlay.classList.remove('is-pending');}
+  document.body.classList.remove('researcher-update-lock');
+}
+function applyPendingResearcherUpdateIfSafe(){
+  if(RESEARCHER_UPDATE_PENDING&&CURRENT_PROFILE?.role==='pesq'&&!ACOLLECT_IN_PROGRESS)forceResearcherAppReload();
+}
 
 function pushBrowserSupported(){return 'serviceWorker' in navigator&&'PushManager' in window&&'Notification' in window;}
 function pushKeyToUint8Array(base64String){
@@ -253,6 +322,7 @@ async function requestOwnPasswordReset(){
 }
 
 async function afterLogin(user){
+  stopResearcherVersionMonitor();
   chatStopRealtime();CHAT_CHANNELS=[];CHAT_CHANNELS_LOADED=false;CHAT_CHANNELS_LOADING=false;CHAT_SCHEMA_MISSING=false;CHAT_ACTIVE_CHANNEL_ID=null;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=false;CHAT_MESSAGES_LOADING=false;CHAT_SUPPORT_CHANNEL_ID=null;CHAT_SUPPORT_READY=false;CHAT_SUPPORT_LOADING=false;
   PUSH_STATUS='unknown';PUSH_STATUS_LOADING=false;PUSH_SCHEMA_MISSING=false;PUSH_SW_REGISTRATION=null;MY_COMMUNICATIONS=[];MY_COMMUNICATIONS_LOADED=false;MY_COMMUNICATIONS_LOADING=false;
   ACTIVE_CAMPAIGN_ID=null;CLIENT_SURVEY_VIEW_ID=null;
@@ -282,12 +352,17 @@ async function afterLogin(user){
   buildSidebar();
   const nav=ROLE_NAV[profile.role]||['dashboard'];
   go(nav[0]);
+  if(profile.role==='pesq'){
+    startResearcherVersionMonitor();
+    checkResearcherAppVersion();
+  }
   if(typeof openSurveyInviteFromUrl==='function')openSurveyInviteFromUrl();
   if(typeof openClientApprovalFromUrl==='function')openClientApprovalFromUrl();
   if(typeof openResearcherLinkFromUrl==='function')openResearcherLinkFromUrl();
 }
 
 async function logout(){
+  stopResearcherVersionMonitor();
   await sb.auth.signOut();
   chatStopRealtime();
   CHAT_CHANNELS=[];CHAT_CHANNELS_LOADED=false;CHAT_CHANNELS_LOADING=false;CHAT_SCHEMA_MISSING=false;CHAT_ACTIVE_CHANNEL_ID=null;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=false;CHAT_MESSAGES_LOADING=false;CHAT_SUPPORT_CHANNEL_ID=null;CHAT_SUPPORT_READY=false;CHAT_SUPPORT_LOADING=false;CHAT_PENDING_SURVEY_ID=null;
@@ -4927,6 +5002,7 @@ function acollectEndByCondition(qDbId,value,optionIndex){
   renderAcollectQuotas();
   renderAcollectActionState();
   alert('Não continue esta entrevista, esta resposta é uma condicionante necessária para o perfil de entrevistado');
+  applyPendingResearcherUpdateIfSafe();
   return true;
 }
 
@@ -5339,6 +5415,7 @@ function acollectCancel(){
   const formEl=document.getElementById('acollectForm');
   if(formEl)formEl.innerHTML='';
   renderAcollectQuotas();
+  applyPendingResearcherUpdateIfSafe();
 }
 async function loadCollectEventsForced(){
   try{
@@ -5518,6 +5595,7 @@ async function acollectSubmit(){
         :'<div class="offline-banner">✓ Coleta enviada; a confirmação de áudio não pôde ser anexada.</div>';
     setTimeout(()=>{if(msg)msg.innerHTML='';},4000);
   }
+  applyPendingResearcherUpdateIfSafe();
 }
 
 function requestGeo(){

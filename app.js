@@ -49,7 +49,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261006140000';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261006144500';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -3659,8 +3659,8 @@ function collectionFunnelWhatsAppButton(entry,s,stage){
 function collectionFunnelStageActions(entry,s,stage){
   const user=entry.user;
   const actions=[];
-  if(stage==='available')actions.push(`<button type="button" class="btn btn-out team-whatsapp-invite-btn" onclick="inviteCollectionFunnelResearcher(${jsArg(user.id)})">✉ Convidar por WhatsApp</button>`);
-  if(stage==='invited'&&entry.invite?.id)actions.push(`<button type="button" class="btn btn-out team-whatsapp-invite-btn" onclick="inviteCollectionFunnelResearcher(${jsArg(user.id)})">↗ Reenviar convite</button>`);
+  if(stage==='available')actions.push(`<button type="button" class="btn btn-fill team-inapp-invite-btn" onclick="inviteCollectionFunnelResearcherInApp(${jsArg(user.id)})">✉ Convidar pelo aplicativo</button>`,`<button type="button" class="btn btn-out team-whatsapp-invite-btn" onclick="inviteCollectionFunnelResearcher(${jsArg(user.id)})">✉ Convidar por WhatsApp</button>`);
+  if(stage==='invited'&&entry.invite?.id)actions.push(`<button type="button" class="btn btn-fill team-inapp-invite-btn" onclick="inviteCollectionFunnelResearcherInApp(${jsArg(user.id)})">↻ Reenviar pelo aplicativo</button>`,`<button type="button" class="btn btn-out team-whatsapp-invite-btn" onclick="inviteCollectionFunnelResearcher(${jsArg(user.id)})">↗ Reenviar convite</button>`);
   if(stage==='accepted')actions.push(`<button type="button" class="btn btn-fill collection-funnel-orientation-btn" ${user.phone?'':'disabled'} onclick="sendCollectionOrientationWhatsapp(${jsArg(user.name)})">✉ Enviar orientações iniciais</button>`);
   actions.push(collectionFunnelWhatsAppButton(entry,s,stage));
   return actions.filter(Boolean).join('');
@@ -3676,7 +3676,7 @@ function collectionFunnelPanelMarkup(stage,entries,s){
   const query=normalizeUserSearch(search);
   const filtered=entries.filter(entry=>!query||normalizeUserSearch(entry.user.name).includes(query));
   const title=COLLECTION_FUNNEL_STAGES[stage].label;
-  const helper=stage==='available'?'Pesquisadores ativos, com cadastro completo e compatíveis com a área da pesquisa.':stage==='invited'?'Convites pendentes ou recusados. Use o WhatsApp para reenviar e acompanhar o aceite.':stage==='accepted'?'Aceitaram o convite, mas ainda não receberam o envio das orientações iniciais.':'Pesquisadores já vinculados à equipe desta pesquisa.';
+  const helper=stage==='available'?'Pesquisadores ativos, com cadastro completo e compatíveis com a área da pesquisa. Convide pelo aplicativo ou abra o WhatsApp.':stage==='invited'?'Convites pendentes ou recusados. Reenvie pelo aplicativo ou use o WhatsApp para acompanhar o aceite.':stage==='accepted'?'Aceitaram o convite, mas ainda não receberam o envio das orientações iniciais.':'Pesquisadores já vinculados à equipe desta pesquisa.';
   return `<section class="collection-funnel-panel ${COLLECT_FUNNEL_TAB===stage?'is-active':''}" data-funnel-panel="${stage}" ${COLLECT_FUNNEL_TAB===stage?'':'hidden'}><div class="collection-funnel-panel-head"><div><h3>${title}</h3><p>${helper}</p></div><label class="collection-funnel-search"><span>Buscar por nome</span><input type="search" value="${esc(search)}" placeholder="Digite o nome do pesquisador" oninput="collectFunnelSetSearch('${stage}',this.value)" autocomplete="off"></label></div>${COLLECT_ORIENTATION_COUNTS_STATUS==='unavailable'&&stage==='accepted'?'<div class="callout warn collection-funnel-warning">O contador de orientações ainda não está disponível no banco. Execute a migration de orientações para separar com precisão quem já recebeu a mensagem.</div>':''}<div class="collection-funnel-list">${filtered.length?filtered.map(entry=>collectionFunnelCard(entry,s,stage)).join(''):`<div class="collection-funnel-empty">${query?'Nenhum pesquisador corresponde a esta busca.':'Nenhum pesquisador neste estágio do funil.'}</div>`}</div></section>`;
 }
 function renderCollectionTeamFunnel(idx){
@@ -3695,6 +3695,23 @@ function collectFunnelSetSearch(stage,value){
   COLLECT_FUNNEL_SEARCH[stage]=value||'';renderCollectionTeamFunnel(COLLECT_IDX);
   const input=document.querySelector(`[data-funnel-panel="${stage}"] .collection-funnel-search input`);
   if(input){input.focus();input.setSelectionRange(input.value.length,input.value.length);}
+}
+function rememberCollectionFunnelInvite(row){
+  if(!row?.id)return;
+  const index=COLLECT_TEAM_INVITES.findIndex(item=>item.id===row.id);
+  if(index>=0)COLLECT_TEAM_INVITES[index]=row;else COLLECT_TEAM_INVITES.push(row);
+  COLLECT_TEAM_INVITES_LOADED=true;
+}
+async function inviteCollectionFunnelResearcherInApp(researcherId){
+  const s=SURVEYS[COLLECT_IDX],user=USERS.find(item=>item.id===researcherId);
+  if(!s||!user)return;
+  try{
+    const result=await ensureSurveyInvite(s.id,researcherId);
+    if(result.alreadyAccepted){alert('Este pesquisador já aceitou o convite desta pesquisa.');return;}
+    rememberCollectionFunnelInvite(result.row);
+    alert('Convite registrado no aplicativo. O pesquisador verá a solicitação em “Meus dados” e no “Meu painel”.');
+  }catch(ex){alert('Não foi possível enviar o convite pelo aplicativo: '+ex.message);}
+  renderCollectionTeamFunnel(COLLECT_IDX);
 }
 async function inviteCollectionFunnelResearcher(researcherId){
   const s=SURVEYS[COLLECT_IDX],user=USERS.find(item=>item.id===researcherId);

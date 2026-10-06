@@ -5,6 +5,8 @@ const app=fs.readFileSync(path.join(root,'app.js'),'utf8');
 const html=fs.readFileSync(path.join(root,'app.html'),'utf8');
 const css=fs.readFileSync(path.join(root,'style.css'),'utf8');
 const sql=fs.readFileSync(path.join(root,'deploy','integridade-coleta-localizacao.sql'),'utf8');
+const correctedSqlPath=path.join(root,'deploy','corrigir-distancia-por-pesquisa.sql');
+const correctedSql=fs.existsSync(correctedSqlPath)?fs.readFileSync(correctedSqlPath,'utf8'):'';
 function assert(condition,message){if(!condition)throw new Error(message);}
 const tooClose='Esta coleta está muito próxima da anterior e isso compromete a qualidade da pesquisa, entreviste em um local mais distante';
 const outside='Esta coleta está fora da cidade ou região determinada pela pesquisa e não pode ser realizada aqui.';
@@ -13,6 +15,9 @@ assert(app.includes(outside),'mensagem exata de abrangência ausente no frontend
 assert(app.includes('acollectValidateLocation'),'validação de localização não está conectada');
 assert(app.includes('acollectReverseGeocodeCurrentLocation'),'geocodificação da localização atual ausente');
 assert(app.includes('acollectLocationMatchesSurvey'),'comparação com cidade/UF da pesquisa ausente');
+assert(app.includes('function acollectPreviousCollection(surveyId=ACOLLECT_SURVEY_ID)'),'histórico anterior não recebe o escopo da pesquisa');
+assert(app.includes('event.surveyId===surveyId'),'trava frontend não filtra pelo survey_id');
+assert(app.includes('const previous=acollectPreviousCollection(s.id)'),'validação frontend não passa a pesquisa atual');
 assert(app.includes('for(const wantedType of types)'),'geocodificação não prioriza o tipo de componente');
 assert(app.includes(".includes(wantedType)"),'geocodificação pode voltar a aceitar o primeiro bairro como cidade');
 assert(app.includes("sb.rpc('validate_collection_start'"),'RPC de início seguro não é chamada');
@@ -30,8 +35,19 @@ assert(sql.includes('trg_enforce_collection_location_integrity'),'trigger não f
 assert(sql.includes('outside_area'),'bloqueio de área ausente na migration');
 assert(!/delete\s+from\s+public\.(collection_events|collection_answers|payments)/i.test(sql),'migration contém exclusão destrutiva');
 assert(!/drop\s+table/i.test(sql),'migration contém drop table');
+if(correctedSql){
+  assert(correctedSql.includes('create or replace function public.validate_collection_start'),'migration corretiva não substitui a RPC');
+  assert(correctedSql.includes('ce.survey_id = p_survey_id'),'RPC corretiva ainda compara pesquisas diferentes');
+  assert(correctedSql.includes('ce.survey_id = new.survey_id'),'trigger corretivo ainda compara pesquisas diferentes');
+  assert(correctedSql.includes("collection-distance:' || v_researcher_id::text || ':' || p_survey_id::text"),'lock da RPC não está no escopo pesquisador + pesquisa');
+  assert(correctedSql.includes("collection-distance:' || new.researcher_id::text || ':' || new.survey_id::text"),'lock do trigger não está no escopo pesquisador + pesquisa');
+  assert(correctedSql.includes('v_distance < 15'),'migration corretiva não mantém a trava de 15 metros');
+  assert(correctedSql.includes('outside_area'),'migration corretiva não preserva a trava de área');
+  assert(!/delete\s+from\s+public\.(collection_events|collection_answers|payments)/i.test(correctedSql),'migration corretiva contém exclusão destrutiva');
+  assert(!/drop\s+table/i.test(correctedSql),'migration corretiva contém drop table');
+}
 assert(css.includes('.collection-integrity-message'),'mensagem de bloqueio sem estilo dedicado');
 assert(css.includes('.finance-table-scroll'),'CSS financeiro completo não foi preservado');
-assert(html.includes('app.js?v=20261006144500'),'cache do app não foi atualizado');
-assert(html.includes('style.css?v=20261006144500'),'cache do CSS não foi atualizado');
+assert(html.includes('app.js?v=20261006150000'),'cache do app não foi atualizado');
+assert(html.includes('style.css?v=20261006150000'),'cache do CSS não foi atualizado');
 console.log('collection-integrity-smoke-test: OK');

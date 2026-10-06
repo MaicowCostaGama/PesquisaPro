@@ -49,7 +49,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261006144500';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261006150000';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -4785,9 +4785,10 @@ function acollectIsAfterRecordingCutoff(date=new Date()){
   try{return Number(new Intl.DateTimeFormat('en-US',{hour:'numeric',hour12:false,timeZone:'America/Sao_Paulo'}).format(date))>=ACOLLECT_RECORDING_CUTOFF_HOUR;}
   catch(ex){return date.getHours()>=ACOLLECT_RECORDING_CUTOFF_HOUR;}
 }
-function acollectPreviousCollection(){
+function acollectPreviousCollection(surveyId=ACOLLECT_SURVEY_ID){
   const myId=CURRENT_PROFILE?.id;
-  return COLLECT_EVENTS.filter(event=>event.researcherId===myId&&event.status!=='rejected'&&Number.isFinite(event.lat)&&Number.isFinite(event.lng))
+  if(!myId||!surveyId)return null;
+  return COLLECT_EVENTS.filter(event=>event.researcherId===myId&&event.surveyId===surveyId&&event.status!=='rejected'&&Number.isFinite(event.lat)&&Number.isFinite(event.lng))
     .sort((a,b)=>b.ts-a.ts)[0]||null;
 }
 function acollectGoogleAddressComponent(results,types){
@@ -4847,7 +4848,7 @@ async function acollectServerStartValidation(s){
     }
     const row=Array.isArray(data)?data[0]:data;
     if(row?.allowed===false){
-      if(row.code==='too_close')return {ok:false,message:COLLECT_TOO_CLOSE_MESSAGE,detail:Number.isFinite(Number(row.distance_m))?'Distância calculada: '+fmtDist(Number(row.distance_m))+' da coleta anterior.':''};
+      if(row.code==='too_close')return {ok:false,message:COLLECT_TOO_CLOSE_MESSAGE,detail:Number.isFinite(Number(row.distance_m))?'Distância calculada: '+fmtDist(Number(row.distance_m))+' da coleta anterior desta pesquisa.':''};
       if(row.code==='not_authorized')return {ok:false,message:'Esta pesquisa não está disponível para o seu perfil de pesquisador.'};
       return {ok:false,message:'Não foi possível liberar esta coleta. Confira a pesquisa e tente novamente.'};
     }
@@ -4860,11 +4861,11 @@ async function acollectServerStartValidation(s){
 async function acollectValidateLocation(){
   const s=SURVEYS.find(x=>x.id===ACOLLECT_SURVEY_ID);
   if(!s||!Number.isFinite(GEO.lat)||!Number.isFinite(GEO.lng))return {ok:false,message:'A localização atual não está disponível. Aguarde o GPS ficar ativo e tente novamente.'};
-  const previous=acollectPreviousCollection();
+  const previous=acollectPreviousCollection(s.id);
   const distance=previous?distMeters(GEO.lat,GEO.lng,previous.lat,previous.lng):null;
   if(distance!=null&&distance<15){
     ACOLLECT_LOCATION_CHECK={status:'blocked',city:'',state:'',formatted:'',distanceM:distance};
-    return {ok:false,message:COLLECT_TOO_CLOSE_MESSAGE,detail:'Distância calculada: '+fmtDist(distance)+' da coleta anterior.'};
+    return {ok:false,message:COLLECT_TOO_CLOSE_MESSAGE,detail:'Distância calculada: '+fmtDist(distance)+' da coleta anterior desta pesquisa.'};
   }
   const {hasTargets}=acollectSurveyHasAreaTargets(s);
   let place={city:'',state:'',formatted:''};

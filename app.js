@@ -49,7 +49,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261006102500';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261006132000';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -1065,13 +1065,13 @@ PAGES['researcher-guide']=()=>{
     </div>
     <div class="guide-section-title"><span class="eyebrow">PASSO A PASSO</span><h3>Faça a coleta na ordem correta</h3><p>Use esta sequência em todas as entrevistas para reduzir erros e evitar retrabalho.</p></div>
     <div class="guide-step-grid">
-      ${[['01','Prepare o celular','Ative o GPS, permita a localização no navegador, confira a internet e mantenha a bateria suficiente para o trabalho.'],['02','Escolha a pesquisa','No menu, abra “Coletar (app)” e confirme se a pesquisa exibida é a correta antes de iniciar.'],['03','Selecione a cota','Toque em uma cota disponível. A instrução “1º selecione uma cota” deve desaparecer antes de iniciar.'],['04','Confirme a localização','A coleta exige georreferenciamento. Aguarde o status de localização ativa e permaneça no local da entrevista.'],['05','Aplique o questionário','Leia as perguntas com neutralidade, registre respostas verdadeiras e não pule campos obrigatórios.'],['06','Finalize e envie','Revise a entrevista, responda à confirmação final se aparecer, envie e aguarde a confirmação do servidor.']].map(([n,t,d])=>`<article class="guide-step"><span class="guide-step-num">${n}</span><div><h4>${t}</h4><p>${d}</p></div></article>`).join('')}
+      ${[['01','Prepare o celular','Ative o GPS, permita a localização no navegador, confira a internet e mantenha a bateria suficiente para o trabalho.'],['02','Escolha a pesquisa','No menu, abra “Coletar (app)” e confirme se a pesquisa exibida é a correta antes de iniciar.'],['03','Selecione a cota','Toque em uma cota disponível. A instrução “1º selecione uma cota” deve desaparecer antes de iniciar.'],['04','Confirme a localização','A coleta exige georreferenciamento. Aguarde o status de localização ativa e permaneça dentro da cidade ou região autorizada pela pesquisa.'],['05','Respeite a distância','A nova entrevista deve começar a pelo menos 15 metros da coleta válida anterior. Se o aplicativo bloquear, mude para um local mais distante.'],['06','Aplique o questionário','Leia as perguntas com neutralidade, registre respostas verdadeiras e não pule campos obrigatórios.'],['07','Respeite o tempo mínimo','Cada formulário tem um tempo mínimo necessário. Coletas abaixo desse limite são rejeitadas e não entram no pagamento.'],['08','Finalize e envie','Revise a entrevista, responda à confirmação final se aparecer, envie e aguarde a confirmação do servidor. Após 21h, a gravação de confirmação é obrigatória.']].map(([n,t,d])=>`<article class="guide-step"><span class="guide-step-num">${n}</span><div><h4>${t}</h4><p>${d}</p></div></article>`).join('')}
     </div>
     <div class="grid g2 guide-lower-grid">
       <div class="card guide-checklist"><div class="card-t">Antes de enviar, confira</div><div class="card-d">Uma revisão de 20 segundos evita a maioria dos problemas.</div><label><input type="checkbox"> A cota escolhida corresponde ao perfil entrevistado</label><label><input type="checkbox"> A localização está ativa e atualizada</label><label><input type="checkbox"> As respostas foram conferidas com o entrevistado</label><label><input type="checkbox"> A tela confirmou o envio ao servidor</label></div>
       <div class="card guide-support"><div class="card-t">Se algo não funcionar</div><div class="card-d">Não tente repetir várias vezes sem conferir o motivo.</div><div class="guide-support-row"><span>GPS bloqueado</span><strong>Ative a localização e recarregue a página.</strong></div><div class="guide-support-row"><span>Sem cota</span><strong>Verifique se você entrou na pesquisa correta.</strong></div><div class="guide-support-row"><span>Envio pendente</span><strong>Mantenha a página aberta até confirmar o servidor.</strong></div><button class="btn btn-ghost" onclick="go('app-collect')">Voltar para a coleta →</button></div>
     </div>
-    <div class="guide-note"><strong>Importante:</strong> nunca compartilhe sua senha, não altere respostas para atingir a meta e procure a coordenação quando houver dúvida sobre uma cota ou abordagem.</div>
+    <div class="guide-note"><strong>Importante:</strong> nunca compartilhe sua senha, não altere respostas para atingir a meta, não registre entrevista sem entrevistar e procure a coordenação quando houver dúvida sobre uma cota, a área autorizada ou uma abordagem. A mensagem de reprovação por tempo mínimo é: “Tempo de coleta não corresponde ao tempo mínimo necessário a uma coleta real”.</div>
   </div>`;
 };
 
@@ -3053,7 +3053,7 @@ function surveyInvitationGroupText(groupLink,compact=false){
     :'O link do grupo WhatsApp será disponibilizado no seu painel antes da primeira coleta.';
 }
 function surveyInvitationSiteUrl(){return 'https://www.pesquisa-pro.com/app.html';}
-function surveyTrainingVideoUrl(){return 'https://files.manuscdn.com/user_upload_by_module/session_file/310519663067279939/aKHKhqQgQgDDwOSj.mp4';}
+function surveyTrainingVideoUrl(){return 'https://files.manuscdn.com/user_upload_by_module/session_file/310519663067279939/IAbgBdOWmetnlYWG.mp4';}
 function whatsappInviteCountMarkup(invite){
   if(!invite)return '';
   const count=Math.max(0,Number(invite.whatsapp_sent_count)||0);
@@ -3125,19 +3125,21 @@ function surveyInitialOrientationDefaultTemplate(){
     '• Acesse {{site}} e entre no aplicativo PesquisaPro;\n'+
     '• Selecione a pesquisa e confira a cota disponível antes de iniciar;\n'+
     '• Mantenha o GPS do celular ativo e permita a localização quando solicitado;\n'+
+    '• Faça a coleta somente dentro da cidade ou região autorizada pela pesquisa. Fora da área, o aplicativo não permitirá iniciar;\n'+
     '• {{grupo}}\n\n'+
     '*Regras da coleta:*\n'+
     '• Aborde somente pessoas dentro do perfil definido no formulário;\n'+
     '• Leia as perguntas e registre exatamente o que a pessoa responder;\n'+
     '• Não invente, replique, acelere ou preencha entrevistas sem falar com o entrevistado;\n'+
-    '• Não faça coletas em pontos muito próximos nem em intervalos de tempo incompatíveis com uma entrevista real;\n'+
+    '• O sistema bloqueia o início se a nova coleta estiver a menos de 15 metros da coleta válida anterior. Se isso acontecer, entreviste em um local mais distante;\n'+
+    '• Respeite o tempo mínimo calculado para o formulário. Coletas abaixo do mínimo serão rejeitadas e não serão contabilizadas para pagamento;\n'+
     '• Preserve a privacidade e nunca fotografe documentos;\n\n'+
     '*Controle de qualidade e confirmação gravada:*\n'+
     'O georreferenciamento, o horário e os dados da coleta podem ser verificados. Algumas entrevistas solicitarão que, no final, o entrevistado grave com sua voz a confirmação de que a entrevista realmente ocorreu e de que foram feitas todas as perguntas.\n\n'+
     'Todas as entrevistas realizadas após as 21:00 devem ter gravação de confirmação do entrevistado no final. Explique o pedido com transparência e solicite a autorização antes de gravar.\n\n'+
     'Lembre-se: alguém pagou pela informação correta e você recebe por coletar esta informação. Quando todas as partes realizam a prática correta, todos ganham.\n\n'+
     '*Assista a este vídeo para entender como fazer as coletas corretamente e as regras para serem consideradas aptas:*\n{{video}}\n\n'+
-    'Entrevistas que não respeitem o perfil, o local, o tempo ou as regras poderão ser anuladas e não serão consideradas nos resultados ou no pagamento. Pesquisadores que insistirem em descumprir as regras ou tentarem burlar os controles poderão ser desligados da operação.\n\n'+
+    'Entrevistas que não respeitem o perfil, a cidade ou região, a distância mínima, o tempo ou as regras poderão ser anuladas e não serão consideradas nos resultados ou no pagamento. A mensagem de reprovação por tempo mínimo é: “Tempo de coleta não corresponde ao tempo mínimo necessário a uma coleta real.” Pesquisadores que insistirem em descumprir as regras ou tentarem burlar os controles poderão ser desligados da operação.\n\n'+
     'Em caso de dúvida, pare a coleta e fale com a equipe PesquisaPro. Boa coleta: precisa, respeitosa e fiel à opinião do entrevistado.';
 }
 function surveyInitialOrientationWhatsappMessage(s,u,groupLink='',template=''){
@@ -3152,9 +3154,14 @@ function surveyInitialOrientationWhatsappMessage(s,u,groupLink='',template=''){
   const source=String(template||'').trim()||surveyInitialOrientationDefaultTemplate();
   let message=source.replace(/\{\{\s*(pesquisador|pesquisa|site|video|grupo)\s*\}\}/gi,(_,key)=>values[String(key).toLowerCase()]||'');
   const mandatoryBlocks=[];
+  if(!/cidade ou região autorizada|fora da (?:cidade|área)|fora da região/i.test(message))mandatoryBlocks.push('Faça a coleta somente dentro da cidade ou região autorizada pela pesquisa. Fora da área, o aplicativo não permitirá iniciar.');
+  if(!/menos de 15 metros|15 metros|quinze metros/i.test(message))mandatoryBlocks.push('O sistema bloqueia o início se a nova coleta estiver a menos de 15 metros da coleta válida anterior. Se isso acontecer, entreviste em um local mais distante.');
+  if(!/tempo mínimo calculado|abaixo do mínimo|tempo mínimo necessário/i.test(message))mandatoryBlocks.push('Respeite o tempo mínimo calculado para o formulário. Coletas abaixo do mínimo serão rejeitadas e não serão contabilizadas para pagamento.');
   if(!/algumas entrevistas solicitarão/i.test(message))mandatoryBlocks.push('Algumas entrevistas solicitarão que, no final, o entrevistado grave com sua voz a confirmação de que a entrevista realmente ocorreu e de que foram feitas todas as perguntas.');
   if(!/todas as entrevistas realizadas após as 21:00/i.test(message))mandatoryBlocks.push('Todas as entrevistas realizadas após as 21:00 devem ter gravação de confirmação do entrevistado no final.');
   if(!/alguém pagou pela informação correta/i.test(message))mandatoryBlocks.push('Lembre-se: alguém pagou pela informação correta e você recebe por coletar esta informação. Quando todas as partes realizam a prática correta, todos ganham.');
+  if(!/entrevistas reprovadas.*(?:pagamento|paga)|não serão contabilizadas para pagamento/i.test(message))mandatoryBlocks.push('Entrevistas reprovadas não entram nos resultados e não são contabilizadas para pagamento.');
+  if(!/Tempo de coleta não corresponde ao tempo mínimo necessário a uma coleta real/i.test(message))mandatoryBlocks.push('Quando a duração ficar abaixo do mínimo, o motivo informado será: “Tempo de coleta não corresponde ao tempo mínimo necessário a uma coleta real.”');
   if(!message.includes(surveyTrainingVideoUrl()))mandatoryBlocks.push('Assista a este vídeo para entender como fazer as coletas corretamente e as regras para serem consideradas aptas: '+surveyTrainingVideoUrl());
   return mandatoryBlocks.length?message+'\n\n*Avisos obrigatórios da PesquisaPro:*\n'+mandatoryBlocks.join('\n\n'):message;
 }
@@ -4743,10 +4750,13 @@ function acollectPreviousCollection(){
     .sort((a,b)=>b.ts-a.ts)[0]||null;
 }
 function acollectGoogleAddressComponent(results,types){
-  const wanted=new Set(types);
-  for(const result of results||[]){
-    for(const component of result.address_components||[]){
-      if((component.types||[]).some(type=>wanted.has(type)))return component;
+  /* O Google costuma listar o bairro antes do município. Procurar por
+     prioridade evita comparar "Lapa", "Moema" etc. com "São Paulo/SP". */
+  for(const wantedType of types){
+    for(const result of results||[]){
+      for(const component of result.address_components||[]){
+        if((component.types||[]).includes(wantedType))return component;
+      }
     }
   }
   return null;

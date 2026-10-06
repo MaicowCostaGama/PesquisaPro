@@ -13,6 +13,8 @@ assert(app.includes(outside),'mensagem exata de abrangência ausente no frontend
 assert(app.includes('acollectValidateLocation'),'validação de localização não está conectada');
 assert(app.includes('acollectReverseGeocodeCurrentLocation'),'geocodificação da localização atual ausente');
 assert(app.includes('acollectLocationMatchesSurvey'),'comparação com cidade/UF da pesquisa ausente');
+assert(app.includes('for(const wantedType of types)'),'geocodificação não prioriza o tipo de componente');
+assert(app.includes(".includes(wantedType)"),'geocodificação pode voltar a aceitar o primeiro bairro como cidade');
 assert(app.includes("sb.rpc('validate_collection_start'"),'RPC de início seguro não é chamada');
 assert(app.includes('captured_city')&&app.includes('captured_state'),'cidade e UF não são enviadas junto da coleta');
 assert(app.includes('COLLECT_GEO_COLUMNS_AVAILABLE'),'fallback para instalações sem as colunas novas ausente');
@@ -30,6 +32,6 @@ assert(!/delete\s+from\s+public\.(collection_events|collection_answers|payments)
 assert(!/drop\s+table/i.test(sql),'migration contém drop table');
 assert(css.includes('.collection-integrity-message'),'mensagem de bloqueio sem estilo dedicado');
 assert(css.includes('.finance-table-scroll'),'CSS financeiro completo não foi preservado');
-assert(html.includes('app.js?v=20261006102500'),'cache do app não foi atualizado');
-assert(html.includes('style.css?v=20261006102500'),'cache do CSS não foi atualizado');
+assert(html.includes('app.js?v=20261006132000'),'cache do app não foi atualizado');
+assert(html.includes('style.css?v=20261006132000'),'cache do CSS não foi atualizado');
 console.log('collection-integrity-smoke-test: OK');

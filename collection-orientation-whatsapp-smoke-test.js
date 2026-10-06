@@ -28,7 +28,7 @@ for(const token of [
   "sb.rpc('get_survey_orientation_whatsapp_counts'",
   "sb.rpc('record_survey_orientation_whatsapp_send'",
   'Orientações: ${count} envio',
-  'Não faça coletas em pontos muito próximos',
+  'menos de 15 metros',
   'Algumas entrevistas solicitarão que, no final, o entrevistado grave com sua voz',
   'Todas as entrevistas realizadas após as 21:00 devem ter gravação',
   'alguém pagou pela informação correta',
@@ -60,5 +60,5 @@ const editableSql=fs.readFileSync('deploy/orientacoes-iniciais-editaveis.sql','u
 assert(editableSql.includes('add column if not exists orientation_message_template'),'migration editável sem coluna');
 assert(!/drop table|drop column|truncate|delete from/i.test(editableSql),'migration editável contém operação destrutiva');
 assert(!/drop table|drop column|truncate|delete from/i.test(sql),'migration contém operação destrutiva');
-assert(html.includes('app.js?v=20261006102500'),'cache não atualizado');
+assert(html.includes('app.js?v=20261006132000'),'cache não atualizado');
 console.log('Collection orientation WhatsApp smoke test: PASS — mensagem, botão, contador por pesquisador, RPCs e RLS verificados.');

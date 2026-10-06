@@ -2,11 +2,11 @@
 let selectedRole='admin';
 const ROLES={
   admin:{name:'Admin Master',role:'Administrador',initials:'AM',
-    nav:['dashboard','commercial','new-survey','surveys','surveys-done','sample','collect','reports','users','permissions','finance','contracts','contract-template','company','communication']},
+    nav:['dashboard','commercial','new-survey','surveys','surveys-done','sample','collect','reports','researcher-ranking','users','permissions','finance','contracts','contract-template','company','communication']},
   coord:{name:'Carla Menezes',role:'Coordenadora',initials:'CM',
-    nav:['dashboard','commercial','surveys','surveys-done','collect','reports','finance']},
+    nav:['dashboard','commercial','surveys','surveys-done','collect','reports','researcher-ranking','finance']},
   gerente:{name:'Rafael Dias',role:'Gerente',initials:'RD',
-    nav:['dashboard','commercial','sample','reports','finance']},
+    nav:['dashboard','commercial','sample','reports','researcher-ranking','finance']},
   pesq:{name:'João Pereira',role:'Pesquisador',initials:'JP',
     nav:['dashboard-pesq','researcher-profile','researcher-guide','app-collect','researcher-badge','my-earnings','my-contract','communication','support']},
   cliente:{name:'Prefeitura de Uberlândia',role:'Cliente',initials:'PU',
@@ -27,6 +27,7 @@ const NAV_META={
   'researcher-badge':{ico:'▤',label:'Crachá virtual',group:'Meu perfil'},
   support:{ico:'☎',label:'Suporte',group:'Ajuda'},
   reports:{ico:'◫',label:'Relatórios',group:'Análise'},
+  'researcher-ranking':{ico:'★',label:'Ranking de pesquisadores',group:'Análise'},
   users:{ico:'☺',label:'Usuários',group:'Administração'},
   permissions:{ico:'⚿',label:'Perfis e permissões',group:'Administração'},
   finance:{ico:'$',label:'Financeiro',group:'Pagamentos'},
@@ -49,7 +50,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261006171000';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261006174000';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -240,12 +241,12 @@ async function completePasswordReset(){
 }
 
 const ROLE_NAV={
-  admin:['dashboard','commercial','recruitment','new-survey','surveys','surveys-done','sample','collect','reports','users','permissions','finance','contracts','contract-template','company','communication'],
-  coord:['dashboard','commercial','surveys','surveys-done','collect','reports','finance','communication'],
-  gerente:['dashboard','commercial','sample','reports','finance','communication'],
+  admin:['dashboard','commercial','recruitment','new-survey','surveys','surveys-done','sample','collect','reports','researcher-ranking','users','permissions','finance','contracts','contract-template','company','communication'],
+  coord:['dashboard','commercial','surveys','surveys-done','collect','reports','researcher-ranking','finance','communication'],
+  gerente:['dashboard','commercial','sample','reports','researcher-ranking','finance','communication'],
   pesq:['dashboard-pesq','researcher-guide','app-collect','researcher-profile','researcher-badge','my-earnings','my-contract','support','communication'],
   cliente:['client-surveys','form-approval','client-progress','client-results','communication'],
-  admpro:['dashboard','commercial','recruitment','new-survey','surveys','surveys-done','sample','collect','reports','users','permissions','finance','contracts','contract-template','company','communication'],
+  admpro:['dashboard','commercial','recruitment','new-survey','surveys','surveys-done','sample','collect','reports','researcher-ranking','users','permissions','finance','contracts','contract-template','company','communication'],
   vendedor:['commercial'],
   indicador:['commercial'],
   recrutador:['recruitment'],
@@ -1879,7 +1880,7 @@ async function loadSurveysIfNeeded(){
   refreshClientSurveyLinks();
   const onKey=document.querySelector('.nav-item.on');
   const k=onKey&&onKey.dataset.key;
-  if(k==='surveys'||k==='surveys-done'||k==='dashboard'||k==='dashboard-pesq'||k==='researcher-profile'||k==='survey-team'||k==='client-surveys'||k==='client-progress'||k==='client-results'||k==='reports'||k==='communication')go(k);
+  if(k==='surveys'||k==='surveys-done'||k==='dashboard'||k==='dashboard-pesq'||k==='researcher-profile'||k==='survey-team'||k==='client-surveys'||k==='client-progress'||k==='client-results'||k==='reports'||k==='communication'||k==='researcher-ranking')go(k);
 }
 function surveySample(s){
   return Math.ceil(sampleSize(s&&s.pop,s&&s.err,s&&s.conf,s&&s.prop)*1.1);
@@ -6054,6 +6055,111 @@ function reportsExportCurrent(){
   const blob=new Blob(['\ufeff'+lines.join('\n')],{type:'text/csv;charset=utf-8'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='relatorio-pesquisa-'+new Date().toISOString().slice(0,10)+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 
+/* ============ RANKING DE PESQUISADORES ============ */
+let RESEARCHER_RANKING_ROWS=[];
+let RESEARCHER_RANKING_LOADED=false,RESEARCHER_RANKING_LOADING=false,RESEARCHER_RANKING_ERROR='';
+let RESEARCHER_RANKING_FILTERS={days:'90',surveyId:'',minInterviews:'10',search:''};
+const RESEARCHER_RANKING_MIN_SCORE=60;
+
+function researcherRankingRowsForView(){
+  const query=normalizeUserSearch(RESEARCHER_RANKING_FILTERS.search);
+  if(!query)return RESEARCHER_RANKING_ROWS.slice();
+  return RESEARCHER_RANKING_ROWS.filter(row=>normalizeUserSearch(row.researcherName).includes(query));
+}
+function researcherRankingSetFilter(key,value){
+  RESEARCHER_RANKING_FILTERS[key]=value||'';
+  if(key==='search'){go('researcher-ranking');const input=document.getElementById('researcher-ranking-search');if(input){input.focus();input.setSelectionRange(input.value.length,input.value.length);}return;}
+  RESEARCHER_RANKING_LOADED=false;RESEARCHER_RANKING_ERROR='';go('researcher-ranking');
+}
+function researcherRankingRefresh(){RESEARCHER_RANKING_LOADED=false;RESEARCHER_RANKING_ERROR='';go('researcher-ranking');}
+function researcherRankingScoreClass(score){return score==null?'pill-gray':score>=80?'pill-green':score>=RESEARCHER_RANKING_MIN_SCORE?'pill-amber':'pill-red';}
+function researcherRankingScoreMarkup(score){return score==null?'<span class="pill pill-gray">Amostra insuficiente</span>':`<span class="pill ${researcherRankingScoreClass(score)}" style="font-weight:800">${Number(score).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1})}</span>`;}
+function researcherRankingPct(value){return value==null?'—':Number(value).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1})+'%';}
+function researcherRankingMetric(value,suffix=''){return value==null?'—':Number(value).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1})+suffix;}
+function researcherRankingStatus(status){return status==='ativo'?'<span class="pill pill-green">● Ativo</span>':status==='encerrado'?'<span class="pill pill-gray">● Encerrado</span>':'<span class="pill pill-amber">● Pendente</span>';}
+function researcherRankingLoadErrorMarkup(){
+  if(!RESEARCHER_RANKING_ERROR)return '';
+  const missing=/researcher_performance_ranking|function .* does not exist|schema cache|column .* does not exist/i.test(RESEARCHER_RANKING_ERROR);
+  return `<div class="callout warn mb"><b>Ranking indisponível no banco.</b><br>${missing?'Execute manualmente <code>deploy/ranking-desempenho-pesquisadores.sql</code> no Supabase e atualize esta tela.':esc(RESEARCHER_RANKING_ERROR)}</div>`;
+}
+async function loadResearcherRankingIfNeeded(){
+  if(RESEARCHER_RANKING_LOADED||RESEARCHER_RANKING_LOADING)return;
+  RESEARCHER_RANKING_LOADING=true;RESEARCHER_RANKING_ERROR='';
+  try{
+    const {data,error}=await sb.rpc('researcher_performance_ranking',{
+      p_days:Number(RESEARCHER_RANKING_FILTERS.days)||90,
+      p_survey_id:RESEARCHER_RANKING_FILTERS.surveyId||null,
+      p_min_interviews:Number(RESEARCHER_RANKING_FILTERS.minInterviews)||10
+    });
+    if(error)throw new Error(error.message);
+    RESEARCHER_RANKING_ROWS=(data||[]).map(row=>({
+      researcherId:row.researcher_id,researcherName:row.researcher_name||'Pesquisador não identificado',researcherStatus:row.researcher_status||'ativo',
+      totalCount:Number(row.total_count)||0,validCount:Number(row.valid_count)||0,rejectedCount:Number(row.rejected_count)||0,sampleEligible:!!row.sample_eligible,
+      responseQualityScore:Number.isFinite(Number(row.response_quality_score))?Number(row.response_quality_score):null,integrityScore:Number.isFinite(Number(row.integrity_score))?Number(row.integrity_score):null,durationScore:Number.isFinite(Number(row.duration_score))?Number(row.duration_score):null,distanceScore:Number.isFinite(Number(row.distance_score))?Number(row.distance_score):null,overallScore:Number.isFinite(Number(row.overall_score))?Number(row.overall_score):null,
+      avgDurationSeconds:Number.isFinite(Number(row.avg_duration_seconds))?Number(row.avg_duration_seconds):null,avgDistanceM:Number.isFinite(Number(row.avg_distance_m))?Number(row.avg_distance_m):null,shortGapCount:Number(row.short_gap_count)||0,closeDistanceCount:Number(row.close_distance_count)||0,flaggedCount:Number(row.flagged_count)||0,responseIssueCount:Number(row.response_issue_count)||0,recordingRequiredCount:Number(row.recording_required_count)||0,recordingCompletedCount:Number(row.recording_completed_count)||0,recordingIssueCount:Number(row.recording_issue_count)||0,lastSurveyId:row.last_survey_id||null,lastCollectionId:row.last_collection_id||null,lastOccurredAt:row.last_occurred_at||null
+    }));
+    RESEARCHER_RANKING_LOADED=true;
+  }catch(ex){RESEARCHER_RANKING_ERROR=ex.message||String(ex);RESEARCHER_RANKING_ROWS=[];RESEARCHER_RANKING_LOADED=true;}
+  finally{
+    RESEARCHER_RANKING_LOADING=false;
+    if(document.querySelector('.nav-item.on')?.dataset.key==='researcher-ranking')go('researcher-ranking');
+  }
+}
+function researcherRankingOpenProfile(researcherId){
+  const index=USERS.findIndex(user=>user.id===researcherId);if(index<0){alert('Perfil do pesquisador não encontrado na lista de usuários.');return;}
+  USER_TAB='pesq';USER_SEARCH='';USER_GENERAL_FILTERS={status:'',city:''};USER_RESEARCHER_FILTERS={state:'',city:'',schooling:''};USER_VIEW=index;USER_EDIT=null;USER_ARMED=true;go('users');
+}
+function researcherRankingOpenAudit(eventId){
+  const row=RESEARCHER_RANKING_ROWS.find(item=>item.lastCollectionId===eventId);
+  const surveyId=RESEARCHER_RANKING_FILTERS.surveyId||row?.lastSurveyId||null;
+  let idx=surveyId?SURVEYS.findIndex(s=>s.id===surveyId):-1;
+  if(idx<0&&row?.lastCollectionId&&COLLECT_EVENTS_LOADED){const event=COLLECT_EVENTS.find(item=>item.id===row.lastCollectionId);if(event)idx=SURVEYS.findIndex(s=>s.id===event.surveyId);}
+  if(idx<0&&SURVEYS.length===1)idx=0;
+  if(idx<0){alert('Selecione uma pesquisa no filtro para abrir a auditoria correspondente.');return;}
+  AUDIT_HIGHLIGHT_ID=row?.lastCollectionId||eventId||null;
+  collectOpen(idx);
+  const openAudit=()=>{const button=document.getElementById('collectTabAuditoriaBtn');if(button){collectTab(button,'auditoria');return;}if(document.querySelector('.nav-item.on')?.dataset.key==='collect')setTimeout(openAudit,180);};
+  setTimeout(openAudit,180);
+}
+function researcherRankingTableRows(rows){
+  if(!rows.length)return '<tr><td colspan="10" class="empty">Nenhum pesquisador corresponde aos filtros atuais.</td></tr>';
+  return rows.map((row,index)=>{
+    const low=row.overallScore!=null&&row.overallScore<RESEARCHER_RANKING_MIN_SCORE;
+    const evidence=`${row.rejectedCount} reprovada(s) · ${row.shortGapCount} intervalo(s) <3 min · ${row.closeDistanceCount} ponto(s) <30 m`;
+    const recording=row.recordingRequiredCount?`${row.recordingCompletedCount}/${row.recordingRequiredCount} gravação(ões)`:'não solicitada';
+    const qualityNote=row.responseIssueCount?`${row.responseIssueCount} sinal(is) de resposta`:'sem sinal estrutural';
+    const profileIndex=USERS.findIndex(user=>user.id===row.researcherId);
+    const profileButton=profileIndex>=0?`<button class="btn-ghost" type="button" onclick="event.stopPropagation();researcherRankingOpenProfile(${jsArg(row.researcherId)})">Perfil</button>`:'';
+    const auditButton=row.lastCollectionId?`<button class="btn-ghost" type="button" onclick="event.stopPropagation();researcherRankingOpenAudit(${jsArg(row.lastCollectionId)})">Auditoria</button>`:'';
+    const user=profileIndex>=0?USERS[profileIndex]:null;
+    return `<tr class="researcher-ranking-row ${low?'is-low-score':''}">
+      <td><strong>${row.overallScore==null?'—':index+1+'º'}</strong></td>
+      <td><div style="display:flex;align-items:center;gap:8px"><span class="avatar" style="width:30px;height:30px;font-size:11px">${esc(initialsOf(row.researcherName))}</span><div><b>${esc(row.researcherName)}</b><div style="font-size:11px;color:var(--ink3)">${researcherRankingStatus(row.researcherStatus)}</div></div></div></td>
+      <td>${researcherRankingScoreMarkup(row.overallScore)}</td>
+      <td><b>${row.validCount.toLocaleString('pt-BR')}</b> válidas<div style="font-size:11px;color:var(--ink3)">${row.totalCount.toLocaleString('pt-BR')} total · ${row.rejectedCount.toLocaleString('pt-BR')} reprovadas</div></td>
+      <td><b>${researcherRankingPct(row.responseQualityScore)}</b><div style="font-size:11px;color:var(--ink3)">${esc(qualityNote)}</div></td>
+      <td><b>${researcherRankingPct(row.integrityScore)}</b><div style="font-size:11px;color:var(--ink3)">${esc(evidence)}</div></td>
+      <td><b>${researcherRankingPct(row.durationScore)}</b><div style="font-size:11px;color:var(--ink3)">${row.avgDurationSeconds==null?'sem duração registrada':fmtInterviewDuration(row.avgDurationSeconds)}</div></td>
+      <td><b>${researcherRankingPct(row.distanceScore)}</b><div style="font-size:11px;color:var(--ink3)">${row.avgDistanceM==null?'sem GPS consecutivo':'média '+fmtDist(row.avgDistanceM)}</div></td>
+      <td><div style="font-size:11px;color:var(--ink3)">${esc(recording)}</div>${low?'<span class="pill pill-red" style="margin-top:4px">Revisar</span>':''}</td>
+      <td class="researcher-ranking-actions">${conversationButton(user?.phone,'Olá '+row.researcherName+'! Podemos conversar sobre seu desempenho nas coletas?')}${auditButton}${profileButton}</td>
+    </tr>`;
+  }).join('');
+}
+PAGES['researcher-ranking']=()=>{
+  if(!['admin','coord','gerente','admpro'].includes(selectedRole))return head('Ranking de pesquisadores','Análise disponível somente para a gestão')+'<div class="callout warn">Apenas usuários de gestão podem consultar indicadores agregados de desempenho e qualidade.</div>';
+  if(!USERS_LOADED){loadUsersIfNeeded();return head('Ranking de pesquisadores','Qualidade e integridade das coletas')+'<div class="empty">Carregando pesquisadores…</div>';}
+  if(!SURVEYS_LOADED){loadSurveysIfNeeded();return head('Ranking de pesquisadores','Qualidade e integridade das coletas')+'<div class="empty">Carregando pesquisas…</div>';}
+  if(!RESEARCHER_RANKING_LOADED){loadResearcherRankingIfNeeded();return head('Ranking de pesquisadores','Qualidade e integridade das coletas')+'<div class="empty">Calculando ranking com os dados reais de coletas e respostas…</div>';}
+  const rows=researcherRankingRowsForView(),eligible=rows.filter(row=>row.overallScore!=null),low=eligible.filter(row=>row.overallScore<RESEARCHER_RANKING_MIN_SCORE),avg=eligible.length?eligible.reduce((sum,row)=>sum+row.overallScore,0)/eligible.length:null,totalValid=rows.reduce((sum,row)=>sum+row.validCount,0);
+  const surveyOptions=SURVEYS.slice().sort((a,b)=>a.name.localeCompare(b.name,'pt-BR')).map(s=>`<option value="${esc(s.id)}" ${RESEARCHER_RANKING_FILTERS.surveyId===s.id?'selected':''}>${esc(s.name)}</option>`).join('');
+  return head('Ranking de pesquisadores','Qualidade e integridade das coletas',`<button class="btn btn-out" type="button" onclick="researcherRankingRefresh()">↻ Atualizar</button>`)+researcherRankingLoadErrorMarkup()+`
+  <div class="callout mb"><b>Nota de desempenho, não sentença.</b> A análise avalia a aplicação da entrevista com os pesos aprovados: respostas 30%, integridade 30%, duração 20% e distância 20%. A distância é comparada entre coletas consecutivas da mesma pesquisa; pesquisas diferentes não são misturadas. Use a auditoria antes de qualquer decisão.</div>
+  <div class="grid g4" style="margin-bottom:16px">${stat('Pesquisadores avaliados',String(rows.length),'após os filtros','☺','#2563eb')}${stat('Entrevistas válidas',totalValid.toLocaleString('pt-BR'),'na janela selecionada','✓','#059669')}${stat('Nota média',avg==null?'—':avg.toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1}),'somente amostras suficientes','★','#7c3aed')}${stat('Priorizar revisão',String(low.length),'nota abaixo de 60','⚠','#dc2626')}</div>
+  <div class="card mb researcher-ranking-filter-card"><div class="card-t">Filtrar e comparar</div><div class="card-d">A janela e a amostra mínima são aplicadas no cálculo feito pelo banco.</div><div class="field-row" style="margin-top:10px"><label style="flex:1"><span class="lbl">Buscar pesquisador</span><input id="researcher-ranking-search" class="inp" type="search" value="${esc(RESEARCHER_RANKING_FILTERS.search)}" placeholder="Nome do pesquisador" oninput="researcherRankingSetFilter('search',this.value)"></label><label style="flex:1"><span class="lbl">Pesquisa</span><select class="inp" onchange="researcherRankingSetFilter('surveyId',this.value)"><option value="">Todas as pesquisas</option>${surveyOptions}</select></label><label><span class="lbl">Período</span><select class="inp" onchange="researcherRankingSetFilter('days',this.value)"><option value="30" ${RESEARCHER_RANKING_FILTERS.days==='30'?'selected':''}>Últimos 30 dias</option><option value="90" ${RESEARCHER_RANKING_FILTERS.days==='90'?'selected':''}>Últimos 90 dias</option><option value="180" ${RESEARCHER_RANKING_FILTERS.days==='180'?'selected':''}>Últimos 180 dias</option><option value="365" ${RESEARCHER_RANKING_FILTERS.days==='365'?'selected':''}>Último ano</option></select></label><label><span class="lbl">Amostra mínima</span><select class="inp" onchange="researcherRankingSetFilter('minInterviews',this.value)"><option value="5" ${RESEARCHER_RANKING_FILTERS.minInterviews==='5'?'selected':''}>5 entrevistas</option><option value="10" ${RESEARCHER_RANKING_FILTERS.minInterviews==='10'?'selected':''}>10 entrevistas</option><option value="20" ${RESEARCHER_RANKING_FILTERS.minInterviews==='20'?'selected':''}>20 entrevistas</option><option value="30" ${RESEARCHER_RANKING_FILTERS.minInterviews==='30'?'selected':''}>30 entrevistas</option></select></label></div></div>
+  <div class="card researcher-ranking-table-card"><div class="user-table-heading"><div><div class="card-t">Desempenho comparado</div><div class="card-d">${rows.length?`Mostrando ${rows.length} pesquisador${rows.length===1?'':'es'}; gravações obrigatórias pendentes aparecem como sinal de revisão.`:'Nenhum resultado para os filtros atuais.'}</div></div><span class="users-table-count">${rows.length}</span></div><div class="table-scroll"><table class="researcher-ranking-table"><thead><tr><th>#</th><th>Pesquisador</th><th>Nota</th><th>Coletas</th><th>Respostas 30%</th><th>Integridade 30%</th><th>Duração 20%</th><th>Distância 20%</th><th>Evidências</th><th>Ações</th></tr></thead><tbody>${researcherRankingTableRows(rows)}</tbody></table></div><div class="card-d" style="margin-top:12px">Ações de WhatsApp, perfil e auditoria não alteram a nota. Uma nota baixa apenas prioriza revisão; este painel não exclui pesquisadores nem apaga histórico automaticamente.</div></div>`;
+};
+
 /* ============ USERS (todos os perfis: pesquisador, cliente, adm, vendedor, indicador) ============ */
 let USERS=[
   {name:'Admin Master',cpf:'000.000.000-00',birth:'1980-01-01',email:'admin@pesquisapro.com.br',phone:'(31) 99999-0000',addr:'Belo Horizonte/MG',role:'admin',doc:'RG_admin.pdf',status:'ativo'},
@@ -6271,7 +6377,7 @@ function loadUsersIfNeeded(){
     refreshClientSurveyLinks();
     const onKey=document.querySelector('.nav-item.on');
     const k=onKey&&onKey.dataset.key;
-    if(k==='users'||k==='dashboard'||k==='survey-team'||k==='contracts'||k==='recruitment'||k==='communication'){go(k);if(k==='survey-team')setTimeout(teamFilterRows,0);}
+    if(k==='users'||k==='dashboard'||k==='survey-team'||k==='contracts'||k==='recruitment'||k==='communication'||k==='researcher-ranking'){go(k);if(k==='survey-team')setTimeout(teamFilterRows,0);}
   })();
   return _usersLoadPromise;
 }

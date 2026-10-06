@@ -3974,12 +3974,16 @@ function collectEvolutionRefresh(){
 /* ===== Coleta de campo: mapa, feed e auditoria (dados reais, tabela collection_events) ===== */
 const COLLECT_COLORS=['#2563eb','#059669','#ea580c','#7c3aed','#dc2626','#d97706'];
 const COLLECT_MIN_DURATION_REJECTION_MESSAGE='Tempo de coleta não corresponde ao tempo mínimo necessário a uma coleta real';
+const COLLECT_TOO_CLOSE_MESSAGE='Esta coleta está muito próxima da anterior e isso compromete a qualidade da pesquisa, entreviste em um local mais distante';
+const COLLECT_OUTSIDE_AREA_MESSAGE='Esta coleta está fora da cidade ou região determinada pela pesquisa e não pode ser realizada aqui.';
+const COLLECT_AREA_CONFIRMATION_MESSAGE='Não foi possível confirmar a cidade ou região da localização atual. Ative o GPS e tente novamente.';
 const COLLECT_EVENT_SELECT_BASE='id,survey_id,researcher_id,quota_label,lat,lng,accuracy_m,occurred_at,synced,flags,status,reject_reason,rejected_at,is_calibration';
 const COLLECT_EVENT_SELECT_DURATION=COLLECT_EVENT_SELECT_BASE+',duration_seconds';
 const COLLECT_EVENT_SELECT=COLLECT_EVENT_SELECT_DURATION+',recording_reservation_id,recording_required,recording_consent,recording_status,recording_error,recording_created_at';
 const COLLECT_EVENT_SELECT_RECORDING_NO_DURATION=COLLECT_EVENT_SELECT_BASE+',recording_reservation_id,recording_required,recording_consent,recording_status,recording_error,recording_created_at';
 let COLLECT_RECORDING_COLUMNS_AVAILABLE=true;
 let COLLECT_DURATION_COLUMN_AVAILABLE=true;
+let COLLECT_GEO_COLUMNS_AVAILABLE=true;
 let COLLECTION_RECORDINGS={};
 let AUDIT_AUDIO_URLS={};
 const COLLECTION_RECORDING_STAFF_ROLES=['admin','coord','gerente','admpro'];
@@ -4653,9 +4657,109 @@ const ACOLLECT_RECORDING_MAX_SECONDS=12;
 const ACOLLECT_RECORDING_CUTOFF_HOUR=21;
 const ACOLLECT_MIN_SECONDS=60; /* entrevista concluída mais rápido que isso é sinalizada na auditoria */
 const ACOLLECT_SCALE_MAX={scale:5,scale10:10,nps:10}; /* nps vai de 0 a 10 (11 pontos) */
+let ACOLLECT_LOCATION_CHECK={status:'idle',city:'',state:'',formatted:'',distanceM:null};
 function acollectIsAfterRecordingCutoff(date=new Date()){
   try{return Number(new Intl.DateTimeFormat('en-US',{hour:'numeric',hour12:false,timeZone:'America/Sao_Paulo'}).format(date))>=ACOLLECT_RECORDING_CUTOFF_HOUR;}
   catch(ex){return date.getHours()>=ACOLLECT_RECORDING_CUTOFF_HOUR;}
+}
+function acollectPreviousCollection(){
+  const myId=CURRENT_PROFILE?.id;
+  return COLLECT_EVENTS.filter(event=>event.researcherId===myId&&event.status!=='rejected'&&Number.isFinite(event.lat)&&Number.isFinite(event.lng))
+    .sort((a,b)=>b.ts-a.ts)[0]||null;
+}
+function acollectGoogleAddressComponent(results,types){
+  const wanted=new Set(types);
+  for(const result of results||[]){
+    for(const component of result.address_components||[]){
+      if((component.types||[]).some(type=>wanted.has(type)))return component;
+    }
+  }
+  return null;
+}
+async function acollectReverseGeocodeCurrentLocation(){
+  if(!Number.isFinite(GEO.lat)||!Number.isFinite(GEO.lng))throw new Error('GPS indisponível');
+  await loadGoogleMaps();
+  return new Promise((resolve,reject)=>{
+    const geocoder=new google.maps.Geocoder();
+    geocoder.geocode({location:{lat:GEO.lat,lng:GEO.lng}},(results,status)=>{
+      if(status!=='OK'||!results?.length){reject(new Error('Geocodificação indisponível'));return;}
+      const city=acollectGoogleAddressComponent(results,['locality','postal_town','administrative_area_level_2','sublocality_level_1']);
+      const state=acollectGoogleAddressComponent(results,['administrative_area_level_1']);
+      resolve({city:String(city?.long_name||'').trim(),state:String(state?.short_name||state?.long_name||'').trim().toUpperCase(),formatted:String(results[0]?.formatted_address||'').trim()});
+    });
+  });
+}
+function acollectSurveyHasAreaTargets(s){
+  const targets=surveyCityTargets(s||{});
+  return {targets,hasTargets:!!(targets.cities.size||targets.states.size)};
+}
+function acollectLocationMatchesSurvey(s,place){
+  const {targets,hasTargets}=acollectSurveyHasAreaTargets(s);
+  if(!hasTargets)return true;
+  const city=normalizeUserSearch(place?.city||''),state=String(place?.state||'').trim().toUpperCase();
+  if(!city||!state)return false;
+  if(targets.cities.size){
+    return [...targets.cities].some(value=>{
+      const part=locationParts(value);
+      return part&&normalizeUserSearch(part.city)===city&&String(part.uf||'').toUpperCase()===state;
+    });
+  }
+  return targets.states.has(state);
+}
+function acollectIntegrityMessage(message,detail=''){
+  const msg=document.getElementById('acollectMsg');
+  if(msg)msg.innerHTML=`<div class="offline-banner collection-integrity-message" role="alert" aria-live="assertive"><b>Coleta bloqueada</b><span>${esc(message)}</span>${detail?`<small>${esc(detail)}</small>`:''}</div>`;
+  alert(message);
+}
+async function acollectServerStartValidation(s){
+  if(!s?.id||!CURRENT_PROFILE?.id)return {ok:true};
+  try{
+    const {data,error}=await sb.rpc('validate_collection_start',{p_survey_id:s.id,p_lat:GEO.lat,p_lng:GEO.lng});
+    if(error){
+      if(/validate_collection_start|function .* does not exist|schema cache|column .* does not exist/i.test(error.message||''))return {ok:true,schemaMissing:true};
+      throw new Error(error.message);
+    }
+    const row=Array.isArray(data)?data[0]:data;
+    if(row?.allowed===false){
+      if(row.code==='too_close')return {ok:false,message:COLLECT_TOO_CLOSE_MESSAGE,detail:Number.isFinite(Number(row.distance_m))?'Distância calculada: '+fmtDist(Number(row.distance_m))+' da coleta anterior.':''};
+      if(row.code==='not_authorized')return {ok:false,message:'Esta pesquisa não está disponível para o seu perfil de pesquisador.'};
+      return {ok:false,message:'Não foi possível liberar esta coleta. Confira a pesquisa e tente novamente.'};
+    }
+    return {ok:true};
+  }catch(ex){
+    console.warn('Validação segura do início indisponível:',ex);
+    return {ok:false,message:'Não foi possível validar a segurança desta coleta agora. Tente novamente com internet estável.'};
+  }
+}
+async function acollectValidateLocation(){
+  const s=SURVEYS.find(x=>x.id===ACOLLECT_SURVEY_ID);
+  if(!s||!Number.isFinite(GEO.lat)||!Number.isFinite(GEO.lng))return {ok:false,message:'A localização atual não está disponível. Aguarde o GPS ficar ativo e tente novamente.'};
+  const previous=acollectPreviousCollection();
+  const distance=previous?distMeters(GEO.lat,GEO.lng,previous.lat,previous.lng):null;
+  if(distance!=null&&distance<15){
+    ACOLLECT_LOCATION_CHECK={status:'blocked',city:'',state:'',formatted:'',distanceM:distance};
+    return {ok:false,message:COLLECT_TOO_CLOSE_MESSAGE,detail:'Distância calculada: '+fmtDist(distance)+' da coleta anterior.'};
+  }
+  const {hasTargets}=acollectSurveyHasAreaTargets(s);
+  let place={city:'',state:'',formatted:''};
+  if(hasTargets){
+    try{place=await acollectReverseGeocodeCurrentLocation();}
+    catch(ex){
+      ACOLLECT_LOCATION_CHECK={status:'blocked',city:'',state:'',formatted:'',distanceM:distance};
+      return {ok:false,message:COLLECT_AREA_CONFIRMATION_MESSAGE};
+    }
+    if(!acollectLocationMatchesSurvey(s,place)){
+      ACOLLECT_LOCATION_CHECK={status:'blocked',city:place.city,state:place.state,formatted:place.formatted,distanceM:distance};
+      return {ok:false,message:COLLECT_OUTSIDE_AREA_MESSAGE,detail:'Localização identificada: '+(place.city||'cidade não identificada')+(place.state?'/'+place.state:'')+'.'};
+    }
+  }
+  const serverCheck=await acollectServerStartValidation(s);
+  if(!serverCheck.ok){
+    ACOLLECT_LOCATION_CHECK={status:'blocked',city:place.city,state:place.state,formatted:place.formatted,distanceM:distance};
+    return serverCheck;
+  }
+  ACOLLECT_LOCATION_CHECK={status:'ok',city:place.city,state:place.state,formatted:place.formatted,distanceM:distance};
+  return {ok:true,place,distanceM:distance};
 }
 
 async function initGeoCollect(){
@@ -5184,6 +5288,15 @@ async function acollectStart(){
   // botão habilitado.
   const temCotas=!!ACOLLECT_QUOTA_LIST.length;
   if(temCotas&&(ACOLLECT_SELECTED_QUOTA===null||ACOLLECT_SELECTED_QUOTA===undefined||ACOLLECT_SELECTED_QUOTA===''))return;
+  const startButton=document.getElementById('startCollectBtn');
+  if(startButton){startButton.disabled=true;startButton.textContent='Validando localização…';}
+  const locationCheck=await acollectValidateLocation();
+  if(!locationCheck.ok){
+    if(startButton){startButton.disabled=false;startButton.textContent='Iniciar coleta';}
+    acollectIntegrityMessage(locationCheck.message,locationCheck.detail||'');
+    renderAcollectActionState();
+    return;
+  }
   const quotaEntry=temCotas?ACOLLECT_QUOTA_LIST.find(q=>q.label===ACOLLECT_SELECTED_QUOTA):null;
   if(quotaEntry){
     const btn=document.getElementById('startCollectBtn');
@@ -5305,6 +5418,11 @@ async function acollectSubmit(){
   }
   const missing=acollectMissingRequired();
   if(missing.length){alert('Faltam responder '+missing.length+' pergunta(s) antes de enviar.');return;}
+  const submitLocationCheck=await acollectValidateLocation();
+  if(!submitLocationCheck.ok){
+    acollectIntegrityMessage(submitLocationCheck.message,submitLocationCheck.detail||'');
+    return;
+  }
   if(ACOLLECT_RECORDING_REQUIRED&&(
     ['awaiting_consent','recording'].includes(ACOLLECT_RECORDING_STATUS)||
     (ACOLLECT_RECORDING_MANDATORY_AFTER_CUTOFF&&ACOLLECT_RECORDING_STATUS!=='ready')
@@ -5325,6 +5443,8 @@ async function acollectSubmit(){
     lat:GEO.lat,lng:GEO.lng,accuracy_m:GEO.acc,
     occurred_at:new Date().toISOString(),
     duration_seconds:elapsedSeconds,
+    captured_city:submitLocationCheck.place?.city||null,
+    captured_state:submitLocationCheck.place?.state||null,
     synced:true,
     flags,
     status:'valid',
@@ -5338,11 +5458,20 @@ async function acollectSubmit(){
   }
   let eventId=null,serverRejectedReason='';
   try{
-    let {data,error}=await sb.from('collection_events').insert(eventPayload).select().single();
+    const buildEventPayload=()=>{
+      const payload={...eventPayload};
+      if(!COLLECT_DURATION_COLUMN_AVAILABLE)delete payload.duration_seconds;
+      if(!COLLECT_GEO_COLUMNS_AVAILABLE){delete payload.captured_city;delete payload.captured_state;}
+      return payload;
+    };
+    let {data,error}=await sb.from('collection_events').insert(buildEventPayload()).select().single();
     if(error&&COLLECT_DURATION_COLUMN_AVAILABLE&&/duration_seconds|column|schema cache/i.test(error.message||'')){
       COLLECT_DURATION_COLUMN_AVAILABLE=false;
-      const legacyPayload={...eventPayload};delete legacyPayload.duration_seconds;
-      ({data,error}=await sb.from('collection_events').insert(legacyPayload).select().single());
+      ({data,error}=await sb.from('collection_events').insert(buildEventPayload()).select().single());
+    }
+    if(error&&COLLECT_GEO_COLUMNS_AVAILABLE&&/captured_city|captured_state|column|schema cache/i.test(error.message||'')){
+      COLLECT_GEO_COLUMNS_AVAILABLE=false;
+      ({data,error}=await sb.from('collection_events').insert(buildEventPayload()).select().single());
     }
     if(error)throw new Error(error.message);
     eventId=data.id;

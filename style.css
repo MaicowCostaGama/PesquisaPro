@@ -1600,3 +1600,11 @@ body.lp{background:#f8faff;color:var(--ink)}
 .finance-overview-summary .stat .s-top{align-items:flex-start;gap:10px;margin-bottom:8px}.finance-overview-summary .stat .s-label{max-width:calc(100% - 44px);font-size:10.5px;line-height:1.3;letter-spacing:.055em;text-transform:uppercase;color:#71839a}.finance-overview-summary .stat .s-val{font-size:29px;line-height:1.08;overflow-wrap:anywhere}.finance-overview-summary .stat .s-sub{font-size:11px;line-height:1.35;overflow-wrap:anywhere}.finance-overview-summary .stat:nth-child(1){border-top:3px solid #2563eb}.finance-overview-summary .stat:nth-child(2){border-top:3px solid #059669}.finance-overview-summary .stat:nth-child(3){border-top:3px solid #0f9f78;background:linear-gradient(145deg,#fff,#f4fffb)}.finance-overview-summary .stat:nth-child(4){border-top:3px solid #d97706;background:linear-gradient(145deg,#fffdf7,#fff)}.finance-overview-summary .stat:nth-child(5){border-top:3px solid #0f766e;background:linear-gradient(145deg,#f8fffd,#fff)}
 @media(max-width:1100px){.finance-overview-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:600px){.finance-overview-summary{grid-template-columns:1fr;gap:10px}.finance-overview-summary .stat{min-height:116px;padding:15px 16px}.finance-overview-summary .stat .s-val{font-size:25px}.finance-overview-summary .stat .s-label{font-size:10px}}
+
+
+/* Integridade antifraude da coleta — bloqueios claros, sem esconder o motivo */
+.collection-integrity-message{display:flex;flex-direction:column;gap:4px;margin:12px 0;padding:13px 15px;border:1px solid #f0b7a8;border-left:4px solid #c2410c;border-radius:12px;background:#fff7ed;color:#7c2d12;line-height:1.45;box-shadow:0 5px 16px rgba(124,45,18,.08)}
+.collection-integrity-message b{font-size:13px;color:#9a3412}
+.collection-integrity-message span{font-size:13px;font-weight:600}
+.collection-integrity-message small{font-size:11px;color:#9a3412}
+@media(max-width:640px){.collection-integrity-message{margin:10px 0;padding:11px 12px;border-radius:10px}.collection-integrity-message span{font-size:12px}}

@@ -193,6 +193,7 @@ for (const token of [
   '.finance-approval-banner',
   '.finance-payment-legend',
   '.finance-summary-grid',
+  'grid-template-columns:repeat(3,minmax(0,1fr))',
   '.finance-status-pending',
   '.finance-value-pending',
   'finance-data-table th.finance-actions-header,.finance-data-table td.finance-actions-cell{position:static!important',
@@ -213,8 +214,8 @@ for (const token of [
   assert(css.includes(token), `estilo financeiro ausente: ${token}`);
 }
 
-assert(html.includes('app.js?v=20261005211000'), 'cache do app financeiro não foi atualizado');
-assert(html.includes('style.css?v=20261005211000'), 'cache do CSS financeiro não foi atualizado');
+assert(html.includes('app.js?v=20261005212000'), 'cache do app financeiro não foi atualizado');
+assert(html.includes('style.css?v=20261005212000'), 'cache do CSS financeiro não foi atualizado');
 assert(app.includes('paymentApprovedBalanceValue(r,price)'), 'a receber não está restrito ao valor aprovado');
 assert(app.includes('const saldoDevido=Math.max(0,valor-recebido)'), 'saldo devido não é abatido pelos recebimentos');
 assert(app.includes('paymentBalanceValue(r,price)'), 'saldo devido não usa o valor real das entrevistas e recibos');
@@ -231,5 +232,16 @@ assert(app.includes('O mesmo lançamento, a data, o pesquisador, o comprovante e
 assert(app.includes('Comprovante e ações'), 'histórico não identifica a coluna com a ação de alteração');
 assert(app.includes('Cada pesquisador aparece em um cartão completo'), 'orientação do novo layout financeiro ausente');
 assert(!app.includes('const pixAction='), 'chave PIX duplicada dentro das ações financeiras');
+for (const label of [
+  'TOTAL A PAGAR NESTA PESQUISA',
+  'QUANTIDADE DE PESQUISADORES',
+  'VALOR POR FORMULÁRIO',
+  'PAGAMENTOS PARCIAIS',
+  'PAGAMENTOS A APROVAR',
+  'FALTA PAGAR'
+]) assert(app.includes(label), `balão financeiro ausente: ${label}`);
+assert(app.includes("stat('PAGAMENTOS PARCIAIS',brl(t.recebido)"), 'pagamentos parciais não usam o total recebido');
+assert(app.includes("stat('PAGAMENTOS A APROVAR',brl(t.pendingValor)"), 'pagamentos a aprovar não usam o pendente');
+assert(app.includes("stat('FALTA PAGAR',brl(t.saldoDevido)"), 'falta pagar não usa o saldo devido');
 
 console.log('Finance payments smoke test OK: aprovação, saldo abatido, correção de valores, comprovantes privados, RPCs, RLS e extratos por pesquisa verificados.');

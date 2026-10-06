@@ -7540,13 +7540,12 @@ function financeDetail(idx){
     (rows.length?'<button class="btn btn-out" onclick="finApproveAll('+idx+')">✓ Aprovar todos os pagamentos</button><button class="btn btn-out" onclick="alert(\'A exportação de remessa bancária será adicionada em uma etapa posterior.\')">Exportar remessa</button>':''))+`
   ${paymentReceiptMigrationNotice()}
   <div class="grid g4 finance-summary-grid" style="margin-bottom:16px">
-    ${stat('A pagar nesta pesquisa',brl(t.valor),t.valid.toLocaleString('pt-BR')+' entrevistas válidas','$','#2563eb')}
-    ${stat('Pesquisadores',String(t.count),'com coleta nesta pesquisa','☺','#059669')}
-    ${stat('Valor por formulário',brl(price),'região remota: '+brl(priceRemote),'◷','#7c3aed')}
-    ${stat('Pendente',brl(t.pendingValor),'novas coletas para aprovar','◷','#d97706')}
-    ${stat('A receber',brl(t.aReceber),'pagamentos aprovados','◷','#2563eb')}
-    ${stat('Recebido',brl(t.recebido),'repasses lançados','✓','#059669')}
-    ${stat('Saldo devido',brl(t.saldoDevido),'a pagar após os repasses','◷','#0f766e')}
+    ${stat('TOTAL A PAGAR NESTA PESQUISA',brl(t.valor),t.valid.toLocaleString('pt-BR')+' entrevistas válidas','$','#2563eb')}
+    ${stat('QUANTIDADE DE PESQUISADORES',String(t.count),'com coleta nesta pesquisa','☺','#059669')}
+    ${stat('VALOR POR FORMULÁRIO',brl(price),'região remota: '+brl(priceRemote),'◷','#7c3aed')}
+    ${stat('PAGAMENTOS PARCIAIS',brl(t.recebido),'repasses já lançados','◐','#059669')}
+    ${stat('PAGAMENTOS A APROVAR',brl(t.pendingValor),'novas coletas para aprovar','◷','#d97706')}
+    ${stat('FALTA PAGAR',brl(t.saldoDevido),'total devido menos repasses','◉','#0f766e')}
   </div>
   <div class="finance-approval-banner"><div class="finance-approval-banner-icon">✓</div><div><b>Aprovação por etapas</b><span>Os recebimentos parciais continuam registrados. Quando surgirem novas entrevistas válidas, o botão <b>Aprovar novas coletas</b> aparece somente para o valor ainda não aprovado.</span></div><div class="finance-approval-banner-total"><small>Total devido</small><strong>${brl(t.valor)}</strong></div></div>
   <div class="card mb finance-payments-card">

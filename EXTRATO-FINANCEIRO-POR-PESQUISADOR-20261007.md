@@ -19,7 +19,13 @@ O cabeçalho também mostra quantidades, valores, valor por formulário, saldo a
 ## Ações do extrato
 
 - **Imprimir / salvar PDF**: abre a impressão do navegador com somente o extrato;
-- **Baixar CSV**: salva uma planilha simples com data, coleta/cota, situação financeira, valor e motivo de reprovação.
+- **Baixar CSV**: salva uma planilha simples com data, coleta/cota, situação financeira, valor e motivo de reprovação;
+- **Pagamentos realizados e comprovantes**: dentro do mesmo extrato, gestão e pesquisador conferem cada repasse individual com data, valor e referência;
+- **Abrir comprovante / Baixar**: consulta o arquivo armazenado em bucket privado por URL temporária, sem expor link público permanente;
+- **Anexar comprovante**: disponível para a gestão quando o lançamento ainda não possui arquivo;
+- **Alterar valor pago**: disponível somente para a gestão e altera apenas o valor do lançamento selecionado, preservando data, pesquisador, comprovante e histórico;
+- **Excluir comprovante**: disponível somente para a gestão e remove apenas o arquivo/metadados do comprovante, preservando o lançamento financeiro para novo anexo;
+- **Registrar novo pagamento**: disponível no extrato da gestão quando ainda existe saldo aprovado a pagar.
 
 ## Regra financeira
 
@@ -33,9 +39,12 @@ Coletas em auditoria também ficam fora do saldo aprovado a pagar. O extrato mos
 
 Como os pagamentos são lançados de forma agregada por pesquisador e pesquisa, a separação visual entre cada entrevista já paga e cada entrevista a pagar é uma classificação equivalente ao valor recebido. O extrato informa isso ao final para preservar a transparência do cálculo.
 
+O livro de pagamentos é independente da classificação das entrevistas: cada repasse permanece como um lançamento próprio, e a soma dos lançamentos determina o total quitado. Corrigir um valor pago não altera a quantidade de entrevistas, o status de aprovação, a data original ou os comprovantes anexados.
+
 ## Privacidade e escopo de acesso
 
 - A gestão pode abrir o extrato de qualquer pesquisador dentro da pesquisa selecionada.
 - O pesquisador pode abrir somente o próprio extrato, a partir de **Meus ganhos**.
 - A consulta do pesquisador usa `ownOnly: true` e confirma o `researcher_id` autenticado antes de renderizar os dados.
 - Nenhum dado de GPS, resposta individual ou comprovante privado é incluído no CSV; são exibidos apenas os dados necessários ao controle das próprias coletas e pagamentos.
+- O pesquisador vê os próprios valores e comprovantes por meio das políticas do Supabase; não recebe ações de gestão como editar valor, excluir comprovante ou registrar novo pagamento.

@@ -51,7 +51,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261007150000';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261007163000';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -8130,7 +8130,20 @@ function financeStatementSection(title,subtitle,rows,kind){
   </div>`).join(''):'<div class="finance-statement-empty">Nenhuma coleta nesta categoria.</div>';
   return `<section class="finance-statement-section ${kind}"><div class="finance-statement-section-head"><div><h3>${esc(title)}</h3><p>${esc(subtitle)}</p></div><span class="pill ${kind==='rejected'?'pill-red':kind==='paid'?'pill-green':kind==='audit'?'pill-amber':'pill-blue'}">${rows.length}</span></div><div class="finance-statement-list">${body}</div></section>`;
 }
-function financeStatementRender(researcher, survey, payment, events){
+function financeStatementPaymentsSection(payment,survey,options={}){
+  const receipts=payment?.id?paymentReceiptsFor(payment.id).slice().sort((a,b)=>String(b.paidAt).localeCompare(String(a.paidAt))||String(b.createdAt).localeCompare(String(a.createdAt))):[];
+  const received=receipts.reduce((sum,receipt)=>sum+(Number(receipt.amount)||0),0);
+  const balance=paymentApprovedBalanceValue(payment,Number(survey?.price)||0);
+  const canRegister=options.staff&&options.financeIdx!=null&&payment?.status==='aprovado'&&balance>0;
+  const body=receipts.length?receipts.map(receipt=>`<article class="finance-statement-payment-row">
+    <div class="finance-statement-payment-main"><div><b>${esc(paymentReceiptDateBR(receipt.paidAt))}</b><span>${receipt.createdAt?'Lançado em '+esc(paymentReceiptCreatedBR(receipt.createdAt)):'Repasse registrado'}</span></div><strong>${brl(receipt.amount)}</strong></div>
+    <div class="finance-statement-payment-note"><span>Referência</span><b>${esc(receipt.note||'Pagamento registrado pela PesquisaPro')}</b></div>
+    <div class="finance-statement-payment-file">${paymentReceiptActionMarkup(receipt,options.staff?'staff':'researcher')}</div>
+  </article>`).join(''):'<div class="finance-statement-empty">Nenhum pagamento foi lançado para este pesquisador nesta pesquisa.</div>';
+  const registerButton=canRegister?`<button type="button" class="btn btn-out" onclick="financeStatementClose();finRegisterPayment(${options.financeIdx},${jsArg(payment.researcherId)})">＋ Registrar novo pagamento</button>`:'';
+  return `<section class="finance-statement-payments finance-statement-section"><div class="finance-statement-section-head"><div><h3>Pagamentos realizados e comprovantes</h3><p>Confira cada repasse, valor, data, referência e arquivo anexado. Ações de edição ficam disponíveis somente para a gestão.</p></div><span class="pill pill-green">${receipts.length}</span></div><div class="finance-statement-payment-summary"><span>Total lançado <b>${brl(received)}</b></span><span>Saldo aprovado a pagar <b>${brl(balance)}</b></span></div><div class="finance-statement-payment-list">${body}</div>${registerButton?`<div class="finance-statement-payment-footer">${registerButton}</div>`:''}</section>`;
+}
+function financeStatementRender(researcher, survey, payment, events, options={}){
   const isAuditCollectionStatus=event=>['audit','auditoria','em_auditoria','pending_audit','under_review'].includes(String(event?.status||'').toLocaleLowerCase('pt-BR').replace(/[ -]/g,'_'))||event?.audit===true||event?.underAudit===true;
   const validEvents=events.filter(event=>event.status==='valid'&&!isAuditCollectionStatus(event)).sort((a,b)=>a.ts-b.ts);
   const auditEvents=events.filter(isAuditCollectionStatus).sort((a,b)=>a.ts-b.ts);
@@ -8155,7 +8168,8 @@ function financeStatementRender(researcher, survey, payment, events){
   const pendingFinanceAmount=pendingFinanceRows.reduce((sum,row)=>sum+row.amount,0);
   const rejectedRows=rejectedEvents.map(event=>({event,status:'Rejeitada — não gera pagamento',amount:0}));
   const allRows=[...paidRows,...toPayRows,...auditRows,...pendingFinanceRows,...rejectedRows];
-  FINANCE_STATEMENT_CONTEXT={researcher,survey,payment,rows:allRows};
+  const statementStaff=options.staff===true;
+  FINANCE_STATEMENT_CONTEXT={researcher,survey,payment,rows:allRows,staff:statementStaff,financeIdx:options.financeIdx??null};
   const partial=Number((received-paidEquivalent*price).toFixed(2));
   const partialNote=partial>0?` Existe também ${brl(partial)} de pagamento parcial sem equivalência de formulário completo.`:'';
   const modal=document.createElement('div');
@@ -8173,6 +8187,7 @@ function financeStatementRender(researcher, survey, payment, events){
     ${financeStatementSection('Em auditoria','Valor potencial destas coletas. Se aprovadas, poderão entrar no saldo a receber em um próximo pagamento.',auditRows,'audit')}
     ${financeStatementSection('Rejeitadas e motivo','Não geram valor a pagar; o motivo registrado na auditoria é mantido abaixo.',rejectedRows,'rejected')}
     ${pendingFinanceRows.length?financeStatementSection('Válidas aguardando aprovação financeira','Ainda não compõem o saldo aprovado a pagar.',pendingFinanceRows,'pending'):''}
+    ${financeStatementPaymentsSection(payment,survey,{staff:statementStaff,financeIdx:options.financeIdx})}
     <div class="finance-statement-note">A separação entre coletas pagas e a pagar é uma classificação financeira por quantidade equivalente ao valor já recebido. O banco registra pagamentos agregados por pesquisador e pesquisa, não um vínculo individual entre cada recibo e cada entrevista. Coletas em auditoria são potenciais e não representam pagamento garantido.</div>
   </div>`;
   document.body.appendChild(modal);
@@ -8191,7 +8206,7 @@ async function financeOpenResearcherStatement(idx,researcherId){
       events=(data||[]).map(collectionEventRowToEntry).filter(event=>event.researcherId===researcherId);
     }
     if(!events.length){alert('Nenhuma coleta foi encontrada para este pesquisador nesta pesquisa.');return;}
-    financeStatementRender(payment,survey,payment,events);
+    financeStatementRender(payment,survey,payment,events,{staff:true,financeIdx:idx});
   }catch(ex){alert('Não foi possível carregar o extrato deste pesquisador. Tente novamente.');console.error(ex);}
 }
 
@@ -8207,7 +8222,7 @@ async function researcherOpenOwnStatement(surveyId){
     if(error)throw new Error(error.message);
     const events=(data||[]).map(collectionEventRowToEntry).filter(event=>event.researcherId===CURRENT_PROFILE.id);
     if(!events.length){alert('Nenhuma coleta foi encontrada nesta pesquisa.');return;}
-    financeStatementRender({id:CURRENT_PROFILE.id,name:CURRENT_PROFILE.name||payment.name||'Pesquisador'},survey,payment,events);
+    financeStatementRender({id:CURRENT_PROFILE.id,name:CURRENT_PROFILE.name||payment.name||'Pesquisador'},survey,payment,events,{staff:false});
   }catch(ex){alert('Não foi possível carregar seu extrato. Tente novamente.');console.error(ex);}
 }
 
@@ -8279,7 +8294,7 @@ function financeDetail(idx){
       ?'<button type="button" class="btn-ghost finance-action-approve" disabled title="'+(r.virtual?'O pagamento será criado quando houver uma coleta válida':'Não há novas entrevistas aguardando aprovação')+'">'+(r.status==='aprovado'?'✓ Tudo aprovado':'Aprovar pagamento')+'</button>'
       :'<button type="button" class="btn-ghost finance-action-approve" onclick="finApprovePayment('+idx+','+jsArg(r.researcherId)+')">'+(r.status==='aprovado'?'Aprovar novas coletas':'Aprovar pagamento')+'</button>';
     const receiptButton=r.virtual||!r.valid||r.status!=='aprovado'||aReceber<=0?'':'<button class="btn-ghost finance-action-receipt" onclick="finRegisterPayment('+idx+','+jsArg(r.researcherId)+')">＋ Registrar pagamento semanal</button>';
-    const statementButton=r.virtual?'':'<button type="button" class="btn-ghost finance-action-statement" onclick="financeOpenResearcherStatement('+idx+','+jsArg(r.researcherId)+')">▤ Extrato</button>';
+    const statementButton=r.virtual?'':'<button type="button" class="btn-ghost finance-action-statement" title="Ver coletas, pagamentos e comprovantes" onclick="financeOpenResearcherStatement('+idx+','+jsArg(r.researcherId)+')">▤ Extrato / pagamentos</button>';
     const receiptRowAction=financeReceiptRowAction(r.id);
     const statusButton=r.virtual?'':'<button class="btn-ghost" onclick="finEditPayment('+idx+','+jsArg(r.researcherId)+')">Alterar status</button>';
     const approvalNote=pendingValid?'<div class="finance-status-sub finance-status-pending">'+pendingValid+' nova'+(pendingValid===1?'':'s')+' · '+brl(pendingValue)+' aguardando aprovação</div>':(r.approvedValidCount?'<div class="finance-status-sub finance-status-approved">'+r.approvedValidCount+' entrevista'+(r.approvedValidCount===1?'':'s')+' aprovada'+(r.approvedValidCount===1?'':'s')+'</div>':'');
@@ -8339,7 +8354,7 @@ function financeFocusReceiptHistory(paymentId){
   const row=Array.from(history.querySelectorAll('tr[data-payment-id]')).find(item=>item.dataset.paymentId===String(paymentId));
   if(row){row.classList.add('finance-receipt-highlight');setTimeout(()=>row.classList.remove('finance-receipt-highlight'),2200);}
 }
-function financeReturnToDetail(idx){FIN_IDX=idx;FIN_ARMED=true;go('finance');}
+function financeReturnToDetail(idx){if(document.getElementById('financeStatementModal'))financeStatementClose();FIN_IDX=idx;FIN_ARMED=true;go('finance');}
 async function finApprovePayment(idx,researcherId){
   const s=SURVEYS[idx],current=finRows(idx).find(r=>r.researcherId===researcherId);if(!s||!current||current.virtual||!current.valid)return;
   const pendingValid=paymentPendingValidValue(current);if(!pendingValid){alert('Não há novas entrevistas aguardando aprovação para este pesquisador.');return;}

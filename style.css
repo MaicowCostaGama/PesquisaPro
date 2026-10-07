@@ -1750,3 +1750,25 @@ body.researcher-update-lock{overflow:hidden}
 .guide-ranking-callout-icon{display:grid;place-items:center;flex:0 0 46px;width:46px;height:46px;border-radius:14px;background:#0f7c91;color:#fff;font-size:24px;box-shadow:0 7px 16px rgba(15,124,145,.2)}
 .guide-ranking-callout h3{margin:3px 0 7px;color:#16345d;font-size:19px}.guide-ranking-callout p{margin:0;color:#4c657d;font-size:13px;line-height:1.65}.guide-ranking-callout .btn{margin-top:14px}
 @media(max-width:760px){.guide-ranking-callout{gap:12px;padding:16px}.guide-ranking-callout-icon{flex-basis:38px;width:38px;height:38px;border-radius:11px;font-size:19px}.guide-ranking-callout h3{font-size:17px}.guide-ranking-callout p{font-size:12px}}
+
+/* Financeiro v124: livro individual de repasses dentro do extrato */
+.finance-statement-payments{margin-top:14px;border-color:#cfe0ef;background:#fff}
+.finance-statement-payments .finance-statement-section-head{background:#f7fbff}
+.finance-statement-payment-summary{display:flex;flex-wrap:wrap;gap:8px;padding:11px 14px;border-bottom:1px solid #e7eef5;background:#fbfdff}
+.finance-statement-payment-summary span{display:inline-flex;align-items:center;gap:5px;padding:6px 9px;border:1px solid #dbe7f2;border-radius:8px;color:#647b90;font-size:10.5px}
+.finance-statement-payment-summary b{color:#0f766e;font-size:12px}
+.finance-statement-payment-list{display:flex;flex-direction:column}
+.finance-statement-payment-row{padding:12px 14px;border-bottom:1px solid #edf2f6}
+.finance-statement-payment-row:last-child{border-bottom:0}
+.finance-statement-payment-main{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.finance-statement-payment-main>div{display:flex;flex-direction:column;gap:3px;min-width:0}
+.finance-statement-payment-main b{color:var(--ink);font-size:12px}
+.finance-statement-payment-main span{color:var(--ink3);font-size:10px}
+.finance-statement-payment-main strong{color:#047857;font-size:14px;white-space:nowrap}
+.finance-statement-payment-note{display:flex;gap:7px;align-items:baseline;margin-top:8px;color:var(--ink2);font-size:10.5px;overflow-wrap:anywhere}
+.finance-statement-payment-note span{color:var(--ink3);font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
+.finance-statement-payment-file{margin-top:8px}
+.finance-statement-payment-file .payment-receipt-actions{max-width:none}
+.finance-statement-payment-footer{display:flex;justify-content:flex-end;padding:11px 14px;border-top:1px solid #e7eef5;background:#fbfdff}
+.finance-statement-payment-footer .btn{min-height:33px;font-size:10.5px}
+@media(max-width:640px){.finance-statement-payment-summary{display:grid;grid-template-columns:1fr}.finance-statement-payment-row{padding:11px}.finance-statement-payment-main strong{font-size:13px}.finance-statement-payment-footer{justify-content:stretch}.finance-statement-payment-footer .btn{width:100%}}

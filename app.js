@@ -51,7 +51,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261007163000';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261007170000';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -7818,11 +7818,11 @@ function paymentReceiptActionMarkup(receipt,context){
     : '<span class="payment-receipt-missing">Comprovante ainda não anexado</span>';
 }
 function financeReceiptRowAction(paymentId){
-  const receipts=paymentReceiptsFor(paymentId),pending=receipts.find(receipt=>!receipt.receiptPath);
-  if(pending)return `<div class="finance-receipt-row-actions"><button type="button" class="btn-ghost finance-action-receipt-attach" onclick="finAttachReceiptById(${jsArg(pending.id)})">＋ Anexar comprovante</button><button type="button" class="btn-ghost finance-action-receipt-edit" onclick="financeEditReceiptAmount(${jsArg(pending.id)})">Alterar valor</button></div>`;
-  if(receipts.length===1&&receipts[0].receiptPath)return `<div class="finance-receipt-row-actions"><button type="button" class="btn-ghost finance-action-receipt-history" onclick="financeFocusReceiptHistory(${jsArg(paymentId)})">Ver comprovante</button><button type="button" class="btn-ghost finance-action-receipt-edit" onclick="financeEditReceiptAmount(${jsArg(receipts[0].id)})">Alterar valor</button><button type="button" class="btn-ghost finance-action-receipt-delete" onclick="financeDeleteReceiptById(${jsArg(receipts[0].id)})">Excluir comprovante</button></div>`;
-  if(receipts.length)return `<button type="button" class="btn-ghost finance-action-receipt-history" onclick="financeFocusReceiptHistory(${jsArg(paymentId)})">Ver/alterar pagamentos</button>`;
-  return '';
+  const receipts=paymentReceiptsFor(paymentId);if(!receipts.length)return '';
+  const pending=receipts.find(receipt=>!receipt.receiptPath),actions=[`<button type="button" class="btn-ghost finance-action-receipt-history" onclick="financeFocusReceiptHistory(${jsArg(paymentId)})">Ver/alterar pagamentos</button>`];
+  if(pending)actions.push(`<button type="button" class="btn-ghost finance-action-receipt-attach" onclick="finAttachReceiptById(${jsArg(pending.id)})">＋ Anexar comprovante</button><button type="button" class="btn-ghost finance-action-receipt-edit" onclick="financeEditReceiptAmount(${jsArg(pending.id)})">Alterar valor</button>`);
+  else if(receipts.length===1)actions.push(`<button type="button" class="btn-ghost finance-action-receipt-edit" onclick="financeEditReceiptAmount(${jsArg(receipts[0].id)})">Alterar valor</button><button type="button" class="btn-ghost finance-action-receipt-delete" onclick="financeDeleteReceiptById(${jsArg(receipts[0].id)})">Excluir comprovante</button>`);
+  return `<div class="finance-receipt-row-actions">${actions.join('')}</div>`;
 }
 function paymentReceiptFileName(path){
   const raw=String(path||'').split('?')[0].split('/').pop()||'comprovante-pagamento';

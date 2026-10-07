@@ -27,6 +27,8 @@ O cabeçalho também mostra quantidades, valores, valor por formulário, saldo a
 - **Excluir comprovante**: disponível somente para a gestão e remove apenas o arquivo/metadados do comprovante, preservando o lançamento financeiro para novo anexo;
 - **Registrar novo pagamento**: disponível no extrato da gestão quando ainda existe saldo aprovado a pagar.
 
+Quando houver **um ou mais pagamentos** para o pesquisador, o cartão sempre exibe **Ver/alterar pagamentos**. Se algum lançamento ainda estiver sem comprovante, os botões **Anexar comprovante** e **Alterar valor** aparecem junto ao histórico; o comprovante pendente não oculta os demais lançamentos.
+
 ## Regra financeira
 
 O saldo aprovado a pagar é calculado com a mesma regra da aba Financeiro:

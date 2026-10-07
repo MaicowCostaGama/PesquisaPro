@@ -220,8 +220,8 @@ for (const token of [
   assert(css.includes(token), `estilo financeiro ausente: ${token}`);
 }
 
-assert(html.includes('app.js?v=20261007163000'), 'cache do app financeiro não foi atualizado');
-assert(html.includes('style.css?v=20261007163000'), 'cache do CSS financeiro não foi atualizado');
+assert(html.includes('app.js?v=20261007170000'), 'cache do app financeiro não foi atualizado');
+assert(html.includes('style.css?v=20261007170000'), 'cache do CSS financeiro não foi atualizado');
 assert(app.includes('paymentApprovedBalanceValue(r,price)'), 'a receber não está restrito ao valor aprovado');
 assert(app.includes('const saldoDevido=Math.max(0,valor-recebido)'), 'saldo devido não é abatido pelos recebimentos');
 assert(app.includes('paymentBalanceValue(r,price)'), 'saldo devido não usa o valor real das entrevistas e recibos');
@@ -239,6 +239,10 @@ assert(app.includes('Comprovante e ações'), 'histórico não identifica a colu
 assert(app.includes('financeStatementPaymentsSection'), 'extrato não possui seção individual de pagamentos');
 assert(app.includes('Pagamentos realizados e comprovantes'), 'extrato não mostra pagamentos e comprovantes individuais');
 assert(app.includes('finance-statement-payment-row'), 'extrato não renderiza cada repasse individualmente');
+assert(app.includes("const receipts=paymentReceiptsFor(paymentId);if(!receipts.length)return ''"), 'ações do pagamento não reconhecem o conjunto completo de lançamentos');
+assert(app.includes('actions=[`<button type="button" class="btn-ghost finance-action-receipt-history"'), 'histórico não é priorizado quando existem pagamentos');
+assert(app.includes("if(pending)actions.push(`"), 'comprovante pendente não mantém as ações de anexar e alterar');
+assert(!app.includes('if(pending)return `<div class="finance-receipt-row-actions">'), 'comprovante pendente não pode ocultar o histórico de múltiplos pagamentos');
 assert(app.includes('paymentReceiptActionMarkup(receipt,options.staff?\'staff\':\'researcher\')'), 'extrato não aplica ações de comprovante por perfil');
 assert(app.includes('financeStatementClose();finRegisterPayment'), 'extrato não permite registrar outro pagamento pela gestão');
 assert(app.includes('function financeReturnToDetail(idx){if(document.getElementById(\'financeStatementModal\'))financeStatementClose()'), 'ações do extrato não fecham a janela antes de atualizar a tela financeira');

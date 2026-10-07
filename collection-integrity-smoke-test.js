@@ -48,6 +48,6 @@ if(correctedSql){
 }
 assert(css.includes('.collection-integrity-message'),'mensagem de bloqueio sem estilo dedicado');
 assert(css.includes('.finance-table-scroll'),'CSS financeiro completo não foi preservado');
-assert(html.includes('app.js?v=20261007180227'),'cache do app não foi atualizado');
-assert(html.includes('style.css?v=20261007180227'),'cache do CSS não foi atualizado');
+assert(html.includes('app.js?v=20261007182506'),'cache do app não foi atualizado');
+assert(html.includes('style.css?v=20261007182506'),'cache do CSS não foi atualizado');
 console.log('collection-integrity-smoke-test: OK');

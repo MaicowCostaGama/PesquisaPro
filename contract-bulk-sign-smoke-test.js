@@ -1,0 +1,21 @@
+const assert=require('assert');
+const fs=require('fs');
+const root=__dirname;
+const app=fs.readFileSync(root+'/app.js','utf8');
+const css=fs.readFileSync(root+'/style.css','utf8');
+const html=fs.readFileSync(root+'/app.html','utf8');
+function ok(condition,message){assert(condition,message);}
+ok(app.includes('CONTRACT_BULK_SIGNING'),'estado de assinatura em lote ausente');
+ok(app.includes('adminSignAllPendingContracts'),'handler da assinatura em lote ausente');
+ok(app.includes('Assinar todos os ${pendentes} pendentes'),'botão com a quantidade de pendentes ausente');
+ok(app.includes('data-admin-sign-all'),'seletor do botão em lote ausente');
+ok(app.includes("sb.rpc('admin_sign_researcher_contract'"),'lote não reutiliza a RPC individual auditável');
+ok(app.includes("user.role==='pesq'&&user.status==='ativo'&&!signedMap[user.id]"),'lote não restringe a pesquisadores ativos sem assinatura');
+ok(app.includes('Contratos já assinados foram preservados'),'preservação dos contratos assinados não está informada');
+ok(app.includes('A ação será registrada em nome do administrador'),'confirmação e auditoria da ação não estão explícitas');
+ok(app.includes('Assinando '+"'+(i+1)+'"),'progresso da assinatura em lote ausente');
+ok(css.includes('.contracts-researchers-head'),'estilo do cabeçalho de contratos ausente');
+ok(css.includes('.contracts-bulk-sign-btn'),'estilo do botão em lote ausente');
+ok(html.includes('app.js?v=20261007182506'),'cache do app não atualizado');
+ok(html.includes('style.css?v=20261007182506'),'cache do CSS não atualizado');
+console.log('Contract bulk signature smoke test: PASS — botão, confirmação, progresso, RPC auditável e preservação dos assinados verificados.');

@@ -51,7 +51,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261007180227';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261007182506';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -8652,7 +8652,7 @@ function renderMyRejected(){
    company_contract_signatures) — uma única vez por versão do contrato,
    não uma vez por pesquisador. O texto do contrato em si e a assinatura do
    lado do pesquisador estão no bloco "CONTRATO-QUADRO DO PESQUISADOR". */
-let ALL_CONTRACTS=[],ALL_CONTRACTS_LOADED=false,ALL_CONTRACTS_LOADING=false;
+let ALL_CONTRACTS=[],ALL_CONTRACTS_LOADED=false,ALL_CONTRACTS_LOADING=false,CONTRACT_BULK_SIGNING=false;
 async function loadAllContractsIfNeeded(){
   if(ALL_CONTRACTS_LOADED||ALL_CONTRACTS_LOADING)return;
   ALL_CONTRACTS_LOADING=true;
@@ -8722,15 +8722,51 @@ PAGES.contracts=()=>{
     ${stat('CONTRATANTE',COMPANY_SIGNATURE?'Assinado':'Pendente','lado do PesquisaPro',COMPANY_SIGNATURE?'✓':'◷',COMPANY_SIGNATURE?'#059669':'#dc2626')}
   </div>
   ${companyPanel}
-  <div class="card mb" style="margin-top:16px">
-    <div class="card-t">Pesquisadores</div>
-    <div class="card-d">Status de assinatura do contrato-quadro (versão ${esc(CONTRACT_VERSION)}) por pesquisador ativo.</div>
+  <div class="card mb contracts-researchers-card" style="margin-top:16px">
+    <div class="contracts-researchers-head"><div><div class="card-t">Pesquisadores</div><div class="card-d">Status de assinatura do contrato-quadro (versão ${esc(CONTRACT_VERSION)}) por pesquisador ativo.</div></div>${isAdmin?(pendentes?`<button type="button" class="btn btn-accent contracts-bulk-sign-btn" data-admin-sign-all onclick="adminSignAllPendingContracts(${pendentes})">✎ Assinar todos os ${pendentes} pendentes</button>`:'<span class="pill pill-green contracts-bulk-complete">✓ Todos assinados</span>'):''}</div>
     <table style="margin-top:6px"><thead><tr><th>Pesquisador</th><th>Cidade</th><th>Status</th><th>Assinado em</th><th>Ação</th></tr></thead>
     <tbody>${rows}</tbody></table>
   </div>
   <div class="sec-title">Pré-visualização do contrato</div>
   <div class="contract-doc">${contractHtml('[nome do pesquisador]','[CPF]','')}</div>`;
 };
+async function adminSignAllPendingContracts(expectedCount){
+  if(CONTRACT_BULK_SIGNING)return;
+  if(!CURRENT_PROFILE||!['admin','admpro'].includes(selectedRole)){alert('Apenas um administrador pode assinar pelo pesquisador.');return;}
+  const count=Math.max(0,Number(expectedCount)||0);
+  if(!count){alert('Não há contratos pendentes para assinar nesta versão.');return;}
+  if(!confirm('Confirma assinar administrativamente os '+count+' contratos pendentes da versão '+CONTRACT_VERSION+'?\n\nA ação será registrada em nome do administrador, com data, hora, IP quando disponível e hash do contrato. Ela não altera contratos já assinados.'))return;
+  CONTRACT_BULK_SIGNING=true;
+  const btn=document.querySelector('[data-admin-sign-all]');if(btn){btn.disabled=true;btn.textContent='Assinando contratos…';}
+  const signedMap={};ALL_CONTRACTS.forEach(c=>{signedMap[c.researcher_id]=c;});
+  const pending=USERS.filter(user=>user.role==='pesq'&&user.status==='ativo'&&!signedMap[user.id]).slice(0,count);
+  let signedCount=0;const failures=[];let ip=null;try{ip=await fetchClientIp();}catch(ex){ip=null;}
+  try{
+    for(let i=0;i<pending.length;i++){
+      const user=pending[i];
+      if(btn)btn.textContent='Assinando '+(i+1)+'/'+pending.length+'…';
+      let hash='';try{hash=await sha256Hex(contractPlainText(user.name,user.cpf||'',''));}catch(ex){hash='';}
+      const {data,error}=await sb.rpc('admin_sign_researcher_contract',{
+        p_researcher_id:user.id,
+        p_contract_version:CONTRACT_VERSION,
+        p_content_hash:hash||'indisponível neste navegador',
+        p_ip_address:ip,
+        p_user_agent:(navigator&&navigator.userAgent)||null,
+      });
+      if(error||!data){failures.push(user.name+': '+(error?.message||'a assinatura não retornou registro'));continue;}
+      signedCount++;
+    }
+    ALL_CONTRACTS_LOADED=false;await loadAllContractsIfNeeded();
+    const failureText=failures.length?'\n\nNão concluídos ('+failures.length+'): '+failures.slice(0,4).join('; ')+(failures.length>4?'…':''):'';
+    alert(signedCount+' contrato'+(signedCount===1?'':'s')+' pendente'+(signedCount===1?'':'s')+' assinado'+(signedCount===1?'':'s')+' com sucesso. Contratos já assinados foram preservados.'+failureText);
+    go('contracts');
+  }catch(ex){
+    const message=String(ex?.message||ex||'');
+    const migrationHint=/admin_sign_researcher_contract|function .* does not exist|schema cache|does not exist/i.test(message)?' Verifique se a migration deploy/assinatura-admin-pesquisador.sql foi aplicada no Supabase.':'';
+    alert('Não foi possível assinar os contratos pendentes: '+message+'.'+migrationHint);
+  }finally{CONTRACT_BULK_SIGNING=false;const current=document.querySelector('[data-admin-sign-all]');if(current){current.disabled=false;current.textContent='✎ Assinar todos os '+count+' pendentes';}}
+}
+
 async function adminSignResearcherContract(researcherId,researcherName){
   if(!CURRENT_PROFILE||!['admin','admpro'].includes(selectedRole)){alert('Apenas um administrador pode assinar pelo pesquisador.');return;}
   if(!researcherId||researcherId==='undefined'){alert('Pesquisador inválido. Atualize a lista e tente novamente.');return;}

@@ -51,7 +51,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261007135500';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261007150000';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -8516,10 +8516,16 @@ async function saveMyPixData(){
   const pixKey=(document.getElementById('me-pix-key').value||'').trim();
   const pixBank=(document.getElementById('me-pix-bank').value||'').trim();
   try{
-    const {error}=await sb.from('profiles').update({pix_key:pixKey,pix_bank:pixBank}).eq('id',CURRENT_PROFILE.id);
+    const {error}=await sb.rpc('update_my_researcher_payment_data',{p_pix_key:pixKey||null,p_pix_bank:pixBank||null});
     if(error)throw new Error(error.message);
     CURRENT_PROFILE.pix_key=pixKey;CURRENT_PROFILE.pix_bank=pixBank;
-  }catch(ex){alert('Não foi possível salvar: '+ex.message);return;}
+  }catch(ex){
+    const message=String(ex?.message||ex||'');
+    const migrationHint=/update_my_researcher_payment_data|schema cache|does not exist|function .* does not exist/i.test(message)
+      ?' A gestão precisa executar a migration deploy/corrigir-atualizacao-pix-pesquisador.sql no Supabase.'
+      :'';
+    alert('Não foi possível salvar a chave PIX: '+message+'.'+migrationHint);return;
+  }
   alert('Dados de pagamento salvos.');
 }
 function renderMyRejected(){

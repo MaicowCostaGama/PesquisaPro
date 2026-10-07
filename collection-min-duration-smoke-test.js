@@ -51,5 +51,5 @@ for(const token of [
 assert(correction.includes("new.reject_reason := 'Tempo de coleta não corresponde ao tempo mínimo necessário a uma coleta real'"),'migration corretiva sem mensagem exata');
 assert(!/drop\s+table|drop\s+column|truncate|delete\s+from/i.test(migration),'migration contém operação destrutiva');
 assert(!/drop\s+table|drop\s+column|truncate|delete\s+from/i.test(correction),'migration corretiva contém operação destrutiva');
-assert(html.includes('app.js?v=20261007133000'),'cache não atualizado');
+assert(html.includes('app.js?v=20261007135500'),'cache não atualizado');
 console.log('Collection minimum duration smoke test: PASS — dificuldade, cálculo, ajuste, trigger seguro e mensagem verificados.');

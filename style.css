@@ -1744,3 +1744,9 @@ body.researcher-update-lock{overflow:hidden}
 .researcher-own-ranking-disclaimer{margin:13px 0 0;color:var(--ink3);font-size:10.5px;line-height:1.5}
 @media(max-width:850px){.researcher-own-ranking-factors{grid-template-columns:repeat(2,minmax(0,1fr))}.researcher-own-ranking-rule-grid{grid-template-columns:1fr}}
 @media(max-width:620px){.researcher-own-ranking-hero{align-items:stretch;flex-direction:column;padding:17px}.researcher-own-ranking-score{flex-basis:auto;min-height:0}.researcher-own-ranking-factors{grid-template-columns:1fr}.researcher-own-ranking-score strong{font-size:22px}}
+
+/* Atualização do treinamento: ranking e continuidade dos convites */
+.guide-ranking-callout{display:flex;align-items:flex-start;gap:18px;padding:20px 22px;border:1px solid #cce6ef;border-radius:18px;background:linear-gradient(135deg,#f4fbff 0%,#edf9f5 100%);box-shadow:0 8px 22px rgba(16,42,86,.05)}
+.guide-ranking-callout-icon{display:grid;place-items:center;flex:0 0 46px;width:46px;height:46px;border-radius:14px;background:#0f7c91;color:#fff;font-size:24px;box-shadow:0 7px 16px rgba(15,124,145,.2)}
+.guide-ranking-callout h3{margin:3px 0 7px;color:#16345d;font-size:19px}.guide-ranking-callout p{margin:0;color:#4c657d;font-size:13px;line-height:1.65}.guide-ranking-callout .btn{margin-top:14px}
+@media(max-width:760px){.guide-ranking-callout{gap:12px;padding:16px}.guide-ranking-callout-icon{flex-basis:38px;width:38px;height:38px;border-radius:11px;font-size:19px}.guide-ranking-callout h3{font-size:17px}.guide-ranking-callout p{font-size:12px}}

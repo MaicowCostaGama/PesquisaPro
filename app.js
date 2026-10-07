@@ -50,7 +50,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261007115000';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261007131500';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -8005,6 +8005,125 @@ async function financeExportReceivables(idx=null){
     console.error(ex);
   }
 }
+let FINANCE_STATEMENT_EVENTS=[];
+let FINANCE_STATEMENT_CONTEXT=null;
+function financeStatementDate(value){
+  if(!value)return '—';
+  const date=new Date(value);
+  return Number.isNaN(date.getTime())?'—':date.toLocaleString('pt-BR');
+}
+function financeStatementClose(){
+  const modal=document.getElementById('financeStatementModal');
+  if(modal)modal.remove();
+  FINANCE_STATEMENT_EVENTS=[];
+  FINANCE_STATEMENT_CONTEXT=null;
+}
+function financeStatementPrint(){
+  const modal=document.getElementById('financeStatementModal');
+  if(!modal)return;
+  modal.classList.add('is-printing');
+  window.print();
+  setTimeout(()=>modal.classList.remove('is-printing'),300);
+}
+function financeStatementCsv(){
+  const context=FINANCE_STATEMENT_CONTEXT;
+  if(!context)return;
+  const rows=context.rows||[];
+  const header=['Data','Coleta','Status financeiro','Valor considerado (R$)','Motivo da reprovação'];
+  const lines=[header,...rows.map(row=>[
+    financeStatementDate(row.event.ts),
+    row.event.cota||'Sem cota',
+    row.status,
+    row.amount.toFixed(2).replace('.',','),
+    row.event.status==='rejected'?(row.event.rejectReason||'Motivo não informado'):'—'
+  ])].map(cols=>cols.map(value=>'"'+String(value??'').replace(/"/g,'""')+'"').join(';'));
+  const safe=financeExportSafePart(context.researcher.name,'pesquisador');
+  const blob=new Blob(['\ufeff'+lines.join('\n')],{type:'text/csv;charset=utf-8'});
+  const url=URL.createObjectURL(blob),link=document.createElement('a');
+  link.href=url;link.download='extrato-pesquisador-'+safe+'-'+new Date().toISOString().slice(0,10)+'.csv';
+  link.style.display='none';document.body.appendChild(link);link.click();link.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+function financeStatementSection(title,subtitle,rows,kind){
+  const body=rows.length?rows.map(row=>`<div class="finance-statement-row ${kind}">
+    <div><b>${esc(financeStatementDate(row.event.ts))}</b><span>${esc(row.event.cota||'Sem cota')}</span></div>
+    <div><span class="finance-statement-status">${esc(row.status)}</span>${row.event.status==='rejected'?`<small>Motivo: ${esc(row.event.rejectReason||'Motivo não informado')}</small>`:''}</div>
+    <strong>${brl(row.amount)}</strong>
+  </div>`).join(''):'<div class="finance-statement-empty">Nenhuma coleta nesta categoria.</div>';
+  return `<section class="finance-statement-section ${kind}"><div class="finance-statement-section-head"><div><h3>${esc(title)}</h3><p>${esc(subtitle)}</p></div><span class="pill ${kind==='rejected'?'pill-red':kind==='paid'?'pill-green':'pill-blue'}">${rows.length}</span></div><div class="finance-statement-list">${body}</div></section>`;
+}
+function financeStatementRender(researcher, survey, payment, events){
+  const validEvents=events.filter(event=>event.status==='valid').sort((a,b)=>a.ts-b.ts);
+  const rejectedEvents=events.filter(event=>event.status==='rejected').sort((a,b)=>(b.rejectedAt||b.ts)-(a.rejectedAt||a.ts));
+  const price=Number(survey?.price)||0;
+  const approvedCount=paymentApprovedValidValue(payment);
+  const pendingApprovalCount=paymentPendingValidValue(payment);
+  const received=paymentReceivedValue(payment?.id);
+  const paidEquivalent=price>0?Math.min(approvedCount,Math.floor((received+0.000001)/price)):0;
+  const paidAmount=Math.min(received,approvedCount*price);
+  const approvedToPayCount=Math.max(0,approvedCount-paidEquivalent);
+  const approvedToPayAmount=Math.max(0,paymentApprovedBalanceValue(payment,price));
+  const pendingApprovalAmount=Math.max(0,paymentPendingDueValue(payment,price));
+  const paidRows=validEvents.slice(0,paidEquivalent).map(event=>({event,status:'Aprovada e já paga',amount:price}));
+  const toPayRows=validEvents.slice(paidEquivalent,approvedCount).map(event=>({event,status:'Aprovada e a pagar',amount:price}));
+  const pendingRows=validEvents.slice(approvedCount).map(event=>({event,status:'Válida — aguardando aprovação financeira',amount:price}));
+  const rejectedRows=rejectedEvents.map(event=>({event,status:'Rejeitada — não gera pagamento',amount:0}));
+  const allRows=[...paidRows,...toPayRows,...pendingRows,...rejectedRows];
+  FINANCE_STATEMENT_CONTEXT={researcher,survey,payment,rows:allRows};
+  const partial=Number((received-paidEquivalent*price).toFixed(2));
+  const partialNote=partial>0?` Existe também ${brl(partial)} de pagamento parcial sem equivalência de formulário completo.`:'';
+  const modal=document.createElement('div');
+  modal.id='financeStatementModal';
+  modal.className='finance-statement-modal';
+  modal.setAttribute('role','dialog');
+  modal.setAttribute('aria-modal','true');
+  modal.innerHTML=`<div class="finance-statement-backdrop" onclick="financeStatementClose()"></div><div class="finance-statement-dialog" role="document">
+    <div class="finance-statement-head"><div><span class="eyebrow">EXTRATO INDIVIDUAL</span><h2>${esc(researcher.name||'Pesquisador')}</h2><p>${esc(survey.name||'Pesquisa')} · valor por formulário ${brl(price)}</p></div><button type="button" class="finance-statement-close" onclick="financeStatementClose()" aria-label="Fechar extrato">×</button></div>
+    <div class="finance-statement-actions"><button type="button" class="btn btn-out" onclick="financeStatementPrint()">🖨️ Imprimir / salvar PDF</button><button type="button" class="btn btn-out" onclick="financeStatementCsv()">⇩ Baixar CSV</button><button type="button" class="btn btn-fill" onclick="financeStatementClose()">Fechar</button></div>
+    <div class="finance-statement-summary"><div><span>Coletas válidas</span><b>${validEvents.length}</b></div><div class="paid"><span>Aprovadas e já pagas</span><b>${paidEquivalent} · ${brl(paidAmount)}</b></div><div class="to-pay"><span>Aprovadas e a pagar</span><b>${approvedToPayCount} · ${brl(approvedToPayAmount)}</b></div><div class="pending"><span>Aguardando aprovação</span><b>${pendingApprovalCount} · ${brl(pendingApprovalAmount)}</b></div><div class="rejected"><span>Rejeitadas</span><b>${rejectedEvents.length}</b></div></div>
+    <div class="finance-statement-balance"><b>Motivo do saldo para pagamento</b><span>O saldo a pagar é formado pelas coletas válidas já aprovadas para pagamento, menos os repasses lançados. Coletas rejeitadas não entram no saldo. Coletas válidas ainda não aprovadas ficam separadas até a aprovação financeira.${partialNote}</span><strong>Saldo aprovado a pagar: ${brl(approvedToPayAmount)}</strong></div>
+    ${financeStatementSection('Aprovadas e já pagas','Coletas válidas classificadas até o valor já quitado.',paidRows,'paid')}
+    ${financeStatementSection('Aprovadas e a pagar','Coletas válidas já aprovadas financeiramente, mas ainda sem quitação integral.',toPayRows,'to-pay')}
+    ${financeStatementSection('Rejeitadas e motivo','Não geram valor a pagar; o motivo registrado na auditoria é mantido abaixo.',rejectedRows,'rejected')}
+    ${pendingRows.length?financeStatementSection('Válidas aguardando aprovação financeira','Ainda não compõem o saldo aprovado a pagar.',pendingRows,'pending'):''}
+    <div class="finance-statement-note">A separação entre coletas pagas e a pagar é uma classificação financeira por quantidade equivalente ao valor já recebido. O banco registra pagamentos agregados por pesquisador e pesquisa, não um vínculo individual entre cada recibo e cada entrevista.</div>
+  </div>`;
+  document.body.appendChild(modal);
+  modal.querySelector('.finance-statement-close')?.focus();
+}
+async function financeOpenResearcherStatement(idx,researcherId){
+  if(!financeStaffCanManageReceipts())return;
+  const survey=SURVEYS[idx],payment=finRows(idx).find(row=>row.researcherId===researcherId);
+  if(!survey||!payment||payment.virtual){alert('Ainda não há coletas registradas para emitir este extrato.');return;}
+  try{
+    let events=[];
+    if(COLLECT_EVENTS_LOADED)events=eventsForSurveyIdx(idx).filter(event=>event.researcherId===researcherId);
+    else{
+      const {data,error}=await fetchCollectionEvents({surveyId:survey.id});
+      if(error)throw new Error(error.message);
+      events=(data||[]).map(collectionEventRowToEntry).filter(event=>event.researcherId===researcherId);
+    }
+    if(!events.length){alert('Nenhuma coleta foi encontrada para este pesquisador nesta pesquisa.');return;}
+    financeStatementRender(payment,survey,payment,events);
+  }catch(ex){alert('Não foi possível carregar o extrato deste pesquisador. Tente novamente.');console.error(ex);}
+}
+
+async function researcherOpenOwnStatement(surveyId){
+  if(CURRENT_PROFILE?.role!=='pesq')return;
+  const survey=SURVEYS.find(item=>item.id===surveyId);
+  if(!survey){alert('A pesquisa deste extrato não está disponível.');return;}
+  const payment=PAYMENTS.find(item=>item.surveyId===surveyId&&item.researcherId===CURRENT_PROFILE.id)||{
+    id:null,surveyId,researcherId:CURRENT_PROFILE.id,name:CURRENT_PROFILE.name||'',valid:0,rejected:0,status:'pendente',approvedValidCount:0
+  };
+  try{
+    const {data,error}=await fetchCollectionEvents({surveyId,ownOnly:true});
+    if(error)throw new Error(error.message);
+    const events=(data||[]).map(collectionEventRowToEntry).filter(event=>event.researcherId===CURRENT_PROFILE.id);
+    if(!events.length){alert('Nenhuma coleta foi encontrada nesta pesquisa.');return;}
+    financeStatementRender({id:CURRENT_PROFILE.id,name:CURRENT_PROFILE.name||payment.name||'Pesquisador'},survey,payment,events);
+  }catch(ex){alert('Não foi possível carregar seu extrato. Tente novamente.');console.error(ex);}
+}
+
 PAGES.finance=()=>{
   if(!SURVEYS_LOADED||!PAYMENTS_LOADED||!PAYMENT_RECEIPTS_LOADED||!PAYMENT_NOTICES_LOADED){
     if(!SURVEYS_LOADED)loadSurveysIfNeeded();
@@ -8073,11 +8192,12 @@ function financeDetail(idx){
       ?'<button type="button" class="btn-ghost finance-action-approve" disabled title="'+(r.virtual?'O pagamento será criado quando houver uma coleta válida':'Não há novas entrevistas aguardando aprovação')+'">'+(r.status==='aprovado'?'✓ Tudo aprovado':'Aprovar pagamento')+'</button>'
       :'<button type="button" class="btn-ghost finance-action-approve" onclick="finApprovePayment('+idx+','+jsArg(r.researcherId)+')">'+(r.status==='aprovado'?'Aprovar novas coletas':'Aprovar pagamento')+'</button>';
     const receiptButton=r.virtual||!r.valid||r.status!=='aprovado'||aReceber<=0?'':'<button class="btn-ghost finance-action-receipt" onclick="finRegisterPayment('+idx+','+jsArg(r.researcherId)+')">＋ Registrar pagamento semanal</button>';
+    const statementButton=r.virtual?'':'<button type="button" class="btn-ghost finance-action-statement" onclick="financeOpenResearcherStatement('+idx+','+jsArg(r.researcherId)+')">▤ Extrato</button>';
     const receiptRowAction=financeReceiptRowAction(r.id);
     const statusButton=r.virtual?'':'<button class="btn-ghost" onclick="finEditPayment('+idx+','+jsArg(r.researcherId)+')">Alterar status</button>';
     const approvalNote=pendingValid?'<div class="finance-status-sub finance-status-pending">'+pendingValid+' nova'+(pendingValid===1?'':'s')+' · '+brl(pendingValue)+' aguardando aprovação</div>':(r.approvedValidCount?'<div class="finance-status-sub finance-status-approved">'+r.approvedValidCount+' entrevista'+(r.approvedValidCount===1?'':'s')+' aprovada'+(r.approvedValidCount===1?'':'s')+'</div>':'');
     return `<tr class="${pendingValid?'finance-row-has-pending':''}"><td><b>${esc(r.name)}</b>${r.virtual?'<div class="finance-row-note">Sem pagamento criado ainda</div>':''}</td><td>${r.valid}</td><td>${r.rejected}</td><td><b>Devido: ${brl(valor)}</b><div class="finance-value-breakdown">Aprovado: ${brl(aprovado)}</div>${pendingValue?'<div class="finance-value-pending">Pendente: '+brl(pendingValue)+'</div>':''}</td><td><b>Quitado: ${brl(recebido)}</b><div class="finance-balance-note">Repasses já lançados</div></td><td>${aReceber?'<b class="finance-to-receive">'+brl(aReceber)+'</b>':'<span class="pill pill-gray">R$ 0,00</span>'}<div class="finance-balance-note">Saldo após quitação: ${brl(saldoDevido)}</div></td><td>${pixShown||'<span style="color:var(--ink3)">—</span>'}</td><td>${st.pill}${approvalNote}</td>
-      <td class="finance-actions-cell"><div class="finance-row-actions">${whatsappButton}${approveButton}${receiptButton}${receiptRowAction}${statusButton}</div></td></tr>`;
+      <td class="finance-actions-cell"><div class="finance-row-actions">${statementButton}${whatsappButton}${approveButton}${receiptButton}${receiptRowAction}${statusButton}</div></td></tr>`;
   }).join(''):'<tr><td colspan="9" class="empty">Nenhum pesquisador atribuído a esta pesquisa ainda — atribua a equipe em Minhas pesquisas.</td></tr>';
   return head('Financeiro — '+s.name,'Pagamento por entrevista válida coletada nesta pesquisa',
     '<button class="btn btn-out" onclick="financeBack()">← Financeiro</button>'+ 
@@ -8249,8 +8369,8 @@ PAGES['my-earnings']=()=>{
   const aReceber=rowsData.reduce((a,r)=>a+r.aReceber,0),recebido=rowsData.reduce((a,r)=>a+r.recebido,0);
   const pendente=rowsData.filter(r=>r.status==='pendente').reduce((a,r)=>a+r.valor,0),auditoria=rowsData.filter(r=>r.status==='auditoria').reduce((a,r)=>a+r.valor,0);
   const rejeitadas=rowsData.reduce((a,r)=>a+r.rejected,0),rejeitadasValor=rowsData.reduce((a,r)=>a+r.rejectedValor,0);
-  const histRows=rowsData.length?rowsData.map(r=>`<tr><td><b>${esc(r.survey)}</b></td><td>${r.valid}</td><td>${r.rejected}${r.rejectedValor?'<div class="earnings-rejected-value">'+brl(r.rejectedValor)+' não contabilizado</div>':''}</td><td><b>${brl(r.aprovado)}</b>${r.pendente?'<div class="finance-value-pending">Pendente: '+brl(r.pendente)+'</div>':''}</td><td><b>${brl(r.recebido)}</b></td><td>${r.aReceber?'<b class="finance-to-receive">'+brl(r.aReceber)+'</b>':'<span class="pill pill-gray">R$ 0,00</span>'}</td><td><b class="finance-balance-note-value">${brl(r.saldoDevido)}</b></td><td>${(FIN_STATUS[r.status]||FIN_STATUS.pendente).pill}</td></tr>`).join('')
-    :'<tr><td colspan="8" class="empty">Nenhuma coleta ainda — assim que você enviar sua primeira entrevista em "Coletar (app)", aparece aqui.</td></tr>';
+  const histRows=rowsData.length?rowsData.map(r=>`<tr><td><b>${esc(r.survey)}</b></td><td>${r.valid}</td><td>${r.rejected}${r.rejectedValor?'<div class="earnings-rejected-value">'+brl(r.rejectedValor)+' não contabilizado</div>':''}</td><td><b>${brl(r.aprovado)}</b>${r.pendente?'<div class="finance-value-pending">Pendente: '+brl(r.pendente)+'</div>':''}</td><td><b>${brl(r.recebido)}</b></td><td>${r.aReceber?'<b class="finance-to-receive">'+brl(r.aReceber)+'</b>':'<span class="pill pill-gray">R$ 0,00</span>'}</td><td><b class="finance-balance-note-value">${brl(r.saldoDevido)}</b></td><td>${(FIN_STATUS[r.status]||FIN_STATUS.pendente).pill}</td><td><button type="button" class="btn-ghost finance-action-statement" onclick="researcherOpenOwnStatement(${jsArg(r.payment.surveyId)})">▤ Gerar extrato</button></td></tr>`).join('')
+    :'<tr><td colspan="9" class="empty">Nenhuma coleta ainda — assim que você enviar sua primeira entrevista em "Coletar (app)", aparece aqui.</td></tr>';
   return head('Meus ganhos','Acompanhe seus pagamentos por formulário coletado')+`
   ${paymentReceiptMigrationNotice()}
   ${paymentNoticeMigrationNotice()}
@@ -8265,7 +8385,7 @@ PAGES['my-earnings']=()=>{
   <div class="card mb">
     <div class="card-t">Extrato por pesquisa</div>
     <div class="card-d">Entrevistas rejeitadas aparecem somente para informação e nunca entram em pendente, a receber ou recebido. Os pagamentos semanais aparecem no histórico e reduzem o <b>Saldo devido</b>; novas entrevistas válidas continuam sendo somadas automaticamente.</div>
-    <div class="finance-table-scroll"><table class="finance-data-table earnings-table" style="margin-top:6px"><thead><tr><th>Pesquisa</th><th>Válidas</th><th>Rejeitadas</th><th>Valor aprovado</th><th>Recebido</th><th>A receber</th><th>Saldo devido</th><th>Situação</th></tr></thead>
+    <div class="finance-table-scroll"><table class="finance-data-table earnings-table" style="margin-top:6px"><thead><tr><th>Pesquisa</th><th>Válidas</th><th>Rejeitadas</th><th>Valor aprovado</th><th>Recebido</th><th>A receber</th><th>Saldo devido</th><th>Situação</th><th>Extrato</th></tr></thead>
     <tbody>${histRows}</tbody></table>
     </div>
   </div>

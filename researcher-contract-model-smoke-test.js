@@ -33,5 +33,5 @@ ok(migration.includes('create or replace function public.get_survey_researcher_l
 ok(migration.includes('create or replace function public.accept_survey_researcher_link'),'aceite por link não registra o valor');
 ok(migration.includes("'accepted_price',v_survey.price"),'retorno do aceite não informa o valor aceito');
 ok(!/\b(drop table|drop column|delete from|truncate)\b/i.test(migration),'migration contém operação destrutiva');
-ok(html.includes('app.js?v=20261007115000'),'cache atual antes da publicação não foi localizado');
+ok(html.includes('app.js?v=20261007131500'),'cache atual antes da publicação não foi localizado');
 console.log('researcher-contract-model-smoke-test: PASS');

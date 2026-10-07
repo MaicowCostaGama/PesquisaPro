@@ -29,6 +29,8 @@ O cabeçalho também mostra quantidades, valores, valor por formulário, saldo a
 
 Quando houver **um ou mais pagamentos** para o pesquisador, o cartão sempre exibe **Ver/alterar pagamentos**. Se algum lançamento ainda estiver sem comprovante, os botões **Anexar comprovante** e **Alterar valor** aparecem junto ao histórico; o comprovante pendente não oculta os demais lançamentos.
 
+Ao clicar em **Ver/alterar pagamentos**, o sistema abre o extrato individual em uma janela modal já posicionada na seção **Pagamentos realizados e comprovantes** do pesquisador selecionado. Assim, os lançamentos, valores, arquivos e ações de edição ficam visíveis imediatamente, sem levar a gestão para o histórico geral no fim da página.
+
 ## Regra financeira
 
 O saldo aprovado a pagar é calculado com a mesma regra da aba Financeiro:

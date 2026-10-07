@@ -220,8 +220,8 @@ for (const token of [
   assert(css.includes(token), `estilo financeiro ausente: ${token}`);
 }
 
-assert(html.includes('app.js?v=20261007170000'), 'cache do app financeiro não foi atualizado');
-assert(html.includes('style.css?v=20261007170000'), 'cache do CSS financeiro não foi atualizado');
+assert(html.includes('app.js?v=20261007171000'), 'cache do app financeiro não foi atualizado');
+assert(html.includes('style.css?v=20261007171000'), 'cache do CSS financeiro não foi atualizado');
 assert(app.includes('paymentApprovedBalanceValue(r,price)'), 'a receber não está restrito ao valor aprovado');
 assert(app.includes('const saldoDevido=Math.max(0,valor-recebido)'), 'saldo devido não é abatido pelos recebimentos');
 assert(app.includes('paymentBalanceValue(r,price)'), 'saldo devido não usa o valor real das entrevistas e recibos');
@@ -239,6 +239,11 @@ assert(app.includes('Comprovante e ações'), 'histórico não identifica a colu
 assert(app.includes('financeStatementPaymentsSection'), 'extrato não possui seção individual de pagamentos');
 assert(app.includes('Pagamentos realizados e comprovantes'), 'extrato não mostra pagamentos e comprovantes individuais');
 assert(app.includes('finance-statement-payment-row'), 'extrato não renderiza cada repasse individualmente');
+assert(app.includes('async function financeOpenResearcherStatement(idx,researcherId,options={})'), 'extrato não aceita foco contextual');
+assert(app.includes('financeStatementRender(payment,survey,payment,events,{...options,staff:true,financeIdx:idx})'), 'foco de pagamentos não é transmitido ao extrato');
+assert(app.includes('financeOpenResearcherStatement(idx,paymentRow.researcherId,{focusPayments:true})'), 'botão de pagamentos não abre o pesquisador selecionado');
+assert(app.includes('if(options.focusPayments)'), 'extrato não trata abertura focada nos pagamentos');
+assert(app.includes('dialog.scrollTop=Math.max(0,payments.offsetTop-12)'), 'extrato focado ainda não posiciona o livro de pagamentos');
 assert(app.includes("const receipts=paymentReceiptsFor(paymentId);if(!receipts.length)return ''"), 'ações do pagamento não reconhecem o conjunto completo de lançamentos');
 assert(app.includes('actions=[`<button type="button" class="btn-ghost finance-action-receipt-history"'), 'histórico não é priorizado quando existem pagamentos');
 assert(app.includes("if(pending)actions.push(`"), 'comprovante pendente não mantém as ações de anexar e alterar');

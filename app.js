@@ -51,7 +51,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261007170000';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261007171000';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -8191,9 +8191,13 @@ function financeStatementRender(researcher, survey, payment, events, options={})
     <div class="finance-statement-note">A separação entre coletas pagas e a pagar é uma classificação financeira por quantidade equivalente ao valor já recebido. O banco registra pagamentos agregados por pesquisador e pesquisa, não um vínculo individual entre cada recibo e cada entrevista. Coletas em auditoria são potenciais e não representam pagamento garantido.</div>
   </div>`;
   document.body.appendChild(modal);
+  if(options.focusPayments){
+    const dialog=modal.querySelector('.finance-statement-dialog'),payments=modal.querySelector('.finance-statement-payments');
+    if(dialog&&payments)dialog.scrollTop=Math.max(0,payments.offsetTop-12);
+  }
   modal.querySelector('.finance-statement-close')?.focus();
 }
-async function financeOpenResearcherStatement(idx,researcherId){
+async function financeOpenResearcherStatement(idx,researcherId,options={}){
   if(!financeStaffCanManageReceipts())return;
   const survey=SURVEYS[idx],payment=finRows(idx).find(row=>row.researcherId===researcherId);
   if(!survey||!payment||payment.virtual){alert('Ainda não há coletas registradas para emitir este extrato.');return;}
@@ -8206,7 +8210,7 @@ async function financeOpenResearcherStatement(idx,researcherId){
       events=(data||[]).map(collectionEventRowToEntry).filter(event=>event.researcherId===researcherId);
     }
     if(!events.length){alert('Nenhuma coleta foi encontrada para este pesquisador nesta pesquisa.');return;}
-    financeStatementRender(payment,survey,payment,events,{staff:true,financeIdx:idx});
+    financeStatementRender(payment,survey,payment,events,{...options,staff:true,financeIdx:idx});
   }catch(ex){alert('Não foi possível carregar o extrato deste pesquisador. Tente novamente.');console.error(ex);}
 }
 
@@ -8349,6 +8353,8 @@ function financeReceiptHistoryHtml(idx){
   return `<div id="financeReceiptHistory" class="card mb"><div class="card-t">Histórico de recebimentos</div><div class="card-d">Lançamentos registrados para ${esc(s.name)}. O histórico é cumulativo e não apaga as entrevistas nem as reprovações. Para corrigir um pagamento, use <b>Alterar valor pago</b> na linha do repasse correspondente. Quando houver vários repasses, confira a soma e ajuste os lançamentos necessários para chegar ao total correto.</div><div class="finance-table-scroll"><table class="finance-data-table finance-receipts-table"><thead><tr><th>Pesquisador</th><th>Data do pagamento</th><th>Valor recebido</th><th>Observação</th><th>Comprovante e ações</th></tr></thead><tbody>${body}</tbody></table></div></div>`;
 }
 function financeFocusReceiptHistory(paymentId){
+  const idx=Number.isInteger(FIN_IDX)?FIN_IDX:-1,paymentRow=idx>=0?finRows(idx).find(item=>String(item.id)===String(paymentId)):null;
+  if(paymentRow?.researcherId){financeOpenResearcherStatement(idx,paymentRow.researcherId,{focusPayments:true});return;}
   const history=document.getElementById('financeReceiptHistory');if(!history)return;
   history.scrollIntoView({behavior:'smooth',block:'center'});
   const row=Array.from(history.querySelectorAll('tr[data-payment-id]')).find(item=>item.dataset.paymentId===String(paymentId));

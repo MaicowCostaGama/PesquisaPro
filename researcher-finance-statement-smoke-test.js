@@ -9,7 +9,7 @@ function expect(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-expect(/financeOpenResearcherStatement\(idx,researcherId\)/.test(app), 'falta o handler do extrato na gestão');
+expect(/financeOpenResearcherStatement\(idx,researcherId(?:,options=\{\})?\)/.test(app), 'falta o handler do extrato na gestão');
 expect(/researcherOpenOwnStatement\(surveyId\)/.test(app), 'falta o handler do extrato próprio do pesquisador');
 expect(/CURRENT_PROFILE\?\.role!=='pesq'/.test(app), 'o extrato próprio precisa exigir perfil de pesquisador');
 expect(/fetchCollectionEvents\(\{surveyId,ownOnly:true\}\)/.test(app), 'o extrato próprio não limita a consulta às coletas do pesquisador autenticado');

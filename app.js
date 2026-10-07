@@ -24,6 +24,7 @@ const NAV_META={
   'app-collect':{ico:'▶',label:'Coletar (app)',group:'Campo'},
   'researcher-guide':{ico:'▣',label:'Orientações para coleta',group:'Campo'},
   'researcher-profile':{ico:'☺',label:'Meus dados',group:'Meu perfil'},
+  'researcher-my-ranking':{ico:'★',label:'Seu Ranking',group:'Meu perfil'},
   'researcher-badge':{ico:'▤',label:'Crachá virtual',group:'Meu perfil'},
   support:{ico:'☎',label:'Suporte',group:'Ajuda'},
   reports:{ico:'◫',label:'Relatórios',group:'Análise'},
@@ -50,7 +51,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261007133000';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261007134500';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -244,7 +245,7 @@ const ROLE_NAV={
   admin:['dashboard','commercial','recruitment','new-survey','surveys','surveys-done','sample','collect','reports','researcher-ranking','users','permissions','finance','contracts','contract-template','company','communication'],
   coord:['dashboard','commercial','surveys','surveys-done','collect','reports','researcher-ranking','finance','communication'],
   gerente:['dashboard','commercial','sample','reports','researcher-ranking','finance','communication'],
-  pesq:['dashboard-pesq','researcher-guide','app-collect','researcher-profile','researcher-badge','my-earnings','my-contract','support','communication'],
+  pesq:['dashboard-pesq','researcher-guide','app-collect','researcher-profile','researcher-my-ranking','researcher-badge','my-earnings','my-contract','support','communication'],
   cliente:['client-surveys','form-approval','client-progress','client-results','communication'],
   admpro:['dashboard','commercial','recruitment','new-survey','surveys','surveys-done','sample','collect','reports','researcher-ranking','users','permissions','finance','contracts','contract-template','company','communication'],
   vendedor:['commercial'],
@@ -1883,7 +1884,7 @@ async function loadSurveysIfNeeded(){
   refreshClientSurveyLinks();
   const onKey=document.querySelector('.nav-item.on');
   const k=onKey&&onKey.dataset.key;
-  if(k==='surveys'||k==='surveys-done'||k==='surveys-archived'||k==='dashboard'||k==='dashboard-pesq'||k==='researcher-profile'||k==='survey-team'||k==='client-surveys'||k==='client-progress'||k==='client-results'||k==='reports'||k==='communication'||k==='researcher-ranking')go(k);
+  if(k==='surveys'||k==='surveys-done'||k==='surveys-archived'||k==='dashboard'||k==='dashboard-pesq'||k==='researcher-profile'||k==='researcher-my-ranking'||k==='survey-team'||k==='client-surveys'||k==='client-progress'||k==='client-results'||k==='reports'||k==='communication'||k==='researcher-ranking')go(k);
 }
 function surveySample(s){
   return Math.ceil(sampleSize(s&&s.pop,s&&s.err,s&&s.conf,s&&s.prop)*1.1);
@@ -6221,6 +6222,77 @@ PAGES['researcher-ranking']=()=>{
   <div class="grid g4" style="margin-bottom:16px">${stat('Pesquisadores avaliados',String(rows.length),'após os filtros','☺','#2563eb')}${stat('Entrevistas válidas',totalValid.toLocaleString('pt-BR'),'na janela selecionada','✓','#059669')}${stat('Nota média',avg==null?'—':avg.toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1}),'somente amostras suficientes','★','#7c3aed')}${stat('Priorizar revisão',String(low.length),'nota abaixo de 60','⚠','#dc2626')}</div>
   <div class="card mb researcher-ranking-filter-card"><div class="card-t">Filtrar e comparar</div><div class="card-d">A janela e a amostra mínima são aplicadas no cálculo feito pelo banco.</div><div class="field-row" style="margin-top:10px"><label style="flex:1"><span class="lbl">Buscar pesquisador</span><input id="researcher-ranking-search" class="inp" type="search" value="${esc(RESEARCHER_RANKING_FILTERS.search)}" placeholder="Nome do pesquisador" oninput="researcherRankingSetFilter('search',this.value)"></label><label style="flex:1"><span class="lbl">Pesquisa</span><select class="inp" onchange="researcherRankingSetFilter('surveyId',this.value)"><option value="">Todas as pesquisas</option>${surveyOptions}</select></label><label><span class="lbl">Período</span><select class="inp" onchange="researcherRankingSetFilter('days',this.value)"><option value="30" ${RESEARCHER_RANKING_FILTERS.days==='30'?'selected':''}>Últimos 30 dias</option><option value="90" ${RESEARCHER_RANKING_FILTERS.days==='90'?'selected':''}>Últimos 90 dias</option><option value="180" ${RESEARCHER_RANKING_FILTERS.days==='180'?'selected':''}>Últimos 180 dias</option><option value="365" ${RESEARCHER_RANKING_FILTERS.days==='365'?'selected':''}>Último ano</option></select></label><label><span class="lbl">Amostra mínima</span><select class="inp" onchange="researcherRankingSetFilter('minInterviews',this.value)"><option value="5" ${RESEARCHER_RANKING_FILTERS.minInterviews==='5'?'selected':''}>5 entrevistas</option><option value="10" ${RESEARCHER_RANKING_FILTERS.minInterviews==='10'?'selected':''}>10 entrevistas</option><option value="20" ${RESEARCHER_RANKING_FILTERS.minInterviews==='20'?'selected':''}>20 entrevistas</option><option value="30" ${RESEARCHER_RANKING_FILTERS.minInterviews==='30'?'selected':''}>30 entrevistas</option></select></label></div></div>
   <div class="card researcher-ranking-table-card"><div class="user-table-heading"><div><div class="card-t">Desempenho comparado</div><div class="card-d">${rows.length?`Mostrando ${rows.length} pesquisador${rows.length===1?'':'es'}; gravações obrigatórias pendentes aparecem como sinal de revisão.`:'Nenhum resultado para os filtros atuais.'}</div></div><span class="users-table-count">${rows.length}</span></div><div class="table-scroll"><table class="researcher-ranking-table"><thead><tr><th>#</th><th>Pesquisador</th><th>Nota</th><th>Coletas</th><th>Respostas 30%</th><th>Integridade 30%</th><th>Duração 20%</th><th>Distância 20%</th><th>Evidências</th><th>Ações</th></tr></thead><tbody>${researcherRankingTableRows(rows)}</tbody></table></div><div class="card-d" style="margin-top:12px">Ações de WhatsApp, perfil e auditoria não alteram a nota. Uma nota baixa apenas prioriza revisão; este painel não exclui pesquisadores nem apaga histórico automaticamente.</div></div>`;
+};
+
+/* ============ SEU RANKING (pesquisador) ============ */
+let RESEARCHER_MY_RANKING_ROW=null;
+let RESEARCHER_MY_RANKING_LOADED=false,RESEARCHER_MY_RANKING_LOADING=false,RESEARCHER_MY_RANKING_ERROR='';
+const RESEARCHER_MY_RANKING_DAYS=90;
+const RESEARCHER_MY_RANKING_MIN_INTERVIEWS=10;
+
+function researcherMyRankingErrorMarkup(){
+  if(!RESEARCHER_MY_RANKING_ERROR)return '';
+  const missing=/researcher_my_performance|function .* does not exist|schema cache|column .* does not exist/i.test(RESEARCHER_MY_RANKING_ERROR);
+  return `<div class="callout warn mb"><b>Seu ranking ainda não está disponível.</b><br>${missing?'A gestão precisa executar manualmente <code>deploy/ranking-desempenho-pesquisador.sql</code> no Supabase. Depois, atualize esta tela.':esc(RESEARCHER_MY_RANKING_ERROR)}</div>`;
+}
+function researcherMyRankingDecision(row){
+  if(!row||row.overallScore==null||!row.sampleEligible){
+    return {kind:'insufficient',title:'Amostra insuficiente para uma nota final',text:`A nota é calculada após pelo menos ${RESEARCHER_MY_RANKING_MIN_INTERVIEWS} coletas no período de ${RESEARCHER_MY_RANKING_DAYS} dias. Enquanto isso, os fatores disponíveis aparecem abaixo apenas para acompanhamento.`};
+  }
+  if(row.overallScore<RESEARCHER_RANKING_MIN_SCORE){
+    return {kind:'low',title:'Nota muito baixa: convites podem ser suspensos',text:'Notas abaixo de 60 são consideradas muito baixas para novos convites. A gestão fará a avaliação do histórico e poderá deixar de convidar você para novas coletas. Esta é uma orientação de gestão, não uma exclusão automática.'};
+  }
+  if(row.overallScore<80){
+    return {kind:'attention',title:'Nota abaixo de 80: menos convites',text:'Notas menores que 80 podem reduzir a frequência de convites para novas coletas. Use os fatores abaixo para identificar onde melhorar e converse com a equipe se precisar esclarecer algum registro.'};
+  }
+  return {kind:'good',title:'Nota dentro da faixa esperada',text:'Sua nota está em 80 ou mais. Mantenha respostas completas, intervalos adequados, localização coerente e atenção às gravações solicitadas para continuar elegível a novos convites.'};
+}
+function researcherMyRankingFactorMarkup(label,score,detail,icon,color){
+  return `<article class="researcher-own-ranking-factor"><div class="researcher-own-ranking-factor-head"><span class="researcher-own-ranking-factor-icon" style="background:${color}18;color:${color}">${icon}</span><div><strong>${label}</strong><small>${esc(detail)}</small></div><b>${score==null?'—':Number(score).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1})}</b></div><div class="researcher-own-ranking-bar"><span style="width:${score==null?0:Math.max(0,Math.min(100,Number(score)))}%;background:${color}"></span></div></article>`;
+}
+function researcherMyRankingFactorsMarkup(row){
+  if(!row)return '';
+  const responseDetail=row.responseIssueCount?`${row.responseIssueCount} sinal(is) para revisar`:'sem sinal estrutural';
+  const integrityDetail=[`${row.rejectedCount} reprovada(s)`,`${row.shortGapCount} intervalo(s) curto(s)`,`${row.closeDistanceCount} ponto(s) próximo(s)`,`${row.flaggedCount} flag(s)`].join(' · ');
+  const durationDetail=row.avgDurationSeconds==null?'sem duração registrada':'média '+fmtInterviewDuration(row.avgDurationSeconds);
+  const distanceDetail=row.avgDistanceM==null?'sem distância consecutiva':'média '+fmtDist(row.avgDistanceM);
+  return `<div class="researcher-own-ranking-factors">${researcherMyRankingFactorMarkup('Respostas',row.responseQualityScore,responseDetail,'✓','#2563eb')}${researcherMyRankingFactorMarkup('Integridade',row.integrityScore,integrityDetail,'盾','#0f766e')}${researcherMyRankingFactorMarkup('Duração',row.durationScore,durationDetail,'◷','#d97706')}${researcherMyRankingFactorMarkup('Distância',row.distanceScore,distanceDetail,'⌖','#7c3aed')}</div>`;
+}
+async function loadResearcherMyRankingIfNeeded(){
+  if(RESEARCHER_MY_RANKING_LOADED||RESEARCHER_MY_RANKING_LOADING)return;
+  RESEARCHER_MY_RANKING_LOADING=true;RESEARCHER_MY_RANKING_ERROR='';RESEARCHER_MY_RANKING_ROW=null;
+  try{
+    const {data,error}=await sb.rpc('researcher_my_performance',{p_days:RESEARCHER_MY_RANKING_DAYS,p_min_interviews:RESEARCHER_MY_RANKING_MIN_INTERVIEWS});
+    if(error)throw new Error(error.message);
+    const row=Array.isArray(data)?data[0]:data;
+    RESEARCHER_MY_RANKING_ROW=row?{
+      researcherName:row.researcher_name||CURRENT_PROFILE?.name||'Pesquisador',
+      totalCount:Number(row.total_count)||0,validCount:Number(row.valid_count)||0,rejectedCount:Number(row.rejected_count)||0,sampleEligible:row.sample_eligible===true||row.sample_eligible==='true',
+      responseQualityScore:Number.isFinite(Number(row.response_quality_score))?Number(row.response_quality_score):null,integrityScore:Number.isFinite(Number(row.integrity_score))?Number(row.integrity_score):null,durationScore:Number.isFinite(Number(row.duration_score))?Number(row.duration_score):null,distanceScore:Number.isFinite(Number(row.distance_score))?Number(row.distance_score):null,overallScore:Number.isFinite(Number(row.overall_score))?Number(row.overall_score):null,
+      avgDurationSeconds:Number.isFinite(Number(row.avg_duration_seconds))?Number(row.avg_duration_seconds):null,avgDistanceM:Number.isFinite(Number(row.avg_distance_m))?Number(row.avg_distance_m):null,shortGapCount:Number(row.short_gap_count)||0,closeDistanceCount:Number(row.close_distance_count)||0,flaggedCount:Number(row.flagged_count)||0,responseIssueCount:Number(row.response_issue_count)||0,recordingRequiredCount:Number(row.recording_required_count)||0,recordingCompletedCount:Number(row.recording_completed_count)||0,recordingIssueCount:Number(row.recording_issue_count)||0
+    }:null;
+    RESEARCHER_MY_RANKING_LOADED=true;
+  }catch(ex){RESEARCHER_MY_RANKING_ERROR=ex.message||String(ex);RESEARCHER_MY_RANKING_LOADED=true;}
+  finally{
+    RESEARCHER_MY_RANKING_LOADING=false;
+    if(document.querySelector('.nav-item.on')?.dataset.key==='researcher-my-ranking')go('researcher-my-ranking');
+  }
+}
+PAGES['researcher-my-ranking']=()=>{
+  if(CURRENT_PROFILE?.role!=='pesq')return head('Seu Ranking','Área disponível apenas para pesquisadores')+'<div class="empty">Este recurso está disponível no perfil de pesquisador.</div>';
+  if(!RESEARCHER_MY_RANKING_LOADED){loadResearcherMyRankingIfNeeded();return head('Seu Ranking','Acompanhe sua nota de desempenho nas coletas')+'<div class="empty">Calculando seu ranking com os dados reais…</div>';}
+  const row=RESEARCHER_MY_RANKING_ROW,decision=researcherMyRankingDecision(row),score=row?.overallScore;
+  const scoreText=score==null?'—':Number(score).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1});
+  const scoreClass=score==null?'pill-gray':researcherRankingScoreClass(score);
+  const dataNote=row?`${row.validCount.toLocaleString('pt-BR')} válidas · ${row.rejectedCount.toLocaleString('pt-BR')} reprovadas · ${row.totalCount.toLocaleString('pt-BR')} registros no total`:'Nenhum registro de coleta encontrado no período';
+  return head('Seu Ranking','Acompanhe sua nota de desempenho nas coletas',`<button class="btn btn-out" type="button" onclick="RESEARCHER_MY_RANKING_LOADED=false;go('researcher-my-ranking')">↻ Atualizar</button>`)+researcherMyRankingErrorMarkup()+`
+  <div class="researcher-own-ranking-page">
+    <section class="researcher-own-ranking-hero ${decision.kind}"><div><span class="eyebrow">DESEMPENHO NAS COLETAS</span><h2>${esc(decision.title)}</h2><p>${esc(decision.text)}</p></div><div class="researcher-own-ranking-score"><span>Sua nota</span><strong class="${scoreClass}">${scoreText}</strong><small>${esc(dataNote)}</small></div></section>
+    <div class="callout mb"><b>Como a nota é formada:</b> respostas e coerência <b>30%</b>, integridade <b>30%</b>, duração compatível <b>20%</b> e distância entre coletas da mesma pesquisa <b>20%</b>. A análise usa os últimos ${RESEARCHER_MY_RANKING_DAYS} dias e não mistura a trava de distância entre pesquisas diferentes.</div>
+    ${row?researcherMyRankingFactorsMarkup(row):'<section class="card mb"><div class="empty">Ainda não há dados suficientes para mostrar os fatores do seu ranking.</div></section>'}
+    ${row?`<section class="card mb"><div class="card-t">O que pode melhorar sua nota</div><div class="card-d">${row.responseIssueCount?`Revise a completude e a coerência das respostas; foram identificados ${row.responseIssueCount} sinal(is) estrutural(is).`:'Mantenha as respostas completas e coerentes com o que foi informado pelo entrevistado.'} ${row.rejectedCount?`Há ${row.rejectedCount} coleta(s) reprovada(s) no período; confira sempre as regras antes de concluir.`:'Evite reprovações seguindo a área, o tempo mínimo e as regras de integridade.'} ${row.recordingIssueCount?`Também há ${row.recordingIssueCount} gravação(ões) obrigatória(s) pendente(s) ou com falha.`:'Quando a gravação for solicitada, conclua o procedimento até o envio.'}</div></section>`:''}
+    <section class="card researcher-own-ranking-rules"><div class="card-t">Convites para novas pesquisas</div><div class="researcher-own-ranking-rule-grid"><div><b>Nota 80 ou mais</b><span>Faixa esperada para manter a prioridade normal de convites.</span></div><div><b>Nota menor que 80</b><span>Você poderá ser convidado com menor frequência, conforme a necessidade e o histórico.</span></div><div><b>Nota muito baixa, abaixo de 60</b><span>A gestão poderá deixar de convidar para novas coletas após avaliar o contexto.</span></div></div><p class="researcher-own-ranking-disclaimer">A nota é um indicador de apoio à gestão, não prova automática de fraude e não exclui ninguém sozinha. Caso identifique um erro, fale com a equipe PesquisaPro pelo chat.</p></section>
+  </div>`;
 };
 
 /* ============ USERS (todos os perfis: pesquisador, cliente, adm, vendedor, indicador) ============ */

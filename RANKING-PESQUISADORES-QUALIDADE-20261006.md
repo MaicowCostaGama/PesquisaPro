@@ -55,3 +55,31 @@ deploy/ranking-desempenho-pesquisadores.sql
 A migration cria somente a função agregadora `researcher_performance_ranking(...)`, restringe sua execução a usuários autenticados e não modifica dados existentes. Se ela ainda não tiver sido aplicada, o painel informa que a função precisa ser habilitada.
 
 > Observação: perguntas abertas são opcionais no formulário atual; a ausência delas não reduz a nota. Repetições anormais continuam sendo sinalizadas quando houver respostas registradas.
+
+
+## Aba **Seu Ranking** no perfil do pesquisador
+
+O pesquisador autenticado passou a ter uma área própria chamada **Seu Ranking**. Ela mostra somente os próprios indicadores, sem expor dados de outros pesquisadores:
+
+- nota final, quando houver pelo menos 10 coletas no período de 90 dias;
+- fatores separados de respostas, integridade, duração e distância;
+- quantidade de coletas válidas, reprovadas e sinais que merecem revisão;
+- explicação textual do motivo da nota e dos pontos que podem ser melhorados.
+
+A regra de convites apresentada ao pesquisador é:
+
+- **nota 80 ou mais:** faixa esperada para manter a prioridade normal;
+- **nota menor que 80:** a gestão pode reduzir a frequência de convites;
+- **nota abaixo de 60:** nota muito baixa; após avaliar o contexto, a gestão pode deixar de convidar o pesquisador para novas coletas.
+
+Esses limiares são orientações para seleção de convites. A nota não prova fraude, não exclui automaticamente o pesquisador e não apaga qualquer histórico. Em caso de divergência, a gestão deve conferir a auditoria e o pesquisador pode usar o chat para pedir esclarecimentos.
+
+## Migration adicional para o acesso individual
+
+Depois da migration agregada, execute também manualmente no Supabase:
+
+```text
+deploy/ranking-desempenho-pesquisador.sql
+```
+
+Essa migration cria `researcher_my_performance(...)` com `security definer`, mas restringe o resultado por `auth.uid()` e pelo papel `pesq`. Ela não utiliza `is_staff()` para o acesso individual, não retorna dados de outros pesquisadores e não contém exclusão, alteração ou reprocessamento de dados.

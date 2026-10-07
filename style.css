@@ -1713,3 +1713,34 @@ body.researcher-update-lock{overflow:hidden}
 .finance-statement-section.audit{border-color:#f1d59b}
 .finance-statement-section.audit .finance-statement-section-head{background:#fffaf0}
 @media(min-width:781px){.finance-statement-summary{grid-template-columns:repeat(6,minmax(0,1fr))}}
+
+/* ---------- SEU RANKING DO PESQUISADOR ---------- */
+.researcher-own-ranking-page{max-width:1120px;display:flex;flex-direction:column;gap:14px}
+.researcher-own-ranking-hero{display:flex;align-items:center;justify-content:space-between;gap:22px;padding:22px 24px;border:1px solid #cfe0f5;border-radius:18px;background:linear-gradient(135deg,#f7fbff 0%,#f0fdfa 100%);box-shadow:0 10px 24px rgba(15,42,86,.06)}
+.researcher-own-ranking-hero h2{margin:6px 0 7px;color:#0f2a56;font-size:clamp(19px,2.4vw,27px);letter-spacing:-.025em}
+.researcher-own-ranking-hero p{max-width:700px;margin:0;color:var(--ink2);font-size:12.5px;line-height:1.55}
+.researcher-own-ranking-hero.good{border-color:#b7eadb;background:linear-gradient(135deg,#f3fffb,#f7fbff)}
+.researcher-own-ranking-hero.attention{border-color:#f5d68a;background:linear-gradient(135deg,#fffdf4,#f7fbff)}
+.researcher-own-ranking-hero.low{border-color:#f3b8b8;background:linear-gradient(135deg,#fff7f7,#f9fbff)}
+.researcher-own-ranking-score{display:flex;flex:0 0 145px;flex-direction:column;align-items:center;justify-content:center;min-height:122px;padding:14px;border:1px solid rgba(148,163,184,.3);border-radius:15px;background:#fff;box-shadow:0 6px 16px rgba(15,42,86,.06)}
+.researcher-own-ranking-score span{color:var(--ink3);font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+.researcher-own-ranking-score strong{display:inline-flex;align-items:center;justify-content:center;min-width:74px;margin:9px 0 7px;padding:8px 13px;border-radius:11px;font-size:25px;line-height:1}
+.researcher-own-ranking-score small{color:var(--ink3);font-size:10px;text-align:center;line-height:1.35}
+.researcher-own-ranking-factors{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.researcher-own-ranking-factor{padding:13px 13px 11px;border:1px solid var(--line);border-radius:13px;background:#fff;box-shadow:0 5px 14px rgba(15,42,86,.035)}
+.researcher-own-ranking-factor-head{display:flex;align-items:center;gap:8px;min-width:0}
+.researcher-own-ranking-factor-icon{display:grid;place-items:center;width:29px;height:29px;flex:0 0 29px;border-radius:9px;font-weight:900}
+.researcher-own-ranking-factor-head>div{min-width:0;flex:1}
+.researcher-own-ranking-factor-head strong{display:block;color:var(--ink);font-size:12px}
+.researcher-own-ranking-factor-head small{display:block;margin-top:3px;overflow:hidden;color:var(--ink3);font-size:10px;line-height:1.35;text-overflow:ellipsis;white-space:nowrap}
+.researcher-own-ranking-factor-head>b{color:var(--ink);font-size:16px}
+.researcher-own-ranking-bar{height:6px;margin-top:12px;overflow:hidden;border-radius:99px;background:#e8eef5}
+.researcher-own-ranking-bar span{display:block;height:100%;border-radius:inherit;transition:width .25s ease}
+.researcher-own-ranking-rules{border-color:#d6e4f2;background:linear-gradient(145deg,#fff,#f8fbff)}
+.researcher-own-ranking-rule-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin-top:12px}
+.researcher-own-ranking-rule-grid>div{display:flex;flex-direction:column;gap:5px;padding:11px 12px;border:1px solid #dbe7f2;border-radius:11px;background:#fff}
+.researcher-own-ranking-rule-grid b{color:var(--ink);font-size:11.5px}
+.researcher-own-ranking-rule-grid span{color:var(--ink3);font-size:10.5px;line-height:1.45}
+.researcher-own-ranking-disclaimer{margin:13px 0 0;color:var(--ink3);font-size:10.5px;line-height:1.5}
+@media(max-width:850px){.researcher-own-ranking-factors{grid-template-columns:repeat(2,minmax(0,1fr))}.researcher-own-ranking-rule-grid{grid-template-columns:1fr}}
+@media(max-width:620px){.researcher-own-ranking-hero{align-items:stretch;flex-direction:column;padding:17px}.researcher-own-ranking-score{flex-basis:auto;min-height:0}.researcher-own-ranking-factors{grid-template-columns:1fr}.researcher-own-ranking-score strong{font-size:22px}}

@@ -1,0 +1,21 @@
+const fs=require('fs');
+const assert=require('assert');
+const app=fs.readFileSync('app.js','utf8');
+const css=fs.readFileSync('style.css','utf8');
+const html=fs.readFileSync('app.html','utf8');
+function ok(value,message){assert(value,message);}
+ok(app.includes('function filterSidebarNavigation(query)'), 'Busca por página ausente');
+ok(app.includes('data-nav-group')&&app.includes('class="nav-label"'), 'Grupos e rótulos do menu não são filtráveis');
+ok(app.includes("normalize('NFD')"), 'Busca sem tolerância a acentos');
+ok(app.includes('main.scrollTop=0')&&app.includes('main.focus({preventScroll:true})'), 'Navegação não reinicia posição e foco');
+ok(app.includes('id="sidebarCampaignBtn"')&&app.includes('openCampaignSwitcher()'), 'Seletor de pesquisa inacessível no menu móvel');
+ok(app.includes("if(CURRENT_PROFILE?.role==='cliente'){button.hidden=true"), 'Seletor global do cliente deve permanecer oculto');
+ok(app.includes("event.key==='Escape'")&&app.includes("event.key!=='/'"), 'Atalhos de busca e fechamento ausentes');
+ok(html.includes('aria-controls="sidebar" aria-expanded="false"'), 'Estado acessível do menu ausente');
+ok(css.includes('.sidebar [hidden]{display:none!important}'), 'Busca pode manter itens ocultos visíveis');
+ok(css.includes('.guide-video-frame video{object-fit:contain!important}'), 'Vídeo pode cortar as orientações');
+ok(css.includes('.researcher-update-card{max-height:'), 'Tela de atualização pode cortar o botão');
+ok(css.includes('.grid,.grid>*{min-width:0}')&&css.includes('.g4{grid-template-columns:repeat(4,minmax(0,1fr))}'), 'Grades podem extrapolar o viewport');
+ok(css.includes('.researcher-badge-main>div:last-child{min-width:0}'), 'Nome pode sobrepor foto no crachá');
+ok(html.includes('style.css?v=20261007185459')&&html.includes('app.js?v=20261007185459'), 'Cache visual desatualizado');
+console.log('Design global smoke test: PASS — menu, responsividade, mídia e acessibilidade.');

@@ -51,7 +51,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261007182506';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261007185459';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -436,14 +436,15 @@ function buildSidebar(){
     if(!groups[m.group])groups[m.group]=[];
     groups[m.group].push({key:k,...m,allowed:allow.includes(k)});
   });
-  let html='';
+  let html=`<div class="sidebar-tools"><label for="navSectionSearch">Encontrar uma página</label><input id="navSectionSearch" type="search" autocomplete="off" placeholder="Buscar no menu…" oninput="filterSidebarNavigation(this.value)" aria-label="Buscar página no menu"></div>`;
+  if(['admin','admpro','coord','gerente','pesq'].includes(CURRENT_PROFILE?.role))html+='<button type="button" id="sidebarCampaignBtn" class="sidebar-campaign-btn" onclick="closeSidebar();openCampaignSwitcher()">Trocar pesquisa ▾</button>';
   Object.keys(groups).forEach(g=>{
     const items=groups[g].filter(i=>i.allowed||['Pesquisa','Análise','Administração','Pagamentos','Campo','Visão geral'].includes(g));
     const visible=groups[g].filter(i=>i.allowed);
     if(visible.length===0)return;
-    html+=`<div class="nav-group"><div class="ng-label">${g}</div>`;
+    html+=`<div class="nav-group" data-nav-group><div class="ng-label">${g}</div>`;
     visible.forEach(i=>{
-      html+=`<button class="nav-item" data-key="${i.key}" onclick="go('${i.key}')"><span class="ico ico-3d">${icon3d(i.ico,'#c9dcff')}</span>${i.label}</button>`;
+      html+=`<button class="nav-item" data-key="${i.key}" onclick="go('${i.key}')"><span class="ico ico-3d">${icon3d(i.ico,'#c9dcff')}</span><span class="nav-label">${i.label}</span></button>`;
     });
     html+='</div>';
   });
@@ -451,7 +452,23 @@ function buildSidebar(){
   // botões do topo (inclusive o "Sair" ao lado do avatar) somem por falta de
   // espaço, então sem isso não havia como sair do sistema pelo celular.
   html+=`<div class="nav-group nav-group-exit"><button class="nav-item nav-logout" onclick="logout()"><span class="ico ico-3d">${icon3d('⏻','#c9dcff')}</span>Sair do sistema</button></div>`;
+  html+='<p class="sidebar-search-empty" id="sidebarSearchEmpty" hidden>Nenhuma página encontrada.</p>';
   document.getElementById('sidebar').innerHTML=html;
+  updateCampaignSwitcherButton();
+}
+function filterSidebarNavigation(query){
+  const sidebar=document.getElementById('sidebar');if(!sidebar)return;
+  const normalize=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('pt-BR');
+  const term=normalize(query).trim();let found=0;
+  sidebar.querySelectorAll('[data-nav-group]').forEach(group=>{
+    let groupFound=0;
+    group.querySelectorAll('.nav-item').forEach(item=>{
+      const match=!term||normalize(item.textContent).includes(term);
+      item.hidden=!match;if(match)groupFound++;
+    });
+    group.hidden=groupFound===0;found+=groupFound;
+  });
+  const empty=document.getElementById('sidebarSearchEmpty');if(empty)empty.hidden=found>0;
 }
 
 function openResearcherSupport(){
@@ -463,6 +480,7 @@ function openResearcherSupport(){
 }
 
 function go(key){
+  const previousKey=document.querySelector('.nav-item.on')?.dataset.key;
   document.querySelectorAll('.nav-item').forEach(n=>{
     const active=n.dataset.key===key;
     n.classList.toggle('on',active);
@@ -473,6 +491,11 @@ function go(key){
   updateCampaignSwitcherButton();
   if(window._afterRender)window._afterRender(key);
   closeSidebar(); // no celular, o menu (gaveta) fecha sozinho ao navegar; no computador não faz diferença nenhuma
+  if(previousKey!==key){
+    const main=document.getElementById('main');main.scrollTop=0;
+    const search=document.getElementById('navSectionSearch');if(search?.value){search.value='';filterSidebarNavigation('');}
+    main.focus({preventScroll:true});
+  }
 }
 /* menu lateral no celular: no computador o menu fica sempre visível
    (dividindo a tela com o conteúdo); abaixo de 860px de largura ele vira uma
@@ -484,13 +507,28 @@ function toggleSidebar(){
   const open=!sb.classList.contains('open');
   sb.classList.toggle('open',open);
   if(bd)bd.classList.toggle('show',open);
+  document.getElementById('menuToggle')?.setAttribute('aria-expanded',String(open));
+  document.getElementById('menuToggle')?.setAttribute('aria-label',open?'Fechar menu de navegação':'Abrir menu de navegação');
+  if(open)sb.querySelector('#navSectionSearch')?.focus({preventScroll:true});
 }
 function closeSidebar(){
   const sb=document.getElementById('sidebar'),bd=document.getElementById('sidebarBackdrop');
   if(sb)sb.classList.remove('open');
   if(bd)bd.classList.remove('show');
+  document.getElementById('menuToggle')?.setAttribute('aria-expanded','false');
+  document.getElementById('menuToggle')?.setAttribute('aria-label','Abrir menu de navegação');
 }
-
+document.addEventListener('keydown',event=>{
+  const sidebar=document.getElementById('sidebar');
+  if(event.key==='Escape'&&sidebar?.classList.contains('open')){
+    closeSidebar();document.getElementById('menuToggle')?.focus();return;
+  }
+  if(event.key!=='/'||event.ctrlKey||event.metaKey||event.altKey||!CURRENT_PROFILE)return;
+  if(event.target?.closest?.('input,textarea,select,[contenteditable="true"],[role="dialog"]'))return;
+  event.preventDefault();
+  if(window.matchMedia('(max-width:860px)').matches&&!sidebar?.classList.contains('open'))toggleSidebar();
+  document.getElementById('navSectionSearch')?.focus();
+});
 /* PAGES object is populated in the next script block */
 const PAGES={};
 
@@ -1215,11 +1253,15 @@ function activeCampaignSurvey(){
 function updateCampaignSwitcherButton(){
   const button=document.getElementById('campaignSwitcherBtn');
   if(!button)return;
+  const sidebarButton=document.getElementById('sidebarCampaignBtn');
   if(CURRENT_PROFILE?.role==='cliente'){button.hidden=true;button.setAttribute('aria-hidden','true');return;}
+  if(!['admin','admpro','coord','gerente','pesq'].includes(CURRENT_PROFILE?.role)){
+    button.hidden=true;button.setAttribute('aria-hidden','true');if(sidebarButton)sidebarButton.hidden=true;return;}
   button.hidden=false;button.removeAttribute('aria-hidden');
   const active=activeCampaignSurvey();
   button.textContent=active?`Trocar pesquisa · ${active.name.length>24?active.name.slice(0,24)+'…':active.name} ▾`:'Trocar pesquisa ▾';
   button.title=active?'Pesquisa atual: '+active.name:'Selecione uma pesquisa ou campanha';
+  if(sidebarButton){sidebarButton.hidden=false;sidebarButton.textContent=active?`Trocar pesquisa · ${active.name}`:'Trocar pesquisa';sidebarButton.title=button.title;}
 }
 function campaignDateLabel(value){
   if(!value)return 'Não informado';

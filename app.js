@@ -50,7 +50,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261007103500';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261007110000';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -639,7 +639,8 @@ const LOCAL_ASSETS={
   chart:{src:'vendor/chart.umd.js',ready:()=>typeof window.Chart!=='undefined'},
   qrcode:{src:'vendor/qrcode.min.js',ready:()=>typeof window.QRCode!=='undefined'},
   leaflet:{src:'vendor/leaflet.js',ready:()=>typeof window.L!=='undefined'},
-  jspdf:{src:'vendor/jspdf.umd.min.js',ready:()=>typeof window.jspdf!=='undefined'}
+  jspdf:{src:'vendor/jspdf.umd.min.js',ready:()=>typeof window.jspdf!=='undefined'},
+  xlsx:{src:'vendor/xlsx.full.min.js',ready:()=>typeof window.XLSX!=='undefined'}
 };
 const LOCAL_ASSET_PROMISES={};
 let GOOGLE_MAPS_PROMISE=null;
@@ -7896,6 +7897,71 @@ function finTotals(idx){
   const rejeitadoValor=rejected*price;
   return{valid,rejected,valor,aprovado,pendingValor,recebido,aReceber,saldoDevido,rejeitadoValor,count:rows.length};
 }
+function financeExportSafePart(value,fallback){
+  return String(value||fallback||'escopo').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/gi,'-').replace(/^-+|-+$/g,'').toLowerCase()||fallback||'escopo';
+}
+function financeReceivablesExportRows(idx){
+  const scopes=idx==null
+    ? SURVEYS.map((s,i)=>({s,i})).filter(({s})=>s&&!s.archivedAt)
+    : [{s:SURVEYS[idx],i:idx}];
+  const grouped=new Map();
+  scopes.forEach(({s,i})=>{
+    if(!s||s.archivedAt)return;
+    const price=+s.price||0;
+    finRows(i).forEach(r=>{
+      const amount=paymentApprovedBalanceValue(r,price);
+      if(amount<=0)return;
+      const key=r.researcherId||('name:'+String(r.name||'').trim().toLowerCase());
+      const current=grouped.get(key)||{name:r.name||'(pesquisador removido)',pixKey:'',amount:0,surveys:[]};
+      current.amount=Math.round((current.amount+amount)*100)/100;
+      if(!current.pixKey&&r.pixKey)current.pixKey=String(r.pixKey).trim();
+      if(s.name&&!current.surveys.includes(s.name))current.surveys.push(s.name);
+      grouped.set(key,current);
+    });
+  });
+  return [...grouped.values()]
+    .map(row=>({...row,amount:Math.round(row.amount*100)/100}))
+    .sort((a,b)=>a.name.localeCompare(b.name,'pt-BR'));
+}
+async function financeExportReceivables(idx=null){
+  if(!financeStaffCanManageReceipts())return;
+  const rows=financeReceivablesExportRows(idx);
+  if(!rows.length){alert('Não há pesquisadores com saldo aprovado a receber neste escopo.');return;}
+  try{
+    await loadLocalAsset('xlsx');
+    const XLSXLib=window.XLSX;
+    if(!XLSXLib?.utils?.json_to_sheet||!XLSXLib.writeFile)throw new Error('Biblioteca Excel indisponível.');
+    const scopeLabel=idx==null?'Todas as pesquisas':(SURVEYS[idx]?.name||'Pesquisa');
+    const data=rows.map(row=>({
+      'Nome do pesquisador':row.name,
+      'Chave PIX':row.pixKey||'Não informada',
+      'Valor a receber (R$)':row.amount,
+      'Pesquisas':row.surveys.join(' | ')
+    }));
+    const worksheet=XLSXLib.utils.json_to_sheet(data,{header:['Nome do pesquisador','Chave PIX','Valor a receber (R$)','Pesquisas']});
+    worksheet['!cols']=[{wch:34},{wch:34},{wch:22},{wch:48}];
+    for(let i=2;i<=data.length+1;i++){const cell=worksheet['C'+i];if(cell)cell.z='"R$" #,##0.00';}
+    const total=rows.reduce((sum,row)=>sum+row.amount,0);
+    const summary=XLSXLib.utils.aoa_to_sheet([
+      ['Exportação de saldos a receber — PesquisaPro'],
+      ['Escopo',scopeLabel],
+      ['Pesquisadores com saldo',rows.length],
+      ['Valor total a receber (R$)',Math.round(total*100)/100],
+      ['Critério','Somente valor aprovado e ainda não recebido; pagamentos pendentes de aprovação não entram.'],
+      ['Gerado em',new Date().toLocaleString('pt-BR')]
+    ]);
+    summary['!cols']=[{wch:34},{wch:100}];
+    if(summary.B4)summary.B4.z='"R$" #,##0.00';
+    const workbook=XLSXLib.utils.book_new();
+    XLSXLib.utils.book_append_sheet(workbook,worksheet,'Saldos a receber');
+    XLSXLib.utils.book_append_sheet(workbook,summary,'Resumo');
+    const filename='saldos-a-receber-pesquisapro-'+financeExportSafePart(scopeLabel,'todas-pesquisas')+'-'+new Date().toISOString().slice(0,10)+'.xlsx';
+    XLSXLib.writeFile(workbook,filename,{bookType:'xlsx',compression:true});
+  }catch(ex){
+    alert('Não foi possível gerar o Excel de saldos a receber. Tente novamente.');
+    console.error(ex);
+  }
+}
 PAGES.finance=()=>{
   if(!SURVEYS_LOADED||!PAYMENTS_LOADED||!PAYMENT_RECEIPTS_LOADED){
     if(!SURVEYS_LOADED)loadSurveysIfNeeded();
@@ -7923,7 +7989,8 @@ function financeList(){
       <td><b>${brl(t.valor)}</b><div class="finance-balance-inline">Saldo devido: ${brl(t.saldoDevido)}</div></td>
       <td>${t.aReceber?'<span class="pill pill-blue">'+brl(t.aReceber)+' a receber</span>':t.pendingValor?'<span class="pill pill-amber">'+brl(t.pendingValor)+' pendente</span>':(t.count?'<span class="pill pill-green">Tudo em dia</span>':'<span style="color:var(--ink3)">—</span>')}</td>
       <td><span class="pill pill-blue">Abrir →</span></td></tr>`).join('')||'<tr><td colspan="6" class="empty">Nenhuma pesquisa cadastrada.</td></tr>';
-  return head('Financeiro','Pagamentos separados por pesquisa · calculado por entrevista válida coletada')+`
+  return head('Financeiro','Pagamentos separados por pesquisa · calculado por entrevista válida coletada',
+    '<button class="btn btn-out" onclick="financeExportReceivables()">⇩ Exportar Excel — saldos a receber</button>')+`
   ${paymentReceiptMigrationNotice()}
   <div class="grid finance-overview-summary" style="margin-bottom:16px">
     ${stat('TOTAL A PAGAR EM TODAS AS PESQUISAS',brl(totalValor),totalValid.toLocaleString('pt-BR')+' entrevistas válidas','$','#2563eb')}
@@ -7968,7 +8035,7 @@ function financeDetail(idx){
   }).join(''):'<tr><td colspan="9" class="empty">Nenhum pesquisador atribuído a esta pesquisa ainda — atribua a equipe em Minhas pesquisas.</td></tr>';
   return head('Financeiro — '+s.name,'Pagamento por entrevista válida coletada nesta pesquisa',
     '<button class="btn btn-out" onclick="financeBack()">← Financeiro</button>'+ 
-    (rows.length?'<button class="btn btn-out" onclick="finApproveAll('+idx+')">✓ Aprovar todos os pagamentos</button><button class="btn btn-out" onclick="alert(\'A exportação de remessa bancária será adicionada em uma etapa posterior.\')">Exportar remessa</button>':''))+`
+    (rows.length?'<button class="btn btn-out" onclick="finApproveAll('+idx+')">✓ Aprovar todos os pagamentos</button><button class="btn btn-out" onclick="financeExportReceivables('+idx+')">⇩ Exportar Excel — saldos a receber</button>':''))+`
   ${paymentReceiptMigrationNotice()}
   <div class="grid g4 finance-summary-grid" style="margin-bottom:16px">
     ${stat('TOTAL A PAGAR NESTA PESQUISA',brl(t.valor),t.valid.toLocaleString('pt-BR')+' entrevistas válidas','$','#2563eb')}

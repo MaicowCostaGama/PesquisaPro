@@ -21,7 +21,7 @@ assert(/integridade <b>30%<\/b>/.test(app),'o peso de integridade não está vis
 assert(/duração compatível <b>20%<\/b>/.test(app),'o peso de duração não está visível');
 assert(/distância entre coletas da mesma pesquisa <b>20%<\/b>/.test(app),'o peso de distância por pesquisa não está visível');
 assert(/researcher-own-ranking-page/.test(app),'a página não usa o layout individual');
-assert(/20261007185459/.test(html),'o cache do app não está na versão corrente');
+assert(/20261007190935/.test(html),'o cache do app não está na versão corrente');
 
 if(migration){
   assert(/create or replace function public\.researcher_my_performance\(\s*p_days integer default 90,\s*p_min_interviews integer default 10\s*\)/s.test(migration),'a migration não cria a função individual esperada');

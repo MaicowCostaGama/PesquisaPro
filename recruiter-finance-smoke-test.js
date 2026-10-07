@@ -44,7 +44,7 @@ assert.match(css,/\.recruiter-finance-capture/,'estilo dos lançamentos financei
 assert.match(css,/\.recruiter-payment-receipt-actions/,'estilo das ações de comprovante ausente');
 assert.match(css,/@media\(max-width:780px\)/,'responsividade do financeiro de recrutadores ausente');
 assert.match(css,/\.finance-table-scroll/,'CSS financeiro principal foi perdido');
-assert.match(html,/app\.js\?v=20261007185459/,'cache do app não foi atualizado');
-assert.match(html,/recruitment\.js\?v=20261007185459/,'cache do módulo de recrutamento não foi atualizado');
-assert.match(html,/style\.css\?v=20261007185459/,'cache do CSS não foi atualizado');
+assert.match(html,/app\.js\?v=20261007190935/,'cache do app não foi atualizado');
+assert.match(html,/recruitment\.js\?v=20261007190935/,'cache do módulo de recrutamento não foi atualizado');
+assert.match(html,/style\.css\?v=20261007190935/,'cache do CSS não foi atualizado');
 console.log('recruiter-finance-smoke-test: OK');

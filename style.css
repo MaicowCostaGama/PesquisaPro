@@ -1836,3 +1836,18 @@ body.researcher-update-lock{overflow:hidden}
 
 /* Fonte Inter oficial local: os pesos 400–700 já eram declarados no início do CSS. */
 @font-face{font-family:'Inter';font-style:normal;font-weight:800;font-display:swap;src:url('fonts/inter-800.woff2') format('woff2')}
+
+/* v131 — Coleta / funil: ações não podem comprimir nomes até uma coluna de letras. */
+.collection-funnel-person{display:grid;grid-template-columns:minmax(0,1fr);align-content:start;align-items:stretch;gap:12px;min-width:0;padding:13px 14px}
+.collection-funnel-person-main{display:flex;align-items:flex-start;justify-content:flex-start;gap:10px;min-width:0;width:100%}
+.collection-funnel-person-main>.avatar{flex:0 0 34px;align-self:flex-start}
+.collection-funnel-person-copy{flex:1;min-width:0;max-width:100%}
+.collection-funnel-person-title{display:flex;align-items:flex-start;flex-wrap:wrap;gap:5px;min-width:0}
+.collection-funnel-person-title strong{display:block;flex:1 1 100%;min-width:0;line-height:1.35;overflow-wrap:anywhere;word-break:normal;font-size:12.5px}
+.collection-funnel-person-title .pill{align-self:flex-start;max-width:100%;white-space:normal;line-height:1.3}
+.collection-funnel-person-copy>span{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;line-height:1.4}
+.collection-funnel-person-actions{display:flex;align-items:stretch;justify-content:flex-start;flex-wrap:wrap;gap:7px;width:100%;max-width:none;min-width:0}
+.collection-funnel-person-actions .btn,.collection-funnel-person-actions .btn-ghost,.collection-funnel-person-actions .conversation-btn{flex:0 1 auto;min-width:0;max-width:100%;min-height:36px;padding:7px 10px;white-space:normal;text-align:center;line-height:1.35;font-size:11px;overflow-wrap:break-word}
+@media(max-width:1000px){.collection-funnel-person-actions{max-width:none}}
+@media(max-width:720px){.collection-funnel-person{gap:10px}.collection-funnel-person-actions{width:100%;max-width:none}}
+@media(max-width:420px){.collection-funnel-person{padding:12px}.collection-funnel-person-actions{display:grid;grid-template-columns:minmax(0,1fr)}.collection-funnel-person-actions .btn,.collection-funnel-person-actions .btn-ghost,.collection-funnel-person-actions .conversation-btn{width:100%}}

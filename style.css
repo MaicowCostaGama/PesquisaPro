@@ -1876,3 +1876,14 @@ body.acollect-notice-gate-open{overflow:hidden}
 .acollect-notice-gate-footer{display:flex;flex:0 0 auto;justify-content:space-between;gap:10px;padding:14px 22px;border-top:1px solid #e7eff4;background:#f8fbfd}
 .acollect-notice-gate-footer button{min-height:39px;white-space:normal}
 @media(max-width:540px){.acollect-notice-gate{padding:8px}.acollect-notice-gate-dialog{max-height:calc(100dvh - 16px);border-radius:14px}.acollect-notice-gate-content{padding:17px 14px}.acollect-notice-gate-footer{padding:11px 14px;flex-direction:column-reverse}.acollect-notice-gate-footer button{width:100%}}
+
+/* v134: texto definido na pesquisa e envio consciente a aceites antigos */
+.wiz-orientation-card{margin:18px 0 4px;padding:16px;border:1px solid #cfe7e0;border-radius:14px;background:#f3fbf8}
+.wiz-orientation-card .card-d{margin:5px 0 12px;line-height:1.55}
+.wiz-orientation-card textarea{display:block;width:100%;min-height:220px;max-height:60vh;resize:vertical;line-height:1.55;white-space:pre-wrap}
+.collection-funnel-bulk-orientation{display:flex;align-items:center;justify-content:space-between;gap:15px;margin:12px 0;padding:14px 16px;background:#eef9f5;border:1px solid #b8e1d3;border-radius:12px}
+.collection-funnel-bulk-orientation>div{display:flex;flex-direction:column;gap:4px;min-width:0}
+.collection-funnel-bulk-orientation strong{color:#115e59;font-size:13px}
+.collection-funnel-bulk-orientation span{color:#49645d;font-size:12px;line-height:1.4}
+.collection-funnel-bulk-orientation .btn{flex:0 0 auto;white-space:normal;max-width:100%}
+@media(max-width:650px){.collection-funnel-bulk-orientation{flex-direction:column;align-items:stretch}.collection-funnel-bulk-orientation .btn{width:100%}}

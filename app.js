@@ -51,7 +51,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261007201139';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261007203035';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -420,7 +420,7 @@ async function logout(){
   CHAT_CHANNELS=[];CHAT_CHANNELS_LOADED=false;CHAT_CHANNELS_LOADING=false;CHAT_SCHEMA_MISSING=false;CHAT_ACTIVE_CHANNEL_ID=null;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=false;CHAT_MESSAGES_LOADING=false;CHAT_SUPPORT_CHANNEL_ID=null;CHAT_SUPPORT_READY=false;CHAT_SUPPORT_LOADING=false;CHAT_PENDING_SURVEY_ID=null;
   RESEARCHER_PROFILE_CITIES=[];RESEARCHER_PROFILE_CITIES_DRAFT=[];RESEARCHER_PROFILE_CITIES_LOADED=false;MY_INVITES=[];MY_INVITES_LOADED=false;MY_INVITES_LOADING=false;MY_INVITE_LOAD_PROMISE=null;MY_INVITE_RESPONDING=null;PUSH_STATUS='unknown';PUSH_STATUS_LOADING=false;PUSH_SCHEMA_MISSING=false;PUSH_SW_REGISTRATION=null;MY_COMMUNICATIONS=[];MY_COMMUNICATIONS_LOADED=false;MY_COMMUNICATIONS_LOADING=false;MY_SURVEY_RESEARCHER_MESSAGES=[];MY_SURVEY_RESEARCHER_MESSAGES_LOADED=false;MY_SURVEY_RESEARCHER_MESSAGES_LOADING=false;MY_SURVEY_RESEARCHER_MESSAGES_SCHEMA_MISSING=false;MY_SURVEY_RESEARCHER_MESSAGES_LAST_LOADED=0;MY_SURVEY_RESEARCHER_MESSAGES_LOAD_ERROR=false;CLIENT_APPROVAL_REQUEST_ID=null;CLIENT_APPROVAL_REQUEST=null;CLIENT_APPROVAL_LOADING=false;CLIENT_APPROVAL_RESPONDING=false;CLIENT_APPROVAL_SCHEMA_MISSING=false;RESEARCHER_LINK_TOKEN=null;RESEARCHER_LINK_CONTEXT=null;RESEARCHER_LINK_LOADING=false;RESEARCHER_LINK_ACCEPTING=false;
   PAYMENTS=[];PAYMENTS_LOADED=false;PAYMENTS_LOADING=false;PAYMENT_RECEIPTS=[];PAYMENT_RECEIPTS_LOADED=false;PAYMENT_RECEIPTS_LOADING=false;PAYMENT_RECEIPTS_SCHEMA_MISSING=false;PAYMENT_RECEIPTS_DELETE_SCHEMA_MISSING=false;
-  COLLECT_INAPP_ORIENTATION_COUNTS={};COLLECT_INAPP_ORIENTATION_STATUS='idle';COLLECT_INAPP_ORIENTATION_LOADING=false;COLLECT_IDX=null;closeSurveyResearcherMessageModal();
+  COLLECT_INAPP_ORIENTATION_COUNTS={};COLLECT_INAPP_ORIENTATION_STATUS='idle';COLLECT_INAPP_ORIENTATION_LOADING=false;COLLECT_BATCH_ORIENTATION_SENDING=false;COLLECT_IDX=null;closeSurveyResearcherMessageModal();
   CURRENT_PROFILE=null;
   ACTIVE_CAMPAIGN_ID=null;CLIENT_SURVEY_VIEW_ID=null;
   updateCampaignSwitcherButton();
@@ -1690,7 +1690,7 @@ function renderDistributionOutput(out,rows,canvasId,setChart,prevChart){
 const WIZ={step:1,total:7,editIndex:null,
   data:{name:'',tipo:'Eleitoral / intenção de voto',dataIni:'',dataFim:'',abrangencia:'estadual',estados:[],cidades:{},
     pop:1000000,err:'0.03',conf:'1.96',prop:50,price:5,priceRemote:8,clientPrice:12,clientes:[],
-    formStarted:false,questions:[],quotas:{},quotaOff:{},remote:{},clientReleaseById:{},minimumCollectionSeconds:null}};
+    formStarted:false,questions:[],quotas:{},quotaOff:{},remote:{},clientReleaseById:{},minimumCollectionSeconds:null,orientationMessage:''}};
 let WIZ_QID=1;
 const Q_TYPES={single:'Escolha única',multi:'Múltipla escolha',ranking:'Ranking de preferências',pair:'Duas respostas',scale:'Escala 1–5',scale10:'Escala 1–10',nps:'NPS 0–10',open:'Resposta aberta',number:'Número',date:'Data'};
 const Q_HAS_OPTS=t=>t==='single'||t==='multi'||t==='ranking';
@@ -1721,7 +1721,8 @@ const ABRANGENCIA_CFG={
 function blankSurveyData(){
   return {name:'',tipo:'Eleitoral / intenção de voto',dataIni:'',dataFim:'',abrangencia:'estadual',estados:[],cidades:{},
     pop:1000000,err:'0.03',conf:'1.96',prop:50,price:5,priceRemote:8,clientPrice:12,clientes:[],
-    formStarted:false,questions:[],quotas:{},quotaOff:{},remote:{},clientReleaseById:{},minimumCollectionSeconds:null};
+    formStarted:false,questions:[],quotas:{},quotaOff:{},remote:{},clientReleaseById:{},minimumCollectionSeconds:null,
+    orientationMessage:surveyInitialOrientationDefaultTemplate()};
 }
 
 /* store de pesquisas — carregado do Supabase (ver bloco "PESQUISAS — carregamento
@@ -2040,6 +2041,7 @@ function wizSave(){
     const tipoEl=document.getElementById('w-tipo');if(tipoEl)WIZ.data.tipo=tipoEl.value;
     if(g('w-data-ini')!=null)WIZ.data.dataIni=g('w-data-ini');
     if(g('w-data-fim')!=null)WIZ.data.dataFim=g('w-data-fim');
+    if(g('w-orientation-template')!=null)WIZ.data.orientationMessage=g('w-orientation-template');
   }
   if(WIZ.step===3){
     WIZ.data.pop=+g('w-pop');WIZ.data.err=g('w-err');WIZ.data.conf=g('w-conf');WIZ.data.prop=+g('w-prop');
@@ -2067,6 +2069,7 @@ WIZ_BODY[1]=()=>`<div class="card" style="max-width:640px">
     </select>
   </div>
   <div id="wiz-geo"></div>
+  <div class="wiz-orientation-card"><label class="lbl" for="w-orientation-template">Orientações iniciais por aplicativo</label><p class="card-d">Enviadas automaticamente a cada pesquisador que aceitar esta pesquisa. O modelo atual já está sugerido: revise e personalize antes de salvar. Cada pesquisador confirma a leitura antes de iniciar a coleta.</p><textarea class="inp" id="w-orientation-template" rows="12" maxlength="3500" required>${esc(WIZ.data.orientationMessage||surveyInitialOrientationDefaultTemplate())}</textarea><p class="card-d">Até 3.500 caracteres no modelo; a mensagem final, com nome e links inseridos, deve caber em 4.000. Use <code>{{pesquisador}}</code>, <code>{{pesquisa}}</code>, <code>{{grupo}}</code>, <code>{{site}}</code> e <code>{{video}}</code>. Regras de integridade e gravação final após 21:00 são obrigatórias.</p></div>
   ${wizNav(true)}</div>`;
 
 /* ---- abrangência geográfica: estado(s) e cidade(s) ---- */
@@ -2831,12 +2834,15 @@ async function wizCreate(){
   const d=WIZ.data;
   const isNew=WIZ.editIndex==null;
   const existingSurvey=!isNew?SURVEYS[WIZ.editIndex]:null;
+  let orientationTemplate;
+  try{orientationTemplate=validateSurveyOrientationTemplate(d.orientationMessage,d.name);}catch(ex){alert(ex.message);WIZ.step=1;wizRender();return;}
   const row=snapshotToSurveyRow(d);
   if(existingSurvey?.status)row.status=existingSurvey.status;
   const busyBtn=document.querySelector('#wizBody .btn-fill');
   if(busyBtn)busyBtn.disabled=true;
   try{
     let surveyId;
+    let orientationSaveError=null;
     if(isNew){
       let result=await sb.from('surveys').insert(row).select().single();
       if(result.error&&/minimum_collection_seconds|schema cache|column .* does not exist/i.test(result.error.message||'')){
@@ -2862,6 +2868,9 @@ async function wizCreate(){
       }
       if(result.error)throw new Error(result.error.message);
     }
+    const orientationRow={survey_id:surveyId,orientation_message_template:orientationTemplate,updated_by:CURRENT_PROFILE?.id||null,updated_at:new Date().toISOString()};
+    const orientationResult=await sb.from('survey_communication_settings').upsert(orientationRow,{onConflict:'survey_id'});
+    if(orientationResult.error)orientationSaveError=orientationResult.error.message||'Erro desconhecido';
     await syncSurveyQuestionsAndOptions(surveyId,d);
     await syncSurveyClients(surveyId,d.clientes||[],d.clientReleaseById||{});
     const snapshot=await reloadSurveySnapshot(surveyId);
@@ -2874,7 +2883,7 @@ async function wizCreate(){
     }
     refreshClientSurveyLinks();
     const savedMessage=isNew?'Pesquisa criada! Agora atribua a equipe em Minhas pesquisas.':'Alterações salvas.';
-    alert(savedMessage+(SURVEY_END_CONDITION_SCHEMA_MISSING?'\n\nAtenção: as condicionantes de encerramento ainda não foram gravadas porque falta aplicar deploy/condicionante-encerramento-resposta.sql no Supabase. As demais alterações foram salvas.':''));
+    alert(savedMessage+(orientationSaveError?'\n\nATENÇÃO: não foi possível salvar as orientações personalizadas. A pesquisa foi salva, mas o envio automático usará o modelo padrão até você corrigir a configuração em Atribuir equipe. Detalhe: '+orientationSaveError:'')+(SURVEY_END_CONDITION_SCHEMA_MISSING?'\n\nAtenção: as condicionantes de encerramento ainda não foram gravadas porque falta aplicar deploy/condicionante-encerramento-resposta.sql no Supabase. As demais alterações foram salvas.':''));
   }catch(ex){
     if(busyBtn)busyBtn.disabled=false;
     alert('Não foi possível salvar a pesquisa: '+ex.message);
@@ -3102,8 +3111,11 @@ async function surveyRestore(idx){
   go('surveys-archived');
 }
 function surveyDelete(idx){return surveyArchive(idx);}
-function surveyEdit(idx){
+async function surveyEdit(idx){
   const s=SURVEYS[idx];
+  if(!s?.id)return;
+  const {data:settings,error:settingsError}=await sb.from('survey_communication_settings').select('orientation_message_template').eq('survey_id',s.id).maybeSingle();
+  if(settingsError){alert('Não foi possível carregar as orientações desta pesquisa. A edição foi interrompida para não sobrescrever a mensagem atual. Detalhe: '+settingsError.message);return;}
   WIZ.editIndex=idx;WIZ.editArmed=true;WIZ.step=1;
   const linkedClientes=s.clientes||clienteUsers().filter(c=>(c.surveys||[]).includes(s.name)).map(c=>c.company);
   WIZ.data=JSON.parse(JSON.stringify({
@@ -3111,7 +3123,8 @@ function surveyEdit(idx){
     tipo:s.tipo||'Eleitoral / intenção de voto',dataIni:s.dataIni||'',dataFim:s.dataFim||'',
     abrangencia:s.abrangencia||'estadual',estados:s.estados||[],cidades:s.cidades||{},
     pop:s.pop,err:s.err,conf:s.conf,prop:s.prop,price:s.price,priceRemote:s.priceRemote,clientes:linkedClientes,
-    formStarted:s.formStarted!==false,formApprovalRequired:!!s.formApprovalRequired,questions:s.questions||[],clientPrice:s.clientPrice!=null?s.clientPrice:12,quotas:s.quotas||{},quotaOff:s.quotaOff||{},remote:s.remote||{},clientReleaseById:s.clientReleaseById||{},minimumCollectionSeconds:s.minimumCollectionSeconds||null
+    formStarted:s.formStarted!==false,formApprovalRequired:!!s.formApprovalRequired,questions:s.questions||[],clientPrice:s.clientPrice!=null?s.clientPrice:12,quotas:s.quotas||{},quotaOff:s.quotaOff||{},remote:s.remote||{},clientReleaseById:s.clientReleaseById||{},minimumCollectionSeconds:s.minimumCollectionSeconds||null,
+    orientationMessage:settings?.orientation_message_template||surveyInitialOrientationDefaultTemplate()
   }));
   WIZ_QID=(WIZ.data.questions.reduce((m,q)=>Math.max(m,q.id),0)||0)+1;
   go('new-survey');
@@ -3310,6 +3323,16 @@ function surveyInitialOrientationWhatsappMessage(s,u,groupLink='',template=''){
   if(!message.includes(surveyTrainingVideoUrl()))mandatoryBlocks.push('Assista a este vídeo para entender como fazer as coletas corretamente e as regras para serem consideradas aptas: '+surveyTrainingVideoUrl());
   return mandatoryBlocks.length?message+'\n\n*Avisos obrigatórios da PesquisaPro:*\n'+mandatoryBlocks.join('\n\n'):message;
 }
+function validateSurveyOrientationTemplate(template,surveyName){
+  const text=String(template||'').trim();
+  if(!text)throw new Error('Defina as orientações iniciais antes de salvar a pesquisa. O modelo atual está disponível como sugestão.');
+  if(text.length>3500)throw new Error('O modelo de orientações deve ter até 3.500 caracteres. Resuma-o antes de salvar.');
+  const longResearcherName='Pesquisador(a) '+('Nome '.repeat(19));
+  const exampleGroupLink='https://chat.whatsapp.com/'+('A'.repeat(55));
+  const preview=surveyInitialOrientationWhatsappMessage({name:String(surveyName||'Pesquisa')},{name:longResearcherName},exampleGroupLink,text);
+  if(preview.length>4000)throw new Error('Após inserir nome, link e avisos obrigatórios, a mensagem ultrapassaria 4.000 caracteres. Resuma o modelo para garantir o envio pelo aplicativo.');
+  return text;
+}
 async function copySurveyInviteLink(inviteId){
   const link=surveyInviteLink(inviteId);
   try{await navigator.clipboard.writeText(link);alert('Link do convite copiado.');}
@@ -3388,15 +3411,15 @@ function teamCommunicationMarkup(){
 }
 function teamOrientationMessageMarkup(){
   const value=TEAM_COMM_SETTINGS?.orientation_message_template||surveyInitialOrientationDefaultTemplate();
-  return `<div class="card mb team-orientation-message-card"><div class="card-t">Orientações iniciais por WhatsApp</div><div class="card-d">Edite a mensagem que será aberta pelo botão <b>Enviar orientações</b> na tela Coleta e campo. O contador de envios continua separado por pesquisa e pesquisador.</div><label class="lbl" for="team-orientation-message">Mensagem padrão desta pesquisa</label><textarea class="inp team-orientation-message" id="team-orientation-message" rows="14">${esc(value)}</textarea><div class="team-communication-help">Placeholders disponíveis: <code>{{pesquisador}}</code>, <code>{{pesquisa}}</code>, <code>{{grupo}}</code>, <code>{{site}}</code> e <code>{{video}}</code>. Se apagar o conteúdo, o modelo padrão será usado.</div><button class="btn btn-fill" style="margin-top:10px" onclick="saveTeamOrientationMessage()">Salvar orientações desta pesquisa</button></div>`;
+  return `<div class="card mb team-orientation-message-card"><div class="card-t">Orientações iniciais desta pesquisa</div><div class="card-d">A mensagem é enviada <b>automaticamente pelo aplicativo</b> após o aceite de novos convites. Você também pode reabrir o texto no WhatsApp ou reenviar manualmente a casos pendentes pela aba Coleta.</div><label class="lbl" for="team-orientation-message">Mensagem definida para a pesquisa</label><textarea class="inp team-orientation-message" id="team-orientation-message" rows="14" maxlength="3500">${esc(value)}</textarea><div class="team-communication-help">Placeholders: <code>{{pesquisador}}</code>, <code>{{pesquisa}}</code>, <code>{{grupo}}</code>, <code>{{site}}</code> e <code>{{video}}</code>. Máximo de 3.500 caracteres no modelo, 4.000 após personalização; gravação após 21:00 e integridade são obrigatórias. Se apagar o conteúdo, restaure o modelo padrão antes de salvar.</div><button class="btn btn-fill" style="margin-top:10px" onclick="saveTeamOrientationMessage()">Salvar orientações desta pesquisa</button></div>`;
 }
 async function saveTeamOrientationMessage(){
   const s=SURVEYS[TEAM_IDX];if(!s?.id)return;
   const input=document.getElementById('team-orientation-message');
-  const text=(input?.value||'').trim();
-  if(text.length>12000){alert('A mensagem deve ter no máximo 12.000 caracteres.');return;}
+  let text;
+  try{text=validateSurveyOrientationTemplate(input?.value,s.name);}catch(ex){alert(ex.message);return;}
   try{
-    const row={survey_id:s.id,orientation_message_template:text||null,updated_by:CURRENT_PROFILE?.id||null,updated_at:new Date().toISOString()};
+    const row={survey_id:s.id,orientation_message_template:text,updated_by:CURRENT_PROFILE?.id||null,updated_at:new Date().toISOString()};
     const {data,error}=await sb.from('survey_communication_settings').upsert(row,{onConflict:'survey_id'}).select().single();
     if(error)throw error;
     TEAM_COMM_SETTINGS={...(TEAM_COMM_SETTINGS||{}),...(data||row)};TEAM_COMM_SETTINGS_LOADED=true;
@@ -3764,7 +3787,7 @@ function collectionFunnelEntries(idx){
     const invite=invitesById.get(user.id)||null;
     const area=pesqAreaMatch(user,targets);
     const eligible=researcherIsAvailable(user)&&(!hasTarget||area.match);
-    const isTeam=teamNames.has(user.name);
+    const isTeam=teamNames.has(user.name)||invite?.status==='aceito';
     const orientationCount=invite?.status==='aceito'&&user.id
       ?Math.max(0,Number(COLLECT_ORIENTATION_COUNTS[user.id]?.send_count)||0):0;
     const inappCount=Math.max(0,Number(COLLECT_INAPP_ORIENTATION_COUNTS[user.id])||0);
@@ -3808,8 +3831,24 @@ function collectionFunnelPanelMarkup(stage,entries,s){
   const query=normalizeUserSearch(search);
   const filtered=entries.filter(entry=>!query||normalizeUserSearch(entry.user.name).includes(query));
   const title=COLLECTION_FUNNEL_STAGES[stage].label;
-  const helper=stage==='available'?'Pesquisadores ativos, com cadastro completo e compatíveis com a área da pesquisa. Convide pelo aplicativo ou abra o WhatsApp.':stage==='invited'?'Convites pendentes ou recusados. Reenvie pelo aplicativo ou use o WhatsApp para acompanhar o aceite.':stage==='accepted'?'Aceitaram o convite; envie as orientações pelo aplicativo ou, opcionalmente, abra o WhatsApp.':'Pesquisadores já vinculados à equipe desta pesquisa.';
-  return `<section class="collection-funnel-panel ${COLLECT_FUNNEL_TAB===stage?'is-active':''}" data-funnel-panel="${stage}" ${COLLECT_FUNNEL_TAB===stage?'':'hidden'}><div class="collection-funnel-panel-head"><div><h3>${title}</h3><p>${helper}</p></div><label class="collection-funnel-search"><span>Buscar por nome</span><input type="search" value="${esc(search)}" placeholder="Digite o nome do pesquisador" oninput="collectFunnelSetSearch('${stage}',this.value)" autocomplete="off"></label></div>${COLLECT_INAPP_ORIENTATION_STATUS==='unavailable'&&stage==='accepted'?'<div class="callout warn collection-funnel-warning">Contagem de orientações internas indisponível. Execute orientacoes-internas-coleta.sql no Supabase. A lista de pendências pode não refletir mensagens enviadas antes de recarregar.</div>':''}<div class="collection-funnel-list">${filtered.length?filtered.map(entry=>collectionFunnelCard(entry,s,stage)).join(''):`<div class="collection-funnel-empty">${query?'Nenhum pesquisador corresponde a esta busca.':'Nenhum pesquisador neste estágio do funil.'}</div>`}</div></section>`;
+  const helper=stage==='available'?'Pesquisadores ativos, com cadastro completo e compatíveis com a área da pesquisa. Convide pelo aplicativo ou abra o WhatsApp.':stage==='invited'?'Convites pendentes ou recusados. Reenvie pelo aplicativo ou use o WhatsApp para acompanhar o aceite.':stage==='accepted'?'Novos aceites recebem orientações automaticamente. Para aceites anteriores sem orientação, use o envio pendente após revisar o modelo desta pesquisa.':'Pesquisadores já vinculados à equipe desta pesquisa.';
+  const bulk=stage==='accepted'&&COLLECT_INAPP_ORIENTATION_STATUS==='ready'&&entries.length?`<div class="collection-funnel-bulk-orientation"><div><strong>Orientações pendentes: ${entries.length}</strong><span>O envio em lote só ocorre após sua confirmação. Quem já recebeu pelo aplicativo será ignorado.</span></div><button type="button" class="btn btn-fill" ${COLLECT_BATCH_ORIENTATION_SENDING?'disabled':''} onclick="sendPendingCollectionOrientations()">${COLLECT_BATCH_ORIENTATION_SENDING?'Enviando…':`Enviar aos ${entries.length} aceitos pendentes`}</button></div>`:'';
+  return `<section class="collection-funnel-panel ${COLLECT_FUNNEL_TAB===stage?'is-active':''}" data-funnel-panel="${stage}" ${COLLECT_FUNNEL_TAB===stage?'':'hidden'}><div class="collection-funnel-panel-head"><div><h3>${title}</h3><p>${helper}</p></div><label class="collection-funnel-search"><span>Buscar por nome</span><input type="search" value="${esc(search)}" placeholder="Digite o nome do pesquisador" oninput="collectFunnelSetSearch('${stage}',this.value)" autocomplete="off"></label></div>${COLLECT_INAPP_ORIENTATION_STATUS==='unavailable'&&stage==='accepted'?'<div class="callout warn collection-funnel-warning">Contagem de orientações internas indisponível. Execute orientacoes-internas-coleta.sql no Supabase. A lista de pendências pode não refletir mensagens enviadas antes de recarregar.</div>':''}${bulk}<div class="collection-funnel-list">${filtered.length?filtered.map(entry=>collectionFunnelCard(entry,s,stage)).join(''):`<div class="collection-funnel-empty">${query?'Nenhum pesquisador corresponde a esta busca.':'Nenhum pesquisador neste estágio do funil.'}</div>`}</div></section>`;
+}
+let COLLECT_BATCH_ORIENTATION_SENDING=false;
+async function sendPendingCollectionOrientations(){
+  const idx=COLLECT_IDX,s=SURVEYS[idx];
+  if(!s?.id||COLLECT_BATCH_ORIENTATION_SENDING||COLLECT_INAPP_ORIENTATION_STATUS!=='ready')return;
+  const count=collectionFunnelEntries(idx).accepted.length;
+  if(!count||!confirm(`Enviar orientações pelo aplicativo aos ${count} pesquisadores aceitos que ainda estão pendentes nesta pesquisa? Revise o modelo antes de confirmar. Pesquisadores já orientados não receberão de novo.`))return;
+  COLLECT_BATCH_ORIENTATION_SENDING=true;renderCollectionTeamFunnel(idx);
+  try{
+    const {data,error}=await sb.rpc('send_pending_survey_initial_orientations',{p_survey_id:s.id});
+    if(error)throw new Error(error.message);
+    if(COLLECT_IDX===idx){COLLECT_INAPP_ORIENTATION_STATUS='idle';await loadCollectionInAppOrientationCounts(idx);}
+    alert(`${Number(data?.sent_count)||0} orientação(ões) entregue(s) no aplicativo. ${Number(data?.skipped_count)||0} já haviam sido enviadas. ${Number(data?.failed_count)||0} falha(s).${Number(data?.failed_count)>0?' Confira o modelo de orientação e tente novamente; quem já recebeu não receberá duplicata.':''}`);
+  }catch(ex){alert('Não foi possível enviar as orientações pendentes. Execute a migration orientacao-automatica-aceite.sql no Supabase e tente novamente. Detalhe: '+ex.message);}
+  finally{COLLECT_BATCH_ORIENTATION_SENDING=false;if(COLLECT_IDX===idx)renderCollectionTeamFunnel(idx);}
 }
 function renderCollectionTeamFunnel(idx){
   const host=document.getElementById('collectionTeamFunnel');if(!host)return;
@@ -9396,8 +9435,10 @@ async function respondMyInvite(inviteId,accept){
       await loadSurveysIfNeeded();
       MY_COMMUNICATIONS_LOADED=false;MY_COMMUNICATIONS=[];
       await loadMySurveyCommunicationsIfNeeded();
-      if(detail?.whatsapp_group_url)alert('Convite aceito. O chat da pesquisa já está disponível no seu painel. Use o botão "Entrar no grupo do WhatsApp" para solicitar sua entrada no grupo oficial.');
-      else alert('Convite aceito. O chat da pesquisa já está disponível no seu painel. A gestão ainda não configurou o link do grupo do WhatsApp.');
+      MY_SURVEY_RESEARCHER_MESSAGES_LOADED=false;MY_SURVEY_RESEARCHER_MESSAGES_LAST_LOADED=0;
+      await loadMySurveyResearcherMessagesIfNeeded();
+      if(detail?.whatsapp_group_url)alert('Convite aceito. Confira as orientações iniciais em Avisos das pesquisas no seu painel; confirme a leitura antes de iniciar a coleta. O link do grupo oficial também está disponível.');
+      else alert('Convite aceito. Confira as orientações iniciais em Avisos das pesquisas no seu painel; confirme a leitura antes de iniciar a coleta. A gestão ainda não configurou o grupo de WhatsApp.');
     }
     INVITE_FOCUS_ID=null;
     const cleanUrl=new URL(window.location.href);cleanUrl.searchParams.delete('convite');
@@ -9786,7 +9827,8 @@ async function acceptResearcherLinkInvite(){
     const {data,error}=await sb.rpc('accept_survey_researcher_link',{p_token:RESEARCHER_LINK_TOKEN});
     if(error)throw new Error(error.message);
     SURVEYS_LOADED=false;await loadSurveysIfNeeded();MY_COMMUNICATIONS_LOADED=false;MY_COMMUNICATIONS=[];await loadMySurveyCommunicationsIfNeeded();
-    alert('Convite aceito. Você entrou automaticamente na equipe da pesquisa e o chat de orientações está disponível no seu painel.');
+    MY_SURVEY_RESEARCHER_MESSAGES_LOADED=false;MY_SURVEY_RESEARCHER_MESSAGES_LAST_LOADED=0;await loadMySurveyResearcherMessagesIfNeeded();
+    alert('Convite aceito. Você entrou na equipe da pesquisa. Confira as orientações iniciais em Avisos das pesquisas e confirme a leitura antes de iniciar a coleta.');
     const clean=new URL(window.location.href);clean.searchParams.delete('equipe');window.history.replaceState({},'',clean.href);RESEARCHER_LINK_TOKEN=null;RESEARCHER_LINK_CONTEXT=null;go('dashboard-pesq');
   }catch(ex){alert('Não foi possível aceitar o convite. Verifique sua elegibilidade e se a migration foi executada. Detalhe: '+ex.message);}
   RESEARCHER_LINK_ACCEPTING=false;

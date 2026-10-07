@@ -51,7 +51,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261007194335';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261007201139';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -202,7 +202,9 @@ function loadMySurveyResearcherMessagesIfNeeded(){
   return (async()=>{
     try{
       MY_SURVEY_RESEARCHER_MESSAGES_LOAD_ERROR=false;
-      const {data,error}=await sb.from('survey_researcher_message_recipients').select('message_id,read_at,created_at,message:survey_researcher_messages(id,survey_id,sender_name,body,created_at)').eq('researcher_id',CURRENT_PROFILE.id).order('created_at',{ascending:false}).limit(100);
+      const selectMessages=fields=>sb.from('survey_researcher_message_recipients').select(fields).eq('researcher_id',CURRENT_PROFILE.id).order('created_at',{ascending:false}).limit(100);
+      let {data,error}=await selectMessages('message_id,read_at,acknowledged_at,created_at,message:survey_researcher_messages(id,survey_id,sender_name,body,created_at)');
+      if(error&&/acknowledged_at/i.test(error.message||''))({data,error}=await selectMessages('message_id,read_at,created_at,message:survey_researcher_messages(id,survey_id,sender_name,body,created_at)'));
       if(error){if(/survey_researcher_message|relation .* does not exist|schema cache/i.test(error.message||''))MY_SURVEY_RESEARCHER_MESSAGES_SCHEMA_MISSING=true;throw error;}
       MY_SURVEY_RESEARCHER_MESSAGES=(data||[]).filter(row=>row.message).sort((a,b)=>new Date(b.message.created_at||b.created_at)-new Date(a.message.created_at||a.created_at));
       MY_SURVEY_RESEARCHER_MESSAGES_LOADED=true;
@@ -225,9 +227,9 @@ function mySurveyResearcherMessagesMarkup(){
   if(!MY_SURVEY_RESEARCHER_MESSAGES_LOADED)return '<section class="card mb researcher-survey-messages-card"><div class="card-t">Avisos das pesquisas</div><div class="empty" style="padding:14px 0">Carregando avisos da gestão…</div></section>';
   const rows=MY_SURVEY_RESEARCHER_MESSAGES.map(row=>{
     const message=row.message||{},survey=SURVEYS.find(item=>item.id===message.survey_id),unread=!row.read_at;
-    return `<article class="researcher-survey-message ${unread?'is-unread':''}"><div class="researcher-survey-message-head"><div><span class="eyebrow">${unread?'NOVO AVISO':'AVISO DA PESQUISA'}</span><strong>${esc(survey?.name||'Pesquisa')}</strong></div><time>${esc(new Date(message.created_at||row.created_at).toLocaleString('pt-BR'))}</time></div><p>${esc(message.body||'').replace(/\n/g,'<br>')}</p><div class="researcher-survey-message-foot"><span>Enviado por ${esc(message.sender_name||'Equipe PesquisaPro')}</span>${unread?`<button type="button" class="btn-ghost" onclick="markMySurveyResearcherMessageRead(${jsArg(message.id)})">Marcar como lido</button>`:'<span class="pill pill-gray">Lido</span>'}</div></article>`;
+    return `<article class="researcher-survey-message ${unread?'is-unread':''}"><div class="researcher-survey-message-head"><div><span class="eyebrow">${unread?'NOVO AVISO':'AVISO DA PESQUISA'}</span><strong>${esc(survey?.name||'Pesquisa')}</strong></div><time>${esc(new Date(message.created_at||row.created_at).toLocaleString('pt-BR'))}</time></div><p>${esc(message.body||'').replace(/\n/g,'<br>')}</p><div class="researcher-survey-message-foot"><span>Enviado por ${esc(message.sender_name||'Equipe PesquisaPro')}</span>${row.acknowledged_at?'<span class="pill pill-green">Leitura confirmada</span>':unread?`<button type="button" class="btn-ghost" onclick="markMySurveyResearcherMessageRead(${jsArg(message.id)})">Marcar como lido</button>`:'<span class="pill pill-gray">Lido · confirme antes de coletar</span>'}</div></article>`;
   }).join('');
-  return `<section class="card mb researcher-survey-messages-card"><div class="researcher-survey-messages-heading"><div><div class="card-t">Avisos das pesquisas</div><div class="card-d">Mensagens internas enviadas pela gestão para as pesquisas das quais você faz parte.</div></div><button type="button" class="btn btn-out" onclick="refreshMySurveyResearcherMessages()" ${MY_SURVEY_RESEARCHER_MESSAGES_LOADING?'disabled':''}>Atualizar avisos</button><span class="pill ${MY_SURVEY_RESEARCHER_MESSAGES.some(row=>!row.read_at)?'pill-amber':'pill-green'}">${MY_SURVEY_RESEARCHER_MESSAGES.filter(row=>!row.read_at).length} não lido${MY_SURVEY_RESEARCHER_MESSAGES.filter(row=>!row.read_at).length===1?'':'s'}</span></div>${rows||'<div class="researcher-survey-messages-empty"><span>✉</span><div><b>Nenhum aviso novo</b><small>Quando a gestão enviar uma mensagem para sua equipe, ela aparecerá aqui.</small></div></div>'}</section>`;
+  return `<section class="card mb researcher-survey-messages-card"><div class="researcher-survey-messages-heading"><div><div class="card-t">Avisos das pesquisas</div><div class="card-d">Mensagens internas da gestão. Marcar como lido aqui não substitui confirmar a leitura antes de iniciar a próxima coleta da pesquisa.</div></div><button type="button" class="btn btn-out" onclick="refreshMySurveyResearcherMessages()" ${MY_SURVEY_RESEARCHER_MESSAGES_LOADING?'disabled':''}>Atualizar avisos</button><span class="pill ${MY_SURVEY_RESEARCHER_MESSAGES.some(row=>!row.read_at)?'pill-amber':'pill-green'}">${MY_SURVEY_RESEARCHER_MESSAGES.filter(row=>!row.read_at).length} não lido${MY_SURVEY_RESEARCHER_MESSAGES.filter(row=>!row.read_at).length===1?'':'s'}</span></div>${rows||'<div class="researcher-survey-messages-empty"><span>✉</span><div><b>Nenhum aviso novo</b><small>Quando a gestão enviar uma mensagem para sua equipe, ela aparecerá aqui.</small></div></div>'}</section>`;
 }
 async function markMySurveyResearcherMessageRead(messageId){
   if(!messageId)return;
@@ -412,6 +414,7 @@ async function afterLogin(user){
 
 async function logout(){
   stopResearcherVersionMonitor();
+  if(typeof acollectCloseNoticeGate==='function')acollectCloseNoticeGate(true);
   await sb.auth.signOut();
   chatStopRealtime();
   CHAT_CHANNELS=[];CHAT_CHANNELS_LOADED=false;CHAT_CHANNELS_LOADING=false;CHAT_SCHEMA_MISSING=false;CHAT_ACTIVE_CHANNEL_ID=null;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=false;CHAT_MESSAGES_LOADING=false;CHAT_SUPPORT_CHANNEL_ID=null;CHAT_SUPPORT_READY=false;CHAT_SUPPORT_LOADING=false;CHAT_PENDING_SURVEY_ID=null;
@@ -5587,6 +5590,100 @@ function acollectStartTicking(){
     banner.textContent='▶ Entrevista em andamento — '+acollectElapsedLabel();
   },1000);
 }
+let ACOLLECT_NOTICE_GATE_CHECKING=false,ACOLLECT_NOTICE_GATE_ACKING=false;
+let ACOLLECT_NOTICE_GATE_SURVEY_ID=null,ACOLLECT_NOTICE_GATE_RESEARCHER_ID=null,ACOLLECT_NOTICE_GATE_MESSAGES=[],ACOLLECT_NOTICE_GATE_CONFIRMED_CURRENT=false;
+function acollectNoticeGateElement(){
+  let overlay=document.getElementById('acollectNoticeGate');
+  if(overlay)return overlay;
+  overlay=document.createElement('div');
+  overlay.id='acollectNoticeGate';overlay.className='acollect-notice-gate';overlay.hidden=true;
+  overlay.innerHTML='<section class="acollect-notice-gate-dialog" role="alertdialog" aria-modal="true" aria-labelledby="acollectNoticeGateTitle" aria-describedby="acollectNoticeGateHelp"><div class="acollect-notice-gate-content" id="acollectNoticeGateContent"></div><div class="acollect-notice-gate-footer"><button type="button" class="btn btn-out" onclick="acollectCloseNoticeGate()">Voltar sem iniciar</button><button type="button" class="btn btn-fill" id="acollectNoticeGateConfirm" onclick="acollectConfirmNoticeRead()" disabled>Confirmar leitura</button></div></section>';
+  overlay.addEventListener('keydown',event=>{
+    if(event.key==='Escape'){event.preventDefault();acollectCloseNoticeGate();return;}
+    if(event.key!=='Tab')return;
+    const focusable=[...overlay.querySelectorAll('button:not(:disabled),input:not(:disabled)')];
+    if(!focusable.length)return;
+    if(event.shiftKey&&document.activeElement===focusable[0]){event.preventDefault();focusable.at(-1).focus();}
+    else if(!event.shiftKey&&document.activeElement===focusable.at(-1)){event.preventDefault();focusable[0].focus();}
+  });
+  document.body.appendChild(overlay);
+  return overlay;
+}
+function acollectCloseNoticeGate(force=false){
+  if(ACOLLECT_NOTICE_GATE_ACKING&&!force)return;
+  const overlay=document.getElementById('acollectNoticeGate');
+  if(overlay)overlay.hidden=true;
+  document.body.classList.remove('acollect-notice-gate-open');
+  ACOLLECT_NOTICE_GATE_SURVEY_ID=null;ACOLLECT_NOTICE_GATE_RESEARCHER_ID=null;ACOLLECT_NOTICE_GATE_MESSAGES=[];ACOLLECT_NOTICE_GATE_CONFIRMED_CURRENT=false;
+  if(force)ACOLLECT_NOTICE_GATE_CHECKING=false;
+  if(!force&&CURRENT_PROFILE?.role==='pesq')document.getElementById('startCollectBtn')?.focus();
+}
+function acollectNoticeGateConsentChanged(checked){
+  const button=document.getElementById('acollectNoticeGateConfirm');
+  if(button)button.disabled=!checked||ACOLLECT_NOTICE_GATE_ACKING;
+}
+function acollectRenderNoticeGate(errorMessage=''){
+  const overlay=acollectNoticeGateElement(),content=document.getElementById('acollectNoticeGateContent');
+  const message=ACOLLECT_NOTICE_GATE_MESSAGES[0];if(!message)return;
+  const survey=SURVEYS.find(s=>s.id===ACOLLECT_NOTICE_GATE_SURVEY_ID);
+  const total=ACOLLECT_NOTICE_GATE_MESSAGES.length;
+  content.innerHTML=`<span class="eyebrow">ANTES DA COLETA · ${total} ${total===1?'AVISO PENDENTE':'AVISOS PENDENTES'}</span><h2 id="acollectNoticeGateTitle">Leia e confirme este aviso</h2><p id="acollectNoticeGateHelp">Pesquisa: <strong>${esc(survey?.name||'Pesquisa')}</strong>. Você só poderá iniciar uma nova entrevista após confirmar individualmente todos os avisos desta pesquisa. Marcar como lido no painel não substitui esta confirmação.</p><article class="acollect-notice-gate-message"><div><strong>Enviado por ${esc(message.sender_name||'Equipe PesquisaPro')}</strong><time>${esc(new Date(message.created_at).toLocaleString('pt-BR'))}</time></div><p>${esc(message.body||'')}</p></article>${errorMessage?`<div class="callout warn" role="alert">${esc(errorMessage)}</div>`:''}<label class="acollect-notice-gate-consent"><input type="checkbox" onchange="acollectNoticeGateConsentChanged(this.checked)"> Li integralmente este aviso e estou ciente das orientações para a coleta.</label>`;
+  const button=document.getElementById('acollectNoticeGateConfirm');
+  button.textContent=ACOLLECT_NOTICE_GATE_CONFIRMED_CURRENT?'Verificar novamente':'Confirmar leitura';button.disabled=true;
+  overlay.hidden=false;document.body.classList.add('acollect-notice-gate-open');
+  content.querySelector('input[type="checkbox"]')?.focus();
+}
+async function acollectFetchPendingNotices(surveyId){
+  const {data,error}=await sb.rpc('get_pending_survey_collection_messages',{p_survey_id:surveyId});
+  if(error)throw new Error(error.message||'Falha ao consultar os avisos');
+  return data||[];
+}
+async function acollectRequireNoticesBeforeStart(surveyId){
+  const researcherId=CURRENT_PROFILE?.id;
+  try{
+    const pending=await acollectFetchPendingNotices(surveyId);
+    if(surveyId!==ACOLLECT_SURVEY_ID||CURRENT_PROFILE?.role!=='pesq'||CURRENT_PROFILE?.id!==researcherId)return false;
+    if(!pending.length)return true;
+    ACOLLECT_NOTICE_GATE_SURVEY_ID=surveyId;
+    ACOLLECT_NOTICE_GATE_RESEARCHER_ID=researcherId;
+    ACOLLECT_NOTICE_GATE_MESSAGES=pending;
+    ACOLLECT_NOTICE_GATE_CONFIRMED_CURRENT=false;
+    acollectRenderNoticeGate();
+    return false;
+  }catch(ex){
+    console.warn('Não foi possível verificar os avisos antes da coleta:',ex);
+    if(CURRENT_PROFILE?.id===researcherId)alert('Não foi possível verificar as mensagens da pesquisa. Confira a conexão e, se necessário, execute a migration confirmacao-leitura-antes-coleta.sql no Supabase. A coleta não foi iniciada.');
+    return false;
+  }
+}
+async function acollectConfirmNoticeRead(){
+  const surveyId=ACOLLECT_NOTICE_GATE_SURVEY_ID,researcherId=ACOLLECT_NOTICE_GATE_RESEARCHER_ID,message=ACOLLECT_NOTICE_GATE_MESSAGES[0];
+  const consent=document.querySelector('#acollectNoticeGateContent input[type="checkbox"]');
+  if(!surveyId||!message||!consent?.checked||ACOLLECT_NOTICE_GATE_ACKING||ACOLLECT_IN_PROGRESS||CURRENT_PROFILE?.id!==researcherId)return;
+  ACOLLECT_NOTICE_GATE_ACKING=true;
+  const button=document.getElementById('acollectNoticeGateConfirm');button.disabled=true;button.textContent='Registrando confirmação…';
+  try{
+    if(!ACOLLECT_NOTICE_GATE_CONFIRMED_CURRENT){
+      const {error}=await sb.rpc('acknowledge_survey_collection_message',{p_survey_id:surveyId,p_message_id:message.message_id});
+      if(error)throw new Error(error.message||'Falha ao registrar a confirmação');
+      if(CURRENT_PROFILE?.id!==researcherId)return;
+      ACOLLECT_NOTICE_GATE_CONFIRMED_CURRENT=true;
+      const inboxRow=MY_SURVEY_RESEARCHER_MESSAGES.find(row=>row.message_id===message.message_id);
+      if(inboxRow){inboxRow.read_at=inboxRow.read_at||new Date().toISOString();inboxRow.acknowledged_at=new Date().toISOString();}
+    }
+    const pending=await acollectFetchPendingNotices(surveyId);
+    if(surveyId!==ACOLLECT_SURVEY_ID||CURRENT_PROFILE?.role!=='pesq'||CURRENT_PROFILE?.id!==researcherId){
+      ACOLLECT_NOTICE_GATE_ACKING=false;acollectCloseNoticeGate();return;
+    }
+    ACOLLECT_NOTICE_GATE_MESSAGES=pending;ACOLLECT_NOTICE_GATE_CONFIRMED_CURRENT=false;
+    if(pending.length){acollectRenderNoticeGate();return;}
+    ACOLLECT_NOTICE_GATE_ACKING=false;acollectCloseNoticeGate();
+    if(document.querySelector('.nav-item.on')?.dataset.key==='app-collect')await acollectStart();
+  }catch(ex){
+    console.warn('Não foi possível concluir a confirmação de leitura:',ex);
+    if(CURRENT_PROFILE?.id===researcherId&&ACOLLECT_NOTICE_GATE_SURVEY_ID===surveyId)acollectRenderNoticeGate('Não foi possível confirmar ou verificar este aviso. Tente novamente com internet. A entrevista não começou.');
+  }finally{ACOLLECT_NOTICE_GATE_ACKING=false;}
+}
 function renderAcollectActionState(){
   const btn=document.getElementById('startCollectBtn');
   const hint=document.getElementById('geoHint');
@@ -5648,6 +5745,17 @@ async function acollectStart(){
   // botão habilitado.
   const temCotas=!!ACOLLECT_QUOTA_LIST.length;
   if(temCotas&&(ACOLLECT_SELECTED_QUOTA===null||ACOLLECT_SELECTED_QUOTA===undefined||ACOLLECT_SELECTED_QUOTA===''))return;
+  if(CURRENT_PROFILE?.role==='pesq'){
+    const overlay=document.getElementById('acollectNoticeGate');
+    if(ACOLLECT_NOTICE_GATE_CHECKING||(overlay&&!overlay.hidden))return;
+    const surveyId=ACOLLECT_SURVEY_ID,button=document.getElementById('startCollectBtn');
+    ACOLLECT_NOTICE_GATE_CHECKING=true;
+    if(button){button.disabled=true;button.textContent='Verificando avisos…';}
+    const ready=await acollectRequireNoticesBeforeStart(surveyId);
+    ACOLLECT_NOTICE_GATE_CHECKING=false;
+    if(button)button.textContent='Iniciar coleta';
+    if(!ready||surveyId!==ACOLLECT_SURVEY_ID){renderAcollectActionState();return;}
+  }
   const startButton=document.getElementById('startCollectBtn');
   if(startButton){startButton.disabled=true;startButton.textContent='Validando localização…';}
   const locationCheck=await acollectValidateLocation();

@@ -1858,3 +1858,21 @@ body.researcher-update-lock{overflow:hidden}
 .researcher-survey-messages-heading>.pill{white-space:nowrap}
 #signup-real-link{min-width:0;overflow:hidden;text-overflow:ellipsis}
 @media(max-width:560px){.researcher-survey-messages-heading>.btn{margin-left:0}.researcher-survey-messages-heading>.pill{margin-left:auto}}
+
+/* v133 — confirmação individual de avisos antes de iniciar outra coleta. */
+body.acollect-notice-gate-open{overflow:hidden}
+.acollect-notice-gate{position:fixed;inset:0;z-index:1700;display:grid;place-items:center;padding:16px;background:rgba(15,30,55,.7);backdrop-filter:blur(3px)}
+.acollect-notice-gate[hidden]{display:none}
+.acollect-notice-gate-dialog{display:flex;flex-direction:column;width:min(640px,100%);max-height:calc(100dvh - 32px);overflow:hidden;border:1px solid #cddfe9;border-radius:19px;background:#fff;color:var(--ink);box-shadow:0 24px 80px rgba(12,38,60,.38)}
+.acollect-notice-gate-content{min-height:0;flex:1 1 auto;padding:22px;overflow-y:auto;overscroll-behavior:contain}
+.acollect-notice-gate-content h2{font-size:20px;margin:7px 0;color:#102a56}
+.acollect-notice-gate-content>p{color:var(--ink2);font-size:12px;line-height:1.55;margin:0 0 16px}
+.acollect-notice-gate-message{padding:14px;border:1px solid #b5d9d3;border-radius:13px;background:#f4fffd}
+.acollect-notice-gate-message>div{display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;color:#155e59;font-size:11px}
+.acollect-notice-gate-message time{color:var(--ink3)}
+.acollect-notice-gate-message p{margin:13px 0 0;color:var(--ink);font-size:13px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere}
+.acollect-notice-gate-consent{display:flex;align-items:flex-start;gap:9px;margin-top:17px;padding:12px;border:1px solid #dbe5f0;border-radius:10px;color:var(--ink2);font-size:12px;line-height:1.5;cursor:pointer}
+.acollect-notice-gate-consent input{margin-top:2px;flex:none;width:17px;height:17px}
+.acollect-notice-gate-footer{display:flex;flex:0 0 auto;justify-content:space-between;gap:10px;padding:14px 22px;border-top:1px solid #e7eff4;background:#f8fbfd}
+.acollect-notice-gate-footer button{min-height:39px;white-space:normal}
+@media(max-width:540px){.acollect-notice-gate{padding:8px}.acollect-notice-gate-dialog{max-height:calc(100dvh - 16px);border-radius:14px}.acollect-notice-gate-content{padding:17px 14px}.acollect-notice-gate-footer{padding:11px 14px;flex-direction:column-reverse}.acollect-notice-gate-footer button{width:100%}}

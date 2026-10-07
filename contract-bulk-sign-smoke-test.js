@@ -16,6 +16,6 @@ ok(app.includes('A ação será registrada em nome do administrador'),'confirma�
 ok(app.includes('Assinando '+"'+(i+1)+'"),'progresso da assinatura em lote ausente');
 ok(css.includes('.contracts-researchers-head'),'estilo do cabeçalho de contratos ausente');
 ok(css.includes('.contracts-bulk-sign-btn'),'estilo do botão em lote ausente');
-ok(html.includes('app.js?v=20261007194335'),'cache do app não atualizado');
-ok(html.includes('style.css?v=20261007194335'),'cache do CSS não atualizado');
+ok(html.includes('app.js?v=20261007201139'),'cache do app não atualizado');
+ok(html.includes('style.css?v=20261007201139'),'cache do CSS não atualizado');
 console.log('Contract bulk signature smoke test: PASS — botão, confirmação, progresso, RPC auditável e preservação dos assinados verificados.');

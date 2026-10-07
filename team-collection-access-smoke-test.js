@@ -13,5 +13,5 @@ for(const token of [
 ])assert(app.includes(token),`acesso à coleta ausente: ${token}`);
 assert(css.includes('.team-collection-access'),'estilo do acesso à coleta ausente');
 assert(css.includes('.btn-fill.team-collection-access{color:#fff!important'),'contraste do botão preenchido não está garantido');
-assert(html.includes('app.js?v=20261007194335'),'cache do acesso à coleta não atualizado');
+assert(html.includes('app.js?v=20261007201139'),'cache do acesso à coleta não atualizado');
 console.log('Team collection access smoke test: PASS — equipe abre diretamente monitoramento, mapa e auditoria.');

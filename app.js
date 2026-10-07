@@ -51,7 +51,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261007174500';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261007180227';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -66,6 +66,7 @@ let RESEARCHER_BADGE_UPLOADING=false;
 let PASSWORD_RECOVERY_MODE=false;
 let PUSH_STATUS='unknown',PUSH_STATUS_LOADING=false,PUSH_SCHEMA_MISSING=false,PUSH_SW_REGISTRATION=null;
 let MY_COMMUNICATIONS=[],MY_COMMUNICATIONS_LOADED=false,MY_COMMUNICATIONS_LOADING=false;
+let MY_SURVEY_RESEARCHER_MESSAGES=[],MY_SURVEY_RESEARCHER_MESSAGES_LOADED=false,MY_SURVEY_RESEARCHER_MESSAGES_LOADING=false,MY_SURVEY_RESEARCHER_MESSAGES_SCHEMA_MISSING=false;
 let CLIENT_APPROVAL_REQUEST_ID=null,CLIENT_APPROVAL_REQUEST=null,CLIENT_APPROVAL_REQUEST_LOADED=false,CLIENT_APPROVAL_LOADING=false,CLIENT_APPROVAL_RESPONDING=false,CLIENT_APPROVAL_SCHEMA_MISSING=false;
 let RESEARCHER_LINK_TOKEN=null,RESEARCHER_LINK_CONTEXT=null,RESEARCHER_LINK_LOADING=false,RESEARCHER_LINK_ACCEPTING=false;
 let ADMIN_APPROVAL_STATUS_BY_CLIENT={},ADMIN_APPROVAL_STATUS_LOADING={},ADMIN_APPROVAL_STATUS_LOADED={};
@@ -193,6 +194,39 @@ function loadMySurveyCommunicationsIfNeeded(){
     finally{MY_COMMUNICATIONS_LOADING=false;if(document.querySelector('.nav-item.on')?.dataset.key==='dashboard-pesq')go('dashboard-pesq');}
   })();
 }
+function loadMySurveyResearcherMessagesIfNeeded(){
+  if(MY_SURVEY_RESEARCHER_MESSAGES_LOADED||MY_SURVEY_RESEARCHER_MESSAGES_LOADING||!CURRENT_PROFILE?.id||CURRENT_PROFILE.role!=='pesq')return Promise.resolve();
+  MY_SURVEY_RESEARCHER_MESSAGES_LOADING=true;
+  return (async()=>{
+    try{
+      const {data,error}=await sb.from('survey_researcher_message_recipients').select('message_id,read_at,created_at,message:survey_researcher_messages(id,survey_id,sender_name,body,created_at)').eq('researcher_id',CURRENT_PROFILE.id).order('created_at',{ascending:false}).limit(100);
+      if(error){if(/survey_researcher_message|relation .* does not exist|schema cache/i.test(error.message||''))MY_SURVEY_RESEARCHER_MESSAGES_SCHEMA_MISSING=true;throw error;}
+      MY_SURVEY_RESEARCHER_MESSAGES=(data||[]).filter(row=>row.message).sort((a,b)=>new Date(b.message.created_at||b.created_at)-new Date(a.message.created_at||a.created_at));
+      MY_SURVEY_RESEARCHER_MESSAGES_LOADED=true;
+    }catch(ex){console.error('Não foi possível carregar os avisos das pesquisas:',ex);if(MY_SURVEY_RESEARCHER_MESSAGES_SCHEMA_MISSING)MY_SURVEY_RESEARCHER_MESSAGES_LOADED=true;}
+    finally{MY_SURVEY_RESEARCHER_MESSAGES_LOADING=false;if(document.querySelector('.nav-item.on')?.dataset.key==='dashboard-pesq')go('dashboard-pesq');}
+  })();
+}
+function mySurveyResearcherMessagesMarkup(){
+  if(MY_SURVEY_RESEARCHER_MESSAGES_SCHEMA_MISSING)return '<section class="card mb researcher-survey-messages-card"><div class="card-t">Avisos das pesquisas</div><div class="callout warn">Os avisos internos ainda não estão ativados. A gestão precisa executar a migration <code>deploy/mensagens-pesquisa-pesquisadores.sql</code> no Supabase.</div></section>';
+  if(!MY_SURVEY_RESEARCHER_MESSAGES_LOADED)return '<section class="card mb researcher-survey-messages-card"><div class="card-t">Avisos das pesquisas</div><div class="empty" style="padding:14px 0">Carregando avisos da gestão…</div></section>';
+  const rows=MY_SURVEY_RESEARCHER_MESSAGES.map(row=>{
+    const message=row.message||{},survey=SURVEYS.find(item=>item.id===message.survey_id),unread=!row.read_at;
+    return `<article class="researcher-survey-message ${unread?'is-unread':''}"><div class="researcher-survey-message-head"><div><span class="eyebrow">${unread?'NOVO AVISO':'AVISO DA PESQUISA'}</span><strong>${esc(survey?.name||'Pesquisa')}</strong></div><time>${esc(new Date(message.created_at||row.created_at).toLocaleString('pt-BR'))}</time></div><p>${esc(message.body||'').replace(/\n/g,'<br>')}</p><div class="researcher-survey-message-foot"><span>Enviado por ${esc(message.sender_name||'Equipe PesquisaPro')}</span>${unread?`<button type="button" class="btn-ghost" onclick="markMySurveyResearcherMessageRead(${jsArg(message.id)})">Marcar como lido</button>`:'<span class="pill pill-gray">Lido</span>'}</div></article>`;
+  }).join('');
+  return `<section class="card mb researcher-survey-messages-card"><div class="researcher-survey-messages-heading"><div><div class="card-t">Avisos das pesquisas</div><div class="card-d">Mensagens internas enviadas pela gestão para as pesquisas das quais você faz parte.</div></div><span class="pill ${MY_SURVEY_RESEARCHER_MESSAGES.some(row=>!row.read_at)?'pill-amber':'pill-green'}">${MY_SURVEY_RESEARCHER_MESSAGES.filter(row=>!row.read_at).length} não lido${MY_SURVEY_RESEARCHER_MESSAGES.filter(row=>!row.read_at).length===1?'':'s'}</span></div>${rows||'<div class="researcher-survey-messages-empty"><span>✉</span><div><b>Nenhum aviso novo</b><small>Quando a gestão enviar uma mensagem para sua equipe, ela aparecerá aqui.</small></div></div>'}</section>`;
+}
+async function markMySurveyResearcherMessageRead(messageId){
+  if(!messageId)return;
+  try{
+    const {error}=await sb.rpc('mark_survey_researcher_message_read',{p_message_id:messageId});
+    if(error)throw error;
+    const row=MY_SURVEY_RESEARCHER_MESSAGES.find(item=>item.message_id===messageId);
+    if(row)row.read_at=new Date().toISOString();
+    go('dashboard-pesq');
+  }catch(ex){alert('Não foi possível marcar este aviso como lido. '+(ex.message||''));}
+}
+
 function mySurveyCommunicationsMarkup(){
   if(!MY_COMMUNICATIONS_LOADED||!MY_COMMUNICATIONS.length)return '';
   return `<section class="card mb researcher-communications-card researcher-first-collection-groups"><div class="card-t">Antes da primeira coleta</div><div class="card-d">Entre no grupo oficial do WhatsApp da pesquisa antes de iniciar a primeira entrevista. Use também o chat para receber instruções e tirar dúvidas. A entrada no grupo é feita manualmente pelo próprio pesquisador.</div>${MY_COMMUNICATIONS.map(item=>`<div class="researcher-communication-row"><div><b>${esc(item.survey_name||'Pesquisa')}</b><small>Convite aceito${item.accepted_at?' em '+esc(new Date(item.accepted_at).toLocaleDateString('pt-BR')):''}</small></div><div class="researcher-communication-actions">${item.chat_channel_id?`<button class="btn btn-out" onclick="openResearcherSurveyChat('${item.survey_id}')">✉ Chat da pesquisa</button>`:'<span class="pill pill-gray">Chat em preparação</span>'}${item.whatsapp_group_url?`<a class="btn btn-fill" href="${esc(item.whatsapp_group_url)}" target="_blank" rel="noopener">Entrar no grupo do WhatsApp</a>`:'<span class="pill pill-gray">Grupo ainda não configurado</span>'}</div></div>`).join('')}</section>`;
@@ -326,7 +360,7 @@ async function requestOwnPasswordReset(){
 async function afterLogin(user){
   stopResearcherVersionMonitor();
   chatStopRealtime();CHAT_CHANNELS=[];CHAT_CHANNELS_LOADED=false;CHAT_CHANNELS_LOADING=false;CHAT_SCHEMA_MISSING=false;CHAT_ACTIVE_CHANNEL_ID=null;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=false;CHAT_MESSAGES_LOADING=false;CHAT_SUPPORT_CHANNEL_ID=null;CHAT_SUPPORT_READY=false;CHAT_SUPPORT_LOADING=false;
-  PUSH_STATUS='unknown';PUSH_STATUS_LOADING=false;PUSH_SCHEMA_MISSING=false;PUSH_SW_REGISTRATION=null;MY_COMMUNICATIONS=[];MY_COMMUNICATIONS_LOADED=false;MY_COMMUNICATIONS_LOADING=false;
+  PUSH_STATUS='unknown';PUSH_STATUS_LOADING=false;PUSH_SCHEMA_MISSING=false;PUSH_SW_REGISTRATION=null;MY_COMMUNICATIONS=[];MY_COMMUNICATIONS_LOADED=false;MY_COMMUNICATIONS_LOADING=false;MY_SURVEY_RESEARCHER_MESSAGES=[];MY_SURVEY_RESEARCHER_MESSAGES_LOADED=false;MY_SURVEY_RESEARCHER_MESSAGES_LOADING=false;MY_SURVEY_RESEARCHER_MESSAGES_SCHEMA_MISSING=false;
   ACTIVE_CAMPAIGN_ID=null;CLIENT_SURVEY_VIEW_ID=null;
   PAYMENTS=[];PAYMENTS_LOADED=false;PAYMENTS_LOADING=false;PAYMENT_RECEIPTS=[];PAYMENT_RECEIPTS_LOADED=false;PAYMENT_RECEIPTS_LOADING=false;PAYMENT_RECEIPTS_SCHEMA_MISSING=false;PAYMENT_RECEIPTS_DELETE_SCHEMA_MISSING=false;
   const profileFields='id,name,email,phone,role,status,cpf,cpf_cnpj,pf_pj,birth,cidade,rua,numero,cep,contact_person,doc_url,doc_foto_url,doc_comprovante_url,pix_key,pix_doc,pix_bank,pix_ag,pix_acc,results_released,approved_at,commission_rate,commission_rate_with_indicator,recruiter_code,recruiter_capture_value,badge_public_token,badge_photo_path';
@@ -368,7 +402,7 @@ async function logout(){
   await sb.auth.signOut();
   chatStopRealtime();
   CHAT_CHANNELS=[];CHAT_CHANNELS_LOADED=false;CHAT_CHANNELS_LOADING=false;CHAT_SCHEMA_MISSING=false;CHAT_ACTIVE_CHANNEL_ID=null;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=false;CHAT_MESSAGES_LOADING=false;CHAT_SUPPORT_CHANNEL_ID=null;CHAT_SUPPORT_READY=false;CHAT_SUPPORT_LOADING=false;CHAT_PENDING_SURVEY_ID=null;
-  RESEARCHER_PROFILE_CITIES=[];RESEARCHER_PROFILE_CITIES_DRAFT=[];RESEARCHER_PROFILE_CITIES_LOADED=false;MY_INVITES=[];MY_INVITES_LOADED=false;MY_INVITES_LOADING=false;MY_INVITES_LOAD_PROMISE=null;MY_INVITE_RESPONDING=null;PUSH_STATUS='unknown';PUSH_STATUS_LOADING=false;PUSH_SCHEMA_MISSING=false;PUSH_SW_REGISTRATION=null;MY_COMMUNICATIONS=[];MY_COMMUNICATIONS_LOADED=false;MY_COMMUNICATIONS_LOADING=false;CLIENT_APPROVAL_REQUEST_ID=null;CLIENT_APPROVAL_REQUEST=null;CLIENT_APPROVAL_LOADING=false;CLIENT_APPROVAL_RESPONDING=false;CLIENT_APPROVAL_SCHEMA_MISSING=false;RESEARCHER_LINK_TOKEN=null;RESEARCHER_LINK_CONTEXT=null;RESEARCHER_LINK_LOADING=false;RESEARCHER_LINK_ACCEPTING=false;
+  RESEARCHER_PROFILE_CITIES=[];RESEARCHER_PROFILE_CITIES_DRAFT=[];RESEARCHER_PROFILE_CITIES_LOADED=false;MY_INVITES=[];MY_INVITES_LOADED=false;MY_INVITES_LOADING=false;MY_INVITE_LOAD_PROMISE=null;MY_INVITE_RESPONDING=null;PUSH_STATUS='unknown';PUSH_STATUS_LOADING=false;PUSH_SCHEMA_MISSING=false;PUSH_SW_REGISTRATION=null;MY_COMMUNICATIONS=[];MY_COMMUNICATIONS_LOADED=false;MY_COMMUNICATIONS_LOADING=false;MY_SURVEY_RESEARCHER_MESSAGES=[];MY_SURVEY_RESEARCHER_MESSAGES_LOADED=false;MY_SURVEY_RESEARCHER_MESSAGES_LOADING=false;MY_SURVEY_RESEARCHER_MESSAGES_SCHEMA_MISSING=false;CLIENT_APPROVAL_REQUEST_ID=null;CLIENT_APPROVAL_REQUEST=null;CLIENT_APPROVAL_LOADING=false;CLIENT_APPROVAL_RESPONDING=false;CLIENT_APPROVAL_SCHEMA_MISSING=false;RESEARCHER_LINK_TOKEN=null;RESEARCHER_LINK_CONTEXT=null;RESEARCHER_LINK_LOADING=false;RESEARCHER_LINK_ACCEPTING=false;
   PAYMENTS=[];PAYMENTS_LOADED=false;PAYMENTS_LOADING=false;PAYMENT_RECEIPTS=[];PAYMENT_RECEIPTS_LOADED=false;PAYMENT_RECEIPTS_LOADING=false;PAYMENT_RECEIPTS_SCHEMA_MISSING=false;PAYMENT_RECEIPTS_DELETE_SCHEMA_MISSING=false;
   CURRENT_PROFILE=null;
   ACTIVE_CAMPAIGN_ID=null;CLIENT_SURVEY_VIEW_ID=null;
@@ -1107,6 +1141,7 @@ PAGES['dashboard-pesq']=()=>{
   if(!MY_INVITES_LOADED)loadMyInvitesIfNeeded();
   loadPushStatusIfNeeded();
   loadMySurveyCommunicationsIfNeeded();
+  loadMySurveyResearcherMessagesIfNeeded();
   const primeiroNome=(CURRENT_PROFILE&&CURRENT_PROFILE.name)?CURRENT_PROFILE.name.trim().split(' ')[0]:'';
   const subtitulo=primeiroNome?('Olá '+primeiroNome+' — acompanhe suas metas e ganhos'):'Acompanhe suas metas e ganhos';
   if(!SURVEYS_LOADED||!PAYMENTS_LOADED){
@@ -1142,6 +1177,7 @@ PAGES['dashboard-pesq']=()=>{
   </div>`:'';
   return head('Meu painel',subtitulo)+`
   ${earningsHtml}
+  ${mySurveyResearcherMessagesMarkup()}
   ${mySurveyCommunicationsMarkup()}
   ${researcherAvailableSurveysMarkup(surveysMine)}
   ${invitesHtml}
@@ -3709,6 +3745,7 @@ function collectionFunnelStageActions(entry,s,stage){
   if(stage==='available')actions.push(`<button type="button" class="btn btn-fill team-inapp-invite-btn" onclick="inviteCollectionFunnelResearcherInApp(${jsArg(user.id)})">✉ Convidar pelo aplicativo</button>`,`<button type="button" class="btn btn-out team-whatsapp-invite-btn" onclick="inviteCollectionFunnelResearcher(${jsArg(user.id)})">✉ Convidar por WhatsApp</button>`);
   if(stage==='invited'&&entry.invite?.id)actions.push(`<button type="button" class="btn btn-fill team-inapp-invite-btn" onclick="inviteCollectionFunnelResearcherInApp(${jsArg(user.id)})">↻ Reenviar pelo aplicativo</button>`,`<button type="button" class="btn btn-out team-whatsapp-invite-btn" onclick="inviteCollectionFunnelResearcher(${jsArg(user.id)})">↗ Reenviar convite</button>`);
   if(stage==='accepted')actions.push(`<button type="button" class="btn btn-fill collection-funnel-orientation-btn" ${user.phone?'':'disabled'} onclick="sendCollectionOrientationWhatsapp(${jsArg(user.name)})">✉ Enviar orientações iniciais</button>`);
+  if(stage==='team'&&user.id)actions.push(`<button type="button" class="btn btn-out collection-internal-message-btn" onclick="openSurveyResearcherMessageModal(${jsArg(user.id)},${jsArg(user.name)})">✉ Mensagem pelo aplicativo</button>`);
   actions.push(collectionFunnelWhatsAppButton(entry,s,stage));
   return actions.filter(Boolean).join('');
 }
@@ -3832,9 +3869,47 @@ function collectionTeamRows(s,team){
       <td>${syncPill}</td>
       <td class="collection-team-actions">
         <div class="collection-orientation-action"><button class="btn btn-out collection-orientation-btn" ${phone?'':'disabled'} onclick="sendCollectionOrientationWhatsapp(${jsArg(name)})">✉ Enviar orientações</button>${collectionOrientationCountMarkup(name)}</div>
+        ${user?.id?`<button type="button" class="btn btn-fill collection-internal-message-btn" onclick="openSurveyResearcherMessageModal(${jsArg(user.id)},${jsArg(name)})">✉ Mensagem pelo aplicativo</button>`:'<span class="pill pill-gray">Perfil sem ID</span>'}
         ${phone?`<a class="btn-ghost" style="color:var(--teal);display:inline-block" href="${wa}" target="_blank" rel="noopener" title="Abre uma conversa comum; não registra o envio das orientações">Conversar no WhatsApp</a>`:'<span class="pill pill-gray">Sem telefone</span>'}
       </td></tr>`;
   }).join(''):'<tr><td colspan="6" class="empty">Nenhum pesquisador vinculado. Atribua a equipe em Minhas pesquisas.</td></tr>';
+}
+let COLLECT_SURVEY_MESSAGE_SENDING=false,COLLECT_SURVEY_MESSAGE_TARGET_ID=null,COLLECT_SURVEY_MESSAGE_TARGET_NAME='';
+function closeSurveyResearcherMessageModal(){
+  const modal=document.getElementById('surveyResearcherMessageModal');
+  if(modal)modal.hidden=true;
+  document.body.classList.remove('survey-message-modal-open');
+  COLLECT_SURVEY_MESSAGE_TARGET_ID=null;COLLECT_SURVEY_MESSAGE_TARGET_NAME='';
+}
+function openSurveyResearcherMessageModal(researcherId=null,researcherName=''){
+  const s=SURVEYS[COLLECT_IDX];
+  if(!s?.id||!['admin','coord','gerente','admpro'].includes(CURRENT_PROFILE?.role))return;
+  COLLECT_SURVEY_MESSAGE_TARGET_ID=researcherId||null;COLLECT_SURVEY_MESSAGE_TARGET_NAME=researcherName||'';
+  let modal=document.getElementById('surveyResearcherMessageModal');
+  if(!modal){modal=document.createElement('div');modal.id='surveyResearcherMessageModal';modal.className='survey-message-modal';document.body.appendChild(modal);}
+  const isIndividual=!!researcherId;
+  modal.innerHTML=`<div class="survey-message-backdrop" onclick="if(event.target===this)closeSurveyResearcherMessageModal()"></div><section class="survey-message-dialog" role="dialog" aria-modal="true" aria-labelledby="surveyMessageModalTitle"><button type="button" class="survey-message-close" aria-label="Fechar" onclick="closeSurveyResearcherMessageModal()">×</button><span class="eyebrow">COMUNICAÇÃO INTERNA</span><h2 id="surveyMessageModalTitle">${isIndividual?'Mensagem para '+esc(researcherName):'Mensagem para toda a equipe'}</h2><p class="survey-message-dialog-description">Pesquisa: <b>${esc(s.name)}</b>. ${isIndividual?'Somente este pesquisador verá a mensagem.':'Cada pesquisador vinculado receberá uma cópia privada no próprio painel.'}</p><form onsubmit="event.preventDefault();sendSurveyResearcherMessage()"><label class="lbl" for="surveyMessageBody">Mensagem</label><textarea id="surveyMessageBody" class="inp" rows="7" maxlength="4000" placeholder="Escreva um aviso, orientação ou atualização para ${isIndividual?'este pesquisador':'a equipe'}…" required></textarea><div class="survey-message-dialog-foot"><span>Até 4.000 caracteres</span><div><button type="button" class="btn btn-out" onclick="closeSurveyResearcherMessageModal()">Cancelar</button><button type="submit" class="btn btn-fill" id="surveyMessageSubmit">Enviar mensagem</button></div></div></form></section>`;
+  modal.hidden=false;document.body.classList.add('survey-message-modal-open');setTimeout(()=>document.getElementById('surveyMessageBody')?.focus(),0);
+}
+async function sendSurveyResearcherMessage(){
+  if(COLLECT_SURVEY_MESSAGE_SENDING)return;
+  const s=SURVEYS[COLLECT_IDX],input=document.getElementById('surveyMessageBody'),body=(input?.value||'').trim(),targetId=COLLECT_SURVEY_MESSAGE_TARGET_ID;
+  if(!s?.id||!body){alert('Escreva uma mensagem antes de enviar.');return;}
+  if(body.length>4000){alert('A mensagem deve ter no máximo 4.000 caracteres.');return;}
+  const targetLabel=targetId?COLLECT_SURVEY_MESSAGE_TARGET_NAME:'todos os '+(s.team||[]).length+' pesquisadores vinculados';
+  if(!targetId&&!(s.team||[]).length){alert('Esta pesquisa ainda não possui pesquisadores vinculados.');return;}
+  if(!confirm('Enviar esta mensagem para '+targetLabel+'?'))return;
+  COLLECT_SURVEY_MESSAGE_SENDING=true;const button=document.getElementById('surveyMessageSubmit');if(button){button.disabled=true;button.textContent='Enviando…';}
+  try{
+    const {data,error}=await sb.rpc('send_survey_researcher_message',{p_survey_id:s.id,p_body:body,p_researcher_id:targetId||null});
+    if(error)throw new Error(error.message);
+    const count=Number(data?.recipient_count)|| (targetId?1:(s.team||[]).length);
+    closeSurveyResearcherMessageModal();
+    alert('Mensagem enviada para '+count+' pesquisador'+(count===1?'':'es')+'. Ela aparecerá no painel de cada destinatário.');
+  }catch(ex){
+    const migrationMissing=/send_survey_researcher_message|survey_researcher_message|relation .* does not exist|schema cache/i.test(ex.message||'');
+    alert(migrationMissing?'Não foi possível enviar porque o recurso ainda não está ativado no banco. Execute a migration deploy/mensagens-pesquisa-pesquisadores.sql no Supabase e tente novamente.':'Não foi possível enviar a mensagem: '+ex.message);
+  }finally{COLLECT_SURVEY_MESSAGE_SENDING=false;if(button){button.disabled=false;button.textContent='Enviar mensagem';}}
 }
 function refreshCollectionTeamRows(idx){
   const tbody=document.getElementById('collectTeamBody'),s=SURVEYS[idx];
@@ -3959,7 +4034,7 @@ function collectDetail(idx){
     <div class="card mb">
       <div class="card-t">Equipe vinculada</div>
       <div class="card-d">Envie as orientações iniciais da pesquisa pelo WhatsApp e acompanhe quem já recebeu o material.</div>
-      <div class="callout collection-orientation-callout"><b>Orientações iniciais:</b> use o botão em cada linha para abrir a mensagem completa no WhatsApp. O contador mostra quais pesquisadores já receberam o envio inicial e quais ainda estão pendentes.</div>
+      <div class="callout collection-orientation-callout"><b>Orientações iniciais:</b> use o botão em cada linha para abrir a mensagem completa no WhatsApp. O contador mostra quais pesquisadores já receberam o envio inicial e quais ainda estão pendentes.<div class="collection-internal-message-callout"><div><strong>Mensagem interna da pesquisa</strong><span>Envie um aviso pelo aplicativo para toda a equipe. A mensagem ficará privada no painel de cada pesquisador.</span></div><button type="button" class="btn btn-fill collection-internal-message-broadcast" onclick="openSurveyResearcherMessageModal()" ${team.length?'':'disabled'}>✉ Enviar para toda a equipe${team.length?' ('+team.length+')':''}</button></div></div>
       <div id="collectionTeamFunnel" class="collection-funnel-card"><div class="empty" style="padding:18px 0">Carregando funil da equipe…</div></div>
       <div class="table-scroll"><table><thead><tr><th>Pesquisador</th><th>Regional</th><th>Link</th><th>Coletado</th><th>Sync</th><th>Orientações e contato</th></tr></thead>
       <tbody id="collectTeamBody">${rows}</tbody></table></div>

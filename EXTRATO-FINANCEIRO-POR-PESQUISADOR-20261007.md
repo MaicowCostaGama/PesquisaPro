@@ -14,7 +14,18 @@ O extrato apresenta separadamente:
 4. **Rejeitadas e motivo** — coletas com status rejeitado e o motivo registrado na auditoria. Elas não geram saldo;
 5. **Válidas aguardando aprovação financeira** — quando existirem novas coletas válidas ainda não aprovadas.
 
-O cabeçalho também mostra quantidades, valores, valor por formulário, saldo aprovado a pagar e o motivo do saldo.
+O cartão financeiro de cada pesquisador mostra, no mesmo bloco e sem exigir navegação até o fim da página:
+
+- **Nome do pesquisador**;
+- **Coletas válidas** e **coletas rejeitadas**;
+- **Status**;
+- **Valor total coleta válida**;
+- **Valor quitado**;
+- **Valor coleta a aprovar**;
+- **Saldo de coleta a receber**;
+- **Chave PIX** e **Copiar PIX**.
+
+O valor de coleta a aprovar é separado do saldo aprovado a receber: ele representa novas coletas válidas que ainda não foram aprovadas financeiramente. O saldo de coleta a receber representa somente o valor aprovado menos os pagamentos já quitados.
 
 ## Ações do extrato
 
@@ -26,6 +37,17 @@ O cabeçalho também mostra quantidades, valores, valor por formulário, saldo a
 - **Alterar valor pago**: disponível somente para a gestão e altera apenas o valor do lançamento selecionado, preservando data, pesquisador, comprovante e histórico;
 - **Excluir comprovante**: disponível somente para a gestão e remove apenas o arquivo/metadados do comprovante, preservando o lançamento financeiro para novo anexo;
 - **Registrar novo pagamento**: disponível no extrato da gestão quando ainda existe saldo aprovado a pagar.
+
+No cartão, as ações ficam organizadas no mesmo bloco:
+
+- **Extrato de pagamento**;
+- **Conversar**;
+- **Aprovar novas coletas**, quando houver novas coletas válidas aguardando aprovação;
+- **Ver/alterar pagamentos**, quando existir um ou mais lançamentos;
+- **Alterar valor do pagamento**, quando houver lançamento editável;
+- **Excluir comprovante de pagamento**, quando houver comprovante anexado;
+- **Registrar pagamento semanal**, quando existir saldo aprovado a receber;
+- **Anexar comprovante de pagamento**, quando o repasse ainda estiver sem arquivo.
 
 Quando houver **um ou mais pagamentos** para o pesquisador, o cartão sempre exibe **Ver/alterar pagamentos**. Se algum lançamento ainda estiver sem comprovante, os botões **Anexar comprovante** e **Alterar valor** aparecem junto ao histórico; o comprovante pendente não oculta os demais lançamentos.
 

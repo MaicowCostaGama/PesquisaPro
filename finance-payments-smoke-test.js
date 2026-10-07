@@ -220,8 +220,8 @@ for (const token of [
   assert(css.includes(token), `estilo financeiro ausente: ${token}`);
 }
 
-assert(html.includes('app.js?v=20261007171000'), 'cache do app financeiro não foi atualizado');
-assert(html.includes('style.css?v=20261007171000'), 'cache do CSS financeiro não foi atualizado');
+assert(html.includes('app.js?v=20261007174500'), 'cache do app financeiro não foi atualizado');
+assert(html.includes('style.css?v=20261007174500'), 'cache do CSS financeiro não foi atualizado');
 assert(app.includes('paymentApprovedBalanceValue(r,price)'), 'a receber não está restrito ao valor aprovado');
 assert(app.includes('const saldoDevido=Math.max(0,valor-recebido)'), 'saldo devido não é abatido pelos recebimentos');
 assert(app.includes('paymentBalanceValue(r,price)'), 'saldo devido não usa o valor real das entrevistas e recibos');
@@ -262,6 +262,27 @@ for (const label of [
   'PAGAMENTOS A APROVAR',
   'FALTA PAGAR'
 ]) assert(app.includes(label), `balão financeiro ausente: ${label}`);
+for (const label of [
+  'Coletas válidas',
+  'Coletas rejeitadas',
+  'Valor total coleta válida',
+  'Valor quitado',
+  'Valor coleta a aprovar',
+  'Saldo de coleta a receber',
+  'Chave PIX',
+  'Status',
+  'Extrato de pagamento',
+  'Conversar',
+  'Aprovar novas coletas',
+  'Ver/alterar pagamentos',
+  'Alterar valor do pagamento',
+  'Excluir comprovante de pagamento',
+  'Registrar pagamento semanal',
+  'Anexar comprovante de pagamento',
+  'Copiar PIX'
+]) assert(app.includes(label), `campo ou ação financeira ausente: ${label}`);
+assert(app.includes('const valorAprovar=pendingValue'), 'valor de coleta a aprovar não está separado do saldo aprovado');
+assert(app.includes('<td colspan="10"'), 'estado vazio não contempla os dez campos do cartão');
 assert(app.includes("stat('PAGAMENTOS PARCIAIS',brl(t.recebido)"), 'pagamentos parciais não usam o total recebido');
 assert(app.includes("stat('PAGAMENTOS A APROVAR',brl(t.pendingValor)"), 'pagamentos a aprovar não usam o pendente');
 assert(app.includes("stat('FALTA PAGAR',brl(t.saldoDevido)"), 'falta pagar não usa o saldo devido');

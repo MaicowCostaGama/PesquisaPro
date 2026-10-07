@@ -51,7 +51,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261007171000';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261007174500';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -7814,14 +7814,14 @@ function paymentReceiptFileLabel(receipt){
 function paymentReceiptActionMarkup(receipt,context){
   if(receipt?.receiptPath)return `<div class="payment-receipt-actions"><button type="button" class="btn-ghost payment-receipt-view" onclick="paymentReceiptOpen(${jsArg(receipt.id)})">Abrir comprovante</button><button type="button" class="btn-ghost payment-receipt-download" onclick="paymentReceiptDownload(${jsArg(receipt.id)})">Baixar</button>${context==='staff'?`<button type="button" class="btn-ghost payment-receipt-edit" onclick="financeEditReceiptAmount(${jsArg(receipt.id)})">Alterar valor pago</button><button type="button" class="btn-ghost payment-receipt-delete" onclick="financeDeleteReceiptById(${jsArg(receipt.id)})">Excluir comprovante</button>`:''}<small title="${esc(receipt.receiptName||'')}" class="payment-receipt-name">${esc(paymentReceiptFileLabel(receipt))}</small></div>`;
   return context==='staff'
-    ? `<div class="payment-receipt-actions"><button type="button" class="btn-ghost payment-receipt-attach" onclick="finAttachReceiptById(${jsArg(receipt.id)})">＋ Anexar comprovante</button><button type="button" class="btn-ghost payment-receipt-edit" onclick="financeEditReceiptAmount(${jsArg(receipt.id)})">Alterar valor pago</button></div>`
+    ? `<div class="payment-receipt-actions"><button type="button" class="btn-ghost payment-receipt-attach" onclick="finAttachReceiptById(${jsArg(receipt.id)})">＋ Anexar comprovante de pagamento</button><button type="button" class="btn-ghost payment-receipt-edit" onclick="financeEditReceiptAmount(${jsArg(receipt.id)})">Alterar valor do pagamento</button></div>`
     : '<span class="payment-receipt-missing">Comprovante ainda não anexado</span>';
 }
 function financeReceiptRowAction(paymentId){
   const receipts=paymentReceiptsFor(paymentId);if(!receipts.length)return '';
   const pending=receipts.find(receipt=>!receipt.receiptPath),actions=[`<button type="button" class="btn-ghost finance-action-receipt-history" onclick="financeFocusReceiptHistory(${jsArg(paymentId)})">Ver/alterar pagamentos</button>`];
-  if(pending)actions.push(`<button type="button" class="btn-ghost finance-action-receipt-attach" onclick="finAttachReceiptById(${jsArg(pending.id)})">＋ Anexar comprovante</button><button type="button" class="btn-ghost finance-action-receipt-edit" onclick="financeEditReceiptAmount(${jsArg(pending.id)})">Alterar valor</button>`);
-  else if(receipts.length===1)actions.push(`<button type="button" class="btn-ghost finance-action-receipt-edit" onclick="financeEditReceiptAmount(${jsArg(receipts[0].id)})">Alterar valor</button><button type="button" class="btn-ghost finance-action-receipt-delete" onclick="financeDeleteReceiptById(${jsArg(receipts[0].id)})">Excluir comprovante</button>`);
+  if(pending)actions.push(`<button type="button" class="btn-ghost finance-action-receipt-attach" onclick="finAttachReceiptById(${jsArg(pending.id)})">＋ Anexar comprovante de pagamento</button><button type="button" class="btn-ghost finance-action-receipt-edit" onclick="financeEditReceiptAmount(${jsArg(pending.id)})">Alterar valor do pagamento</button>`);
+  else if(receipts.length===1)actions.push(`<button type="button" class="btn-ghost finance-action-receipt-edit" onclick="financeEditReceiptAmount(${jsArg(receipts[0].id)})">Alterar valor do pagamento</button><button type="button" class="btn-ghost finance-action-receipt-delete" onclick="financeDeleteReceiptById(${jsArg(receipts[0].id)})">Excluir comprovante de pagamento</button>`);
   return `<div class="finance-receipt-row-actions">${actions.join('')}</div>`;
 }
 function paymentReceiptFileName(path){
@@ -8289,6 +8289,7 @@ function financeDetail(idx){
     const valor=paymentDueValue(r,price);
     const aprovado=paymentApprovedDueValue(r,price);
     const pendingValid=paymentPendingValidValue(r),pendingValue=paymentPendingDueValue(r,price);
+    const valorAprovar=pendingValue;
     const recebido=paymentReceivedValue(r.id);
     const aReceber=paymentApprovedBalanceValue(r,price);
     const saldoDevido=Math.max(0,valor-recebido);
@@ -8298,13 +8299,13 @@ function financeDetail(idx){
       ?'<button type="button" class="btn-ghost finance-action-approve" disabled title="'+(r.virtual?'O pagamento será criado quando houver uma coleta válida':'Não há novas entrevistas aguardando aprovação')+'">'+(r.status==='aprovado'?'✓ Tudo aprovado':'Aprovar pagamento')+'</button>'
       :'<button type="button" class="btn-ghost finance-action-approve" onclick="finApprovePayment('+idx+','+jsArg(r.researcherId)+')">'+(r.status==='aprovado'?'Aprovar novas coletas':'Aprovar pagamento')+'</button>';
     const receiptButton=r.virtual||!r.valid||r.status!=='aprovado'||aReceber<=0?'':'<button class="btn-ghost finance-action-receipt" onclick="finRegisterPayment('+idx+','+jsArg(r.researcherId)+')">＋ Registrar pagamento semanal</button>';
-    const statementButton=r.virtual?'':'<button type="button" class="btn-ghost finance-action-statement" title="Ver coletas, pagamentos e comprovantes" onclick="financeOpenResearcherStatement('+idx+','+jsArg(r.researcherId)+')">▤ Extrato / pagamentos</button>';
+    const statementButton=r.virtual?'':'<button type="button" class="btn-ghost finance-action-statement" title="Ver coletas, pagamentos e comprovantes" onclick="financeOpenResearcherStatement('+idx+','+jsArg(r.researcherId)+')">▤ Extrato de pagamento</button>';
     const receiptRowAction=financeReceiptRowAction(r.id);
     const statusButton=r.virtual?'':'<button class="btn-ghost" onclick="finEditPayment('+idx+','+jsArg(r.researcherId)+')">Alterar status</button>';
     const approvalNote=pendingValid?'<div class="finance-status-sub finance-status-pending">'+pendingValid+' nova'+(pendingValid===1?'':'s')+' · '+brl(pendingValue)+' aguardando aprovação</div>':(r.approvedValidCount?'<div class="finance-status-sub finance-status-approved">'+r.approvedValidCount+' entrevista'+(r.approvedValidCount===1?'':'s')+' aprovada'+(r.approvedValidCount===1?'':'s')+'</div>':'');
-    return `<tr class="${pendingValid?'finance-row-has-pending':''}"><td><b>${esc(r.name)}</b>${r.virtual?'<div class="finance-row-note">Sem pagamento criado ainda</div>':''}</td><td>${r.valid}</td><td>${r.rejected}</td><td><b>Devido: ${brl(valor)}</b><div class="finance-value-breakdown">Aprovado: ${brl(aprovado)}</div>${pendingValue?'<div class="finance-value-pending">Pendente: '+brl(pendingValue)+'</div>':''}</td><td><b>Quitado: ${brl(recebido)}</b><div class="finance-balance-note">Repasses já lançados</div></td><td>${aReceber?'<b class="finance-to-receive">'+brl(aReceber)+'</b>':'<span class="pill pill-gray">R$ 0,00</span>'}<div class="finance-balance-note">Saldo após quitação: ${brl(saldoDevido)}</div></td><td>${pixShown||'<span style="color:var(--ink3)">—</span>'}</td><td>${st.pill}${approvalNote}</td>
+    return `<tr class="${pendingValid?'finance-row-has-pending':''}"><td><b>${esc(r.name)}</b>${r.virtual?'<div class="finance-row-note">Sem pagamento criado ainda</div>':''}</td><td>${r.valid}</td><td>${r.rejected}</td><td><b>Total: ${brl(valor)}</b><div class="finance-value-breakdown">Coletas válidas</div></td><td><b>Quitado: ${brl(recebido)}</b><div class="finance-balance-note">Repasses já lançados</div></td><td>${valorAprovar?'<b class="finance-value-pending">'+brl(valorAprovar)+'</b>':'<span class="pill pill-gray">R$ 0,00</span>'}<div class="finance-balance-note">Novas coletas aguardando aprovação</div></td><td>${aReceber?'<b class="finance-to-receive">'+brl(aReceber)+'</b>':'<span class="pill pill-gray">R$ 0,00</span>'}<div class="finance-balance-note">Saldo aprovado a receber</div></td><td>${pixShown||'<span style="color:var(--ink3)">—</span>'}</td><td>${st.pill}${approvalNote}</td>
       <td class="finance-actions-cell"><div class="finance-row-actions">${statementButton}${whatsappButton}${approveButton}${receiptButton}${receiptRowAction}${statusButton}</div></td></tr>`;
-  }).join(''):'<tr><td colspan="9" class="empty">Nenhum pesquisador atribuído a esta pesquisa ainda — atribua a equipe em Minhas pesquisas.</td></tr>';
+  }).join(''):'<tr><td colspan="10" class="empty">Nenhum pesquisador atribuído a esta pesquisa ainda — atribua a equipe em Minhas pesquisas.</td></tr>';
   return head('Financeiro — '+s.name,'Pagamento por entrevista válida coletada nesta pesquisa',
     '<button class="btn btn-out" onclick="financeBack()">← Financeiro</button>'+ 
     (rows.length?'<button class="btn btn-out" onclick="finApproveAll('+idx+')">✓ Aprovar todos os pagamentos</button><button class="btn btn-out" onclick="announcePaymentSchedule('+idx+')">◷ Anunciar pagamento deste saldo</button><button class="btn btn-out" onclick="financeExportReceivables('+idx+')">⇩ Exportar Excel — saldos a receber</button>':''))+`
@@ -8326,7 +8327,7 @@ function financeDetail(idx){
     <div class="card-d">Válidos e rejeitados vêm das coletas de campo. Rejeitadas são apenas informativas e não entram em pendente, a receber ou recebido. <b>Aprovar pagamento</b> move o valor válido para “A receber”; <b>Registrar pagamento semanal</b> lança um repasse total ou parcial com data. Use <b>Conversar</b> para abrir o WhatsApp do pesquisador e consulte ou copie a chave PIX nesta mesma linha.</div>
     <div class="finance-table-hint" role="note">Cada pesquisador aparece em um cartão completo: valores, saldo, PIX, status e ações ficam no mesmo bloco, sem esconder informações atrás de outra coluna.</div>
     <div class="finance-payment-legend"><span><i class="finance-legend-dot finance-legend-green"></i> Aprovado</span><span><i class="finance-legend-dot finance-legend-amber"></i> Novas coletas</span><span><i class="finance-legend-dot finance-legend-blue"></i> A receber</span><span><i class="finance-legend-dot finance-legend-gray"></i> Já recebido</span></div>
-    <div class="finance-table-scroll"><table class="finance-data-table"><thead><tr><th>Pesquisador</th><th>Válidos</th><th>Rejeitados</th><th>Ganho total do pesquisador</th><th>Recebido</th><th>A receber / saldo</th><th>Chave PIX</th><th>Status</th><th class="finance-actions-header">Ações / contato</th></tr></thead>
+    <div class="finance-table-scroll"><table class="finance-data-table"><thead><tr><th>Pesquisador</th><th>Coletas válidas</th><th>Coletas rejeitadas</th><th>Valor total coleta válida</th><th>Valor quitado</th><th>Valor coleta a aprovar</th><th>Saldo de coleta a receber</th><th>Chave PIX</th><th>Status</th><th class="finance-actions-header">Ações / contato</th></tr></thead>
     <tbody>${body}</tbody></table>
     </div>
   </div>

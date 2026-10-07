@@ -50,7 +50,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261006184500';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261007101500';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -732,8 +732,9 @@ function icon3d(token,color){
 function head(title,desc,actions){
   return `<div class="page-head"><div><h1>${esc(title)}</h1><p>${esc(desc)}</p></div>${actions?`<div class="ph-actions">${actions}</div>`:''}</div>`;
 }
-function stat(label,val,sub,ico,color){
-  return `<div class="stat"><div class="s-top"><span class="s-label">${label}</span>
+function stat(label,val,sub,ico,color,id){
+  const idAttr=id?' id="'+esc(id)+'"':'';
+  return `<div class="stat"${idAttr}><div class="s-top"><span class="s-label">${label}</span>
     <span class="s-ico s-ico-3d" style="--icon-color:${color}">${icon3d(ico,color)}</span></div>
     <div class="s-val">${val}</div><div class="s-sub">${sub}</div></div>`;
 }
@@ -2831,8 +2832,9 @@ function wizReview(){
 
 function surveyRow(s,idx,opts){
   const sample=surveySample(s);
-  const pct=sample?Math.round(s.collected/sample*100):0;
-  const coll=s.status==='rascunho'&&s.collected===0?'—':s.collected.toLocaleString('pt-BR')+' ('+pct+'%)';
+  const collected=surveyCollectedCount(s);
+  const pct=surveyCoveragePct(collected,sample);
+  const coll=s.status==='rascunho'&&collected===0?'—':collected.toLocaleString('pt-BR')+' ('+pct+')';
   const tag=s.isNew?' <span class="pill pill-amber" style="font-size:9px;padding:1px 6px">nova</span>':'';
   const teamN=(s.team||[]).length;
   const isArchived=!!s.archivedAt;
@@ -3925,7 +3927,7 @@ function collectDetail(idx){
     '<button class="btn btn-out" onclick="collectBack()">← Pesquisas</button><button class="btn btn-fill" onclick="alert(\'Recurso ainda não configurado: exportar dados brutos (CSV/SPSS)\')">Exportar dados</button>')+`
   <div class="grid g3" style="margin-bottom:16px">
     ${stat('Pesquisadores',String(team.length),'vinculados','☺','#2563eb')}
-    ${stat('Coletado',collected.toLocaleString('pt-BR'),'de '+sample.toLocaleString('pt-BR'),'✓','#059669')}
+    ${stat('Coletado',collected.toLocaleString('pt-BR'),'de '+sample.toLocaleString('pt-BR'),'✓','#059669','collectCollectedStat')}
     ${stat('Status',s.status==='campo'?'Em campo':'Rascunho','','◷','#d97706')}
   </div>
 
@@ -4237,6 +4239,14 @@ function eventsForSurveyIdx(idx){
   const s=SURVEYS[idx];if(!s)return[];
   return COLLECT_EVENTS.filter(e=>e.surveyId===s.id);
 }
+function refreshCollectCount(idx){
+  const s=SURVEYS[idx];if(!s)return;
+  const collected=surveyCollectedCount(s),sample=surveySample(s);
+  const value=document.querySelector('#collectCollectedStat .s-val');
+  const sub=document.querySelector('#collectCollectedStat .s-sub');
+  if(value)value.textContent=collected.toLocaleString('pt-BR');
+  if(sub)sub.textContent='de '+sample.toLocaleString('pt-BR');
+}
 /* re-busca as coletas desta pesquisa direto do banco e atualiza só os
    painéis (feed/mapa/auditoria) sem recarregar a tela inteira — usado tanto
    pelo "ao vivo" da tela do admin/coord quanto depois de o pesquisador
@@ -4255,6 +4265,7 @@ async function pollCollectEvents(idx){
     COLLECT_EVENTS_LOADED=true;
   }catch(ex){return;}
   if(COLLECT_IDX!==idx)return; // usuário já saiu dessa pesquisa enquanto a busca rodava
+  refreshCollectCount(idx);
   renderLiveFeed(idx);
   refreshCollectionTeamFunnelLive(idx);
   const mapaTab=document.getElementById('collectTabMapa');
@@ -4273,6 +4284,7 @@ function initCollectLive(idx){
     if(!COLLECT_EVENTS_LOADED)await loadCollectEventsIfNeeded();
     await loadUsersIfNeeded();
     if(COLLECT_IDX!==idx)return;
+    refreshCollectCount(idx);
     loadCollectionOrientationCounts(idx);
     renderLiveFeed(idx);
     renderAudit(idx);

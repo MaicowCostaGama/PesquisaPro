@@ -50,7 +50,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261007110000';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261007115000';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -7648,6 +7648,8 @@ let PAYMENTS=[]; // {id, surveyId, researcherId, name, pixKey, valid, rejected, 
 let PAYMENTS_LOADED=false,PAYMENTS_LOADING=false;
 let PAYMENT_RECEIPTS=[]; // {id,paymentId,researcherId,amount,paidAt,note,createdBy,createdAt,receiptPath,receiptName,receiptMimeType,receiptSize}
 let PAYMENT_RECEIPTS_LOADED=false,PAYMENT_RECEIPTS_LOADING=false,PAYMENT_RECEIPTS_SCHEMA_MISSING=false,PAYMENT_RECEIPTS_DELETE_SCHEMA_MISSING=false,PAYMENT_RECEIPTS_EDIT_SCHEMA_MISSING=false,PAYMENT_INCREMENT_SCHEMA_MISSING=false;
+let PAYMENT_NOTICES=[]; // avisos privados de programação de pagamento
+let PAYMENT_NOTICES_LOADED=false,PAYMENT_NOTICES_LOADING=false,PAYMENT_NOTICES_SCHEMA_MISSING=false;
 const FIN_STATUS={
   aprovado:{pill:'<span class="pill pill-green">● Aprovado</span>'},
   pendente:{pill:'<span class="pill pill-amber">● Dados bancários pendentes</span>'},
@@ -7676,6 +7678,17 @@ function paymentReceiptRowToEntry(row){
     receiptPath:row.receipt_path||'',receiptName:row.receipt_name||'',
     receiptMimeType:row.receipt_mime_type||'',receiptSize:Number(row.receipt_size)||0};
 }
+function paymentNoticeRowToEntry(row){
+  return {id:row.id,surveyId:row.survey_id,researcherId:row.researcher_id,paymentId:row.payment_id||'',
+    amountDue:Number(row.amount_due)||0,amountPaid:Number(row.amount_paid)||0,amountRemaining:Number(row.amount_remaining)||0,
+    scheduledFor:row.scheduled_for||'',scheduledUntil:row.scheduled_until||'',message:row.message||'',
+    createdAt:row.created_at||'',readAt:row.read_at||''};
+}
+function paymentNoticeDateLabel(value){
+  const text=String(value||'').slice(0,10),match=text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return match?match[3]+'/'+match[2]+'/'+match[1]:(value||'—');
+}
+function paymentNoticeTimeLabel(value){return String(value||'').slice(0,5)||'—';}
 function paymentReceiptsFor(paymentId){return PAYMENT_RECEIPTS.filter(r=>r.paymentId===paymentId);}
 function paymentReceivedValue(paymentId){return paymentId?paymentReceiptsFor(paymentId).reduce((sum,r)=>sum+r.amount,0):0;}
 function paymentDueValue(row,price){return Math.max(0,(Number(row?.valid)||0)*(Number(price)||0));}
@@ -7685,6 +7698,36 @@ function paymentPendingValidValue(row){return Math.max(0,(Number(row?.valid)||0)
 function paymentApprovedDueValue(row,price){return Math.max(0,paymentApprovedValidValue(row)*(Number(price)||0));}
 function paymentApprovedBalanceValue(row,price){return Math.max(0,paymentApprovedDueValue(row,price)-paymentReceivedValue(row?.id));}
 function paymentPendingDueValue(row,price){return Math.max(0,paymentDueValue(row,price)-paymentApprovedDueValue(row,price));}
+function paymentNoticeMigrationNotice(){
+  return PAYMENT_NOTICES_SCHEMA_MISSING
+    ? '<div class="callout warn payment-ledger-warning"><b>Avisos de pagamento ainda não habilitados.</b> Execute <code>deploy/avisos-programacao-pagamento.sql</code> no Supabase para registrar os avisos privados aos pesquisadores.</div>'
+    : '';
+}
+async function loadPaymentNoticesIfNeeded(){
+  if(PAYMENT_NOTICES_LOADED||PAYMENT_NOTICES_LOADING||!CURRENT_PROFILE?.id)return Promise.resolve();
+  PAYMENT_NOTICES_LOADING=true;
+  try{
+    const {data,error}=await sb.from('payment_notices').select('*').order('created_at',{ascending:false});
+    if(error){PAYMENT_NOTICES_SCHEMA_MISSING=/payment_notices|relation|schema cache|does not exist/i.test(error.message||'');console.error('Erro ao carregar avisos de pagamento:',error);}
+    else PAYMENT_NOTICES=(data||[]).map(paymentNoticeRowToEntry);
+  }catch(ex){PAYMENT_NOTICES_SCHEMA_MISSING=/payment_notices|relation|schema cache|does not exist/i.test(ex.message||'');console.error('Erro de conexão com avisos de pagamento:',ex);}
+  PAYMENT_NOTICES_LOADED=true;PAYMENT_NOTICES_LOADING=false;
+  const key=document.querySelector('.nav-item.on')?.dataset.key;if(key==='finance'||key==='my-earnings')go(key);
+}
+function paymentNoticeGroups(scopeId){
+  const rows=PAYMENT_NOTICES.filter(n=>!scopeId||n.surveyId===scopeId),grouped=new Map();
+  rows.forEach(n=>{const key=[n.surveyId,n.createdAt,n.scheduledFor,n.scheduledUntil].join('|');const group=grouped.get(key)||{...n,count:0,amountDue:0,amountPaid:0,amountRemaining:0};group.count+=1;group.amountDue+=n.amountDue;group.amountPaid+=n.amountPaid;group.amountRemaining+=n.amountRemaining;grouped.set(key,group);});
+  return [...grouped.values()].sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt)));
+}
+function financePaymentScheduleMarkup(scopeId){
+  const groups=paymentNoticeGroups(scopeId).slice(0,6);if(!groups.length)return '';
+  return `<section class="card mb payment-schedule-card"><div class="payment-schedule-heading"><div><div class="card-t">Programações de pagamento enviadas</div><div class="card-d">Avisos privados registrados para os pesquisadores desta pesquisa.</div></div><span class="pill pill-blue">${groups.length} aviso${groups.length===1?'':'s'}</span></div><div class="payment-schedule-list">${groups.map(n=>{const survey=SURVEYS.find(x=>x.id===n.surveyId);return `<article class="payment-schedule-item"><div><b>${esc(survey?.name||'Pesquisa')}</b><span>${paymentNoticeDateLabel(n.scheduledFor)} até ${paymentNoticeTimeLabel(n.scheduledUntil)} · ${n.count} pesquisador${n.count===1?'':'es'}</span></div><p>${esc(n.message)}</p><div class="payment-schedule-values"><span>Valor devido: <b>${brl(n.amountDue)}</b></span><span>Já quitado: <b>${brl(n.amountPaid)}</b></span><span>Saldo informado: <b>${brl(n.amountRemaining)}</b></span></div></article>`;}).join('')}</div></section>`;
+}
+function researcherPaymentNoticesMarkup(){
+  const notices=PAYMENT_NOTICES.filter(n=>n.researcherId===CURRENT_PROFILE?.id).slice(0,8);
+  if(!notices.length)return `<div class="card mb payment-schedule-card payment-schedule-empty"><div class="card-t">Avisos de pagamento</div><div class="empty">Quando a PesquisaPro programar um repasse, o aviso aparecerá aqui.</div></div>`;
+  return `<div class="card mb payment-schedule-card"><div class="payment-schedule-heading"><div><div class="card-t">Avisos de pagamento</div><div class="card-d">Acompanhe a data e o horário informados pela PesquisaPro.</div></div><span class="pill pill-blue">${notices.length}</span></div><div class="payment-schedule-list">${notices.map(n=>{const survey=SURVEYS.find(x=>x.id===n.surveyId);return `<article class="payment-schedule-item"><div><b>${esc(survey?.name||'Pesquisa')}</b><span>Pagamento até ${paymentNoticeDateLabel(n.scheduledFor)} às ${paymentNoticeTimeLabel(n.scheduledUntil)}</span></div><p>${esc(n.message)}</p><div class="payment-schedule-values"><span>Valor aprovado: <b>${brl(n.amountDue)}</b></span><span>Já quitado: <b>${brl(n.amountPaid)}</b></span><span>Saldo restante: <b>${brl(n.amountRemaining)}</b></span></div></article>`;}).join('')}</div></div>`;
+}
 function financeStaffCanManageReceipts(){return ['admin','coord','gerente','admpro'].includes(CURRENT_PROFILE?.role||selectedRole);}
 function paymentReceiptFileLabel(receipt){
   const name=String(receipt?.receiptName||'comprovante de pagamento');
@@ -7963,10 +8006,11 @@ async function financeExportReceivables(idx=null){
   }
 }
 PAGES.finance=()=>{
-  if(!SURVEYS_LOADED||!PAYMENTS_LOADED||!PAYMENT_RECEIPTS_LOADED){
+  if(!SURVEYS_LOADED||!PAYMENTS_LOADED||!PAYMENT_RECEIPTS_LOADED||!PAYMENT_NOTICES_LOADED){
     if(!SURVEYS_LOADED)loadSurveysIfNeeded();
     if(!PAYMENTS_LOADED)loadPaymentsIfNeeded();
     if(!PAYMENT_RECEIPTS_LOADED)loadPaymentReceiptsIfNeeded();
+    if(!PAYMENT_NOTICES_LOADED)loadPaymentNoticesIfNeeded();
     return head('Financeiro','Pagamentos separados por pesquisa · calculado por entrevista válida coletada')+'<div class="empty">Carregando dados financeiros…</div>';
   }
   if(FIN_IDX!=null&&SURVEYS[FIN_IDX]?.archivedAt)FIN_IDX=null;
@@ -7990,8 +8034,10 @@ function financeList(){
       <td>${t.aReceber?'<span class="pill pill-blue">'+brl(t.aReceber)+' a receber</span>':t.pendingValor?'<span class="pill pill-amber">'+brl(t.pendingValor)+' pendente</span>':(t.count?'<span class="pill pill-green">Tudo em dia</span>':'<span style="color:var(--ink3)">—</span>')}</td>
       <td><span class="pill pill-blue">Abrir →</span></td></tr>`).join('')||'<tr><td colspan="6" class="empty">Nenhuma pesquisa cadastrada.</td></tr>';
   return head('Financeiro','Pagamentos separados por pesquisa · calculado por entrevista válida coletada',
-    '<button class="btn btn-out" onclick="financeExportReceivables()">⇩ Exportar Excel — saldos a receber</button>')+`
+    '<button class="btn btn-out" onclick="announcePaymentSchedule()">◷ Anunciar programação de pagamento</button><button class="btn btn-out" onclick="financeExportReceivables()">⇩ Exportar Excel — saldos a receber</button>')+`
   ${paymentReceiptMigrationNotice()}
+  ${paymentNoticeMigrationNotice()}
+  ${financePaymentScheduleMarkup(null)}
   <div class="grid finance-overview-summary" style="margin-bottom:16px">
     ${stat('TOTAL A PAGAR EM TODAS AS PESQUISAS',brl(totalValor),totalValid.toLocaleString('pt-BR')+' entrevistas válidas','$','#2563eb')}
     ${stat('QUANTIDADE DE PESQUISADORES',String(totalPesq),'pesquisadores únicos com registros','☺','#059669')}
@@ -8030,13 +8076,15 @@ function financeDetail(idx){
     const receiptRowAction=financeReceiptRowAction(r.id);
     const statusButton=r.virtual?'':'<button class="btn-ghost" onclick="finEditPayment('+idx+','+jsArg(r.researcherId)+')">Alterar status</button>';
     const approvalNote=pendingValid?'<div class="finance-status-sub finance-status-pending">'+pendingValid+' nova'+(pendingValid===1?'':'s')+' · '+brl(pendingValue)+' aguardando aprovação</div>':(r.approvedValidCount?'<div class="finance-status-sub finance-status-approved">'+r.approvedValidCount+' entrevista'+(r.approvedValidCount===1?'':'s')+' aprovada'+(r.approvedValidCount===1?'':'s')+'</div>':'');
-    return `<tr class="${pendingValid?'finance-row-has-pending':''}"><td><b>${esc(r.name)}</b>${r.virtual?'<div class="finance-row-note">Sem pagamento criado ainda</div>':''}</td><td>${r.valid}</td><td>${r.rejected}</td><td><b>${brl(valor)}</b><div class="finance-value-breakdown">Aprovado: ${brl(aprovado)}</div>${pendingValue?'<div class="finance-value-pending">Pendente: '+brl(pendingValue)+'</div>':''}</td><td>${brl(recebido)}</td><td>${aReceber?'<b class="finance-to-receive">'+brl(aReceber)+'</b>':'<span class="pill pill-gray">R$ 0,00</span>'}<div class="finance-balance-note">Saldo devido: ${brl(saldoDevido)}</div></td><td>${pixShown||'<span style="color:var(--ink3)">—</span>'}</td><td>${st.pill}${approvalNote}</td>
+    return `<tr class="${pendingValid?'finance-row-has-pending':''}"><td><b>${esc(r.name)}</b>${r.virtual?'<div class="finance-row-note">Sem pagamento criado ainda</div>':''}</td><td>${r.valid}</td><td>${r.rejected}</td><td><b>Devido: ${brl(valor)}</b><div class="finance-value-breakdown">Aprovado: ${brl(aprovado)}</div>${pendingValue?'<div class="finance-value-pending">Pendente: '+brl(pendingValue)+'</div>':''}</td><td><b>Quitado: ${brl(recebido)}</b><div class="finance-balance-note">Repasses já lançados</div></td><td>${aReceber?'<b class="finance-to-receive">'+brl(aReceber)+'</b>':'<span class="pill pill-gray">R$ 0,00</span>'}<div class="finance-balance-note">Saldo após quitação: ${brl(saldoDevido)}</div></td><td>${pixShown||'<span style="color:var(--ink3)">—</span>'}</td><td>${st.pill}${approvalNote}</td>
       <td class="finance-actions-cell"><div class="finance-row-actions">${whatsappButton}${approveButton}${receiptButton}${receiptRowAction}${statusButton}</div></td></tr>`;
   }).join(''):'<tr><td colspan="9" class="empty">Nenhum pesquisador atribuído a esta pesquisa ainda — atribua a equipe em Minhas pesquisas.</td></tr>';
   return head('Financeiro — '+s.name,'Pagamento por entrevista válida coletada nesta pesquisa',
     '<button class="btn btn-out" onclick="financeBack()">← Financeiro</button>'+ 
-    (rows.length?'<button class="btn btn-out" onclick="finApproveAll('+idx+')">✓ Aprovar todos os pagamentos</button><button class="btn btn-out" onclick="financeExportReceivables('+idx+')">⇩ Exportar Excel — saldos a receber</button>':''))+`
+    (rows.length?'<button class="btn btn-out" onclick="finApproveAll('+idx+')">✓ Aprovar todos os pagamentos</button><button class="btn btn-out" onclick="announcePaymentSchedule('+idx+')">◷ Anunciar pagamento deste saldo</button><button class="btn btn-out" onclick="financeExportReceivables('+idx+')">⇩ Exportar Excel — saldos a receber</button>':''))+`
   ${paymentReceiptMigrationNotice()}
+  ${paymentNoticeMigrationNotice()}
+  ${financePaymentScheduleMarkup(s.id)}
   <div class="grid g4 finance-summary-grid" style="margin-bottom:16px">
     ${stat('TOTAL A PAGAR NESTA PESQUISA',brl(t.valor),t.valid.toLocaleString('pt-BR')+' entrevistas válidas','$','#2563eb')}
     ${stat('QUANTIDADE DE PESQUISADORES',String(t.count),'com coleta nesta pesquisa','☺','#059669')}
@@ -8045,7 +8093,7 @@ function financeDetail(idx){
     ${stat('PAGAMENTOS A APROVAR',brl(t.pendingValor),'novas coletas para aprovar','◷','#d97706')}
     ${stat('FALTA PAGAR',brl(t.saldoDevido),'total devido menos repasses','◉','#0f766e')}
   </div>
-  <div class="finance-approval-banner"><div class="finance-approval-banner-icon">✓</div><div><b>Aprovação por etapas</b><span>Os recebimentos parciais continuam registrados. Quando surgirem novas entrevistas válidas, o botão <b>Aprovar novas coletas</b> aparece somente para o valor ainda não aprovado.</span></div><div class="finance-approval-banner-total"><small>Ganho total do pesquisador</small><strong>${brl(t.valor)}</strong></div></div>
+  <div class="finance-approval-banner"><div class="finance-approval-banner-icon">✓</div><div><b>Aprovação por etapas</b><span>Os recebimentos parciais continuam registrados. Quando surgirem novas entrevistas válidas, o botão <b>Aprovar novas coletas</b> aparece somente para o valor ainda não aprovado.</span></div><div class="finance-approval-banner-total"><small>Ganho total do pesquisador</small><strong>${brl(t.valor)}</strong></div><div class="finance-approval-summary"><span>Valor aprovado <b>${brl(t.aprovado)}</b></span><span>Já quitado <b>${brl(t.recebido)}</b></span><span>Saldo após quitação <b>${brl(t.aReceber)}</b></span></div></div>
   <div class="card mb finance-payments-card">
     <div class="card-t">Pagamentos por pesquisador</div>
     <div class="finance-weekly-callout"><b>Pagamentos semanais durante a coleta:</b> aprove o valor válido disponível e use <b>Registrar pagamento semanal</b> para informar quanto foi pago, a data e a referência da semana. Cada lançamento reduz imediatamente o <b>Saldo devido</b>; novas entrevistas válidas aumentam o valor devido sem apagar o histórico. Se houver erro no valor, use <b>Alterar valor pago</b> no lançamento correspondente; o mesmo comprovante e histórico serão preservados. Depois de pagar, use <b>Anexar comprovante</b> na própria linha ou no histórico abaixo.</div>
@@ -8116,6 +8164,17 @@ async function finApproveAll(idx){
   }catch(ex){alert('Não foi possível aprovar em lote. Execute a migration pagamentos-recebimentos-extrato.sql no Supabase e tente novamente.');console.error(ex);return;}
   financeReturnToDetail(idx);
 }
+function localIsoDate(){const now=new Date();return [now.getFullYear(),String(now.getMonth()+1).padStart(2,'0'),String(now.getDate()).padStart(2,'0')].join('-');}
+function validPaymentTime(value){const text=String(value||'').trim(),match=text.match(/^(\d{2}):(\d{2})$/);if(!match)return false;const h=Number(match[1]),m=Number(match[2]);return h>=0&&h<=23&&m>=0&&m<=59;}
+async function announcePaymentSchedule(idx=null){
+  if(!financeStaffCanManageReceipts())return;const survey=idx==null?null:SURVEYS[idx];if(idx!=null&&!survey)return;
+  const date=prompt('Dia previsto para o pagamento (AAAA-MM-DD):',localIsoDate());if(date==null)return;if(!validPaymentDate(date)){alert('Informe uma data válida no formato AAAA-MM-DD.');return;}
+  const until=prompt('Até que horas o pagamento será realizado? (HH:MM):','18:00');if(until==null)return;if(!validPaymentTime(until)){alert('Informe um horário válido no formato HH:MM.');return;}
+  const preview='Pagamento programado para '+paymentNoticeDateLabel(date)+' até '+until+'. Serão pagos os valores aprovados e contabilizados até este momento; outros saldos e novas coletas serão pagos posteriormente.';
+  if(!confirm('Enviar este aviso aos pesquisadores'+(survey?' da pesquisa '+survey.name:'')+'?\n\n'+preview))return;
+  try{const {data,error}=await sb.rpc('announce_payment_schedule',{p_survey_id:survey?.id||null,p_scheduled_for:date,p_scheduled_until:until,p_message:null});if(error)throw new Error(error.message);const count=Number(data)||0;PAYMENT_NOTICES_LOADED=false;await loadPaymentNoticesIfNeeded();alert(count?('Aviso enviado para '+count+' pesquisador'+(count===1?'':'es')+'.'):'Nenhum pesquisador possui saldo aprovado a receber neste escopo.');if(idx!=null)financeReturnToDetail(idx);else go('finance');}
+  catch(ex){PAYMENT_NOTICES_SCHEMA_MISSING=/announce_payment_schedule|payment_notices|schema cache|does not exist|function .* does not exist/i.test(ex.message||'');alert('Não foi possível enviar o aviso. Execute a migration deploy/avisos-programacao-pagamento.sql no Supabase e tente novamente.');console.error(ex);}
+}
 function parsePaymentAmount(value){
   const raw=String(value??'').trim().replace(/[^\d,.-]/g,'');if(!raw)return null;
   const normalized=raw.includes(',')?raw.replace(/\./g,'').replace(',','.'):raw;
@@ -8164,11 +8223,12 @@ async function finEditPayment(idx,researcherId){
 
 /* ============ MY EARNINGS (pesquisador) ============ */
 PAGES['my-earnings']=()=>{
-  if(!SURVEYS_LOADED||!PAYMENTS_LOADED||!COLLECT_EVENTS_LOADED||!PAYMENT_RECEIPTS_LOADED){
+  if(!SURVEYS_LOADED||!PAYMENTS_LOADED||!COLLECT_EVENTS_LOADED||!PAYMENT_RECEIPTS_LOADED||!PAYMENT_NOTICES_LOADED){
     if(!SURVEYS_LOADED)loadSurveysIfNeeded();
     if(!PAYMENTS_LOADED)loadPaymentsIfNeeded();
     if(!COLLECT_EVENTS_LOADED)loadCollectEventsIfNeeded();
     if(!PAYMENT_RECEIPTS_LOADED)loadPaymentReceiptsIfNeeded();
+    if(!PAYMENT_NOTICES_LOADED)loadPaymentNoticesIfNeeded();
     return head('Meus ganhos','Acompanhe seus pagamentos por formulário coletado')+'<div class="empty">Carregando seus dados financeiros…</div>';
   }
   const myId=CURRENT_PROFILE&&CURRENT_PROFILE.id;
@@ -8183,16 +8243,18 @@ PAGES['my-earnings']=()=>{
     const s=SURVEYS.find(x=>x.id===p.surveyId);
     const archived=!!s?.archivedAt||!s;
     const price=s?+s.price:0;
-    const valor=archived?0:paymentDueValue(p,price),recebido=paymentReceivedValue(p.id),aReceber=archived?0:(p.status==='aprovado'?Math.max(0,valor-recebido):0),saldoDevido=archived?0:Math.max(0,valor-recebido);
-    return {payment:p,survey:s?(archived?s.name+' (arquivada)':s.name):'(pesquisa removida)',valid:p.valid,rejected:p.rejected,valor,recebido,aReceber,saldoDevido,rejectedValor:archived?0:p.rejected*price,status:archived?'arquivado':p.status};
+    const valor=archived?0:paymentDueValue(p,price),recebido=paymentReceivedValue(p.id),aprovado=archived?0:paymentApprovedDueValue(p,price),pendente=Math.max(0,valor-aprovado),aReceber=archived?0:Math.max(0,aprovado-recebido),saldoDevido=archived?0:Math.max(0,valor-recebido);
+    return {payment:p,survey:s?(archived?s.name+' (arquivada)':s.name):'(pesquisa removida)',valid:p.valid,rejected:p.rejected,valor,aprovado,pendente,recebido,aReceber,saldoDevido,rejectedValor:archived?0:p.rejected*price,status:archived?'arquivado':p.status};
   });
   const aReceber=rowsData.reduce((a,r)=>a+r.aReceber,0),recebido=rowsData.reduce((a,r)=>a+r.recebido,0);
   const pendente=rowsData.filter(r=>r.status==='pendente').reduce((a,r)=>a+r.valor,0),auditoria=rowsData.filter(r=>r.status==='auditoria').reduce((a,r)=>a+r.valor,0);
   const rejeitadas=rowsData.reduce((a,r)=>a+r.rejected,0),rejeitadasValor=rowsData.reduce((a,r)=>a+r.rejectedValor,0);
-  const histRows=rowsData.length?rowsData.map(r=>`<tr><td><b>${esc(r.survey)}</b></td><td>${r.valid}</td><td>${r.rejected}${r.rejectedValor?'<div class="earnings-rejected-value">'+brl(r.rejectedValor)+' não contabilizado</div>':''}</td><td>${brl(r.valor)}</td><td>${brl(r.recebido)}</td><td>${r.aReceber?'<b class="finance-to-receive">'+brl(r.aReceber)+'</b>':'<span class="pill pill-gray">R$ 0,00</span>'}</td><td><b class="finance-balance-note-value">${brl(r.saldoDevido)}</b></td><td>${(FIN_STATUS[r.status]||FIN_STATUS.pendente).pill}</td></tr>`).join('')
+  const histRows=rowsData.length?rowsData.map(r=>`<tr><td><b>${esc(r.survey)}</b></td><td>${r.valid}</td><td>${r.rejected}${r.rejectedValor?'<div class="earnings-rejected-value">'+brl(r.rejectedValor)+' não contabilizado</div>':''}</td><td><b>${brl(r.aprovado)}</b>${r.pendente?'<div class="finance-value-pending">Pendente: '+brl(r.pendente)+'</div>':''}</td><td><b>${brl(r.recebido)}</b></td><td>${r.aReceber?'<b class="finance-to-receive">'+brl(r.aReceber)+'</b>':'<span class="pill pill-gray">R$ 0,00</span>'}</td><td><b class="finance-balance-note-value">${brl(r.saldoDevido)}</b></td><td>${(FIN_STATUS[r.status]||FIN_STATUS.pendente).pill}</td></tr>`).join('')
     :'<tr><td colspan="8" class="empty">Nenhuma coleta ainda — assim que você enviar sua primeira entrevista em "Coletar (app)", aparece aqui.</td></tr>';
   return head('Meus ganhos','Acompanhe seus pagamentos por formulário coletado')+`
   ${paymentReceiptMigrationNotice()}
+  ${paymentNoticeMigrationNotice()}
+  ${researcherPaymentNoticesMarkup()}
   <div class="grid g4" style="margin-bottom:16px">
     ${stat('Recebido',brl(recebido),'repasses registrados','✓','#059669')}
     ${stat('A receber',brl(aReceber),'pagamentos aprovados','$','#2563eb')}

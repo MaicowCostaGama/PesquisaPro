@@ -16,9 +16,9 @@ assert(app.includes("'collectValidStat'"),'cartão válido sem alvo de atualiza�
 assert(app.includes("'collectRejectedStat'"),'cartão rejeitado sem alvo de atualização');
 assert(app.includes("document.querySelector('#collectValidStat .s-val')"),'valor de válidas não é atualizado ao vivo');
 assert(app.includes("document.querySelector('#collectRejectedStat .s-val')"),'valor de rejeitadas não é atualizado ao vivo');
-assert(app.includes('refreshCollectCount(idx);\n  renderLiveFeed(idx);'),'atualização ao vivo não chama a atualização dos cartões');
+assert(app.includes('refreshCollectCount(idx);\n  refreshCollectionTeamRows(idx);\n  renderLiveFeed(idx);'),'atualização ao vivo não chama a atualização dos cartões e da equipe');
 assert(css.includes('.g5{grid-template-columns:repeat(5,1fr)}'),'grade g5 ausente');
 assert(css.includes('.g4,.g5{grid-template-columns:repeat(2,1fr)}'),'grade g5 não está responsiva');
-assert(html.includes('app.js?v=20261007190935'),'cache do app não atualizado');
-assert(html.includes('style.css?v=20261007190935'),'cache do CSS não atualizado');
+assert(html.includes('app.js?v=20261007194335'),'cache do app não atualizado');
+assert(html.includes('style.css?v=20261007194335'),'cache do CSS não atualizado');
 console.log('Collection status cards smoke test: PASS — válidas e rejeitadas são exibidas e atualizadas ao vivo.');

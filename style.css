@@ -1851,3 +1851,10 @@ body.researcher-update-lock{overflow:hidden}
 @media(max-width:1000px){.collection-funnel-person-actions{max-width:none}}
 @media(max-width:720px){.collection-funnel-person{gap:10px}.collection-funnel-person-actions{width:100%;max-width:none}}
 @media(max-width:420px){.collection-funnel-person{padding:12px}.collection-funnel-person-actions{display:grid;grid-template-columns:minmax(0,1fr)}.collection-funnel-person-actions .btn,.collection-funnel-person-actions .btn-ghost,.collection-funnel-person-actions .conversation-btn{width:100%}}
+
+/* v132 — caixa de entrada e ações de autocadastro sem sobreposição */
+.researcher-survey-messages-heading{display:flex;align-items:center;flex-wrap:wrap;gap:10px}
+.researcher-survey-messages-heading>.btn{margin-left:auto;white-space:nowrap}
+.researcher-survey-messages-heading>.pill{white-space:nowrap}
+#signup-real-link{min-width:0;overflow:hidden;text-overflow:ellipsis}
+@media(max-width:560px){.researcher-survey-messages-heading>.btn{margin-left:0}.researcher-survey-messages-heading>.pill{margin-left:auto}}

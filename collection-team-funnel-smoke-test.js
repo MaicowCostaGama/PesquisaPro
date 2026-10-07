@@ -12,7 +12,7 @@ for(const token of [
   'COLLECT_FUNNEL_SEARCH={available:\'\',invited:\'\',accepted:\'\',team:\'\'}',
   'const COLLECTION_FUNNEL_STAGES=',
   'function collectionFunnelEntries(idx)',
-  "stage=invite?.status==='aceito'&&orientationCount===0?'accepted'",
+  "stage=invite?.status==='aceito'&&inappCount===0?'accepted'",
   "isTeam?'team':invite?'invited':eligible?'available':null",
   'function collectionFunnelStageActions(entry,s,stage)',
   'function collectionFunnelCard(entry,s,stage)',
@@ -31,7 +31,9 @@ for(const token of [
   'Conversar no WhatsApp',
   'Convidar pelo aplicativo',
   'Reenviar pelo aplicativo',
-  'Enviar orientações iniciais',
+  'Orientações pelo aplicativo',
+  'openSurveyInitialOrientationModal',
+  'WhatsApp aberto:',
   'collectionFunnelWhatsAppButton',
   'collectionTeamFunnel',
   'loadCollectionTeamFunnelIfNeeded(idx)',
@@ -52,7 +54,7 @@ for(const token of [
 assert(css.includes('.collection-funnel-person{display:grid;grid-template-columns:minmax(0,1fr)'), 'cartão do funil não reserva linha para o nome');
 assert(css.includes('.collection-funnel-person-actions{display:flex;align-items:stretch;justify-content:flex-start'), 'ações do funil não fluem abaixo dos dados');
 assert(css.includes('.collection-funnel-person-title strong{display:block;flex:1 1 100%'), 'nome pode voltar a ser comprimido pelos botões');
-assert(html.includes('app.js?v=20261007190935'),'cache do app não atualizado');
-assert(html.includes('style.css?v=20261007190935'),'cache do CSS não atualizado');
+assert(html.includes('app.js?v=20261007194335'),'cache do app não atualizado');
+assert(html.includes('style.css?v=20261007194335'),'cache do CSS não atualizado');
 assert(!/create table|alter table|drop table|delete from/i.test(app),'funil não deve alterar o banco pelo frontend');
 console.log('collection-team-funnel-smoke-test: OK');

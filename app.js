@@ -51,7 +51,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261007190935';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261007194335';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -67,6 +67,7 @@ let PASSWORD_RECOVERY_MODE=false;
 let PUSH_STATUS='unknown',PUSH_STATUS_LOADING=false,PUSH_SCHEMA_MISSING=false,PUSH_SW_REGISTRATION=null;
 let MY_COMMUNICATIONS=[],MY_COMMUNICATIONS_LOADED=false,MY_COMMUNICATIONS_LOADING=false;
 let MY_SURVEY_RESEARCHER_MESSAGES=[],MY_SURVEY_RESEARCHER_MESSAGES_LOADED=false,MY_SURVEY_RESEARCHER_MESSAGES_LOADING=false,MY_SURVEY_RESEARCHER_MESSAGES_SCHEMA_MISSING=false;
+let MY_SURVEY_RESEARCHER_MESSAGES_LAST_LOADED=0,MY_SURVEY_RESEARCHER_MESSAGES_LOAD_ERROR=false;
 let CLIENT_APPROVAL_REQUEST_ID=null,CLIENT_APPROVAL_REQUEST=null,CLIENT_APPROVAL_REQUEST_LOADED=false,CLIENT_APPROVAL_LOADING=false,CLIENT_APPROVAL_RESPONDING=false,CLIENT_APPROVAL_SCHEMA_MISSING=false;
 let RESEARCHER_LINK_TOKEN=null,RESEARCHER_LINK_CONTEXT=null,RESEARCHER_LINK_LOADING=false,RESEARCHER_LINK_ACCEPTING=false;
 let ADMIN_APPROVAL_STATUS_BY_CLIENT={},ADMIN_APPROVAL_STATUS_LOADING={},ADMIN_APPROVAL_STATUS_LOADED={};
@@ -195,26 +196,38 @@ function loadMySurveyCommunicationsIfNeeded(){
   })();
 }
 function loadMySurveyResearcherMessagesIfNeeded(){
-  if(MY_SURVEY_RESEARCHER_MESSAGES_LOADED||MY_SURVEY_RESEARCHER_MESSAGES_LOADING||!CURRENT_PROFILE?.id||CURRENT_PROFILE.role!=='pesq')return Promise.resolve();
+  if(MY_SURVEY_RESEARCHER_MESSAGES_LOADING||!CURRENT_PROFILE?.id||CURRENT_PROFILE.role!=='pesq'||MY_SURVEY_RESEARCHER_MESSAGES_SCHEMA_MISSING)return Promise.resolve();
+  if(MY_SURVEY_RESEARCHER_MESSAGES_LOADED&&Date.now()-MY_SURVEY_RESEARCHER_MESSAGES_LAST_LOADED<60000)return Promise.resolve();
   MY_SURVEY_RESEARCHER_MESSAGES_LOADING=true;
   return (async()=>{
     try{
+      MY_SURVEY_RESEARCHER_MESSAGES_LOAD_ERROR=false;
       const {data,error}=await sb.from('survey_researcher_message_recipients').select('message_id,read_at,created_at,message:survey_researcher_messages(id,survey_id,sender_name,body,created_at)').eq('researcher_id',CURRENT_PROFILE.id).order('created_at',{ascending:false}).limit(100);
       if(error){if(/survey_researcher_message|relation .* does not exist|schema cache/i.test(error.message||''))MY_SURVEY_RESEARCHER_MESSAGES_SCHEMA_MISSING=true;throw error;}
       MY_SURVEY_RESEARCHER_MESSAGES=(data||[]).filter(row=>row.message).sort((a,b)=>new Date(b.message.created_at||b.created_at)-new Date(a.message.created_at||a.created_at));
       MY_SURVEY_RESEARCHER_MESSAGES_LOADED=true;
-    }catch(ex){console.error('Não foi possível carregar os avisos das pesquisas:',ex);if(MY_SURVEY_RESEARCHER_MESSAGES_SCHEMA_MISSING)MY_SURVEY_RESEARCHER_MESSAGES_LOADED=true;}
+      MY_SURVEY_RESEARCHER_MESSAGES_LAST_LOADED=Date.now();
+    }catch(ex){console.error('Não foi possível carregar os avisos das pesquisas:',ex);MY_SURVEY_RESEARCHER_MESSAGES_LOAD_ERROR=!MY_SURVEY_RESEARCHER_MESSAGES_SCHEMA_MISSING;MY_SURVEY_RESEARCHER_MESSAGES_LOADED=true;MY_SURVEY_RESEARCHER_MESSAGES_LAST_LOADED=Date.now();}
     finally{MY_SURVEY_RESEARCHER_MESSAGES_LOADING=false;if(document.querySelector('.nav-item.on')?.dataset.key==='dashboard-pesq')go('dashboard-pesq');}
   })();
 }
+function refreshMySurveyResearcherMessages(){
+  if(MY_SURVEY_RESEARCHER_MESSAGES_LOADING)return;
+  MY_SURVEY_RESEARCHER_MESSAGES_LAST_LOADED=0;
+  loadMySurveyResearcherMessagesIfNeeded();
+}
+document.addEventListener('visibilitychange',()=>{
+  if(!document.hidden&&CURRENT_PROFILE?.role==='pesq'&&document.querySelector('.nav-item.on')?.dataset.key==='dashboard-pesq')loadMySurveyResearcherMessagesIfNeeded();
+});
 function mySurveyResearcherMessagesMarkup(){
   if(MY_SURVEY_RESEARCHER_MESSAGES_SCHEMA_MISSING)return '<section class="card mb researcher-survey-messages-card"><div class="card-t">Avisos das pesquisas</div><div class="callout warn">Os avisos internos ainda não estão ativados. A gestão precisa executar a migration <code>deploy/mensagens-pesquisa-pesquisadores.sql</code> no Supabase.</div></section>';
+  if(MY_SURVEY_RESEARCHER_MESSAGES_LOAD_ERROR)return '<section class="card mb researcher-survey-messages-card"><div class="card-t">Avisos das pesquisas</div><div class="callout warn">Não foi possível consultar os avisos agora. Os dados exibidos podem estar desatualizados. <button type="button" class="btn btn-out" onclick="refreshMySurveyResearcherMessages()">Tentar novamente</button></div></section>';
   if(!MY_SURVEY_RESEARCHER_MESSAGES_LOADED)return '<section class="card mb researcher-survey-messages-card"><div class="card-t">Avisos das pesquisas</div><div class="empty" style="padding:14px 0">Carregando avisos da gestão…</div></section>';
   const rows=MY_SURVEY_RESEARCHER_MESSAGES.map(row=>{
     const message=row.message||{},survey=SURVEYS.find(item=>item.id===message.survey_id),unread=!row.read_at;
     return `<article class="researcher-survey-message ${unread?'is-unread':''}"><div class="researcher-survey-message-head"><div><span class="eyebrow">${unread?'NOVO AVISO':'AVISO DA PESQUISA'}</span><strong>${esc(survey?.name||'Pesquisa')}</strong></div><time>${esc(new Date(message.created_at||row.created_at).toLocaleString('pt-BR'))}</time></div><p>${esc(message.body||'').replace(/\n/g,'<br>')}</p><div class="researcher-survey-message-foot"><span>Enviado por ${esc(message.sender_name||'Equipe PesquisaPro')}</span>${unread?`<button type="button" class="btn-ghost" onclick="markMySurveyResearcherMessageRead(${jsArg(message.id)})">Marcar como lido</button>`:'<span class="pill pill-gray">Lido</span>'}</div></article>`;
   }).join('');
-  return `<section class="card mb researcher-survey-messages-card"><div class="researcher-survey-messages-heading"><div><div class="card-t">Avisos das pesquisas</div><div class="card-d">Mensagens internas enviadas pela gestão para as pesquisas das quais você faz parte.</div></div><span class="pill ${MY_SURVEY_RESEARCHER_MESSAGES.some(row=>!row.read_at)?'pill-amber':'pill-green'}">${MY_SURVEY_RESEARCHER_MESSAGES.filter(row=>!row.read_at).length} não lido${MY_SURVEY_RESEARCHER_MESSAGES.filter(row=>!row.read_at).length===1?'':'s'}</span></div>${rows||'<div class="researcher-survey-messages-empty"><span>✉</span><div><b>Nenhum aviso novo</b><small>Quando a gestão enviar uma mensagem para sua equipe, ela aparecerá aqui.</small></div></div>'}</section>`;
+  return `<section class="card mb researcher-survey-messages-card"><div class="researcher-survey-messages-heading"><div><div class="card-t">Avisos das pesquisas</div><div class="card-d">Mensagens internas enviadas pela gestão para as pesquisas das quais você faz parte.</div></div><button type="button" class="btn btn-out" onclick="refreshMySurveyResearcherMessages()" ${MY_SURVEY_RESEARCHER_MESSAGES_LOADING?'disabled':''}>Atualizar avisos</button><span class="pill ${MY_SURVEY_RESEARCHER_MESSAGES.some(row=>!row.read_at)?'pill-amber':'pill-green'}">${MY_SURVEY_RESEARCHER_MESSAGES.filter(row=>!row.read_at).length} não lido${MY_SURVEY_RESEARCHER_MESSAGES.filter(row=>!row.read_at).length===1?'':'s'}</span></div>${rows||'<div class="researcher-survey-messages-empty"><span>✉</span><div><b>Nenhum aviso novo</b><small>Quando a gestão enviar uma mensagem para sua equipe, ela aparecerá aqui.</small></div></div>'}</section>`;
 }
 async function markMySurveyResearcherMessageRead(messageId){
   if(!messageId)return;
@@ -360,7 +373,7 @@ async function requestOwnPasswordReset(){
 async function afterLogin(user){
   stopResearcherVersionMonitor();
   chatStopRealtime();CHAT_CHANNELS=[];CHAT_CHANNELS_LOADED=false;CHAT_CHANNELS_LOADING=false;CHAT_SCHEMA_MISSING=false;CHAT_ACTIVE_CHANNEL_ID=null;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=false;CHAT_MESSAGES_LOADING=false;CHAT_SUPPORT_CHANNEL_ID=null;CHAT_SUPPORT_READY=false;CHAT_SUPPORT_LOADING=false;
-  PUSH_STATUS='unknown';PUSH_STATUS_LOADING=false;PUSH_SCHEMA_MISSING=false;PUSH_SW_REGISTRATION=null;MY_COMMUNICATIONS=[];MY_COMMUNICATIONS_LOADED=false;MY_COMMUNICATIONS_LOADING=false;MY_SURVEY_RESEARCHER_MESSAGES=[];MY_SURVEY_RESEARCHER_MESSAGES_LOADED=false;MY_SURVEY_RESEARCHER_MESSAGES_LOADING=false;MY_SURVEY_RESEARCHER_MESSAGES_SCHEMA_MISSING=false;
+  PUSH_STATUS='unknown';PUSH_STATUS_LOADING=false;PUSH_SCHEMA_MISSING=false;PUSH_SW_REGISTRATION=null;MY_COMMUNICATIONS=[];MY_COMMUNICATIONS_LOADED=false;MY_COMMUNICATIONS_LOADING=false;MY_SURVEY_RESEARCHER_MESSAGES=[];MY_SURVEY_RESEARCHER_MESSAGES_LOADED=false;MY_SURVEY_RESEARCHER_MESSAGES_LOADING=false;MY_SURVEY_RESEARCHER_MESSAGES_SCHEMA_MISSING=false;MY_SURVEY_RESEARCHER_MESSAGES_LAST_LOADED=0;MY_SURVEY_RESEARCHER_MESSAGES_LOAD_ERROR=false;
   ACTIVE_CAMPAIGN_ID=null;CLIENT_SURVEY_VIEW_ID=null;
   PAYMENTS=[];PAYMENTS_LOADED=false;PAYMENTS_LOADING=false;PAYMENT_RECEIPTS=[];PAYMENT_RECEIPTS_LOADED=false;PAYMENT_RECEIPTS_LOADING=false;PAYMENT_RECEIPTS_SCHEMA_MISSING=false;PAYMENT_RECEIPTS_DELETE_SCHEMA_MISSING=false;
   const profileFields='id,name,email,phone,role,status,cpf,cpf_cnpj,pf_pj,birth,cidade,rua,numero,cep,contact_person,doc_url,doc_foto_url,doc_comprovante_url,pix_key,pix_doc,pix_bank,pix_ag,pix_acc,results_released,approved_at,commission_rate,commission_rate_with_indicator,recruiter_code,recruiter_capture_value,badge_public_token,badge_photo_path';
@@ -402,8 +415,9 @@ async function logout(){
   await sb.auth.signOut();
   chatStopRealtime();
   CHAT_CHANNELS=[];CHAT_CHANNELS_LOADED=false;CHAT_CHANNELS_LOADING=false;CHAT_SCHEMA_MISSING=false;CHAT_ACTIVE_CHANNEL_ID=null;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=false;CHAT_MESSAGES_LOADING=false;CHAT_SUPPORT_CHANNEL_ID=null;CHAT_SUPPORT_READY=false;CHAT_SUPPORT_LOADING=false;CHAT_PENDING_SURVEY_ID=null;
-  RESEARCHER_PROFILE_CITIES=[];RESEARCHER_PROFILE_CITIES_DRAFT=[];RESEARCHER_PROFILE_CITIES_LOADED=false;MY_INVITES=[];MY_INVITES_LOADED=false;MY_INVITES_LOADING=false;MY_INVITE_LOAD_PROMISE=null;MY_INVITE_RESPONDING=null;PUSH_STATUS='unknown';PUSH_STATUS_LOADING=false;PUSH_SCHEMA_MISSING=false;PUSH_SW_REGISTRATION=null;MY_COMMUNICATIONS=[];MY_COMMUNICATIONS_LOADED=false;MY_COMMUNICATIONS_LOADING=false;MY_SURVEY_RESEARCHER_MESSAGES=[];MY_SURVEY_RESEARCHER_MESSAGES_LOADED=false;MY_SURVEY_RESEARCHER_MESSAGES_LOADING=false;MY_SURVEY_RESEARCHER_MESSAGES_SCHEMA_MISSING=false;CLIENT_APPROVAL_REQUEST_ID=null;CLIENT_APPROVAL_REQUEST=null;CLIENT_APPROVAL_LOADING=false;CLIENT_APPROVAL_RESPONDING=false;CLIENT_APPROVAL_SCHEMA_MISSING=false;RESEARCHER_LINK_TOKEN=null;RESEARCHER_LINK_CONTEXT=null;RESEARCHER_LINK_LOADING=false;RESEARCHER_LINK_ACCEPTING=false;
+  RESEARCHER_PROFILE_CITIES=[];RESEARCHER_PROFILE_CITIES_DRAFT=[];RESEARCHER_PROFILE_CITIES_LOADED=false;MY_INVITES=[];MY_INVITES_LOADED=false;MY_INVITES_LOADING=false;MY_INVITE_LOAD_PROMISE=null;MY_INVITE_RESPONDING=null;PUSH_STATUS='unknown';PUSH_STATUS_LOADING=false;PUSH_SCHEMA_MISSING=false;PUSH_SW_REGISTRATION=null;MY_COMMUNICATIONS=[];MY_COMMUNICATIONS_LOADED=false;MY_COMMUNICATIONS_LOADING=false;MY_SURVEY_RESEARCHER_MESSAGES=[];MY_SURVEY_RESEARCHER_MESSAGES_LOADED=false;MY_SURVEY_RESEARCHER_MESSAGES_LOADING=false;MY_SURVEY_RESEARCHER_MESSAGES_SCHEMA_MISSING=false;MY_SURVEY_RESEARCHER_MESSAGES_LAST_LOADED=0;MY_SURVEY_RESEARCHER_MESSAGES_LOAD_ERROR=false;CLIENT_APPROVAL_REQUEST_ID=null;CLIENT_APPROVAL_REQUEST=null;CLIENT_APPROVAL_LOADING=false;CLIENT_APPROVAL_RESPONDING=false;CLIENT_APPROVAL_SCHEMA_MISSING=false;RESEARCHER_LINK_TOKEN=null;RESEARCHER_LINK_CONTEXT=null;RESEARCHER_LINK_LOADING=false;RESEARCHER_LINK_ACCEPTING=false;
   PAYMENTS=[];PAYMENTS_LOADED=false;PAYMENTS_LOADING=false;PAYMENT_RECEIPTS=[];PAYMENT_RECEIPTS_LOADED=false;PAYMENT_RECEIPTS_LOADING=false;PAYMENT_RECEIPTS_SCHEMA_MISSING=false;PAYMENT_RECEIPTS_DELETE_SCHEMA_MISSING=false;
+  COLLECT_INAPP_ORIENTATION_COUNTS={};COLLECT_INAPP_ORIENTATION_STATUS='idle';COLLECT_INAPP_ORIENTATION_LOADING=false;COLLECT_IDX=null;closeSurveyResearcherMessageModal();
   CURRENT_PROFILE=null;
   ACTIVE_CAMPAIGN_ID=null;CLIENT_SURVEY_VIEW_ID=null;
   updateCampaignSwitcherButton();
@@ -3180,7 +3194,7 @@ function surveyTrainingVideoUrl(){return 'https://files.manuscdn.com/user_upload
 function whatsappInviteCountMarkup(invite){
   if(!invite)return '';
   const count=Math.max(0,Number(invite.whatsapp_sent_count)||0);
-  return `<span class="pill pill-blue whatsapp-invite-count" title="Quantidade de vezes que o convite completo foi aberto pelo botão do WhatsApp">WhatsApp: ${count} envio${count===1?'':'s'}</span>`;
+  return `<span class="pill pill-blue whatsapp-invite-count" title="Aberturas pelo botão; não comprova envio ou entrega no WhatsApp">WhatsApp aberto: ${count} ${count===1?'vez':'vezes'}</span>`;
 }
 async function recordSurveyInviteWhatsappSend(inviteId){
   if(!inviteId)return null;
@@ -3699,42 +3713,29 @@ PAGES.sample=()=>head('Cálculo de amostra','Defina o tamanho da amostra a parti
   </div>`;
 
 /* ============ QUOTAS ============ */
-PAGES.quotas=()=>head('Metas e cotas','Distribua a amostra por variáveis e acompanhe o cumprimento em campo',
-  '<button class="btn btn-out" onclick="alert(\'Recurso ainda não configurado: importar perfil populacional (IBGE/TSE)\')">Importar perfil</button><button class="btn btn-fill" onclick="alert(\'Recurso ainda não configurado: salvar plano de cotas\')">Salvar plano</button>')+`
-  <div class="grid g4" style="margin-bottom:16px">
-    ${stat('Amostra total','4.200','plano amostral aprovado','∑','#2563eb')}
-    ${stat('Cotas definidas','54','sexo × idade × região','◷','#7c3aed')}
-    ${stat('Cotas completas','19','de 54 · 35%','✓','#059669')}
-    ${stat('Coletas válidas','2.847','68% do total','✓','#ea580c')}
-  </div>
-  <div class="card mb">
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
-      <div class="card-t" style="margin:0">Distribuição por variáveis</div>
-      <div class="seg" style="margin-left:auto" id="quotaSeg">
-        <button class="on" onclick="quotaSeg(this,'sexo')">Sexo</button>
-        <button onclick="quotaSeg(this,'idade')">Faixa etária</button>
-        <button onclick="quotaSeg(this,'regiao')">Macrorregião</button>
-      </div>
-    </div>
-    <div id="quotaBody"></div>
-  </div>
-  <div class="callout"><b>Como funciona:</b> o sistema cruza as variáveis (ex.: Mulheres × 25–44 × Zona da Mata) e gera uma meta por célula. O app de coleta mostra ao pesquisador apenas as cotas que ainda faltam, evitando excesso de um perfil.</div>`;
+PAGES.quotas=()=>{
+  if(!SURVEYS_LOADED){loadSurveysIfNeeded();return head('Metas e cotas','Acompanhamento por pesquisa')+'<div class="empty">Carregando pesquisas…</div>';}
+  const active=SURVEYS.map((s,i)=>({s,i})).filter(({s})=>!s.archivedAt&&['campo','rascunho'].includes(s.status));
+  return head('Metas e cotas','Consulte metas reais na aba Coleta ou edite o plano no formulário da pesquisa')+`
+    <div class="callout mb">As metas são definidas e salvas ao criar ou editar o formulário da pesquisa. O acompanhamento utiliza somente as cotas e coletas registradas no banco. Importação automática de IBGE/TSE ainda não está disponível.</div>
+    <div class="card"><div class="card-t">Pesquisas em andamento</div><div class="card-d">Escolha uma pesquisa para abrir a aba Metas de cotas da Coleta.</div>
+      ${active.length?`<div class="table-scroll"><table><thead><tr><th>Pesquisa</th><th>Cotas configuradas</th><th>Amostra</th><th>Ação</th></tr></thead><tbody>${active.map(({s,i})=>`<tr><td><b>${esc(s.name)}</b></td><td>${surveyQuotas(s).length}</td><td>${surveySample(s).toLocaleString('pt-BR')}</td><td><button type="button" class="btn btn-out" onclick="openSurveyQuotaProgress(${i})">Ver metas reais</button></td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">Nenhuma pesquisa em andamento.</div>'}
+    </div>`;
+};
+function openSurveyQuotaProgress(index){
+  const s=SURVEYS[index];if(!s||s.archivedAt)return;
+  collectOpen(index);
+  document.getElementById('collectTabMetasBtn')?.click();
+}
 
 /* ============ COLLECT (gestão de campo) ============ */
 /* ============ COLLECT (lista de pesquisas → pesquisadores) ============ */
 let COLLECT_IDX=null;
 let COLLECT_ORIENTATION_COUNTS={},COLLECT_ORIENTATION_COUNTS_STATUS='idle',COLLECT_ORIENTATION_COUNTS_LOADING=false;
+let COLLECT_INAPP_ORIENTATION_COUNTS={},COLLECT_INAPP_ORIENTATION_STATUS='idle',COLLECT_INAPP_ORIENTATION_LOADING=false;
 let COLLECT_TEAM_INVITES=[],COLLECT_TEAM_INVITES_LOADED=false,COLLECT_TEAM_INVITES_LOADING=false,COLLECT_TEAM_INVITES_LOAD_ERROR=false;
 let COLLECT_FUNNEL_TAB='available';
 let COLLECT_FUNNEL_SEARCH={available:'',invited:'',accepted:'',team:''};
-const RESEARCHER_INFO={
-  'João Pereira':{regional:'Triângulo',link:'…/c/jp-3f9a',meta:180,done:312,sync:'online',phone:'5534999990001'},
-  'Fernanda Couto':{regional:'Triângulo',link:'…/c/fc-9a4b',meta:200,done:188,sync:'online',phone:'5534999990002'},
-  'Maria Souza':{regional:'Jequitinhonha',link:'…/c/ms-7b2c',meta:150,done:71,sync:'offline',phone:'5533999990003'},
-  'Lucas Andrade':{regional:'Vale do Mucuri',link:'…/c/la-1d8e',meta:140,done:62,sync:'online',phone:'5533999990004'},
-  'Renata Lima':{regional:'Noroeste',link:'…/c/rl-2k7p',meta:160,done:88,sync:'online',phone:'5538999990005'},
-  'Paulo Cruz':{regional:'Norte',link:'…/c/pc-5m1q',meta:320,done:210,sync:'offline',phone:'5538999990006'},
-};
 function surveyCoveragePct(collected,sample){
   const total=Number(sample)||0,done=Number(collected)||0;
   if(total<=0||done<=0)return '0%';
@@ -3763,10 +3764,11 @@ function collectionFunnelEntries(idx){
     const isTeam=teamNames.has(user.name);
     const orientationCount=invite?.status==='aceito'&&user.id
       ?Math.max(0,Number(COLLECT_ORIENTATION_COUNTS[user.id]?.send_count)||0):0;
-    const stage=invite?.status==='aceito'&&orientationCount===0?'accepted':
+    const inappCount=Math.max(0,Number(COLLECT_INAPP_ORIENTATION_COUNTS[user.id])||0);
+    const stage=invite?.status==='aceito'&&inappCount===0?'accepted':
       isTeam?'team':invite?'invited':eligible?'available':null;
     if(!stage)return;
-    entries[stage].push({user,invite,area,eligible,orientationCount});
+    entries[stage].push({user,invite,area,eligible,orientationCount,inappCount});
   });
   Object.values(entries).forEach(list=>list.sort((a,b)=>a.user.name.localeCompare(b.user.name,'pt-BR')));
   return entries;
@@ -3784,9 +3786,10 @@ function collectionFunnelWhatsAppButton(entry,s,stage){
 function collectionFunnelStageActions(entry,s,stage){
   const user=entry.user;
   const actions=[];
-  if(stage==='available')actions.push(`<button type="button" class="btn btn-fill team-inapp-invite-btn" onclick="inviteCollectionFunnelResearcherInApp(${jsArg(user.id)})">✉ Convidar pelo aplicativo</button>`,`<button type="button" class="btn btn-out team-whatsapp-invite-btn" onclick="inviteCollectionFunnelResearcher(${jsArg(user.id)})">✉ Convidar por WhatsApp</button>`);
-  if(stage==='invited'&&entry.invite?.id)actions.push(`<button type="button" class="btn btn-fill team-inapp-invite-btn" onclick="inviteCollectionFunnelResearcherInApp(${jsArg(user.id)})">↻ Reenviar pelo aplicativo</button>`,`<button type="button" class="btn btn-out team-whatsapp-invite-btn" onclick="inviteCollectionFunnelResearcher(${jsArg(user.id)})">↗ Reenviar convite</button>`);
-  if(stage==='accepted')actions.push(`<button type="button" class="btn btn-fill collection-funnel-orientation-btn" ${user.phone?'':'disabled'} onclick="sendCollectionOrientationWhatsapp(${jsArg(user.name)})">✉ Enviar orientações iniciais</button>`);
+  if(stage==='available')actions.push(`<button type="button" class="btn btn-fill team-inapp-invite-btn" onclick="inviteCollectionFunnelResearcherInApp(${jsArg(user.id)})">✉ Convidar pelo aplicativo</button>`,`<button type="button" class="btn btn-out team-whatsapp-invite-btn" onclick="inviteCollectionFunnelResearcher(${jsArg(user.id)})">Abrir convite no WhatsApp</button>`);
+  if(stage==='invited'&&entry.invite?.id)actions.push(`<button type="button" class="btn btn-fill team-inapp-invite-btn" onclick="inviteCollectionFunnelResearcherInApp(${jsArg(user.id)})">↻ Reenviar pelo aplicativo</button>`,`<button type="button" class="btn btn-out team-whatsapp-invite-btn" onclick="inviteCollectionFunnelResearcher(${jsArg(user.id)})">↗ Abrir no WhatsApp</button>`);
+  if(stage==='accepted'||stage==='team')actions.push(`<button type="button" class="btn btn-fill collection-internal-message-btn" onclick="openSurveyInitialOrientationModal(${jsArg(user.id)},${jsArg(user.name)})">✉ Orientações pelo aplicativo</button>`);
+  if(stage==='accepted')actions.push(`<button type="button" class="btn btn-out collection-funnel-orientation-btn" ${user.phone?'':'disabled'} onclick="sendCollectionOrientationWhatsapp(${jsArg(user.name)})">Abrir orientações no WhatsApp</button>`);
   if(stage==='team'&&user.id)actions.push(`<button type="button" class="btn btn-out collection-internal-message-btn" onclick="openSurveyResearcherMessageModal(${jsArg(user.id)},${jsArg(user.name)})">✉ Mensagem pelo aplicativo</button>`);
   actions.push(collectionFunnelWhatsAppButton(entry,s,stage));
   return actions.filter(Boolean).join('');
@@ -3794,7 +3797,7 @@ function collectionFunnelStageActions(entry,s,stage){
 function collectionFunnelCard(entry,s,stage){
   const user=entry.user,area=entry.area?.label||'Área não informada';
   const status=stage==='available'?'<span class="pill pill-blue">Apto para convite</span>':stage==='invited'?`<span class="pill pill-amber">${entry.invite?.status==='recusado'?'Recusou · pode reenviar':'Aguardando aceite'}</span>`:stage==='accepted'?'<span class="pill pill-green">Aceitou · falta orientação</span>':'<span class="pill pill-green">Vinculado à pesquisa</span>';
-  const extra=stage==='accepted'?`<small class="collection-funnel-orientation-count">Orientações: ${entry.orientationCount} envio${entry.orientationCount===1?'':'s'}</small>`:entry.invite?.status==='pendente'?`<small class="collection-funnel-orientation-count">Convite por WhatsApp: ${Math.max(0,Number(entry.invite?.whatsapp_sent_count)||0)} envio${Number(entry.invite?.whatsapp_sent_count)===1?'':'s'}</small>`:'';
+  const extra=(stage==='accepted'||stage==='team')?`<small class="collection-funnel-orientation-count">Pelo aplicativo: ${entry.inappCount} · WhatsApp aberto: ${entry.orientationCount}</small>`:entry.invite?.status==='pendente'?`<small class="collection-funnel-orientation-count">WhatsApp aberto: ${Math.max(0,Number(entry.invite?.whatsapp_sent_count)||0)}</small>`:'';
   return `<article class="collection-funnel-person"><div class="collection-funnel-person-main"><div class="avatar" style="width:34px;height:34px;font-size:12px">${esc(initialsOf(user.name))}</div><div class="collection-funnel-person-copy"><div class="collection-funnel-person-title"><strong>${esc(user.name)}</strong>${status}</div><span>${esc(area)} · ${esc(schoolingLabel(user.escolaridade))}</span>${extra}</div></div><div class="collection-funnel-person-actions">${collectionFunnelStageActions(entry,s,stage)}</div></article>`;
 }
 function collectionFunnelPanelMarkup(stage,entries,s){
@@ -3802,8 +3805,8 @@ function collectionFunnelPanelMarkup(stage,entries,s){
   const query=normalizeUserSearch(search);
   const filtered=entries.filter(entry=>!query||normalizeUserSearch(entry.user.name).includes(query));
   const title=COLLECTION_FUNNEL_STAGES[stage].label;
-  const helper=stage==='available'?'Pesquisadores ativos, com cadastro completo e compatíveis com a área da pesquisa. Convide pelo aplicativo ou abra o WhatsApp.':stage==='invited'?'Convites pendentes ou recusados. Reenvie pelo aplicativo ou use o WhatsApp para acompanhar o aceite.':stage==='accepted'?'Aceitaram o convite, mas ainda não receberam o envio das orientações iniciais.':'Pesquisadores já vinculados à equipe desta pesquisa.';
-  return `<section class="collection-funnel-panel ${COLLECT_FUNNEL_TAB===stage?'is-active':''}" data-funnel-panel="${stage}" ${COLLECT_FUNNEL_TAB===stage?'':'hidden'}><div class="collection-funnel-panel-head"><div><h3>${title}</h3><p>${helper}</p></div><label class="collection-funnel-search"><span>Buscar por nome</span><input type="search" value="${esc(search)}" placeholder="Digite o nome do pesquisador" oninput="collectFunnelSetSearch('${stage}',this.value)" autocomplete="off"></label></div>${COLLECT_ORIENTATION_COUNTS_STATUS==='unavailable'&&stage==='accepted'?'<div class="callout warn collection-funnel-warning">O contador de orientações ainda não está disponível no banco. Execute a migration de orientações para separar com precisão quem já recebeu a mensagem.</div>':''}<div class="collection-funnel-list">${filtered.length?filtered.map(entry=>collectionFunnelCard(entry,s,stage)).join(''):`<div class="collection-funnel-empty">${query?'Nenhum pesquisador corresponde a esta busca.':'Nenhum pesquisador neste estágio do funil.'}</div>`}</div></section>`;
+  const helper=stage==='available'?'Pesquisadores ativos, com cadastro completo e compatíveis com a área da pesquisa. Convide pelo aplicativo ou abra o WhatsApp.':stage==='invited'?'Convites pendentes ou recusados. Reenvie pelo aplicativo ou use o WhatsApp para acompanhar o aceite.':stage==='accepted'?'Aceitaram o convite; envie as orientações pelo aplicativo ou, opcionalmente, abra o WhatsApp.':'Pesquisadores já vinculados à equipe desta pesquisa.';
+  return `<section class="collection-funnel-panel ${COLLECT_FUNNEL_TAB===stage?'is-active':''}" data-funnel-panel="${stage}" ${COLLECT_FUNNEL_TAB===stage?'':'hidden'}><div class="collection-funnel-panel-head"><div><h3>${title}</h3><p>${helper}</p></div><label class="collection-funnel-search"><span>Buscar por nome</span><input type="search" value="${esc(search)}" placeholder="Digite o nome do pesquisador" oninput="collectFunnelSetSearch('${stage}',this.value)" autocomplete="off"></label></div>${COLLECT_INAPP_ORIENTATION_STATUS==='unavailable'&&stage==='accepted'?'<div class="callout warn collection-funnel-warning">Contagem de orientações internas indisponível. Execute orientacoes-internas-coleta.sql no Supabase. A lista de pendências pode não refletir mensagens enviadas antes de recarregar.</div>':''}<div class="collection-funnel-list">${filtered.length?filtered.map(entry=>collectionFunnelCard(entry,s,stage)).join(''):`<div class="collection-funnel-empty">${query?'Nenhum pesquisador corresponde a esta busca.':'Nenhum pesquisador neste estágio do funil.'}</div>`}</div></section>`;
 }
 function renderCollectionTeamFunnel(idx){
   const host=document.getElementById('collectionTeamFunnel');if(!host)return;
@@ -3891,66 +3894,82 @@ async function refreshCollectionTeamFunnelLive(idx){
 }
 function collectionOrientationCountMarkup(name){
   const user=collectionOrientationResearcher(name),id=user?.id;
-  if(COLLECT_ORIENTATION_COUNTS_STATUS==='loading')return '<span class="pill pill-gray collection-orientation-count">Orientações: carregando…</span>';
-  if(COLLECT_ORIENTATION_COUNTS_STATUS==='unavailable')return '<span class="pill pill-gray collection-orientation-count" title="Execute a migration do contador de orientações no Supabase">Orientações: indisponível</span>';
   if(!id)return '<span class="pill pill-gray collection-orientation-count">Orientações: sem ID</span>';
-  const count=Math.max(0,Number(COLLECT_ORIENTATION_COUNTS[id]?.send_count)||0);
-  return `<span class="pill ${count?'pill-green':'pill-amber'} collection-orientation-count" title="Quantidade de vezes que as orientações iniciais foram abertas pelo WhatsApp">Orientações: ${count} envio${count===1?'':'s'}</span>`;
+  const count=COLLECT_ORIENTATION_COUNTS_STATUS==='ready'?Math.max(0,Number(COLLECT_ORIENTATION_COUNTS[id]?.send_count)||0):null;
+  const inapp=COLLECT_INAPP_ORIENTATION_STATUS==='ready'?Math.max(0,Number(COLLECT_INAPP_ORIENTATION_COUNTS[id])||0):null;
+  return `<span class="pill ${inapp?'pill-green':'pill-amber'} collection-orientation-count" title="Envios pelo app: registrados no banco. WhatsApp: apenas aberturas, sem confirmação de entrega">App: ${inapp===null?'—':inapp} · WhatsApp aberto: ${count===null?'—':count}</span>`;
 }
 function collectionTeamRows(s,team){
   return team.length?team.map(name=>{
-    const info=RESEARCHER_INFO[name]||{regional:'—',link:'…/c/xxxx',meta:0,done:0,sync:'online',phone:'5500000000000'};
-    const user=collectionOrientationResearcher(name),phone=user?.phone||info.phone||'';
-    const syncPill=info.sync==='online'?'<span class="pill pill-green">● Online</span>':'<span class="pill pill-amber">● Offline</span>';
+    const user=collectionOrientationResearcher(name),phone=user?.phone||'';
+    const validCount=COLLECT_EVENTS_LOADED?eventsForSurveyIdx(COLLECT_IDX).filter(e=>e.name===name&&e.status==='valid').length:null;
     const wa='https://wa.me/'+whatsappDigits(phone);
     return `<tr>
       <td><div style="display:flex;align-items:center;gap:9px"><div class="avatar" style="width:28px;height:28px;font-size:11px">${esc(initialsOf(name))}</div>${esc(name)}</div></td>
-      <td>${esc(info.regional)}</td>
-      <td><span class="pill pill-blue">${esc(info.link)}</span></td>
-      <td>${Number(info.done)||0} / ${Number(info.meta)||0}</td>
-      <td>${syncPill}</td>
+      <td>${esc(user?.cidade||'Não informada')}</td>
+      <td>${validCount===null?'Carregando…':validCount.toLocaleString('pt-BR')}</td>
       <td class="collection-team-actions">
-        <div class="collection-orientation-action"><button class="btn btn-out collection-orientation-btn" ${phone?'':'disabled'} onclick="sendCollectionOrientationWhatsapp(${jsArg(name)})">✉ Enviar orientações</button>${collectionOrientationCountMarkup(name)}</div>
+        <div class="collection-orientation-action">${user?.id?`<button type="button" class="btn btn-fill collection-internal-message-btn" onclick="openSurveyInitialOrientationModal(${jsArg(user.id)},${jsArg(name)})">✉ Orientações pelo aplicativo</button>`:''}<button class="btn btn-out collection-orientation-btn" ${phone?'':'disabled'} onclick="sendCollectionOrientationWhatsapp(${jsArg(name)})">Abrir no WhatsApp</button>${collectionOrientationCountMarkup(name)}</div>
         ${user?.id?`<button type="button" class="btn btn-fill collection-internal-message-btn" onclick="openSurveyResearcherMessageModal(${jsArg(user.id)},${jsArg(name)})">✉ Mensagem pelo aplicativo</button>`:'<span class="pill pill-gray">Perfil sem ID</span>'}
         ${phone?`<a class="btn-ghost" style="color:var(--teal);display:inline-block" href="${wa}" target="_blank" rel="noopener" title="Abre uma conversa comum; não registra o envio das orientações">Conversar no WhatsApp</a>`:'<span class="pill pill-gray">Sem telefone</span>'}
       </td></tr>`;
-  }).join(''):'<tr><td colspan="6" class="empty">Nenhum pesquisador vinculado. Atribua a equipe em Minhas pesquisas.</td></tr>';
+  }).join(''):'<tr><td colspan="4" class="empty">Nenhum pesquisador vinculado. Atribua a equipe em Minhas pesquisas.</td></tr>';
 }
-let COLLECT_SURVEY_MESSAGE_SENDING=false,COLLECT_SURVEY_MESSAGE_TARGET_ID=null,COLLECT_SURVEY_MESSAGE_TARGET_NAME='';
+let COLLECT_SURVEY_MESSAGE_SENDING=false,COLLECT_SURVEY_MESSAGE_TARGET_ID=null,COLLECT_SURVEY_MESSAGE_TARGET_NAME='',COLLECT_SURVEY_MESSAGE_KIND='message',COLLECT_SURVEY_ORIENTATION_GROUP='';
 function closeSurveyResearcherMessageModal(){
   const modal=document.getElementById('surveyResearcherMessageModal');
   if(modal)modal.hidden=true;
   document.body.classList.remove('survey-message-modal-open');
-  COLLECT_SURVEY_MESSAGE_TARGET_ID=null;COLLECT_SURVEY_MESSAGE_TARGET_NAME='';
+  COLLECT_SURVEY_MESSAGE_TARGET_ID=null;COLLECT_SURVEY_MESSAGE_TARGET_NAME='';COLLECT_SURVEY_MESSAGE_KIND='message';COLLECT_SURVEY_ORIENTATION_GROUP='';
 }
 function openSurveyResearcherMessageModal(researcherId=null,researcherName=''){
   const s=SURVEYS[COLLECT_IDX];
   if(!s?.id||!['admin','coord','gerente','admpro'].includes(CURRENT_PROFILE?.role))return;
-  COLLECT_SURVEY_MESSAGE_TARGET_ID=researcherId||null;COLLECT_SURVEY_MESSAGE_TARGET_NAME=researcherName||'';
+  COLLECT_SURVEY_MESSAGE_TARGET_ID=researcherId||null;COLLECT_SURVEY_MESSAGE_TARGET_NAME=researcherName||'';COLLECT_SURVEY_MESSAGE_KIND='message';COLLECT_SURVEY_ORIENTATION_GROUP='';
   let modal=document.getElementById('surveyResearcherMessageModal');
   if(!modal){modal=document.createElement('div');modal.id='surveyResearcherMessageModal';modal.className='survey-message-modal';document.body.appendChild(modal);}
   const isIndividual=!!researcherId;
   modal.innerHTML=`<div class="survey-message-backdrop" onclick="if(event.target===this)closeSurveyResearcherMessageModal()"></div><section class="survey-message-dialog" role="dialog" aria-modal="true" aria-labelledby="surveyMessageModalTitle"><button type="button" class="survey-message-close" aria-label="Fechar" onclick="closeSurveyResearcherMessageModal()">×</button><span class="eyebrow">COMUNICAÇÃO INTERNA</span><h2 id="surveyMessageModalTitle">${isIndividual?'Mensagem para '+esc(researcherName):'Mensagem para toda a equipe'}</h2><p class="survey-message-dialog-description">Pesquisa: <b>${esc(s.name)}</b>. ${isIndividual?'Somente este pesquisador verá a mensagem.':'Cada pesquisador vinculado receberá uma cópia privada no próprio painel.'}</p><form onsubmit="event.preventDefault();sendSurveyResearcherMessage()"><label class="lbl" for="surveyMessageBody">Mensagem</label><textarea id="surveyMessageBody" class="inp" rows="7" maxlength="4000" placeholder="Escreva um aviso, orientação ou atualização para ${isIndividual?'este pesquisador':'a equipe'}…" required></textarea><div class="survey-message-dialog-foot"><span>Até 4.000 caracteres</span><div><button type="button" class="btn btn-out" onclick="closeSurveyResearcherMessageModal()">Cancelar</button><button type="submit" class="btn btn-fill" id="surveyMessageSubmit">Enviar mensagem</button></div></div></form></section>`;
   modal.hidden=false;document.body.classList.add('survey-message-modal-open');setTimeout(()=>document.getElementById('surveyMessageBody')?.focus(),0);
 }
+async function openSurveyInitialOrientationModal(researcherId,researcherName){
+  const idx=COLLECT_IDX,s=SURVEYS[idx],user=USERS.find(u=>u.id===researcherId);
+  if(!s?.id||!user){alert('Selecione um pesquisador vinculado para enviar orientações.');return;}
+  const settings=await collectionOrientationSettings(s.id);
+  if(idx!==COLLECT_IDX)return;
+  const text=surveyInitialOrientationWhatsappMessage(s,user,settings.whatsapp_group_url||'',settings.orientation_message_template||'');
+  if(text.length>4000){alert('As orientações têm mais de 4.000 caracteres. Resuma o modelo desta pesquisa antes de enviá-las pelo aplicativo. Nenhum envio foi feito.');return;}
+  openSurveyResearcherMessageModal(researcherId,researcherName);
+  COLLECT_SURVEY_MESSAGE_KIND='orientation';
+  COLLECT_SURVEY_ORIENTATION_GROUP=settings.whatsapp_group_url||'';
+  document.getElementById('surveyMessageModalTitle').textContent='Orientações iniciais para '+researcherName;
+  document.getElementById('surveyMessageBody').value=text;
+}
 async function sendSurveyResearcherMessage(){
   if(COLLECT_SURVEY_MESSAGE_SENDING)return;
-  const s=SURVEYS[COLLECT_IDX],input=document.getElementById('surveyMessageBody'),body=(input?.value||'').trim(),targetId=COLLECT_SURVEY_MESSAGE_TARGET_ID;
-  if(!s?.id||!body){alert('Escreva uma mensagem antes de enviar.');return;}
-  if(body.length>4000){alert('A mensagem deve ter no máximo 4.000 caracteres.');return;}
+  const s=SURVEYS[COLLECT_IDX],input=document.getElementById('surveyMessageBody'),draft=(input?.value||'').trim(),targetId=COLLECT_SURVEY_MESSAGE_TARGET_ID,kind=COLLECT_SURVEY_MESSAGE_KIND;
+  const user=kind==='orientation'?USERS.find(u=>u.id===targetId):null;
+  const body=kind==='orientation'&&user?surveyInitialOrientationWhatsappMessage(s,user,COLLECT_SURVEY_ORIENTATION_GROUP,draft):draft;
+  if(!s?.id||!draft){alert('Escreva uma mensagem antes de enviar.');return;}
+  if(body.length>4000){alert('A mensagem final, incluindo as regras obrigatórias, deve ter no máximo 4.000 caracteres. Reduza o texto personalizado; nenhum envio foi feito.');return;}
+  if(kind==='orientation'&&!user){alert('Não foi possível identificar o pesquisador. Nenhum envio foi feito.');return;}
+  if(kind==='orientation'&&body!==draft){input.value=body;alert('Os avisos obrigatórios foram recolocados no texto. Revise a mensagem exibida e clique em Enviar novamente. Nenhum envio foi feito.');return;}
   const targetLabel=targetId?COLLECT_SURVEY_MESSAGE_TARGET_NAME:'todos os '+(s.team||[]).length+' pesquisadores vinculados';
   if(!targetId&&!(s.team||[]).length){alert('Esta pesquisa ainda não possui pesquisadores vinculados.');return;}
-  if(!confirm('Enviar esta mensagem para '+targetLabel+'?'))return;
+  if(!confirm('Enviar '+(kind==='orientation'?'as orientações iniciais':'esta mensagem')+' para '+targetLabel+' pelo aplicativo?'))return;
   COLLECT_SURVEY_MESSAGE_SENDING=true;const button=document.getElementById('surveyMessageSubmit');if(button){button.disabled=true;button.textContent='Enviando…';}
   try{
-    const {data,error}=await sb.rpc('send_survey_researcher_message',{p_survey_id:s.id,p_body:body,p_researcher_id:targetId||null});
+    const {data,error}=kind==='orientation'
+      ?await sb.rpc('send_survey_initial_orientation',{p_survey_id:s.id,p_researcher_id:targetId,p_body:body})
+      :await sb.rpc('send_survey_researcher_message',{p_survey_id:s.id,p_body:body,p_researcher_id:targetId||null});
     if(error)throw new Error(error.message);
     const count=Number(data?.recipient_count)|| (targetId?1:(s.team||[]).length);
+    if(kind==='orientation'&&targetId){COLLECT_INAPP_ORIENTATION_COUNTS[targetId]=(Number(COLLECT_INAPP_ORIENTATION_COUNTS[targetId])||0)+1;COLLECT_INAPP_ORIENTATION_STATUS='ready';refreshCollectionTeamRows(COLLECT_IDX);}
     closeSurveyResearcherMessageModal();
-    alert('Mensagem enviada para '+count+' pesquisador'+(count===1?'':'es')+'. Ela aparecerá no painel de cada destinatário.');
+    alert((kind==='orientation'?'Orientações registradas no aplicativo para ':'Mensagem enviada para ')+count+' pesquisador'+(count===1?'':'es')+'. O conteúdo aparecerá no painel do destinatário. Isso não confirma a leitura.');
   }catch(ex){
-    const migrationMissing=/send_survey_researcher_message|survey_researcher_message|relation .* does not exist|schema cache/i.test(ex.message||'');
-    alert(migrationMissing?'Não foi possível enviar porque o recurso ainda não está ativado no banco. Execute a migration deploy/mensagens-pesquisa-pesquisadores.sql no Supabase e tente novamente.':'Não foi possível enviar a mensagem: '+ex.message);
+    const migrationMissing=/send_survey_initial_orientation|send_survey_researcher_message|survey_researcher_message|relation .* does not exist|schema cache/i.test(ex.message||'');
+    alert(migrationMissing?'O recurso ainda não está ativado no banco. Execute manualmente deploy/mensagens-pesquisa-pesquisadores.sql e depois deploy/orientacoes-internas-coleta.sql no Supabase; nenhum envio foi registrado.':'Não foi possível enviar a mensagem: '+ex.message);
   }finally{COLLECT_SURVEY_MESSAGE_SENDING=false;if(button){button.disabled=false;button.textContent='Enviar mensagem';}}
 }
 function refreshCollectionTeamRows(idx){
@@ -3975,6 +3994,25 @@ async function loadCollectionOrientationCounts(idx){
   COLLECT_ORIENTATION_COUNTS_LOADING=false;
   if(COLLECT_IDX===idx)refreshCollectionTeamRows(idx);
 }
+async function loadCollectionInAppOrientationCounts(idx){
+  const s=SURVEYS[idx];
+  if(!s?.id||COLLECT_INAPP_ORIENTATION_LOADING||COLLECT_INAPP_ORIENTATION_STATUS!=='idle')return;
+  COLLECT_INAPP_ORIENTATION_LOADING=true;COLLECT_INAPP_ORIENTATION_STATUS='loading';
+  try{
+    const {data,error}=await sb.rpc('get_survey_orientation_inapp_counts',{p_survey_id:s.id});
+    if(error)throw error;
+    if(COLLECT_IDX===idx){
+      COLLECT_INAPP_ORIENTATION_COUNTS={};
+      (data||[]).forEach(row=>{COLLECT_INAPP_ORIENTATION_COUNTS[row.researcher_id]=Number(row.send_count)||0;});
+      COLLECT_INAPP_ORIENTATION_STATUS='ready';
+    }
+  }catch(ex){
+    if(COLLECT_IDX===idx)COLLECT_INAPP_ORIENTATION_STATUS='unavailable';
+    console.warn('Contagem de orientações no aplicativo indisponível; execute a migration orientacoes-internas-coleta.sql:',ex);
+  }
+  COLLECT_INAPP_ORIENTATION_LOADING=false;
+  if(COLLECT_IDX===idx)refreshCollectionTeamRows(idx);
+}
 async function collectionOrientationSettings(surveyId){
   try{
     const {data,error}=await sb.from('survey_communication_settings').select('whatsapp_group_url,orientation_message_template').eq('survey_id',surveyId).maybeSingle();
@@ -3990,9 +4028,8 @@ async function sendCollectionOrientationWhatsapp(name){
   const orientationSettings=await collectionOrientationSettings(s.id);
   const message=surveyInitialOrientationWhatsappMessage(s,user,orientationSettings.whatsapp_group_url||'',orientationSettings.orientation_message_template||'');
   const target='https://wa.me/'+digits+'?text='+encodeURIComponent(message);
-  /* Abre o destino diretamente durante o clique para que o navegador não
-     bloqueie o WhatsApp. O contador é atualizado logo depois pela RPC; a
-     conversa comum acima não passa por este fluxo. */
+  /* Apenas tenta abrir o rascunho; o WhatsApp não fornece prova de envio
+     ou entrega por wa.me. O contador registra tentativas de abertura. */
   window.open(target,'_blank','noopener,noreferrer');
   try{
     const {data,error}=await sb.rpc('record_survey_orientation_whatsapp_send',{p_survey_id:s.id,p_researcher_id:user.id});
@@ -4002,8 +4039,8 @@ async function sendCollectionOrientationWhatsapp(name){
     COLLECT_ORIENTATION_COUNTS_STATUS='ready';
     refreshCollectionTeamRows(COLLECT_IDX);
   }catch(ex){
-    console.warn('Envio aberto, mas contador de orientações indisponível; execute a migration contador-orientacoes-whatsapp-coleta.sql:',ex);
-    alert('A mensagem foi aberta, mas o contador não foi registrado: '+(ex.message||String(ex)));
+    console.warn('Abertura do WhatsApp sem contador; execute contador-orientacoes-whatsapp-coleta.sql:',ex);
+    alert('Foi solicitada a abertura do WhatsApp, mas a tentativa não foi registrada no contador: '+(ex.message||String(ex)));
   }
 }
 PAGES.collect=()=>{
@@ -4034,8 +4071,8 @@ function collectList(){
     <tbody>${rows}</tbody></table>
   </div>`;
 }
-function collectOpen(i){COLLECT_IDX=i;COLLECT_ARMED=true;COLLECT_ORIENTATION_COUNTS={};COLLECT_ORIENTATION_COUNTS_STATUS='loading';COLLECT_ORIENTATION_COUNTS_LOADING=false;COLLECT_TEAM_INVITES=[];COLLECT_TEAM_INVITES_LOADED=false;COLLECT_TEAM_INVITES_LOADING=false;COLLECT_TEAM_INVITES_LOAD_ERROR=false;COLLECT_FUNNEL_TAB='available';COLLECT_FUNNEL_SEARCH={available:'',invited:'',accepted:'',team:''};COLLECT_EVOLUTION_MODE='day';disposeCollectEvolutionChart();_collectMapFilters={researcher:'all',researcherQuery:'',status:'all',latest:false};_collectMapFocusId=null;_collectMapDidFit=false;go('collect');}
-function collectBack(){COLLECT_IDX=null;COLLECT_ORIENTATION_COUNTS={};COLLECT_ORIENTATION_COUNTS_STATUS='idle';COLLECT_ORIENTATION_COUNTS_LOADING=false;COLLECT_TEAM_INVITES=[];COLLECT_TEAM_INVITES_LOADED=false;COLLECT_TEAM_INVITES_LOADING=false;COLLECT_TEAM_INVITES_LOAD_ERROR=false;disposeCollectEvolutionChart();_collectMapFocusId=null;go('collect');}
+function collectOpen(i){COLLECT_IDX=i;COLLECT_ARMED=true;COLLECT_ORIENTATION_COUNTS={};COLLECT_ORIENTATION_COUNTS_STATUS='loading';COLLECT_ORIENTATION_COUNTS_LOADING=false;COLLECT_INAPP_ORIENTATION_COUNTS={};COLLECT_INAPP_ORIENTATION_STATUS='idle';COLLECT_INAPP_ORIENTATION_LOADING=false;COLLECT_TEAM_INVITES=[];COLLECT_TEAM_INVITES_LOADED=false;COLLECT_TEAM_INVITES_LOADING=false;COLLECT_TEAM_INVITES_LOAD_ERROR=false;COLLECT_FUNNEL_TAB='available';COLLECT_FUNNEL_SEARCH={available:'',invited:'',accepted:'',team:''};COLLECT_EVOLUTION_MODE='day';disposeCollectEvolutionChart();_collectMapFilters={researcher:'all',researcherQuery:'',status:'all',latest:false};_collectMapFocusId=null;_collectMapDidFit=false;go('collect');}
+function collectBack(){COLLECT_IDX=null;COLLECT_ORIENTATION_COUNTS={};COLLECT_ORIENTATION_COUNTS_STATUS='idle';COLLECT_ORIENTATION_COUNTS_LOADING=false;COLLECT_INAPP_ORIENTATION_COUNTS={};COLLECT_INAPP_ORIENTATION_STATUS='idle';COLLECT_INAPP_ORIENTATION_LOADING=false;COLLECT_TEAM_INVITES=[];COLLECT_TEAM_INVITES_LOADED=false;COLLECT_TEAM_INVITES_LOADING=false;COLLECT_TEAM_INVITES_LOAD_ERROR=false;disposeCollectEvolutionChart();_collectMapFocusId=null;go('collect');}
 let COLLECT_ARMED=false;
 function collectDetail(idx){
   const s=SURVEYS[idx];if(!s)return collectList();
@@ -4043,6 +4080,7 @@ function collectDetail(idx){
   const rows=collectionTeamRows(s,team);
   if(!COLLECT_TEAM_INVITES_LOADED)loadCollectionTeamFunnelIfNeeded(idx);
   if(COLLECT_ORIENTATION_COUNTS_STATUS==='idle')loadCollectionOrientationCounts(idx);
+  if(COLLECT_INAPP_ORIENTATION_STATUS==='idle')loadCollectionInAppOrientationCounts(idx);
   const sample=surveySample(s);
   const statusCounts=collectStatusCounts(idx);
   const collected=statusCounts.valid;
@@ -4050,7 +4088,7 @@ function collectDetail(idx){
   const mapResearcherOptions=mapResearchers.map(name=>`<option value="${esc(name)}">${esc(name)}</option>`).join('');
   const researcherSearchMarkup=`<div class="collect-researcher-search" role="search" aria-label="Buscar coletas por pesquisador"><label><span>Buscar pesquisador</span><input id="collectResearcherSearch" type="search" value="${esc(_collectMapFilters.researcherQuery||'')}" placeholder="Digite o nome do pesquisador" list="collectResearcherOptions" oninput="collectApplyResearcherSearch(this.value)" autocomplete="off"><datalist id="collectResearcherOptions">${mapResearchers.map(name=>`<option value="${esc(name)}"></option>`).join('')}</datalist></label><button type="button" class="btn btn-out" onclick="collectClearResearcherSearch()">Limpar</button><span id="collectResearcherSearchSummary" class="collect-researcher-search-summary">Todas as coletas</span></div>`;
   return head('Coleta e campo — '+s.name,'Pesquisadores vinculados a esta pesquisa',
-    '<button class="btn btn-out" onclick="collectBack()">← Pesquisas</button><button class="btn btn-fill" onclick="alert(\'Recurso ainda não configurado: exportar dados brutos (CSV/SPSS)\')">Exportar dados</button>')+`
+    '<button class="btn btn-out" onclick="collectBack()">← Pesquisas</button><button type="button" class="btn btn-out" disabled title="Exportação bruta indisponível; não gera CSV/SPSS">Exportar dados · indisponível</button>')+`
   <div class="grid g5" style="margin-bottom:16px">
     ${stat('Pesquisadores',String(team.length),'vinculados','☺','#2563eb')}
     ${stat('Coletado',collected.toLocaleString('pt-BR'),'de '+sample.toLocaleString('pt-BR'),'✓','#059669','collectCollectedStat')}
@@ -4075,10 +4113,10 @@ function collectDetail(idx){
   <div id="collectTabEquipe">
     <div class="card mb">
       <div class="card-t">Equipe vinculada</div>
-      <div class="card-d">Envie as orientações iniciais da pesquisa pelo WhatsApp e acompanhe quem já recebeu o material.</div>
-      <div class="callout collection-orientation-callout"><b>Orientações iniciais:</b> use o botão em cada linha para abrir a mensagem completa no WhatsApp. O contador mostra quais pesquisadores já receberam o envio inicial e quais ainda estão pendentes.<div class="collection-internal-message-callout"><div><strong>Mensagem interna da pesquisa</strong><span>Envie um aviso pelo aplicativo para toda a equipe. A mensagem ficará privada no painel de cada pesquisador.</span></div><button type="button" class="btn btn-fill collection-internal-message-broadcast" onclick="openSurveyResearcherMessageModal()" ${team.length?'':'disabled'}>✉ Enviar para toda a equipe${team.length?' ('+team.length+')':''}</button></div></div>
+      <div class="card-d">Envie orientações iniciais pelo aplicativo. WhatsApp é opcional e seu contador registra somente abertura do link, nunca envio ou leitura comprovados.</div>
+      <div class="callout collection-orientation-callout"><b>Orientações iniciais:</b> use o botão “Orientações pelo aplicativo” em cada pesquisador. O texto segue o modelo editável da pesquisa e aparecerá no painel individual, sem exigir WhatsApp. O contador “App” registra o envio; ele não confirma leitura.<div class="collection-internal-message-callout"><div><strong>Mensagem interna da pesquisa</strong><span>Envie um aviso pelo aplicativo para toda a equipe. A mensagem ficará privada no painel de cada pesquisador.</span></div><button type="button" class="btn btn-fill collection-internal-message-broadcast" onclick="openSurveyResearcherMessageModal()" ${team.length?'':'disabled'}>✉ Enviar para toda a equipe${team.length?' ('+team.length+')':''}</button></div></div>
       <div id="collectionTeamFunnel" class="collection-funnel-card"><div class="empty" style="padding:18px 0">Carregando funil da equipe…</div></div>
-      <div class="table-scroll"><table><thead><tr><th>Pesquisador</th><th>Regional</th><th>Link</th><th>Coletado</th><th>Sync</th><th>Orientações e contato</th></tr></thead>
+      <div class="table-scroll"><table><thead><tr><th>Pesquisador</th><th>Cidade cadastrada</th><th>Coletas válidas</th><th>Orientações e contato</th></tr></thead>
       <tbody id="collectTeamBody">${rows}</tbody></table></div>
     </div>
     <div class="card">
@@ -4404,6 +4442,7 @@ async function pollCollectEvents(idx){
   }catch(ex){return;}
   if(COLLECT_IDX!==idx)return; // usuário já saiu dessa pesquisa enquanto a busca rodava
   refreshCollectCount(idx);
+  refreshCollectionTeamRows(idx);
   renderLiveFeed(idx);
   refreshCollectionTeamFunnelLive(idx);
   const mapaTab=document.getElementById('collectTabMapa');
@@ -4423,6 +4462,7 @@ function initCollectLive(idx){
     await loadUsersIfNeeded();
     if(COLLECT_IDX!==idx)return;
     refreshCollectCount(idx);
+    refreshCollectionTeamRows(idx);
     loadCollectionOrientationCounts(idx);
     renderLiveFeed(idx);
     renderAudit(idx);
@@ -6881,15 +6921,15 @@ function userList(){
     ${USER_SIGNUP_OPEN?`
     <div class="card-d">Envie para que a pessoa preencha o próprio cadastro com todos os campos obrigatórios. O cadastro entra na fila acima para sua aprovação.</div>
     <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
-      <input class="inp" value="pesquisapro.com.br/cadastro/mg2026-x8f3" readonly>
-      <button class="btn btn-out" onclick="alert('Recurso ainda não configurado: link copiado')">Copiar</button>
+      <input class="inp" id="signup-real-link" value="${esc(signupPageUrl())}" readonly aria-label="Endereço de autocadastro do pesquisador">
+      <button type="button" class="btn btn-out" onclick="copySignupLink()">Copiar link</button>
     </div>
     <div style="display:flex;gap:14px;align-items:center">
       <div id="signup-qr" class="qr-box"></div>
       <div style="flex:1">
-        <button class="btn btn-fill" style="width:100%;margin-bottom:8px;background:var(--teal)" onclick="sendSignupWhatsApp()">Enviar link + QR por WhatsApp</button>
-        <button class="btn btn-out" style="width:100%;margin-bottom:8px" onclick="alert('Recurso ainda não configurado: link enviado por e-mail')">Enviar por e-mail</button>
-        <button class="btn btn-out" style="width:100%" onclick="alert('Recurso ainda não configurado: QR Code baixado/impresso')">Baixar QR Code</button>
+        <button type="button" class="btn btn-out" style="width:100%;margin-bottom:8px" onclick="composeSignupEmail()">Redigir e-mail no meu aplicativo</button>
+        <button type="button" class="btn btn-out" style="width:100%;margin-bottom:8px" onclick="downloadSignupQr()">Baixar QR Code</button>
+        <button type="button" class="btn btn-out" style="width:100%" onclick="sendSignupWhatsApp()">Abrir mensagem no WhatsApp (opcional)</button>
       </div>
     </div>`:''}
   </div>
@@ -6989,7 +7029,7 @@ function refreshSignups(){
 }
 function renderSignupQR(){
   const box=document.getElementById('signup-qr');if(!box)return;
-  const url='https://pesquisapro.com.br/cadastro/mg2026-x8f3';
+  const url=signupPageUrl();
   const draw=()=>{
     box.innerHTML='';
     try{new QRCode(box,{text:url,width:108,height:108,colorDark:'#0f172a',colorLight:'#ffffff'});return true;}catch(e){return false;}
@@ -6999,14 +7039,30 @@ function renderSignupQR(){
   loadLocalAsset('qrcode').then(()=>{if(document.getElementById('signup-qr')===box&&!draw())throw new Error('QR Code inválido');})
     .catch(()=>{if(document.getElementById('signup-qr')===box)box.innerHTML='<div class="qr-fallback" role="img" aria-label="QR Code indisponível no momento">QR<br>Code<div style="font-size:9px;margin-top:4px;font-weight:400">indisponível offline</div></div>';});
 }
+function signupPageUrl(){return new URL('cadastro.html',window.location.href).href;}
+async function copySignupLink(){
+  const url=signupPageUrl();
+  try{await navigator.clipboard.writeText(url);alert('Link real do autocadastro copiado.');}
+  catch(ex){window.prompt('Copie o link do autocadastro:',url);}
+}
+function composeSignupEmail(){
+  const body='Olá! Para se cadastrar como pesquisador(a) no PesquisaPro, acesse: '+signupPageUrl()+'\nO cadastro passará por aprovação antes de liberar acesso.';
+  window.location.href='mailto:?subject='+encodeURIComponent('Cadastro de pesquisador(a) — PesquisaPro')+'&body='+encodeURIComponent(body);
+}
+function downloadSignupQr(){
+  const box=document.getElementById('signup-qr'),canvas=box?.querySelector('canvas'),img=box?.querySelector('img');
+  const url=canvas?.toDataURL('image/png')||img?.src;
+  if(!url||!url.startsWith('data:image/png')){alert('O QR Code ainda não está pronto. Aguarde e tente novamente.');return;}
+  const link=document.createElement('a');link.href=url;link.download='pesquisapro-autocadastro.png';document.body.appendChild(link);link.click();link.remove();
+}
 function sendSignupWhatsApp(){
-  const url='https://pesquisapro.com.br/cadastro/mg2026-x8f3';
-  const phone=prompt('Telefone do convidado (com DDD), ou deixe em branco para abrir o WhatsApp e escolher o contato:','');
+  const url=signupPageUrl();
+  const phone=prompt('Use somente com autorização de contato. Telefone com DDD, ou deixe em branco para escolher no WhatsApp:','');
   if(phone===null)return;
   const msg=encodeURIComponent('Olá! Você foi convidado(a) para ser pesquisador(a) na PesquisaPro. Faça seu cadastro por este link (também disponível em QR Code): '+url);
   const digits=(phone||'').replace(/\D/g,'');
   const base=digits?('https://wa.me/'+(digits.length<=11?'55'+digits:digits)):'https://wa.me/';
-  window.open(base+'?text='+msg,'_blank','noopener');
+  window.open(base+'?text='+msg,'_blank','noopener'); // abre rascunho; envio e entrega dependem da pessoa e do WhatsApp
 }
 async function signupGetDocumentUrl(path){
   if(/^https?:\/\//i.test(path))return path;
@@ -7140,7 +7196,7 @@ function userViewGeneric(u){
   const row=(l,v)=>`<tr><td style="color:var(--ink3);width:38%">${l}</td><td style="font-weight:600">${v||dash}</td></tr>`;
   const isStaff=['admin','coord','gerente'].includes(u.role);
   const docBlock=u.doc
-    ?`<div class="doc-attached" style="margin:0"><span>📎 ${esc(u.doc)}</span><button class="btn-ghost" onclick="alert('Recurso ainda não configurado: abrir/baixar documento')">abrir</button></div>`
+    ?`<div class="doc-attached" style="margin:0"><span>📎 ${esc(u.doc)}</span><small>Abertura do arquivo indisponível nesta tela.</small></div>`
     :'<span class="pill pill-red">● documento não anexado</span>';
   return '<div class="profile-page profile-page-generic">'+head(u.name,'Dados do usuário',
     `<button class="btn btn-out" onclick="userViewBack()">← Voltar</button>
@@ -7331,7 +7387,7 @@ function userViewCliente(u,idx){
         </button>
         <div class="divider"></div>
         <button class="btn btn-fill" style="width:100%;background:var(--teal)" onclick="userClienteSendReport(${idx})">Enviar relatório via WhatsApp</button>
-        <button class="btn btn-out" style="width:100%;margin-top:8px" onclick="alert('Recurso ainda não configurado: relatório (PDF) enviado por e-mail')">Enviar relatório por e-mail</button>
+        <button type="button" class="btn btn-out" style="width:100%;margin-top:8px" disabled>Relatório por e-mail · indisponível</button>
         <button class="btn btn-out" style="width:100%;margin-top:8px" onclick="go('reports')">Abrir relatório (visão interna)</button>
       </div>
     </div>
@@ -8454,9 +8510,9 @@ function financeDetail(idx){
       <table style="margin-top:6px"><tbody>
         <tr><td>Formulário padrão</td><td style="text-align:right"><b>${brl(price)}</b></td></tr>
         <tr><td>Formulário em região remota</td><td style="text-align:right"><b>${brl(priceRemote)}</b></td></tr>
-        <tr><td>Bônus meta diária batida</td><td style="text-align:right"><b>+ R$ 20,00</b></td></tr>
+        <tr><td>Bônus meta diária</td><td style="text-align:right"><b>Não configurado</b></td></tr>
       </tbody></table>
-      <button class="btn btn-out" style="margin-top:10px" onclick="alert('Recurso ainda não configurado: editar tabela de valores desta pesquisa')">Editar valores</button>
+      <div class="card-d" style="margin-top:10px">A alteração de valores de uma pesquisa em andamento pode afetar contratos e pagamentos. Esta tela é apenas de consulta; edição direta indisponível.</div>
     </div>
     <div class="card"><div class="card-t" style="font-size:13px">Repasse acumulado nesta pesquisa</div>
       <div style="position:relative;height:180px;margin-top:6px"><canvas id="finChart" role="img" aria-label="Repasse acumulado"></canvas></div>
@@ -8879,7 +8935,8 @@ async function signCompanyContract(){
 
 /* ============ CONTRACT TEMPLATE EDITOR ============ */
 PAGES['contract-template']=()=>head('Modelos de contrato','Use seu próprio modelo. Os campos entre {chaves} são preenchidos automaticamente para cada pessoa.',
-  '<button class="btn btn-out" onclick="alert(\'Recurso ainda não configurado: importar .docx / .pdf como modelo\')">⬆ Importar arquivo</button><button class="btn btn-fill" onclick="alert(\'Recurso ainda não configurado: modelo salvo. Passa a ficar disponível ao gerar contratos.\')">Salvar modelo</button>')+`
+  '<button type="button" class="btn btn-out" disabled>Importar arquivo · indisponível</button><button type="button" class="btn btn-out" disabled>Salvar modelo · indisponível</button>')+`
+  <div class="callout warn mb">Este editor é apenas uma prévia local: alterações aqui <b>não são salvas nem usadas nos contratos</b>. Os contratos ativos continuam usando o texto vigente no sistema.</div>
   <div class="grid g2" style="grid-template-columns:1.15fr .85fr;align-items:start">
     <div class="card">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
@@ -9356,19 +9413,18 @@ function downloadContractCopy(){
 }
 
 /* ============ COMPANY ============ */
-PAGES.company=()=>head('Dados da empresa','Informações usadas em contratos e relatórios oficiais',
-  '<button class="btn btn-fill" onclick="alert(\'Recurso ainda não configurado: CNPJ, endereço e contato salvos\')">Salvar</button>')+`
-  <div class="callout mb">🔒 O PesquisaPro é a única empresa cadastrada no sistema — por isso, apenas <b>CNPJ</b>, <b>endereço</b> e <b>contato</b> podem ser alterados aqui. Os demais dados de identificação são fixos.</div>
+PAGES.company=()=>head('Dados da empresa','Referência informativa; edição ainda indisponível')+`
+  <div class="callout warn mb">Esta página mostra dados de referência, não um cadastro editável. <b>Nenhuma alteração aqui seria salva ou propagada aos contratos.</b> Para corrigir dados oficiais, é necessário implementar atualização com versionamento e revisão dos documentos existentes.</div>
   <div class="grid g2">
     <div class="card">
       <div class="card-t">Identificação</div>
       <div class="mb"><label class="lbl">Razão social <span class="pill pill-gray">🔒 fixo</span></label><input class="inp" value="Versus Soluções em Gestão — programa PesquisaPro" disabled style="background:var(--bg);color:var(--ink3);cursor:not-allowed"></div>
       <div class="field-row mb">
-        <div><label class="lbl">CNPJ</label><input class="inp" value="26.643.308/0001-49"></div>
+        <div><label class="lbl">CNPJ</label><input class="inp" value="26.643.308/0001-49" readonly></div>
         <div><label class="lbl">Inscrição estadual <span class="pill pill-gray">🔒 fixo</span></label><input class="inp" value="Isento" disabled style="background:var(--bg);color:var(--ink3);cursor:not-allowed"></div>
       </div>
-      <div class="mb"><label class="lbl">Endereço</label><input class="inp" value="Avenida Trinta e um de Março, nº 861, Loja 07, São João del Rei/MG"></div>
-      <div class="field-row"><div><label class="lbl">Telefone</label><input class="inp" value="(31) 99668-3030"></div><div><label class="lbl">E-mail</label><input class="inp" value="contato@pesquisapro.com.br"></div></div>
+      <div class="mb"><label class="lbl">Endereço</label><input class="inp" value="Avenida Trinta e um de Março, nº 861, Loja 07, São João del Rei/MG" readonly></div>
+      <div class="field-row"><div><label class="lbl">Telefone</label><input class="inp" value="(31) 99668-3030" readonly></div><div><label class="lbl">E-mail</label><input class="inp" value="contato@pesquisapro.com.br" readonly></div></div>
     </div>
     <div class="card">
       <div class="card-t">Marca e responsável técnico <span class="pill pill-gray">🔒 fixo</span></div>
@@ -9376,8 +9432,8 @@ PAGES.company=()=>head('Dados da empresa','Informações usadas em contratos e r
         <div style="border:1px solid var(--line);border-radius:var(--r-s);height:90px;display:flex;align-items:center;justify-content:center;background:var(--bg)">
           <img src="assets/logo-wide.png" alt="PesquisaPro" style="height:34px;width:auto;border-radius:6px">
         </div></div>
-      <div class="mb"><label class="lbl">Responsável técnico (estatístico)</label><input class="inp" value="Dr. Responsável Técnico · CONRE 0000" disabled style="background:var(--bg);color:var(--ink3);cursor:not-allowed"></div>
-      <div class="callout">Identidade visual e dados técnicos são únicos do PesquisaPro e aparecem automaticamente no cabeçalho dos contratos e na ficha técnica dos relatórios.</div>
+      <div class="mb"><label class="lbl">Responsável técnico (estatístico)</label><input class="inp" value="Não informado nesta página" disabled style="background:var(--bg);color:var(--ink3);cursor:not-allowed"></div>
+      <div class="callout">O logotipo é exibido pelo aplicativo; esta tela não comprova dados de responsável técnico nem atualiza contratos.</div>
     </div>
   </div>`;
 
@@ -9418,7 +9474,6 @@ window._afterRender=function(key){
   if(key==='reports'){reportsLoadAndRender();reportsStartLive();reportsLoadDraft();responseHeatmapLoad('master');}
   if(key==='my-earnings')renderMyRejected();
   if(key==='sample'){calcSample();}
-  if(key==='quotas'){quotaSeg(document.querySelector('#quotaSeg button'),'sexo');}
   if(key==='permissions'){drawPerms();}
   if(key==='finance'){
     drawFin();
@@ -9488,18 +9543,6 @@ function drawSampleChart(N,Z,p){
     datasets:[{label:'Amostra',data,backgroundColor:'#7c3aed',borderRadius:6}]},
     options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
       scales:{y:{beginAtZero:true,grid:{color:'#e2e8f0'}},x:{grid:{display:false}}}}});
-}
-
-/* quotas segmented */
-function quotaSeg(btn,which){
-  document.querySelectorAll('#quotaSeg button').forEach(b=>b.classList.remove('on'));
-  btn.classList.add('on');
-  const sets={
-    sexo:[['Masculino',1380,2058,'#2563eb'],['Feminino',1467,2142,'#059669']],
-    idade:[['16–24',390,535,'#2563eb'],['25–44',830,1065,'#059669'],['45–59',920,1280,'#ea580c'],['60+',707,1320,'#7c3aed']],
-    regiao:[['Central',640,890,'#2563eb'],['Zona da Mata',410,560,'#059669'],['Triângulo',528,610,'#ea580c'],['Norte',430,640,'#7c3aed'],['Vale do Rio Doce',390,500,'#d97706'],['Demais',449,1000,'#dc2626']]
-  };
-  document.getElementById('quotaBody').innerHTML=sets[which].map(r=>quota(r[0],r[1],r[2],r[3])).join('');
 }
 
 /* permissions matrix — uma coluna por perfil (PERM_ROLES), cada linha é {name, [role]:0|1} */

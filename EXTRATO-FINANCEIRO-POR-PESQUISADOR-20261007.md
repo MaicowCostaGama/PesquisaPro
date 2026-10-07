@@ -10,8 +10,9 @@ O extrato apresenta separadamente:
 
 1. **Aprovadas e já pagas** — coletas válidas cobertas pelo valor já quitado;
 2. **Aprovadas e a pagar** — coletas válidas aprovadas financeiramente, mas ainda com saldo a pagar;
-3. **Rejeitadas e motivo** — coletas com status rejeitado e o motivo registrado na auditoria. Elas não geram saldo;
-4. **Válidas aguardando aprovação financeira** — quando existirem novas coletas válidas ainda não aprovadas.
+3. **Em auditoria** — coletas sob análise, com o valor por formulário exibido como **valor potencial**. Se aprovadas, poderão entrar no saldo a receber em um pagamento futuro; enquanto estiverem em auditoria, não são consideradas aprovadas nem pagas;
+4. **Rejeitadas e motivo** — coletas com status rejeitado e o motivo registrado na auditoria. Elas não geram saldo;
+5. **Válidas aguardando aprovação financeira** — quando existirem novas coletas válidas ainda não aprovadas.
 
 O cabeçalho também mostra quantidades, valores, valor por formulário, saldo aprovado a pagar e o motivo do saldo.
 
@@ -27,6 +28,8 @@ O saldo aprovado a pagar é calculado com a mesma regra da aba Financeiro:
 > valor das entrevistas válidas aprovadas menos os recebimentos lançados.
 
 Entrevistas rejeitadas ficam apenas para informação e não entram em aprovado, a pagar, recebido ou saldo.
+
+Coletas em auditoria também ficam fora do saldo aprovado a pagar. O extrato mostra a quantidade e o valor potencial delas separadamente, para que o pesquisador saiba o que poderá receber depois da análise e aprovação.
 
 Como os pagamentos são lançados de forma agregada por pesquisador e pesquisa, a separação visual entre cada entrevista já paga e cada entrevista a pagar é uma classificação equivalente ao valor recebido. O extrato informa isso ao final para preservar a transparência do cálculo.
 

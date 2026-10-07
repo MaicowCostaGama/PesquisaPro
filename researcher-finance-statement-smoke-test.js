@@ -18,6 +18,9 @@ expect(/finance-action-statement/.test(app) && /Gerar extrato/.test(app), 'falta
 expect(/<th>Extrato<\/th>/.test(app), 'falta a coluna Extrato na tabela do pesquisador');
 expect(/financeStatementSection\('Aprovadas e já pagas'/.test(app), 'falta o bloco de coletas aprovadas e já pagas');
 expect(/financeStatementSection\('Aprovadas e a pagar'/.test(app), 'falta o bloco de coletas aprovadas e a pagar');
+expect(/financeStatementSection\('Em auditoria'/.test(app), 'falta o bloco de coletas em auditoria');
+expect(/auditAmount/.test(app) && /poderão entrar no saldo a receber/.test(app), 'o extrato não informa o valor potencial das coletas em auditoria');
+expect(/paymentIsUnderAudit/.test(app) && /pendingFinanceRows/.test(app), 'o status financeiro em auditoria não é separado do saldo pendente');
 expect(/financeStatementSection\('Rejeitadas e motivo'/.test(app), 'falta o bloco de coletas rejeitadas com motivo');
 expect(/rejectReason\|\|'Motivo não informado'/.test(app), 'motivo da reprovação não é exibido no extrato');
 expect(/paymentApprovedBalanceValue\(payment,price\)/.test(app), 'saldo aprovado a pagar não usa o cálculo financeiro existente');
@@ -27,5 +30,6 @@ expect(/financeStatementCsv/.test(app) && /text\/csv/.test(app), 'extrato não p
 expect(/event\.status==='rejected'/.test(app), 'coletas rejeitadas não são separadas pelo status real');
 expect(/event\.status==='valid'/.test(app), 'coletas válidas não são separadas pelo status real');
 expect(/finance-statement-modal/.test(css) && /finance-statement-section/.test(css), 'faltam estilos do extrato');
+expect(/finance-statement-section\.audit/.test(css) && /finance-statement-summary \.audit/.test(css), 'faltam estilos específicos da auditoria');
 expect(/@media print/.test(css) && /financeStatementModal/.test(css), 'faltam estilos de impressão do extrato');
 console.log('researcher-finance-statement-smoke-test: OK');

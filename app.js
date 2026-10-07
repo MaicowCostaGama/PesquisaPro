@@ -50,7 +50,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261007131500';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261007133000';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -8050,25 +8050,33 @@ function financeStatementSection(title,subtitle,rows,kind){
     <div><span class="finance-statement-status">${esc(row.status)}</span>${row.event.status==='rejected'?`<small>Motivo: ${esc(row.event.rejectReason||'Motivo não informado')}</small>`:''}</div>
     <strong>${brl(row.amount)}</strong>
   </div>`).join(''):'<div class="finance-statement-empty">Nenhuma coleta nesta categoria.</div>';
-  return `<section class="finance-statement-section ${kind}"><div class="finance-statement-section-head"><div><h3>${esc(title)}</h3><p>${esc(subtitle)}</p></div><span class="pill ${kind==='rejected'?'pill-red':kind==='paid'?'pill-green':'pill-blue'}">${rows.length}</span></div><div class="finance-statement-list">${body}</div></section>`;
+  return `<section class="finance-statement-section ${kind}"><div class="finance-statement-section-head"><div><h3>${esc(title)}</h3><p>${esc(subtitle)}</p></div><span class="pill ${kind==='rejected'?'pill-red':kind==='paid'?'pill-green':kind==='audit'?'pill-amber':'pill-blue'}">${rows.length}</span></div><div class="finance-statement-list">${body}</div></section>`;
 }
 function financeStatementRender(researcher, survey, payment, events){
-  const validEvents=events.filter(event=>event.status==='valid').sort((a,b)=>a.ts-b.ts);
+  const isAuditCollectionStatus=event=>['audit','auditoria','em_auditoria','pending_audit','under_review'].includes(String(event?.status||'').toLocaleLowerCase('pt-BR').replace(/[ -]/g,'_'))||event?.audit===true||event?.underAudit===true;
+  const validEvents=events.filter(event=>event.status==='valid'&&!isAuditCollectionStatus(event)).sort((a,b)=>a.ts-b.ts);
+  const auditEvents=events.filter(isAuditCollectionStatus).sort((a,b)=>a.ts-b.ts);
   const rejectedEvents=events.filter(event=>event.status==='rejected').sort((a,b)=>(b.rejectedAt||b.ts)-(a.rejectedAt||a.ts));
   const price=Number(survey?.price)||0;
   const approvedCount=paymentApprovedValidValue(payment);
-  const pendingApprovalCount=paymentPendingValidValue(payment);
   const received=paymentReceivedValue(payment?.id);
   const paidEquivalent=price>0?Math.min(approvedCount,Math.floor((received+0.000001)/price)):0;
   const paidAmount=Math.min(received,approvedCount*price);
   const approvedToPayCount=Math.max(0,approvedCount-paidEquivalent);
   const approvedToPayAmount=Math.max(0,paymentApprovedBalanceValue(payment,price));
-  const pendingApprovalAmount=Math.max(0,paymentPendingDueValue(payment,price));
+  const paymentIsUnderAudit=String(payment?.status||'').toLocaleLowerCase('pt-BR')==='auditoria';
   const paidRows=validEvents.slice(0,paidEquivalent).map(event=>({event,status:'Aprovada e já paga',amount:price}));
   const toPayRows=validEvents.slice(paidEquivalent,approvedCount).map(event=>({event,status:'Aprovada e a pagar',amount:price}));
   const pendingRows=validEvents.slice(approvedCount).map(event=>({event,status:'Válida — aguardando aprovação financeira',amount:price}));
+  const auditRowsFromEvents=auditEvents.map(event=>({event,status:'Em auditoria — pode ser aprovada',amount:price}));
+  const auditEventIds=new Set(auditRowsFromEvents.map(row=>row.event.id).filter(Boolean));
+  const auditRowsFromPayment=paymentIsUnderAudit?pendingRows.filter(row=>!auditEventIds.has(row.event.id)) : [];
+  const auditRows=[...auditRowsFromEvents,...auditRowsFromPayment];
+  const pendingFinanceRows=paymentIsUnderAudit?[]:pendingRows.filter(row=>!auditEventIds.has(row.event.id));
+  const auditAmount=auditRows.reduce((sum,row)=>sum+row.amount,0);
+  const pendingFinanceAmount=pendingFinanceRows.reduce((sum,row)=>sum+row.amount,0);
   const rejectedRows=rejectedEvents.map(event=>({event,status:'Rejeitada — não gera pagamento',amount:0}));
-  const allRows=[...paidRows,...toPayRows,...pendingRows,...rejectedRows];
+  const allRows=[...paidRows,...toPayRows,...auditRows,...pendingFinanceRows,...rejectedRows];
   FINANCE_STATEMENT_CONTEXT={researcher,survey,payment,rows:allRows};
   const partial=Number((received-paidEquivalent*price).toFixed(2));
   const partialNote=partial>0?` Existe também ${brl(partial)} de pagamento parcial sem equivalência de formulário completo.`:'';
@@ -8080,13 +8088,14 @@ function financeStatementRender(researcher, survey, payment, events){
   modal.innerHTML=`<div class="finance-statement-backdrop" onclick="financeStatementClose()"></div><div class="finance-statement-dialog" role="document">
     <div class="finance-statement-head"><div><span class="eyebrow">EXTRATO INDIVIDUAL</span><h2>${esc(researcher.name||'Pesquisador')}</h2><p>${esc(survey.name||'Pesquisa')} · valor por formulário ${brl(price)}</p></div><button type="button" class="finance-statement-close" onclick="financeStatementClose()" aria-label="Fechar extrato">×</button></div>
     <div class="finance-statement-actions"><button type="button" class="btn btn-out" onclick="financeStatementPrint()">🖨️ Imprimir / salvar PDF</button><button type="button" class="btn btn-out" onclick="financeStatementCsv()">⇩ Baixar CSV</button><button type="button" class="btn btn-fill" onclick="financeStatementClose()">Fechar</button></div>
-    <div class="finance-statement-summary"><div><span>Coletas válidas</span><b>${validEvents.length}</b></div><div class="paid"><span>Aprovadas e já pagas</span><b>${paidEquivalent} · ${brl(paidAmount)}</b></div><div class="to-pay"><span>Aprovadas e a pagar</span><b>${approvedToPayCount} · ${brl(approvedToPayAmount)}</b></div><div class="pending"><span>Aguardando aprovação</span><b>${pendingApprovalCount} · ${brl(pendingApprovalAmount)}</b></div><div class="rejected"><span>Rejeitadas</span><b>${rejectedEvents.length}</b></div></div>
-    <div class="finance-statement-balance"><b>Motivo do saldo para pagamento</b><span>O saldo a pagar é formado pelas coletas válidas já aprovadas para pagamento, menos os repasses lançados. Coletas rejeitadas não entram no saldo. Coletas válidas ainda não aprovadas ficam separadas até a aprovação financeira.${partialNote}</span><strong>Saldo aprovado a pagar: ${brl(approvedToPayAmount)}</strong></div>
+    <div class="finance-statement-summary"><div><span>Coletas válidas</span><b>${validEvents.length}</b></div><div class="paid"><span>Aprovadas e já pagas</span><b>${paidEquivalent} · ${brl(paidAmount)}</b></div><div class="to-pay"><span>Aprovadas e a pagar</span><b>${approvedToPayCount} · ${brl(approvedToPayAmount)}</b></div><div class="audit"><span>Em auditoria</span><b>${auditRows.length} · ${brl(auditAmount)}</b></div><div class="pending"><span>Aguardando aprovação</span><b>${pendingFinanceRows.length} · ${brl(pendingFinanceAmount)}</b></div><div class="rejected"><span>Rejeitadas</span><b>${rejectedEvents.length}</b></div></div>
+    <div class="finance-statement-balance"><b>Motivo do saldo para pagamento</b><span>O saldo a pagar é formado pelas coletas válidas já aprovadas para pagamento, menos os repasses lançados. Coletas rejeitadas não entram no saldo. Coletas em auditoria aparecem separadas com seu valor potencial e somente entram no saldo se forem aprovadas.${partialNote}</span><strong>Saldo aprovado a pagar: ${brl(approvedToPayAmount)}</strong></div>
     ${financeStatementSection('Aprovadas e já pagas','Coletas válidas classificadas até o valor já quitado.',paidRows,'paid')}
     ${financeStatementSection('Aprovadas e a pagar','Coletas válidas já aprovadas financeiramente, mas ainda sem quitação integral.',toPayRows,'to-pay')}
+    ${financeStatementSection('Em auditoria','Valor potencial destas coletas. Se aprovadas, poderão entrar no saldo a receber em um próximo pagamento.',auditRows,'audit')}
     ${financeStatementSection('Rejeitadas e motivo','Não geram valor a pagar; o motivo registrado na auditoria é mantido abaixo.',rejectedRows,'rejected')}
-    ${pendingRows.length?financeStatementSection('Válidas aguardando aprovação financeira','Ainda não compõem o saldo aprovado a pagar.',pendingRows,'pending'):''}
-    <div class="finance-statement-note">A separação entre coletas pagas e a pagar é uma classificação financeira por quantidade equivalente ao valor já recebido. O banco registra pagamentos agregados por pesquisador e pesquisa, não um vínculo individual entre cada recibo e cada entrevista.</div>
+    ${pendingFinanceRows.length?financeStatementSection('Válidas aguardando aprovação financeira','Ainda não compõem o saldo aprovado a pagar.',pendingFinanceRows,'pending'):''}
+    <div class="finance-statement-note">A separação entre coletas pagas e a pagar é uma classificação financeira por quantidade equivalente ao valor já recebido. O banco registra pagamentos agregados por pesquisador e pesquisa, não um vínculo individual entre cada recibo e cada entrevista. Coletas em auditoria são potenciais e não representam pagamento garantido.</div>
   </div>`;
   document.body.appendChild(modal);
   modal.querySelector('.finance-statement-close')?.focus();

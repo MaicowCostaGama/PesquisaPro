@@ -50,7 +50,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261007101500';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261007103500';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -3919,15 +3919,18 @@ function collectDetail(idx){
   if(!COLLECT_TEAM_INVITES_LOADED)loadCollectionTeamFunnelIfNeeded(idx);
   if(COLLECT_ORIENTATION_COUNTS_STATUS==='idle')loadCollectionOrientationCounts(idx);
   const sample=surveySample(s);
-  const collected=surveyCollectedCount(s);
+  const statusCounts=collectStatusCounts(idx);
+  const collected=statusCounts.valid;
   const mapResearchers=[...new Set(team)].sort((a,b)=>a.localeCompare(b));
   const mapResearcherOptions=mapResearchers.map(name=>`<option value="${esc(name)}">${esc(name)}</option>`).join('');
   const researcherSearchMarkup=`<div class="collect-researcher-search" role="search" aria-label="Buscar coletas por pesquisador"><label><span>Buscar pesquisador</span><input id="collectResearcherSearch" type="search" value="${esc(_collectMapFilters.researcherQuery||'')}" placeholder="Digite o nome do pesquisador" list="collectResearcherOptions" oninput="collectApplyResearcherSearch(this.value)" autocomplete="off"><datalist id="collectResearcherOptions">${mapResearchers.map(name=>`<option value="${esc(name)}"></option>`).join('')}</datalist></label><button type="button" class="btn btn-out" onclick="collectClearResearcherSearch()">Limpar</button><span id="collectResearcherSearchSummary" class="collect-researcher-search-summary">Todas as coletas</span></div>`;
   return head('Coleta e campo — '+s.name,'Pesquisadores vinculados a esta pesquisa',
     '<button class="btn btn-out" onclick="collectBack()">← Pesquisas</button><button class="btn btn-fill" onclick="alert(\'Recurso ainda não configurado: exportar dados brutos (CSV/SPSS)\')">Exportar dados</button>')+`
-  <div class="grid g3" style="margin-bottom:16px">
+  <div class="grid g5" style="margin-bottom:16px">
     ${stat('Pesquisadores',String(team.length),'vinculados','☺','#2563eb')}
     ${stat('Coletado',collected.toLocaleString('pt-BR'),'de '+sample.toLocaleString('pt-BR'),'✓','#059669','collectCollectedStat')}
+    ${stat('Coletas válidas',statusCounts.valid.toLocaleString('pt-BR'),'status válido','✓','#0f766e','collectValidStat')}
+    ${stat('Coletas rejeitadas',statusCounts.rejected.toLocaleString('pt-BR'),'status rejeitado','✕','#dc2626','collectRejectedStat')}
     ${stat('Status',s.status==='campo'?'Em campo':'Rascunho','','◷','#d97706')}
   </div>
 
@@ -4239,13 +4242,23 @@ function eventsForSurveyIdx(idx){
   const s=SURVEYS[idx];if(!s)return[];
   return COLLECT_EVENTS.filter(e=>e.surveyId===s.id);
 }
+function collectStatusCounts(idx){
+  const s=SURVEYS[idx];if(!s)return{valid:0,rejected:0,loaded:false};
+  if(!COLLECT_EVENTS_LOADED)return{valid:surveyCollectedCount(s),rejected:0,loaded:false};
+  const events=eventsForSurveyIdx(idx);
+  return {valid:events.filter(event=>event.status==='valid').length,rejected:events.filter(event=>event.status==='rejected').length,loaded:true};
+}
 function refreshCollectCount(idx){
   const s=SURVEYS[idx];if(!s)return;
-  const collected=surveyCollectedCount(s),sample=surveySample(s);
+  const statusCounts=collectStatusCounts(idx),collected=statusCounts.valid,sample=surveySample(s);
   const value=document.querySelector('#collectCollectedStat .s-val');
   const sub=document.querySelector('#collectCollectedStat .s-sub');
   if(value)value.textContent=collected.toLocaleString('pt-BR');
   if(sub)sub.textContent='de '+sample.toLocaleString('pt-BR');
+  const validValue=document.querySelector('#collectValidStat .s-val');
+  const rejectedValue=document.querySelector('#collectRejectedStat .s-val');
+  if(validValue)validValue.textContent=statusCounts.valid.toLocaleString('pt-BR');
+  if(rejectedValue)rejectedValue.textContent=statusCounts.rejected.toLocaleString('pt-BR');
 }
 /* re-busca as coletas desta pesquisa direto do banco e atualiza só os
    painéis (feed/mapa/auditoria) sem recarregar a tela inteira — usado tanto

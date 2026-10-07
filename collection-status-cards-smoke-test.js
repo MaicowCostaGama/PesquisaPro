@@ -1,0 +1,24 @@
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const path=require('node:path');
+const root=__dirname;
+const app=fs.readFileSync(path.join(root,'app.js'),'utf8');
+const css=fs.readFileSync(path.join(root,'style.css'),'utf8');
+const html=fs.readFileSync(path.join(root,'app.html'),'utf8');
+
+assert(app.includes('<div class="grid g5" style="margin-bottom:16px">'),'a tela de coleta não usa a grade de cinco indicadores');
+assert(app.includes("stat('Coletas válidas',statusCounts.valid.toLocaleString('pt-BR')"),'cartão de coletas válidas ausente');
+assert(app.includes("stat('Coletas rejeitadas',statusCounts.rejected.toLocaleString('pt-BR')"),'cartão de coletas rejeitadas ausente');
+assert(app.includes("function collectStatusCounts(idx)"),'função de contagem por status ausente');
+assert(app.includes("event.status==='valid'"),'contagem de válidas não filtra o status válido');
+assert(app.includes("event.status==='rejected'"),'contagem de rejeitadas não filtra o status rejeitado');
+assert(app.includes("'collectValidStat'"),'cartão válido sem alvo de atualização');
+assert(app.includes("'collectRejectedStat'"),'cartão rejeitado sem alvo de atualização');
+assert(app.includes("document.querySelector('#collectValidStat .s-val')"),'valor de válidas não é atualizado ao vivo');
+assert(app.includes("document.querySelector('#collectRejectedStat .s-val')"),'valor de rejeitadas não é atualizado ao vivo');
+assert(app.includes('refreshCollectCount(idx);\n  renderLiveFeed(idx);'),'atualização ao vivo não chama a atualização dos cartões');
+assert(css.includes('.g5{grid-template-columns:repeat(5,1fr)}'),'grade g5 ausente');
+assert(css.includes('.g4,.g5{grid-template-columns:repeat(2,1fr)}'),'grade g5 não está responsiva');
+assert(html.includes('app.js?v=20261007103500'),'cache do app não atualizado');
+assert(html.includes('style.css?v=20261007103500'),'cache do CSS não atualizado');
+console.log('Collection status cards smoke test: PASS — válidas e rejeitadas são exibidas e atualizadas ao vivo.');

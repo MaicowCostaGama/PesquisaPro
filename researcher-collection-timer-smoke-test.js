@@ -12,5 +12,5 @@ ok(app.includes('duration_seconds:elapsedSeconds'),'tempo interno deixou de ser 
 ok(app.includes('ACOLLECT_RECORDING_STOP_TIMER=setTimeout(()=>acollectRecordingStop(),ACOLLECT_RECORDING_MAX_SECONDS*1000);'),'limite automático da gravação foi removido');
 ok(app.includes('A gravação será encerrada automaticamente.'),'orientação sem contador para a gravação ausente');
 ok(!app.includes('id="acollectRecordingTimer">00:00</div>'),'contador visual da gravação ainda aparece');
-ok(html.includes('app.js?v=20261007101500'),'cache do app não foi atualizado');
+ok(html.includes('app.js?v=20261007103500'),'cache do app não foi atualizado');
 console.log('researcher-collection-timer-smoke-test: PASS');

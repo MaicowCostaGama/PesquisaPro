@@ -127,9 +127,10 @@
   .card-d{color:var(--ink3);font-size:12.5px;margin-bottom:14px}
   .grid{display:grid;gap:16px}
   .g4{grid-template-columns:repeat(4,1fr)}
+  .g5{grid-template-columns:repeat(5,1fr)}
   .g3{grid-template-columns:repeat(3,1fr)}
   .g2{grid-template-columns:repeat(2,1fr)}
-  @media(max-width:1100px){.g4{grid-template-columns:repeat(2,1fr)}.g3{grid-template-columns:1fr}}
+  @media(max-width:1100px){.g4{grid-template-columns:repeat(2,1fr)}.g5{grid-template-columns:repeat(3,1fr)}.g3{grid-template-columns:1fr}}
 
   .stat{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:17px;box-shadow:var(--shadow-sm);transition:transform .18s var(--ease),box-shadow .18s var(--ease)}
   .stat:hover{transform:translateY(-2px);box-shadow:var(--shadow-md)}
@@ -653,8 +654,8 @@ table{font-size:12.5px}th{color:var(--ink3);font-size:10px;letter-spacing:.65px;
 /* tables and long forms remain usable on small screens */
 @media(max-width:1200px){#app.show{grid-template-columns:232px minmax(0,1fr)}.main{padding:28px 24px}.comm-funnel{grid-template-columns:repeat(7,minmax(190px,1fr))}}
 @media(max-width:860px){#app.show{height:100vh;height:100dvh;grid-template-columns:minmax(0,1fr);grid-template-rows:60px minmax(0,1fr)}.topbar{height:60px;padding:0 16px}.brand-logo-topbar{height:30px}.main{height:auto;min-height:0;padding:22px 16px}.sidebar{top:60px}.sidebar-backdrop{inset:60px 0 0 0}.page-head{align-items:flex-start;margin-bottom:22px}.page-head h1{font-size:23px}.page-head p{font-size:12.5px}.stat{padding:16px}.card{padding:17px}}
-@media(max-width:640px){.page-head h1{font-size:21px}.page-head .ph-actions{gap:7px}.page-head .ph-actions .btn{min-width:0}.g4{grid-template-columns:repeat(2,1fr)}.grid{gap:12px}.card{border-radius:14px}.stat{border-radius:14px}.stat .s-val{font-size:25px}.field-row{gap:10px}.sample-out{gap:10px}.lp-main{padding:0 16px}}
-  @media(max-width:480px){.g4{grid-template-columns:1fr}.main{padding:18px 12px}.page-head .ph-actions{width:100%}.page-head .ph-actions .btn{flex:1}.login-card{padding:34px 24px}}
+@media(max-width:640px){.page-head h1{font-size:21px}.page-head .ph-actions{gap:7px}.page-head .ph-actions .btn{min-width:0}.g4,.g5{grid-template-columns:repeat(2,1fr)}.grid{gap:12px}.card{border-radius:14px}.stat{border-radius:14px}.stat .s-val{font-size:25px}.field-row{gap:10px}.sample-out{gap:10px}.lp-main{padding:0 16px}}
+  @media(max-width:480px){.g4,.g5{grid-template-columns:1fr}.main{padding:18px 12px}.page-head .ph-actions{width:100%}.page-head .ph-actions .btn{flex:1}.login-card{padding:34px 24px}}
 
   @media(max-width:640px){
     .q-card .qc-head{flex-wrap:wrap;gap:8px}

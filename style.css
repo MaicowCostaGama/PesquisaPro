@@ -1900,3 +1900,9 @@ body.acollect-notice-gate-open{overflow:hidden}
 .nav-item .nav-pending-badge{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;min-width:23px;min-height:23px;max-width:46px;padding:2px 6px;margin-left:auto;border-radius:999px;background:#fff1d6;color:#7c3600;border:1px solid #f8cc8b;font-size:10px;font-weight:800;line-height:1;white-space:nowrap;font-variant-numeric:tabular-nums}
 .nav-item.on .nav-pending-badge{background:#fff;color:#12448e;border-color:rgba(255,255,255,.75)}
 .nav-item .nav-pending-badge[hidden]{display:none}
+/* v138 — encerramento voluntário e arquivo de usuários inativos. */
+.contract-termination-card{margin:16px 0;border:1px solid #fecaca;background:#fffafa}
+.contract-termination-card .card-t{color:#991b1b}
+.contract-termination-card .card-d{max-width:760px;line-height:1.55}
+.contract-termination-card .btn{white-space:normal;max-width:100%}
+@media(max-width:650px){.contract-termination-card .btn{width:100%}}

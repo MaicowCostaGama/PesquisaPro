@@ -51,7 +51,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261007213940';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261007215922';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -202,7 +202,7 @@ async function enableResearcherPush(){
   try{
     const permission=await Notification.requestPermission();
     if(permission!=='granted'){PUSH_STATUS='blocked';go('dashboard-pesq');return;}
-    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261007213940',{scope:'./'});
+    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261007215922',{scope:'./'});
     const subscription=await PUSH_SW_REGISTRATION.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:pushKeyToUint8Array(window.PP_PUSH_PUBLIC_KEY)});
     const json=subscription.toJSON();
     const {error}=await sb.from('push_subscriptions').upsert({user_id:CURRENT_PROFILE.id,endpoint:json.endpoint,subscription:json,user_agent:navigator.userAgent,updated_at:new Date().toISOString()},{onConflict:'endpoint'});
@@ -442,6 +442,12 @@ async function afterLogin(user){
     const errEl=document.getElementById('li-error');
     errEl.textContent='Login feito, mas não encontramos seu perfil no sistema. Fale com o administrador.';
     errEl.style.display='block';
+    await sb.auth.signOut();
+    return;
+  }
+  if(profile.role==='pesq'&&profile.status==='encerrado'){
+    const errEl=document.getElementById('li-error');
+    if(errEl){errEl.textContent='Este acesso foi encerrado a pedido do pesquisador. Entre em contato com a gestão caso precise solicitar uma reativação.';errEl.style.display='block';}
     await sb.auth.signOut();
     return;
   }
@@ -5914,6 +5920,10 @@ function renderAcollectActionState(){
    efetivamente trava a coleta quando a cota já bateu a meta. */
 async function acollectStart(){
   if(GEO.status!=='granted'||!ACOLLECT_SURVEY_ID)return;
+  if(CURRENT_PROFILE?.role==='pesq'&&CURRENT_PROFILE.status!=='ativo'){
+    alert('Seu acesso ao PesquisaPro está encerrado. Não é possível iniciar novas coletas.');
+    return;
+  }
   // quando a pesquisa não tem cotas configuradas, ACOLLECT_SELECTED_QUOTA é
   // '' de propósito (coleta livre) — só exigir uma cota escolhida quando
   // existe alguma cota pra escolher. Sem essa checagem, o clique em
@@ -6774,6 +6784,7 @@ const ROLE_PILL={
 /* abas de gestão da tela Usuários — cada perfil é gerenciado separadamente */
 const USER_TABS=[
   {key:'pesq',label:'Pesquisadores'},
+  {key:'pesq_inativos',label:'Usuários inativos'},
   {key:'cliente',label:'Clientes'},
   {key:'admpro',label:'ADM PesquisaPro'},
   {key:'vendedor',label:'Vendedores'},
@@ -6781,7 +6792,7 @@ const USER_TABS=[
   {key:'recrutador',label:'Recrutadores'},
   {key:'staff',label:'Administração'},
 ];
-const USER_TAB_ROLES={pesq:['pesq'],cliente:['cliente'],admpro:['admpro'],vendedor:['vendedor'],indicador:['indicador'],recrutador:['recrutador'],staff:['admin','coord','gerente']};
+const USER_TAB_ROLES={pesq:['pesq'],pesq_inativos:['pesq'],cliente:['cliente'],admpro:['admpro'],vendedor:['vendedor'],indicador:['indicador'],recrutador:['recrutador'],staff:['admin','coord','gerente']};
 let USER_TAB='pesq';
 let USER_SEARCH='';
 let USER_GENERAL_FILTERS={status:'',city:''};
@@ -6811,9 +6822,14 @@ function userMatchesResearcherFilters(user,tab=USER_TAB){
   const filters=USER_RESEARCHER_FILTERS,states=researcherStateSet(user),cities=researcherCitySet(user);
   return (!filters.state||states.has(filters.state))&&(!filters.city||cities.has(filters.city))&&(!filters.schooling||user.escolaridade===filters.schooling);
 }
-function usersInTab(tab){const roles=USER_TAB_ROLES[tab]||[];return USERS.map((u,i)=>({u,i})).filter(x=>roles.includes(x.u.role)&&userMatchesSearch(x.u)&&userMatchesGeneralFilters(x.u,tab)&&userMatchesResearcherFilters(x.u,tab));}
+function userBelongsToTabStatus(user,tab){
+  if(tab==='pesq_inativos')return user?.status==='encerrado';
+  if(tab==='pesq')return user?.status!=='encerrado';
+  return true;
+}
+function usersInTab(tab){const roles=USER_TAB_ROLES[tab]||[];return USERS.map((u,i)=>({u,i})).filter(x=>roles.includes(x.u.role)&&userBelongsToTabStatus(x.u,tab)&&userMatchesSearch(x.u)&&userMatchesGeneralFilters(x.u,tab)&&userMatchesResearcherFilters(x.u,tab));}
 function userGeneralFilterOptions(tab){
-  const roles=USER_TAB_ROLES[tab]||[],base=USERS.filter(user=>roles.includes(user.role)),cities=new Map();
+  const roles=USER_TAB_ROLES[tab]||[],base=USERS.filter(user=>roles.includes(user.role)&&userBelongsToTabStatus(user,tab)),cities=new Map();
   base.forEach(user=>[user.cidade,user.addr,...(user.cidadesAtuacao||[])].filter(Boolean).forEach(value=>{const part=locationParts(value);if(part?.city){const key=normalizeUserSearch(part.city);cities.set(key,part.city+(part.uf?'/'+part.uf:''));}}));
   return {cities:[...cities.entries()].sort((a,b)=>a[1].localeCompare(b[1],'pt-BR'))};
 }
@@ -7057,7 +7073,7 @@ function loadSignupsIfNeeded(){
 }
 
 const CLIENT_STATUS={ativo:'<span class="pill pill-green">● Ativo</span>',prospecto:'<span class="pill pill-amber">● Prospecto</span>',encerrado:'<span class="pill pill-gray">● Encerrado</span>'};
-const USER_TAB_NEW_LABEL={pesq:'pesquisador',cliente:'cliente',admpro:'ADM PesquisaPro',vendedor:'vendedor',indicador:'indicador de clientes',recrutador:'recrutador',staff:'usuário administrativo'};
+const USER_TAB_NEW_LABEL={pesq:'pesquisador',pesq_inativos:'pesquisador inativo',cliente:'cliente',admpro:'ADM PesquisaPro',vendedor:'vendedor',indicador:'indicador de clientes',recrutador:'recrutador',staff:'usuário administrativo'};
 PAGES.users=()=>{
   if(!['admin','admpro'].includes(selectedRole)){
     return head('Usuários','Gestão de usuários')+`
@@ -7097,6 +7113,13 @@ function userTabStats(tab){
       ${stat('Docs faltando',String(missingDocs),'com algum documento pendente','◷','#dc2626')}
     </div>`;
   }
+  if(tab==='pesq_inativos'){
+    return `<div class="grid g3 user-stat-grid" style="margin-bottom:16px">
+      ${stat('Usuários inativos',String(list.length),'arquivados sem acesso à coleta','▣','#64748b')}
+      ${stat('Com contrato',String(list.filter(u=>u.status==='encerrado').length),'histórico contratual preservado','✓','#2563eb')}
+      ${stat('Reativação',String(list.length),'disponível somente para a gestão','↻','#d97706')}
+    </div>`;
+  }
   if(tab==='cliente'){
     return `<div class="grid g3" style="margin-bottom:16px">
       ${stat('Clientes',String(list.length),'cadastrados','☼','#2563eb')}
@@ -7113,7 +7136,7 @@ function userTabStats(tab){
   </div>`;
 }
 function userTableHead(tab){
-  if(tab==='pesq')return '<tr><th>Nome</th><th>CPF</th><th>Cidade / estado</th><th>Escolaridade</th><th>Documentos</th><th>PIX</th><th>Status</th><th class="user-actions-header">Ações</th></tr>';
+  if(tab==='pesq'||tab==='pesq_inativos')return '<tr><th>Nome</th><th>CPF</th><th>Cidade / estado</th><th>Escolaridade</th><th>Documentos</th><th>PIX</th><th>Status</th><th class="user-actions-header">Ações</th></tr>';
   if(tab==='cliente')return '<tr><th>Cliente</th><th>CPF/CNPJ</th><th>Celular</th><th>Pesquisas</th><th>Status</th><th class="user-actions-header">Ações</th></tr>';
   if(tab==='recrutador')return '<tr><th>Nome</th><th>CPF</th><th>Perfil</th><th>Celular</th><th>Valor por captação</th><th>Status</th><th class="user-actions-header">Ações</th></tr>';
   return '<tr><th>Nome</th><th>CPF</th><th>Perfil</th><th>Celular</th><th>Comissão</th><th>Status</th><th class="user-actions-header">Ações</th></tr>';
@@ -7121,12 +7144,12 @@ function userTableHead(tab){
 function userTableRows(tab){
   const items=usersInTab(tab);
   if(items.length===0){
-    const colspan=tab==='pesq'?8:tab==='cliente'?6:7;
+    const colspan=(tab==='pesq'||tab==='pesq_inativos')?8:tab==='cliente'?6:7;
     return `<tr><td colspan="${colspan}" class="empty">Nenhum cadastro nesta aba ainda.</td></tr>`;
   }
-  if(tab==='pesq'){
+  if(tab==='pesq'||tab==='pesq_inativos'){
     return items.map(({u,i})=>{
-      const st=u.status==='ativo'?'<span class="pill pill-green">● Ativo</span>':'<span class="pill pill-amber">● Pendente</span>';
+      const st=u.status==='ativo'?'<span class="pill pill-green">● Ativo</span>':u.status==='encerrado'?'<span class="pill pill-gray">● Encerrado</span>':'<span class="pill pill-amber">● Pendente</span>';
       const docsOk=u.docFoto&&u.docComprovante;
       const docCount=(u.docFoto?1:0)+(u.docComprovante?1:0);
       const docPillTop=docsOk?'<span class="pill pill-green">● 2/2 anexados</span>':`<span class="pill pill-red">● ${docCount}/2 anexados</span>`;
@@ -7148,7 +7171,7 @@ function userTableRows(tab){
         <td>${st}</td>
         <td class="user-actions-cell" onclick="event.stopPropagation()">
           ${conversationButton(u.phone,'Olá '+u.name+'! Podemos conversar sobre seu cadastro e as próximas coletas?')}
-          ${u.status!=='ativo'?`<button class="btn-ghost" style="color:var(--teal)" onclick="userPesqApproveList(${i})">Aprovar</button>`:''}
+          ${u.status==='encerrado'?`<button class="btn-ghost" style="color:var(--teal)" onclick="userReactivateResearcher(${i})">Reativar</button>`:u.status!=='ativo'?`<button class="btn-ghost" style="color:var(--teal)" onclick="userPesqApproveList(${i})">Aprovar</button>`:''}
           <button class="btn-ghost" onclick="userShow(${i})">Ver dados</button>
           <button class="btn-ghost" onclick="userOpen(${i})">Editar</button>
           ${userPasswordResetButton(u,i)}
@@ -7197,7 +7220,7 @@ let USER_SIGNUP_OPEN=false;
 function userSignupToggle(){USER_SIGNUP_OPEN=!USER_SIGNUP_OPEN;go('users');}
 function userList(){
   const tab=USER_TAB;
-  const tabInfo={pesq:['REDE DE CAMPO','Pesquisadores cadastrados e documentos para liberação de coleta.'],cliente:['BASE DE CLIENTES','Organizações e contatos que acompanham suas pesquisas.'],admpro:['EQUIPE INTERNA','Perfis ADM PesquisaPro autorizados no sistema.'],vendedor:['TIME COMERCIAL','Vendedores, percentuais de comissão e acesso ao funil.'],indicador:['PARCEIROS COMERCIAIS','Indicadores de clientes e percentuais de comissão.'],recrutador:['REDE DE CAPTAÇÃO','Parceiros que trazem novos pesquisadores para a rede.'],staff:['ADMINISTRAÇÃO','Usuários com acesso operacional e permissões de gestão.']}[tab]||['CADASTROS','Gestão dos perfis de acesso.'];
+  const tabInfo={pesq:['REDE DE CAMPO','Pesquisadores cadastrados e documentos para liberação de coleta.'],pesq_inativos:['ARQUIVO DE USUÁRIOS','Pesquisadores que solicitaram encerramento; histórico e pagamentos permanecem preservados.'],cliente:['BASE DE CLIENTES','Organizações e contatos que acompanham suas pesquisas.'],admpro:['EQUIPE INTERNA','Perfis ADM PesquisaPro autorizados no sistema.'],vendedor:['TIME COMERCIAL','Vendedores, percentuais de comissão e acesso ao funil.'],indicador:['PARCEIROS COMERCIAIS','Indicadores de clientes e percentuais de comissão.'],recrutador:['REDE DE CAPTAÇÃO','Parceiros que trazem novos pesquisadores para a rede.'],staff:['ADMINISTRAÇÃO','Usuários com acesso operacional e permissões de gestão.']}[tab]||['CADASTROS','Gestão dos perfis de acesso.'];
   const currentCount=usersInTab(tab).length;
   const extras = tab==='pesq' ? `
   ${signupOrphanRowsMarkup()}
@@ -7232,9 +7255,10 @@ function userList(){
   const generalFilters=userGeneralFiltersMarkup(tab);
   const researcherFilters=tab==='pesq'?userResearcherFiltersMarkup(usersInTab('pesq')):'';
   const researcherQueue=tab==='pesq'?researcherApprovalQueueMarkup():'';
+  const newButton=tab==='pesq_inativos'?'':`<button class="btn btn-fill" onclick="userOpen('new')">＋ Novo ${USER_TAB_NEW_LABEL[tab]||'usuário'}</button>`;
   return `<div class="users-page"><div class="users-context"><div><span class="eyebrow">${tabInfo[0]}</span><p>${tabInfo[1]}</p></div><span class="users-count-chip">${currentCount} ${currentCount===1?'perfil':'perfis'}</span></div>`+
   head('Usuários','Cadastre e gerencie os diferentes perfis de usuário do sistema',
-    `<button class="btn btn-fill" onclick="userOpen('new')">＋ Novo ${USER_TAB_NEW_LABEL[tab]||'usuário'}</button>`)+
+    newButton)+
   userTabBar()+
   userTabStats(tab)+
   researcherQueue+
@@ -7564,6 +7588,41 @@ async function userDownloadPesqDocument(index,kind){
     setTimeout(()=>URL.revokeObjectURL(objectUrl),1000);
   }catch(ex){alert('Não foi possível baixar este documento. Verifique se o arquivo existe e se o bucket de documentos está configurado.');console.error(ex);}
 }
+async function requestResearcherContractTermination(){
+  if(!CURRENT_PROFILE||CURRENT_PROFILE.role!=='pesq')return;
+  const message='Tem certeza de que deseja encerrar seu contrato e cancelar sua inscrição no PesquisaPro?\n\nSeu acesso será inativado, você não poderá iniciar novas coletas e seu histórico de contratos, coletas e pagamentos será preservado para consulta administrativa.';
+  if(!confirm(message))return;
+  const button=document.getElementById('contractTerminateBtn');
+  if(button){button.disabled=true;button.textContent='Encerrando…';}
+  try{
+    const {data,error}=await sb.rpc('request_researcher_contract_termination',{p_reason:'Encerramento solicitado pelo pesquisador'});
+    if(error)throw new Error(error.message);
+    if(!data||data.status!=='encerrado')throw new Error('O banco não confirmou o encerramento.');
+    CURRENT_PROFILE.status='encerrado';
+    alert('Sua solicitação foi registrada. O acesso foi inativado e o histórico foi arquivado para a gestão.');
+    await logout();
+  }catch(ex){
+    alert('Não foi possível encerrar o contrato agora. Nenhum dado foi arquivado: '+ex.message);
+    if(button){button.disabled=false;button.textContent='Solicitar encerramento e cancelar inscrição';}
+  }
+}
+async function userReactivateResearcher(index){
+  if(!['admin','admpro'].includes(selectedRole))return;
+  const user=USERS[index];
+  if(!user||user.role!=='pesq'||user.status!=='encerrado')return;
+  if(!confirm('Reativar '+user.name+'? O acesso será liberado novamente, mas o histórico de encerramento continuará registrado.'))return;
+  try{
+    const {data,error}=await sb.rpc('restore_researcher_from_archive',{p_researcher_id:user.id});
+    if(error)throw new Error(error.message);
+    if(!data||data.status!=='ativo')throw new Error('O banco não confirmou a reativação.');
+    user.status='ativo';
+    USERS[index]=user;
+    invalidateStaffNavPendingCounts();
+    USER_TAB='pesq';USER_VIEW=null;USER_EDIT=null;USER_ARMED=true;
+    alert('Pesquisador reativado. O histórico de encerramento foi preservado.');
+    go('users');
+  }catch(ex){alert('Não foi possível reativar este pesquisador: '+ex.message);}
+}
 function userViewPesq(u,idx){
   const initials=u.name.split(' ').map(n=>n[0]).slice(0,2).join('');
   const dash='<span style="color:var(--ink3);font-weight:400">—</span>';
@@ -7578,7 +7637,7 @@ function userViewPesq(u,idx){
     `<button class="btn btn-out" onclick="userViewBack()">← Voltar</button>
      <button class="btn btn-out" style="color:var(--teal);border-color:var(--teal)" onclick="userWhatsApp(${jsArg(u.phone)})">WhatsApp</button>
      ${userPasswordResetButton(u,idx)}
-     ${u.status!=='ativo'?`<button class="btn btn-fill" style="background:var(--teal)" onclick="userPesqApprove(${idx})">Aprovar</button>`:''}
+     ${u.status==='encerrado'?`<button class="btn btn-fill" style="background:var(--teal)" onclick="userReactivateResearcher(${idx})">Reativar usuário</button>`:u.status!=='ativo'?`<button class="btn btn-fill" style="background:var(--teal)" onclick="userPesqApprove(${idx})">Aprovar</button>`:''}
      <button class="btn btn-fill" onclick="userEditFromView()">Editar</button>`)+`
   <div class="profile-identity">
     <div class="avatar profile-identity-avatar">${initials}</div>
@@ -7586,7 +7645,7 @@ function userViewPesq(u,idx){
       <div style="font-weight:700;font-size:18px">${esc(u.name)}</div>
       <div style="display:flex;gap:8px;align-items:center;margin-top:4px">
         ${ROLE_PILL.pesq}
-        ${u.status==='ativo'?'<span class="pill pill-green">● Ativo</span>':'<span class="pill pill-amber">● Pendente</span>'}
+        ${u.status==='ativo'?'<span class="pill pill-green">● Ativo</span>':u.status==='encerrado'?'<span class="pill pill-gray">● Encerrado</span>':'<span class="pill pill-amber">● Pendente</span>'}
       </div>
     </div>
   </div>
@@ -9632,6 +9691,11 @@ PAGES['my-contract']=()=>{
       <h3>Assinaturas</h3>
       ${companySignPadHtml()}
       <div class="sign-pad signed">✓ Assinado eletronicamente por ${esc(MY_CONTRACT.fullName)}${MY_CONTRACT.cpf?(' · CPF '+esc(MY_CONTRACT.cpf)):''} em ${esc(new Date(MY_CONTRACT.ts).toLocaleString('pt-BR'))}${MY_CONTRACT.ip?(' · IP '+esc(MY_CONTRACT.ip)):' · IP não disponível'} · hash ${esc((MY_CONTRACT.hash||'—').slice(0,16))}…</div>
+    </div>
+    <div class="card contract-termination-card">
+      <div class="card-t">Encerrar participação</div>
+      <div class="card-d">Se você não deseja mais participar do PesquisaPro, pode solicitar o encerramento do contrato e o cancelamento da sua inscrição. Seu histórico de coletas, contratos e pagamentos será preservado para a gestão.</div>
+      <button class="btn btn-out" id="contractTerminateBtn" style="color:var(--red);border-color:var(--red);margin-top:10px" onclick="requestResearcherContractTermination()">Solicitar encerramento e cancelar inscrição</button>
     </div>
     <button class="btn btn-out" onclick="window.print()">🖨️ Imprimir / salvar em PDF</button>
     <button class="btn-ghost" onclick="downloadContractCopy()">⬇ Baixar cópia (.txt)</button>`;

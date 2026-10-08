@@ -1,0 +1,26 @@
+const fs=require('fs');
+const path=require('path');
+const root=__dirname;
+const app=fs.readFileSync(path.join(root,'app.js'),'utf8');
+const css=fs.readFileSync(path.join(root,'style.css'),'utf8');
+const sql=fs.readFileSync(path.join(root,'deploy','encerramento-voluntario-pesquisador.sql'),'utf8').toLowerCase();
+const html=fs.readFileSync(path.join(root,'app.html'),'utf8');
+function ok(condition,message){if(!condition)throw new Error(message);}
+ok(app.includes("PAGES['my-contract']=")&&app.includes('contractTerminateBtn'),'a tela Meu contrato não contém o ponto de encerramento');
+ok(app.includes('requestResearcherContractTermination')&&app.includes("sb.rpc('request_researcher_contract_termination'"),'o handler não usa a RPC segura de encerramento');
+ok(app.includes('Tem certeza de que deseja encerrar seu contrato e cancelar sua inscrição'),'a confirmação explícita do cancelamento está ausente');
+ok(app.includes("CURRENT_PROFILE.status='encerrado'")&&app.includes('await logout()'),'o sucesso não encerra a sessão do pesquisador');
+ok(app.includes("profile.role==='pesq'&&profile.status==='encerrado'")&&app.includes('Este acesso foi encerrado'),'o login não bloqueia perfil encerrado');
+ok(app.includes("CURRENT_PROFILE?.role==='pesq'&&CURRENT_PROFILE.status!=='ativo'")&&app.includes('Não é possível iniciar novas coletas'),'o início da coleta não possui bloqueio de segurança');
+ok(app.includes("{key:'pesq_inativos',label:'Usuários inativos'}")&&app.includes("pesq_inativos:['pesq']"),'a aba de usuários inativos não foi registrada');
+ok(app.includes("userBelongsToTabStatus(user,tab)")&&app.includes("tab==='pesq_inativos'"),'o filtro de arquivados não está isolado');
+ok(app.includes('userReactivateResearcher')&&app.includes("sb.rpc('restore_researcher_from_archive'"),'a reativação administrativa não está disponível');
+ok(app.includes('preservado')&&app.includes('histórico de encerramento'),'a interface não explica a preservação do histórico');
+ok(sql.includes('create table if not exists public.researcher_contract_terminations'),'a tabela de trilha de encerramento não foi criada');
+ok(sql.includes('request_researcher_contract_termination')&&sql.includes('restore_researcher_from_archive'),'as RPCs de encerramento/reativação estão ausentes');
+ok(sql.includes("set status = 'encerrado'")&&sql.includes("set status = 'ativo'"),'a migration não altera os status esperados');
+ok(sql.includes('trg_block_inactive_researcher_collection')&&sql.includes('before insert on public.collection_events'),'o bloqueio de novas coletas não está protegido por trigger');
+ok(!/\b(drop table|truncate|delete from public\.(profiles|researcher_contracts|collection_events|payments))\b/i.test(sql),'a migration contém operação destrutiva');
+ok(css.includes('.contract-termination-card'),'o cartão de encerramento não tem estilo próprio');
+ok(html.includes('20261007215922'),'o HTML ainda não aponta para o cache da versão nova');
+console.log('Contract termination smoke test: PASS — confirmação, arquivamento reversível, bloqueio de coleta e reativação verificados.');

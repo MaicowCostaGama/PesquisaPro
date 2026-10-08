@@ -8,7 +8,7 @@ Há um defeito **determinístico** em `deploy/gravacao-confirmacao-20pct.sql`: `
 
 “Sincronizado” significa que o evento chegou ao banco; **não significa que a gravação foi anexada nem que a entrevista foi validada**.
 
-## Correção preparada (ainda não ativada)
+## Correção publicada (teste funcional controlado pendente)
 
 A migration aditiva [corrigir-gravacao-noturna-e-recuperar-audios.sql](/home/ubuntu/PesquisaPro-remoto/deploy/corrigir-gravacao-noturna-e-recuperar-audios.sql):
 
@@ -28,9 +28,9 @@ A ampliação da restrição de status substitui apenas a `CHECK` existente, den
 3. Publicar o frontend v137 **somente depois** da migration, com nova autorização específica. A migration já é compatível com o frontend anterior: novos eventos ficam pendentes se o áudio falhar, e passam a válidos quando o vínculo terminar.
 4. Testar em ambiente de homologação com entrevista noturna e áudio de teste; confirmar que um upload válido aparece como `uploaded`/`valid` e que erro de upload resulta em `pending_recording`/`failed`, não pagamento.
 
-**Não executei SQL no Supabase, não publiquei código e não alterei dados de produção nesta investigação.** Os testes de JS/SQL são estáticos; a transação no banco e o serviço Storage reais ainda dependem de teste controlado.
+**Não executei SQL no Supabase nem alterei entrevistas ou pagamentos de produção.** Os testes de JS/SQL locais foram estáticos; a transação no banco e o serviço Storage reais ainda dependem de um teste controlado com uma entrevista de homologação.
 
-**Atualização informada pelo usuário:** a captura do SQL Editor mostra `Success. No rows returned` após o `COMMIT` da migration v137. Isso indica execução bem-sucedida da consulta exibida, mas não comprova que cada áudio histórico exista ou seja audível. O código v137 ainda não foi publicado.
+**Atualização:** o usuário mostrou `Success. No rows returned` após o `COMMIT` da migration v137, e autorizou a publicação do código. O commit inicial `f9ed8e9` foi enviado ao GitHub e o cache `20261007213940` foi confirmado no domínio da Vercel. Isso não comprova que cada áudio histórico exista ou seja audível.
 
 ## Diagnóstico somente leitura dos registros históricos
 

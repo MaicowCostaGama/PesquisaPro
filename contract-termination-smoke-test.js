@@ -22,5 +22,5 @@ ok(sql.includes("set status = 'encerrado'")&&sql.includes("set status = 'ativo'"
 ok(sql.includes('trg_block_inactive_researcher_collection')&&sql.includes('before insert on public.collection_events'),'o bloqueio de novas coletas não está protegido por trigger');
 ok(!/\b(drop table|truncate|delete from public\.(profiles|researcher_contracts|collection_events|payments))\b/i.test(sql),'a migration contém operação destrutiva');
 ok(css.includes('.contract-termination-card'),'o cartão de encerramento não tem estilo próprio');
-ok(html.includes('20261008092042'),'o HTML ainda não aponta para o cache da versão nova');
+ok(html.includes('20261008095930'),'o HTML ainda não aponta para o cache da versão nova');
 console.log('Contract termination smoke test: PASS — confirmação, arquivamento reversível, bloqueio de coleta e reativação verificados.');

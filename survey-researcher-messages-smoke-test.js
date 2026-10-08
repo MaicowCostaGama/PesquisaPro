@@ -44,6 +44,6 @@ assert(/p_researcher_id\s+is\s+null/.test(migration),'migration sem caminho de e
 assert(/p_researcher_id\s+is\s+not\s+null/.test(migration),'migration sem caminho de envio individual');
 assert(/researcher_id=auth\.uid\(\)/.test(migration),'RLS não restringe destinatário ao próprio pesquisador');
 assert(/survey_researcher_message_recipients.*researcher_id=auth\.uid\(\)/s.test(migration),'leitura do destinatário não está protegida');
-assert(html.includes('app.js?v=20261008092042'),'cache do app não atualizado');
-assert(html.includes('style.css?v=20261008092042'),'cache do CSS não atualizado');
+assert(html.includes('app.js?v=20261008095930'),'cache do app não atualizado');
+assert(html.includes('style.css?v=20261008095930'),'cache do CSS não atualizado');
 console.log('Survey researcher messages smoke test: PASS — envio geral/individual, destinatário por pesquisa, RLS, limite e painel do pesquisador verificados.');

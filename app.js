@@ -51,7 +51,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261008092042';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261008095930';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -202,7 +202,7 @@ async function enableResearcherPush(){
   try{
     const permission=await Notification.requestPermission();
     if(permission!=='granted'){PUSH_STATUS='blocked';go('dashboard-pesq');return;}
-    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261008092042',{scope:'./'});
+    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261008095930',{scope:'./'});
     const subscription=await PUSH_SW_REGISTRATION.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:pushKeyToUint8Array(window.PP_PUSH_PUBLIC_KEY)});
     const json=subscription.toJSON();
     const {error}=await sb.from('push_subscriptions').upsert({user_id:CURRENT_PROFILE.id,endpoint:json.endpoint,subscription:json,user_agent:navigator.userAgent,updated_at:new Date().toISOString()},{onConflict:'endpoint'});
@@ -4318,7 +4318,7 @@ function collectList(){
     <tbody>${rows}</tbody></table>
   </div>`;
 }
-function collectOpen(i){COLLECT_IDX=i;COLLECT_ARMED=true;COLLECT_ORIENTATION_COUNTS={};COLLECT_ORIENTATION_COUNTS_STATUS='loading';COLLECT_ORIENTATION_COUNTS_LOADING=false;COLLECT_INAPP_ORIENTATION_COUNTS={};COLLECT_INAPP_ORIENTATION_STATUS='idle';COLLECT_INAPP_ORIENTATION_LOADING=false;COLLECT_TEAM_INVITES=[];COLLECT_TEAM_INVITES_LOADED=false;COLLECT_TEAM_INVITES_LOADING=false;COLLECT_TEAM_INVITES_LOAD_ERROR=false;COLLECT_FUNNEL_TAB='available';COLLECT_FUNNEL_SEARCH={available:'',invited:'',accepted:'',team:''};COLLECT_EVOLUTION_MODE='day';disposeCollectEvolutionChart();_collectMapFilters={researcher:'all',researcherQuery:'',status:'all',latest:false};_collectMapFocusId=null;_collectMapDidFit=false;go('collect');}
+function collectOpen(i){COLLECT_IDX=i;COLLECT_ARMED=true;AUDIT_INTERNAL_VIEW='flagged';AUDIT_FLAGGED_COUNT=0;COLLECT_ORIENTATION_COUNTS={};COLLECT_ORIENTATION_COUNTS_STATUS='loading';COLLECT_ORIENTATION_COUNTS_LOADING=false;COLLECT_INAPP_ORIENTATION_COUNTS={};COLLECT_INAPP_ORIENTATION_STATUS='idle';COLLECT_INAPP_ORIENTATION_LOADING=false;COLLECT_TEAM_INVITES=[];COLLECT_TEAM_INVITES_LOADED=false;COLLECT_TEAM_INVITES_LOADING=false;COLLECT_TEAM_INVITES_LOAD_ERROR=false;COLLECT_FUNNEL_TAB='available';COLLECT_FUNNEL_SEARCH={available:'',invited:'',accepted:'',team:''};COLLECT_EVOLUTION_MODE='day';disposeCollectEvolutionChart();_collectMapFilters={researcher:'all',researcherQuery:'',status:'all',latest:false};_collectMapFocusId=null;_collectMapDidFit=false;go('collect');}
 function collectBack(){COLLECT_IDX=null;COLLECT_ORIENTATION_COUNTS={};COLLECT_ORIENTATION_COUNTS_STATUS='idle';COLLECT_ORIENTATION_COUNTS_LOADING=false;COLLECT_INAPP_ORIENTATION_COUNTS={};COLLECT_INAPP_ORIENTATION_STATUS='idle';COLLECT_INAPP_ORIENTATION_LOADING=false;COLLECT_TEAM_INVITES=[];COLLECT_TEAM_INVITES_LOADED=false;COLLECT_TEAM_INVITES_LOADING=false;COLLECT_TEAM_INVITES_LOAD_ERROR=false;disposeCollectEvolutionChart();_collectMapFocusId=null;go('collect');}
 let COLLECT_ARMED=false;
 function collectDetail(idx){
@@ -4401,12 +4401,13 @@ function collectDetail(idx){
 
   <div id="collectTabAuditoria" style="display:none">
     ${auditMinimumDurationMarkup(s)}
-    <div id="auditFlaggedWrap" class="card mb" style="display:none">
+    ${auditInternalNavigationMarkup(idx)}
+    <section id="auditFlaggedWrap" class="card mb audit-focus-panel" data-audit-focus-panel="flagged" ${auditInternalCounts(idx).total?'':'hidden'}>
       <div class="card-t">Reprovações e calibrações desta pesquisa</div>
       <div class="card-d">Coletas marcadas na auditoria abaixo. Desfaça a qualquer momento — a coleta volta a valer normalmente.</div>
       <div id="auditFlagged"></div>
-    </div>
-    <div class="card">
+    </section>
+    <section class="card audit-focus-panel" data-audit-focus-panel="all" ${AUDIT_INTERNAL_VIEW==='all'||!auditInternalCounts(idx).total?'':'hidden'}>
       <div class="card-t">Auditoria da coleta</div>
       <div class="card-d">Todas as entrevistas desta pesquisa: pesquisador, cota, coordenadas (com a distância até a coleta anterior do mesmo pesquisador), horário, intervalo desde a entrevista anterior, confirmação final e alertas de qualidade. Aproximadamente 20% podem ser selecionadas para uma confirmação curta em áudio, sempre com autorização do entrevistado. Reprove uma coleta com fraude/erro (não entra no pagamento do pesquisador) ou marque como calibração (fica fora do cálculo dos resultados, mas continua contando para o pagamento). As duas ações podem ser desfeitas a qualquer momento, aqui ou no painel acima.</div>
       <div id="auditRecordingSummary" class="recording-summary"></div>
@@ -4415,7 +4416,7 @@ function collectDetail(idx){
       <table class="audit-data-table"><thead><tr><th>Pesquisador</th><th>Cota</th><th>Data/hora</th><th title="Tempo desde a entrevista anterior do mesmo pesquisador">Intervalo</th><th>Coordenadas</th><th>Precisão</th><th>Status</th><th>Duração</th><th>Confirmação</th><th>Alertas</th><th class="audit-actions-header">Ações</th></tr></thead>
       <tbody id="auditBody"></tbody></table>
       </div>
-    </div>
+    </section>
   </div>
 
   <div id="collectTabMetas" style="display:none">
@@ -4831,7 +4832,36 @@ function buildMapPopup(e,isLatest){
     <div class="map-popup-actions">${conversationButton(e.phone,'Olá '+e.name+'! Podemos conversar sobre a coleta '+(e.cota||'')+'?')}<button class="btn-ghost map-popup-action" onclick="goToAuditFromMap('${e.id}')">🔎 Ver na auditoria</button></div>
   </div>`;
 }
-let AUDIT_HIGHLIGHT_ID=null;
+let AUDIT_HIGHLIGHT_ID=null,AUDIT_INTERNAL_VIEW='flagged',AUDIT_FLAGGED_COUNT=0;
+function auditInternalCounts(idx){
+  const flagged=collectResearcherFilterEvents(eventsForSurveyIdx(idx)).filter(e=>e.status==='rejected'||e.calibration);
+  const rejected=flagged.filter(e=>e.status==='rejected').length;
+  const calibration=flagged.filter(e=>e.calibration).length;
+  return {total:flagged.length,rejected,calibration};
+}
+function auditApplyInternalView(){
+  const tabs=document.querySelectorAll('[data-audit-focus-tab]');
+  tabs.forEach(tab=>{
+    const active=tab.dataset.auditFocusTab===AUDIT_INTERNAL_VIEW;
+    tab.classList.toggle('is-active',active);tab.setAttribute('aria-selected',active?'true':'false');
+  });
+  document.querySelectorAll('[data-audit-focus-panel]').forEach(panel=>{
+    panel.hidden=panel.dataset.auditFocusPanel!==AUDIT_INTERNAL_VIEW;
+  });
+}
+function auditSetInternalView(view){
+  if(!['flagged','all'].includes(view))return;
+  if(view==='flagged'&&AUDIT_FLAGGED_COUNT===0){AUDIT_INTERNAL_VIEW='all';}
+  else AUDIT_INTERNAL_VIEW=view;
+  auditApplyInternalView();
+}
+function auditInternalNavigationMarkup(idx){
+  const counts=auditInternalCounts(idx);AUDIT_FLAGGED_COUNT=counts.total;
+  const flaggedLabel=counts.total?`Reprovações e calibrações <strong id="auditFlaggedCount">${counts.total}</strong>`:'Reprovações e calibrações <strong id="auditFlaggedCount">0</strong>';
+  const flaggedDetail=counts.total?`${counts.rejected} reprovada${counts.rejected===1?'':'s'} · ${counts.calibration} calibraç${counts.calibration===1?'ão':'ões'}`:'Nenhuma pendência nesta pesquisa';
+  const allCount=eventsForSurveyIdx(idx).length;
+  return `<nav class="audit-focus-nav" aria-label="Atalhos da auditoria" role="tablist"><button type="button" class="audit-focus-tab ${AUDIT_INTERNAL_VIEW==='flagged'&&counts.total?'is-active':''}" data-audit-focus-tab="flagged" role="tab" aria-selected="${AUDIT_INTERNAL_VIEW==='flagged'&&counts.total?'true':'false'}" onclick="auditSetInternalView('flagged')"><span class="audit-focus-tab-icon">!</span><span><b>${flaggedLabel}</b><small>${flaggedDetail}</small></span><span class="audit-focus-tab-arrow">→</span></button><button type="button" class="audit-focus-tab ${AUDIT_INTERNAL_VIEW==='all'||!counts.total?'is-active':''}" data-audit-focus-tab="all" role="tab" aria-selected="${AUDIT_INTERNAL_VIEW==='all'||!counts.total?'true':'false'}" onclick="auditSetInternalView('all')"><span class="audit-focus-tab-icon">✓</span><span><b>Auditoria completa <strong id="auditAllCount">${allCount}</strong></b><small>Todas as coletas, evidências e ações</small></span><span class="audit-focus-tab-arrow">→</span></button></nav>`;
+}
 function goToAuditFromMap(id){
   const e=COLLECT_EVENTS.find(x=>x.id===id);if(!e)return;
   AUDIT_HIGHLIGHT_ID=id;
@@ -5110,8 +5140,12 @@ function renderAuditFlagged(idx){
   if(!wrap||!el)return;
   const flagged=collectResearcherFilterEvents(eventsForSurveyIdx(idx)).filter(e=>e.status==='rejected'||e.calibration)
     .sort((a,b)=>(b.rejectedAt||b.ts)-(a.rejectedAt||a.ts));
-  if(!flagged.length){wrap.style.display='none';el.innerHTML='';return;}
-  wrap.style.display='block';
+  const counts=auditInternalCounts(idx);AUDIT_FLAGGED_COUNT=counts.total;
+  const countEl=document.getElementById('auditFlaggedCount');if(countEl)countEl.textContent=String(counts.total);
+  const allCountEl=document.getElementById('auditAllCount');if(allCountEl)allCountEl.textContent=String(eventsForSurveyIdx(idx).length);
+  if(!flagged.length){wrap.hidden=true;el.innerHTML='';if(AUDIT_INTERNAL_VIEW==='flagged')AUDIT_INTERNAL_VIEW='all';auditApplyInternalView();return;}
+  auditApplyInternalView();
+  wrap.hidden=AUDIT_INTERNAL_VIEW!=='flagged';
   el.innerHTML=flagged.map(e=>{
     const badges=(e.status==='rejected'?'<span class="pill pill-red" style="margin-right:4px">✕ Reprovada</span>':'')+
       (e.calibration?'<span class="pill pill-blue">◎ Calibração</span>':'');

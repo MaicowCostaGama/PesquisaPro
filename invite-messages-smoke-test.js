@@ -31,7 +31,7 @@ for(const token of [
 ]) assert(app.includes(token),`modelo ausente no app: ${token}`);
 assert(!app.includes("sb.functions.invoke('send-survey-invite-push'"),'envio imediato legado não deve ignorar preferências e confirmação');
 for(const token of ['invite_messages?:Record<string,string>','inviteUrl.searchParams.set(\'convite\',invite.id)','invite_id:invite.id','title:\'Convite para participar da pesquisa — PesquisaPro\'']) assert(edge.includes(token),`modelo ausente no push: ${token}`);
-assert(html.includes('app.js?v=20261008092042'),'cache do app não atualizado');
-assert(html.includes('push-config.js?v=20261008092042'),'cache do push não atualizado');
+assert(html.includes('app.js?v=20261008095930'),'cache do app não atualizado');
+assert(html.includes('push-config.js?v=20261008095930'),'cache do push não atualizado');
 assert(app.indexOf('mySurveyCommunicationsMarkup()')<app.indexOf('researcherAvailableSurveysMarkup(surveysMine)'),'link do grupo não aparece antes das pesquisas disponíveis');
 console.log('Invite messages smoke test: PASS — convites no aplicativo, sem Push imediato; WhatsApp e conteúdo de pesquisa preservados.');

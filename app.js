@@ -51,7 +51,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261007203035';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261007205401';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -65,6 +65,7 @@ let RESEARCHER_REFERRALS_SCHEMA_MISSING=false;
 let RESEARCHER_BADGE_UPLOADING=false;
 let PASSWORD_RECOVERY_MODE=false;
 let PUSH_STATUS='unknown',PUSH_STATUS_LOADING=false,PUSH_SCHEMA_MISSING=false,PUSH_SW_REGISTRATION=null;
+let RESEARCHER_ALERT_PREFS={email_enabled:false,push_enabled:false},RESEARCHER_ALERT_PREFS_LOADED=false,RESEARCHER_ALERT_PREFS_LOADING=false,RESEARCHER_ALERT_PREFS_SAVING=false,RESEARCHER_ALERT_PREFS_SCHEMA_MISSING=false,RESEARCHER_ALERT_PREFS_ERROR=false;
 let MY_COMMUNICATIONS=[],MY_COMMUNICATIONS_LOADED=false,MY_COMMUNICATIONS_LOADING=false;
 let MY_SURVEY_RESEARCHER_MESSAGES=[],MY_SURVEY_RESEARCHER_MESSAGES_LOADED=false,MY_SURVEY_RESEARCHER_MESSAGES_LOADING=false,MY_SURVEY_RESEARCHER_MESSAGES_SCHEMA_MISSING=false;
 let MY_SURVEY_RESEARCHER_MESSAGES_LAST_LOADED=0,MY_SURVEY_RESEARCHER_MESSAGES_LOAD_ERROR=false;
@@ -147,13 +148,50 @@ function pushKeyToUint8Array(base64String){
 }
 async function loadPushStatusIfNeeded(){
   if(PUSH_STATUS!=='unknown'||PUSH_STATUS_LOADING||!CURRENT_PROFILE?.id||CURRENT_PROFILE.role!=='pesq')return;
+  if(!pushBrowserSupported()||!window.PP_PUSH_PUBLIC_KEY){
+    PUSH_STATUS=pushBrowserSupported()?'unavailable':'unsupported';
+    queueMicrotask(()=>{if(CURRENT_PROFILE?.role==='pesq'&&document.querySelector('.nav-item.on')?.dataset.key==='dashboard-pesq')go('dashboard-pesq');});
+    return;
+  }
   PUSH_STATUS_LOADING=true;
   try{
-    const {data,error}=await sb.from('push_subscriptions').select('endpoint').eq('user_id',CURRENT_PROFILE.id).limit(1);
+    const registration=await navigator.serviceWorker.getRegistration();
+    const local=await registration?.pushManager?.getSubscription();
+    const {data,error}=await sb.from('push_subscriptions').select('endpoint').eq('user_id',CURRENT_PROFILE.id).limit(100);
     if(error){if(/push_subscriptions|relation .* does not exist|schema cache/i.test(error.message||''))PUSH_SCHEMA_MISSING=true;throw error;}
-    PUSH_STATUS=data?.length?'enabled':'disabled';
+    PUSH_STATUS=local&&(data||[]).some(row=>row.endpoint===local.endpoint)?'enabled':'disabled';
   }catch(ex){console.error('Não foi possível consultar o push:',ex);if(PUSH_SCHEMA_MISSING)PUSH_STATUS='unavailable';}
-  finally{PUSH_STATUS_LOADING=false;}
+  finally{PUSH_STATUS_LOADING=false;if(CURRENT_PROFILE?.role==='pesq'&&document.querySelector('.nav-item.on')?.dataset.key==='dashboard-pesq')go('dashboard-pesq');}
+}
+function loadResearcherAlertPreferencesIfNeeded(){
+  if(RESEARCHER_ALERT_PREFS_LOADED||RESEARCHER_ALERT_PREFS_LOADING||!CURRENT_PROFILE?.id||CURRENT_PROFILE.role!=='pesq')return Promise.resolve();
+  RESEARCHER_ALERT_PREFS_LOADING=true;
+  const identity=CURRENT_PROFILE.id;
+  return (async()=>{
+    try{
+      const {data,error}=await sb.from('researcher_alert_preferences').select('email_enabled,push_enabled').eq('researcher_id',identity).maybeSingle();
+      if(error){if(/researcher_alert_preferences|schema cache|does not exist/i.test(error.message||''))RESEARCHER_ALERT_PREFS_SCHEMA_MISSING=true;throw error;}
+      if(CURRENT_PROFILE?.id!==identity)return;
+      RESEARCHER_ALERT_PREFS={email_enabled:data?.email_enabled===true,push_enabled:data?.push_enabled===true};
+    }catch(ex){if(CURRENT_PROFILE?.id!==identity)return;RESEARCHER_ALERT_PREFS_ERROR=!RESEARCHER_ALERT_PREFS_SCHEMA_MISSING;console.error('Não foi possível consultar as preferências de alertas:',ex);}
+    finally{if(CURRENT_PROFILE?.id===identity){RESEARCHER_ALERT_PREFS_LOADING=false;RESEARCHER_ALERT_PREFS_LOADED=true;if(document.querySelector('.nav-item.on')?.dataset.key==='dashboard-pesq')go('dashboard-pesq');}}
+  })();
+}
+async function saveResearcherAlertPreferences(){
+  if(CURRENT_PROFILE?.role!=='pesq'||RESEARCHER_ALERT_PREFS_SAVING||RESEARCHER_ALERT_PREFS_SCHEMA_MISSING)return;
+  const identity=CURRENT_PROFILE.id;
+  const emailEnabled=Boolean(document.getElementById('researcher-alert-email')?.checked);
+  const pushEnabled=Boolean(document.getElementById('researcher-alert-push')?.checked);
+  if(pushEnabled&&!RESEARCHER_ALERT_PREFS.push_enabled&&(PUSH_STATUS!=='enabled'||!window.PP_PUSH_PUBLIC_KEY)){alert('Ative primeiro as notificações neste dispositivo para habilitar o alerta Push.');return;}
+  RESEARCHER_ALERT_PREFS_SAVING=true;
+  try{
+    const {error}=await sb.rpc('save_my_researcher_alert_preferences',{p_email_enabled:emailEnabled,p_push_enabled:pushEnabled});
+    if(error)throw error;
+    if(CURRENT_PROFILE?.id!==identity)return;
+    RESEARCHER_ALERT_PREFS={email_enabled:emailEnabled,push_enabled:pushEnabled};
+    alert('Preferências salvas. O envio externo depende da configuração do serviço pela gestão; os avisos continuam disponíveis no aplicativo.');
+  }catch(ex){console.error('Falha ao salvar preferências:',ex);alert('Não foi possível salvar as preferências. Nenhum alerta externo novo foi ativado.');}
+  finally{RESEARCHER_ALERT_PREFS_SAVING=false;if(CURRENT_PROFILE?.id===identity)go('dashboard-pesq');}
 }
 async function enableResearcherPush(){
   if(CURRENT_PROFILE?.role!=='pesq')return;
@@ -163,25 +201,38 @@ async function enableResearcherPush(){
   try{
     const permission=await Notification.requestPermission();
     if(permission!=='granted'){PUSH_STATUS='blocked';go('dashboard-pesq');return;}
-    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20260919130000',{scope:'./'});
+    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261007205401',{scope:'./'});
     const subscription=await PUSH_SW_REGISTRATION.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:pushKeyToUint8Array(window.PP_PUSH_PUBLIC_KEY)});
     const json=subscription.toJSON();
     const {error}=await sb.from('push_subscriptions').upsert({user_id:CURRENT_PROFILE.id,endpoint:json.endpoint,subscription:json,user_agent:navigator.userAgent,updated_at:new Date().toISOString()},{onConflict:'endpoint'});
     if(error)throw new Error(error.message);
-    PUSH_STATUS='enabled';alert('Notificações push ativadas. Você receberá avisos de novos convites mesmo com o aplicativo fechado.');
+    PUSH_STATUS='enabled';
+    if(RESEARCHER_ALERT_PREFS_SCHEMA_MISSING){alert('Dispositivo inscrito, mas as preferências de alertas ainda não estão disponíveis. Isso não comprova o envio de notificações.');}
+    else{
+      const {error:preferenceError}=await sb.rpc('save_my_researcher_alert_preferences',{p_email_enabled:RESEARCHER_ALERT_PREFS.email_enabled,p_push_enabled:true});
+      if(preferenceError){console.error('Push inscrito, preferência não salva:',preferenceError);alert('Dispositivo inscrito, mas a preferência não foi salva. Tente salvar novamente no cartão abaixo.');}
+      else{RESEARCHER_ALERT_PREFS={...RESEARCHER_ALERT_PREFS,push_enabled:true};alert('Dispositivo inscrito para Push. Os alertas externos só serão enviados depois que a gestão configurar o emissor e ativar a função de entrega.');}
+    }
   }catch(ex){console.error('Falha ao ativar push:',ex);alert('Não foi possível ativar as notificações. Verifique a permissão do navegador e tente novamente.');}
   go('dashboard-pesq');
 }
 function pushStatusMarkup(){
   if(PUSH_STATUS==='enabled')return '<span class="pill pill-green">● Push ativado</span>';
   if(PUSH_STATUS==='blocked')return '<span class="pill pill-amber">Notificações bloqueadas no navegador</span>';
-  if(PUSH_STATUS==='unavailable')return '<span class="pill pill-gray">Push ainda não ativado no banco</span>';
+  if(PUSH_STATUS==='unavailable')return '<span class="pill pill-gray">Push ainda não configurado</span>';
+  if(PUSH_STATUS==='unsupported')return '<span class="pill pill-gray">Push indisponível neste navegador</span>';
   if(PUSH_STATUS_LOADING)return '<span class="pill pill-gray">Verificando…</span>';
   return '<span class="pill pill-amber">Push não ativado</span>';
 }
 function researcherPushCard(){
   const ready=PUSH_STATUS==='enabled';
-  return `<section class="card mb researcher-push-card"><div><div class="card-t">Avisos de convites <span style="margin-left:5px">${pushStatusMarkup()}</span></div><div class="card-d">Ative as notificações para receber novos convites de pesquisa mesmo quando o aplicativo estiver fechado. Você poderá aceitar ou recusar cada convite no seu painel.</div></div>${ready?'<button class="btn btn-out" onclick="go(\'communication\')">Abrir comunicação</button>':'<button class="btn btn-fill" onclick="enableResearcherPush()">Ativar notificações</button>'}</section>`;
+  return `<section class="card mb researcher-push-card"><div><div class="card-t">Avisos de convites e orientações <span style="margin-left:5px">${pushStatusMarkup()}</span></div><div class="card-d">O aviso completo fica no aplicativo. Push e e-mail são lembretes opcionais, sujeitos à configuração dos emissores pela gestão; inscrição do navegador não comprova entrega.</div></div>${ready?'<button class="btn btn-out" onclick="go(\'communication\')">Abrir comunicação</button>':`<button type="button" class="btn btn-fill" onclick="enableResearcherPush()" ${PUSH_STATUS==='unavailable'||PUSH_STATUS==='unsupported'?'disabled':''}>Ativar notificações</button>`}${PUSH_STATUS==='unavailable'?'<small>A gestão precisa configurar a chave pública VAPID e o emissor no Supabase.</small>':''}</section>`;
+}
+function researcherAlertPreferencesCard(){
+  if(RESEARCHER_ALERT_PREFS_SCHEMA_MISSING)return '<section class="card mb researcher-alert-prefs"><div class="card-t">Preferências de alertas</div><p>O cadastro de preferências ainda não está ativo. Os convites e orientações continuam disponíveis aqui no aplicativo.</p></section>';
+  if(RESEARCHER_ALERT_PREFS_ERROR)return '<section class="card mb researcher-alert-prefs"><div class="card-t">Preferências de alertas</div><p>Não foi possível consultar as preferências agora. Nenhuma alteração foi feita.</p></section>';
+  if(!RESEARCHER_ALERT_PREFS_LOADED)return '<section class="card mb researcher-alert-prefs"><div class="card-t">Preferências de alertas</div><p>Carregando…</p></section>';
+  return `<section class="card mb researcher-alert-prefs"><div class="card-t">Preferências de alertas</div><p>Receba um lembrete apenas quando um convite ainda não tiver resposta ou uma orientação ainda não tiver confirmação. Os textos completos e a confirmação permanecem no aplicativo.</p><label><input id="researcher-alert-email" type="checkbox" ${RESEARCHER_ALERT_PREFS.email_enabled?'checked':''}> Quero receber lembretes por e-mail no endereço verificado da minha conta.</label><label><input id="researcher-alert-push" type="checkbox" ${RESEARCHER_ALERT_PREFS.push_enabled?'checked':''} ${PUSH_STATUS==='enabled'||RESEARCHER_ALERT_PREFS.push_enabled?'':'disabled'}> Quero receber alertas Push nos dispositivos inscritos.</label><small>${PUSH_STATUS==='enabled'?'Push inscrito neste dispositivo.':'Ative o Push neste dispositivo antes de habilitar sua preferência; se ele já estava ativo em outro aparelho, você pode desligá-lo aqui.'} Você pode desligar os lembretes quando quiser; isso não oculta mensagens internas.</small><button type="button" class="btn btn-out" onclick="saveResearcherAlertPreferences()" ${RESEARCHER_ALERT_PREFS_SAVING?'disabled':''}>${RESEARCHER_ALERT_PREFS_SAVING?'Salvando…':'Salvar preferências'}</button></section>`;
 }
 function loadMySurveyCommunicationsIfNeeded(){
   if(MY_COMMUNICATIONS_LOADED||MY_COMMUNICATIONS_LOADING||!CURRENT_PROFILE?.id||CURRENT_PROFILE.role!=='pesq')return Promise.resolve();
@@ -375,7 +426,7 @@ async function requestOwnPasswordReset(){
 async function afterLogin(user){
   stopResearcherVersionMonitor();
   chatStopRealtime();CHAT_CHANNELS=[];CHAT_CHANNELS_LOADED=false;CHAT_CHANNELS_LOADING=false;CHAT_SCHEMA_MISSING=false;CHAT_ACTIVE_CHANNEL_ID=null;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=false;CHAT_MESSAGES_LOADING=false;CHAT_SUPPORT_CHANNEL_ID=null;CHAT_SUPPORT_READY=false;CHAT_SUPPORT_LOADING=false;
-  PUSH_STATUS='unknown';PUSH_STATUS_LOADING=false;PUSH_SCHEMA_MISSING=false;PUSH_SW_REGISTRATION=null;MY_COMMUNICATIONS=[];MY_COMMUNICATIONS_LOADED=false;MY_COMMUNICATIONS_LOADING=false;MY_SURVEY_RESEARCHER_MESSAGES=[];MY_SURVEY_RESEARCHER_MESSAGES_LOADED=false;MY_SURVEY_RESEARCHER_MESSAGES_LOADING=false;MY_SURVEY_RESEARCHER_MESSAGES_SCHEMA_MISSING=false;MY_SURVEY_RESEARCHER_MESSAGES_LAST_LOADED=0;MY_SURVEY_RESEARCHER_MESSAGES_LOAD_ERROR=false;
+  PUSH_STATUS='unknown';PUSH_STATUS_LOADING=false;PUSH_SCHEMA_MISSING=false;PUSH_SW_REGISTRATION=null;RESEARCHER_ALERT_PREFS={email_enabled:false,push_enabled:false};RESEARCHER_ALERT_PREFS_LOADED=false;RESEARCHER_ALERT_PREFS_LOADING=false;RESEARCHER_ALERT_PREFS_SAVING=false;RESEARCHER_ALERT_PREFS_SCHEMA_MISSING=false;RESEARCHER_ALERT_PREFS_ERROR=false;MY_COMMUNICATIONS=[];MY_COMMUNICATIONS_LOADED=false;MY_COMMUNICATIONS_LOADING=false;MY_SURVEY_RESEARCHER_MESSAGES=[];MY_SURVEY_RESEARCHER_MESSAGES_LOADED=false;MY_SURVEY_RESEARCHER_MESSAGES_LOADING=false;MY_SURVEY_RESEARCHER_MESSAGES_SCHEMA_MISSING=false;MY_SURVEY_RESEARCHER_MESSAGES_LAST_LOADED=0;MY_SURVEY_RESEARCHER_MESSAGES_LOAD_ERROR=false;
   ACTIVE_CAMPAIGN_ID=null;CLIENT_SURVEY_VIEW_ID=null;
   PAYMENTS=[];PAYMENTS_LOADED=false;PAYMENTS_LOADING=false;PAYMENT_RECEIPTS=[];PAYMENT_RECEIPTS_LOADED=false;PAYMENT_RECEIPTS_LOADING=false;PAYMENT_RECEIPTS_SCHEMA_MISSING=false;PAYMENT_RECEIPTS_DELETE_SCHEMA_MISSING=false;
   const profileFields='id,name,email,phone,role,status,cpf,cpf_cnpj,pf_pj,birth,cidade,rua,numero,cep,contact_person,doc_url,doc_foto_url,doc_comprovante_url,pix_key,pix_doc,pix_bank,pix_ag,pix_acc,results_released,approved_at,commission_rate,commission_rate_with_indicator,recruiter_code,recruiter_capture_value,badge_public_token,badge_photo_path';
@@ -418,7 +469,7 @@ async function logout(){
   await sb.auth.signOut();
   chatStopRealtime();
   CHAT_CHANNELS=[];CHAT_CHANNELS_LOADED=false;CHAT_CHANNELS_LOADING=false;CHAT_SCHEMA_MISSING=false;CHAT_ACTIVE_CHANNEL_ID=null;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=false;CHAT_MESSAGES_LOADING=false;CHAT_SUPPORT_CHANNEL_ID=null;CHAT_SUPPORT_READY=false;CHAT_SUPPORT_LOADING=false;CHAT_PENDING_SURVEY_ID=null;
-  RESEARCHER_PROFILE_CITIES=[];RESEARCHER_PROFILE_CITIES_DRAFT=[];RESEARCHER_PROFILE_CITIES_LOADED=false;MY_INVITES=[];MY_INVITES_LOADED=false;MY_INVITES_LOADING=false;MY_INVITE_LOAD_PROMISE=null;MY_INVITE_RESPONDING=null;PUSH_STATUS='unknown';PUSH_STATUS_LOADING=false;PUSH_SCHEMA_MISSING=false;PUSH_SW_REGISTRATION=null;MY_COMMUNICATIONS=[];MY_COMMUNICATIONS_LOADED=false;MY_COMMUNICATIONS_LOADING=false;MY_SURVEY_RESEARCHER_MESSAGES=[];MY_SURVEY_RESEARCHER_MESSAGES_LOADED=false;MY_SURVEY_RESEARCHER_MESSAGES_LOADING=false;MY_SURVEY_RESEARCHER_MESSAGES_SCHEMA_MISSING=false;MY_SURVEY_RESEARCHER_MESSAGES_LAST_LOADED=0;MY_SURVEY_RESEARCHER_MESSAGES_LOAD_ERROR=false;CLIENT_APPROVAL_REQUEST_ID=null;CLIENT_APPROVAL_REQUEST=null;CLIENT_APPROVAL_LOADING=false;CLIENT_APPROVAL_RESPONDING=false;CLIENT_APPROVAL_SCHEMA_MISSING=false;RESEARCHER_LINK_TOKEN=null;RESEARCHER_LINK_CONTEXT=null;RESEARCHER_LINK_LOADING=false;RESEARCHER_LINK_ACCEPTING=false;
+  RESEARCHER_PROFILE_CITIES=[];RESEARCHER_PROFILE_CITIES_DRAFT=[];RESEARCHER_PROFILE_CITIES_LOADED=false;MY_INVITES=[];MY_INVITES_LOADED=false;MY_INVITES_LOADING=false;MY_INVITE_LOAD_PROMISE=null;MY_INVITE_RESPONDING=null;PUSH_STATUS='unknown';PUSH_STATUS_LOADING=false;PUSH_SCHEMA_MISSING=false;PUSH_SW_REGISTRATION=null;RESEARCHER_ALERT_PREFS={email_enabled:false,push_enabled:false};RESEARCHER_ALERT_PREFS_LOADED=false;RESEARCHER_ALERT_PREFS_LOADING=false;RESEARCHER_ALERT_PREFS_SAVING=false;RESEARCHER_ALERT_PREFS_SCHEMA_MISSING=false;RESEARCHER_ALERT_PREFS_ERROR=false;MY_COMMUNICATIONS=[];MY_COMMUNICATIONS_LOADED=false;MY_COMMUNICATIONS_LOADING=false;MY_SURVEY_RESEARCHER_MESSAGES=[];MY_SURVEY_RESEARCHER_MESSAGES_LOADED=false;MY_SURVEY_RESEARCHER_MESSAGES_LOADING=false;MY_SURVEY_RESEARCHER_MESSAGES_SCHEMA_MISSING=false;MY_SURVEY_RESEARCHER_MESSAGES_LAST_LOADED=0;MY_SURVEY_RESEARCHER_MESSAGES_LOAD_ERROR=false;CLIENT_APPROVAL_REQUEST_ID=null;CLIENT_APPROVAL_REQUEST=null;CLIENT_APPROVAL_LOADING=false;CLIENT_APPROVAL_RESPONDING=false;CLIENT_APPROVAL_SCHEMA_MISSING=false;RESEARCHER_LINK_TOKEN=null;RESEARCHER_LINK_CONTEXT=null;RESEARCHER_LINK_LOADING=false;RESEARCHER_LINK_ACCEPTING=false;
   PAYMENTS=[];PAYMENTS_LOADED=false;PAYMENTS_LOADING=false;PAYMENT_RECEIPTS=[];PAYMENT_RECEIPTS_LOADED=false;PAYMENT_RECEIPTS_LOADING=false;PAYMENT_RECEIPTS_SCHEMA_MISSING=false;PAYMENT_RECEIPTS_DELETE_SCHEMA_MISSING=false;
   COLLECT_INAPP_ORIENTATION_COUNTS={};COLLECT_INAPP_ORIENTATION_STATUS='idle';COLLECT_INAPP_ORIENTATION_LOADING=false;COLLECT_BATCH_ORIENTATION_SENDING=false;COLLECT_IDX=null;closeSurveyResearcherMessageModal();
   CURRENT_PROFILE=null;
@@ -1195,6 +1246,7 @@ PAGES['dashboard-pesq']=()=>{
   if(!MY_CONTRACT_LOADED)loadMyContractIfNeeded();
   if(!MY_INVITES_LOADED)loadMyInvitesIfNeeded();
   loadPushStatusIfNeeded();
+  loadResearcherAlertPreferencesIfNeeded();
   loadMySurveyCommunicationsIfNeeded();
   loadMySurveyResearcherMessagesIfNeeded();
   const primeiroNome=(CURRENT_PROFILE&&CURRENT_PROFILE.name)?CURRENT_PROFILE.name.trim().split(' ')[0]:'';
@@ -1237,6 +1289,7 @@ PAGES['dashboard-pesq']=()=>{
   ${researcherAvailableSurveysMarkup(surveysMine)}
   ${invitesHtml}
   ${researcherPushCard()}
+  ${researcherAlertPreferencesCard()}
   ${(MY_CONTRACT_LOADED&&!MY_CONTRACT)?'<div class="callout mb">✎ Você ainda não assinou seu contrato de prestação de serviços — assine para poder coletar. <button class="btn-ghost" style="margin-left:6px" onclick="go(\'my-contract\')">Assinar agora →</button></div>':''}
   `;
 };
@@ -3465,18 +3518,7 @@ async function inviteEligibleResearchersBulk(){
     const returned=data||[];
     const byId=new Map(TEAM_INVITES.map(item=>[item.researcher_id,item]));
     returned.forEach(item=>byId.set(item.researcher_id,item));TEAM_INVITES=[...byId.values()];TEAM_INVITES_LOADED=true;
-    let pushMessage='Os convites aparecerão no painel dos pesquisadores.';
-    if(typeof sb.functions?.invoke==='function'){
-      try{
-        const eligibleById=new Map(eligible.map(({u})=>[u.id,u]));
-        const groupLink=await teamWhatsappGroupUrl();
-        const inviteMessages=Object.fromEntries(returned.map(item=>[item.id,surveyInvitationPushBody(s,eligibleById.get(item.researcher_id)?.name||'pesquisador(a)',surveyInviteLink(item.id),groupLink)]));
-        const push=await sb.functions.invoke('send-survey-invite-push',{body:{survey_id:s.id,invite_ids:returned.map(item=>item.id),invite_messages:inviteMessages}});
-        if(push.error)throw push.error;
-        const result=push.data||{};pushMessage=(result.sent||0)+' push enviado'+((result.sent||0)===1?'':'s')+'; '+(result.skipped||0)+' pesquisador'+((result.skipped||0)===1?'':'es')+' receberá o aviso ao entrar no aplicativo.';
-      }catch(pushError){console.warn('Push não enviado; convite interno continua válido:',pushError);pushMessage='Convites registrados. O push real ainda depende da configuração da função de envio; todos também verão o convite ao entrar no painel.';}
-    }
-    alert(returned.length+' convite'+(returned.length===1?'':'s')+' registrado'+(returned.length===1?'':'s')+'. '+pushMessage);
+    alert(returned.length+' convite'+(returned.length===1?'':'s')+' registrado'+(returned.length===1?'':'s')+'. Aparecerão no painel dos pesquisadores. Lembretes externos opcionais dependem da preferência de cada um e da ativação do worker de alertas.');
   }catch(ex){alert('Não foi possível enviar os convites em massa: '+ex.message);}
   TEAM_BULK_INVITING=false;go('survey-team');
 }
@@ -3554,7 +3596,7 @@ function teamNewInviteCount(pesqs,hasTarget){
 function teamFiltersMarkup(pesqs,hasTarget){
   const {states,cities}=teamFilterOptions(pesqs),f=TEAM_FILTERS,newCount=teamNewInviteCount(pesqs,hasTarget);
   const newSummary=newCount==null?(TEAM_INVITES_LOAD_ERROR?'Não foi possível carregar o histórico de convites.':'Carregando histórico de convites…'):newCount+' pesquisador'+(newCount===1?'':'es')+' apto'+(newCount===1?'':'s')+' ainda não convidado'+(newCount===1?'':'s');
-  return `<div class="team-filter-panel"><div class="team-filter-title"><div><b>Encontrar pesquisadores</b><span>Filtre por localização e escolaridade antes de convidar.</span></div><span class="pill pill-blue" id="team-available-count">— disponíveis</span></div><div class="team-new-invite-callout"><div><strong>Novos aptos sem convite</strong><span id="team-new-invite-summary">${newSummary}</span></div><label class="team-new-invite-toggle"><input type="checkbox" id="team-only-new" ${TEAM_ONLY_NEW?'checked':''} ${TEAM_INVITES_LOADED&&!TEAM_INVITES_LOAD_ERROR?'':'disabled'} onchange="teamToggleOnlyNew(this.checked)"><span>Mostrar somente estes</span></label></div><div class="team-filter-grid"><input class="inp" id="team-search" value="${esc(f.text)}" placeholder="Buscar por nome ou cidade…" oninput="teamSetFilter('text',this.value)"><select class="inp" aria-label="Filtrar equipe por estado" onchange="teamSetFilter('state',this.value)"><option value="">Todos os estados</option>${states.map(state=>`<option value="${esc(state)}" ${f.state===state?'selected':''}>${esc(state)}</option>`).join('')}</select><select class="inp" aria-label="Filtrar equipe por cidade" onchange="teamSetFilter('city',this.value)"><option value="">Todas as cidades</option>${cities.map(([value,label])=>`<option value="${esc(value)}" ${f.city===value?'selected':''}>${esc(label)}</option>`).join('')}</select><select class="inp" aria-label="Filtrar equipe por escolaridade" onchange="teamSetFilter('schooling',this.value)"><option value="">Todas as escolaridades</option>${SCHOOLING_OPTIONS.map(([value,label])=>`<option value="${value}" ${f.schooling===value?'selected':''}>${esc(label)}</option>`).join('')}</select></div><div class="team-filter-note">${hasTarget?'A contagem considera pesquisadores ativos, com documentos completos, cidade cadastrada e compatíveis com a área da pesquisa.':'A contagem considera pesquisadores ativos, com documentos completos e cidade cadastrada.'}</div><button class="btn btn-fill team-bulk-invite-btn" id="team-bulk-invite" type="button" onclick="inviteEligibleResearchersBulk()">⚡ Convidar pesquisadores por push</button><div class="team-filter-help">O botão azul envia convite em massa por push. Com o filtro de novos aptos ativo, ele convida somente quem nunca recebeu convite. Para WhatsApp, use o botão individual <b>Convidar por WhatsApp</b> na linha de cada pesquisador.</div></div>`;
+  return `<div class="team-filter-panel"><div class="team-filter-title"><div><b>Encontrar pesquisadores</b><span>Filtre por localização e escolaridade antes de convidar.</span></div><span class="pill pill-blue" id="team-available-count">— disponíveis</span></div><div class="team-new-invite-callout"><div><strong>Novos aptos sem convite</strong><span id="team-new-invite-summary">${newSummary}</span></div><label class="team-new-invite-toggle"><input type="checkbox" id="team-only-new" ${TEAM_ONLY_NEW?'checked':''} ${TEAM_INVITES_LOADED&&!TEAM_INVITES_LOAD_ERROR?'':'disabled'} onchange="teamToggleOnlyNew(this.checked)"><span>Mostrar somente estes</span></label></div><div class="team-filter-grid"><input class="inp" id="team-search" value="${esc(f.text)}" placeholder="Buscar por nome ou cidade…" oninput="teamSetFilter('text',this.value)"><select class="inp" aria-label="Filtrar equipe por estado" onchange="teamSetFilter('state',this.value)"><option value="">Todos os estados</option>${states.map(state=>`<option value="${esc(state)}" ${f.state===state?'selected':''}>${esc(state)}</option>`).join('')}</select><select class="inp" aria-label="Filtrar equipe por cidade" onchange="teamSetFilter('city',this.value)"><option value="">Todas as cidades</option>${cities.map(([value,label])=>`<option value="${esc(value)}" ${f.city===value?'selected':''}>${esc(label)}</option>`).join('')}</select><select class="inp" aria-label="Filtrar equipe por escolaridade" onchange="teamSetFilter('schooling',this.value)"><option value="">Todas as escolaridades</option>${SCHOOLING_OPTIONS.map(([value,label])=>`<option value="${value}" ${f.schooling===value?'selected':''}>${esc(label)}</option>`).join('')}</select></div><div class="team-filter-note">${hasTarget?'A contagem considera pesquisadores ativos, com documentos completos, cidade cadastrada e compatíveis com a área da pesquisa.':'A contagem considera pesquisadores ativos, com documentos completos e cidade cadastrada.'}</div><button class="btn btn-fill team-bulk-invite-btn" id="team-bulk-invite" type="button" onclick="inviteEligibleResearchersBulk()">⚡ Convidar pelo aplicativo</button><div class="team-filter-help">O botão azul registra convites no aplicativo. Os alertas externos, quando configurados, respeitam as preferências do pesquisador. Com o filtro de novos aptos ativo, ele convida somente quem nunca recebeu convite. Para WhatsApp, use o botão individual <b>Convidar por WhatsApp</b> na linha de cada pesquisador.</div></div>`;
 }
 PAGES['survey-team']=()=>{
   const s=SURVEYS[TEAM_IDX];if(!s)return '<div class="empty">Pesquisa não encontrada.</div>';

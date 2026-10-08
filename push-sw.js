@@ -1,9 +1,9 @@
 self.addEventListener('push',event=>{
   let data={};
   try{data=event.data?event.data.json():{};}catch(ex){data={body:event.data?event.data.text():''};}
-  const title=data.title||'Novo convite de pesquisa — PesquisaPro';
+  const title=data.title||'Novo aviso — PesquisaPro';
   const options={
-    body:data.body||'Você recebeu um convite para participar de uma pesquisa.',
+    body:data.body||'Há um aviso sobre uma pesquisa. Entre no aplicativo para consultar.',
     icon:data.icon||'assets/icon-512.png',
     badge:data.badge||'assets/favicon-32.png',
     tag:data.tag||('survey-invite-'+(data.survey_id||'general')),
@@ -14,7 +14,11 @@ self.addEventListener('push',event=>{
 });
 self.addEventListener('notificationclick',event=>{
   event.notification.close();
-  const target=event.notification.data?.url||'app.html';
+  let target=new URL('app.html',self.registration.scope).href;
+  try{
+    const candidate=new URL(event.notification.data?.url||'app.html',self.registration.scope);
+    if(candidate.origin===self.location.origin&&candidate.pathname.endsWith('/app.html'))target=candidate.href;
+  }catch(ex){/* Ignorar URL inválida recebida no payload Push. */}
   event.waitUntil(clients.matchAll({type:'window',includeUncontrolled:true}).then(list=>{
     for(const client of list){if('focus' in client){client.navigate(target);return client.focus();}}
     if(clients.openWindow)return clients.openWindow(target);

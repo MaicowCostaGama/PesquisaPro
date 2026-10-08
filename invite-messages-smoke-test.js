@@ -13,13 +13,11 @@ for(const token of [
   'surveyInvitationWhatsappMessage',
   'surveyInvitationGroupText',
   'surveyInvitationSiteUrl',
-  'Convidar pesquisadores por push',
+  'Convidar pelo aplicativo',
   'Convidar por WhatsApp',
   'Reenviar WhatsApp',
-  'O botão azul envia convite em massa por push',
+  'O botão azul registra convites no aplicativo',
   'teamWhatsappGroupUrl',
-  'invite_messages',
-  'surveyInviteLink(item.id)',
   'chave Pix correta e atualizada',
   'Pagamentos semanais',
   'Grupo oficial da pesquisa no WhatsApp',
@@ -31,8 +29,9 @@ for(const token of [
   'confirmação curta gravada',
   'Aceitar e entrar na equipe'
 ]) assert(app.includes(token),`modelo ausente no app: ${token}`);
+assert(!app.includes("sb.functions.invoke('send-survey-invite-push'"),'envio imediato legado não deve ignorar preferências e confirmação');
 for(const token of ['invite_messages?:Record<string,string>','inviteUrl.searchParams.set(\'convite\',invite.id)','invite_id:invite.id','title:\'Convite para participar da pesquisa — PesquisaPro\'']) assert(edge.includes(token),`modelo ausente no push: ${token}`);
-assert(html.includes('app.js?v=20261007203035'),'cache do app não atualizado');
-assert(html.includes('push-config.js?v=20261007203035'),'cache do push não atualizado');
+assert(html.includes('app.js?v=20261007205401'),'cache do app não atualizado');
+assert(html.includes('push-config.js?v=20261007205401'),'cache do push não atualizado');
 assert(app.indexOf('mySurveyCommunicationsMarkup()')<app.indexOf('researcherAvailableSurveysMarkup(surveysMine)'),'link do grupo não aparece antes das pesquisas disponíveis');
-console.log('Invite messages smoke test: PASS — push e WhatsApp com dados da pesquisa, regras, cotas, georreferenciamento, gravação, pagamento semanal, Pix e aceite individual.');
+console.log('Invite messages smoke test: PASS — convites no aplicativo, sem Push imediato; WhatsApp e conteúdo de pesquisa preservados.');

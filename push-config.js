@@ -3,6 +3,6 @@
  *
  * Substitua o valor vazio pela chave pública gerada para o projeto.
  * A chave privada NUNCA deve entrar neste arquivo nem no GitHub: ela deve
- * ficar somente como secret da função Supabase send-survey-invite-push.
+ * ficar somente como secret da função Supabase send-pending-researcher-alerts.
  */
 window.PP_PUSH_PUBLIC_KEY = window.PP_PUSH_PUBLIC_KEY || '';

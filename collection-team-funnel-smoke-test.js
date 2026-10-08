@@ -54,7 +54,7 @@ for(const token of [
 assert(css.includes('.collection-funnel-person{display:grid;grid-template-columns:minmax(0,1fr)'), 'cartão do funil não reserva linha para o nome');
 assert(css.includes('.collection-funnel-person-actions{display:flex;align-items:stretch;justify-content:flex-start'), 'ações do funil não fluem abaixo dos dados');
 assert(css.includes('.collection-funnel-person-title strong{display:block;flex:1 1 100%'), 'nome pode voltar a ser comprimido pelos botões');
-assert(html.includes('app.js?v=20261008153000'),'cache do app não atualizado');
-assert(html.includes('style.css?v=20261008153000'),'cache do CSS não atualizado');
+assert(html.includes('app.js?v=20261008154530'),'cache do app não atualizado');
+assert(html.includes('style.css?v=20261008154530'),'cache do CSS não atualizado');
 assert(!/create table|alter table|drop table|delete from/i.test(app),'funil não deve alterar o banco pelo frontend');
 console.log('collection-team-funnel-smoke-test: OK');

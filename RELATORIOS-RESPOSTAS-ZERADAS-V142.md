@@ -40,7 +40,7 @@ Se uma pergunta foi criada ou substituída depois que as entrevistas foram reali
 
 ## Validação local
 
-- Cache atualizado para `20261008153000`.
+- Cache atualizado para `20261008154530`.
 - `app.js` e todos os arquivos JavaScript verificados com `node --check`.
 - Migration validada por parser SQL quando disponível.
 - Smoke tests de relatórios, resultados, heatmap e suíte geral executados antes do empacotamento.

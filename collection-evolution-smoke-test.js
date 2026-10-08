@@ -37,7 +37,7 @@ for(const token of [
   '@media(max-width:600px)'
 ])assert(css.includes(token),`CSS sem ${token}`);
 assert(css.includes('.finance-table-scroll'),'CSS financeiro foi perdido');
-assert(html.includes('app.js?v=20261008153000'),'cache do app não atualizado');
-assert(html.includes('style.css?v=20261008153000'),'cache do CSS não atualizado');
+assert(html.includes('app.js?v=20261008154530'),'cache do app não atualizado');
+assert(html.includes('style.css?v=20261008154530'),'cache do CSS não atualizado');
 assert(!/create table|alter table|drop table|delete from/i.test(app),'evolução não deve alterar o banco pelo frontend');
 console.log('collection-evolution-smoke-test: OK');

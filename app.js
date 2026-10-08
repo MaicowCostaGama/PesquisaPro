@@ -51,7 +51,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261007212549';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261007213940';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -202,7 +202,7 @@ async function enableResearcherPush(){
   try{
     const permission=await Notification.requestPermission();
     if(permission!=='granted'){PUSH_STATUS='blocked';go('dashboard-pesq');return;}
-    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261007212549',{scope:'./'});
+    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261007213940',{scope:'./'});
     const subscription=await PUSH_SW_REGISTRATION.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:pushKeyToUint8Array(window.PP_PUSH_PUBLIC_KEY)});
     const json=subscription.toJSON();
     const {error}=await sb.from('push_subscriptions').upsert({user_id:CURRENT_PROFILE.id,endpoint:json.endpoint,subscription:json,user_agent:navigator.userAgent,updated_at:new Date().toISOString()},{onConflict:'endpoint'});
@@ -4724,13 +4724,13 @@ function renderCollectMap(idx){
   const researchers=new Set(events.map(e=>e.name));const summary=document.getElementById('collectMapSummary');if(summary)summary.textContent=shown?`${shown} ponto${shown===1?'':'s'} visível${shown===1?'':'is'} · ${researchers.size} pesquisador${researchers.size===1?'':'es'}${shown<total?' · limite de visualização aplicado':''}`:'Nenhum ponto corresponde aos filtros atuais.';const note=document.getElementById('collectMapNote');if(note)note.textContent=shown<total?`Mostrando ${shown} de ${total} coletas após os filtros. Clique em um ponto para abrir a coleta na auditoria.`:'Clique em um ponto para abrir a coleta na auditoria.';const pts=events.map(e=>{const point=mapDisplayPoint(e,events);return {lat:point[0],lng:point[1]};});if(pts.length&&!_collectMapDidFit){try{const bounds=new google.maps.LatLngBounds();pts.forEach(point=>bounds.extend(point));if(pts.length===1){_collectMap.setCenter(pts[0]);_collectMap.setZoom(17);}else _collectMap.fitBounds(bounds,{top:70,right:70,bottom:70,left:70});_collectMapDidFit=true;}catch(e){}}
 }
 function buildMapTooltip(e,isLatest){
-  const state=e.status==='rejected'?'Reprovada':e.calibration?'Calibração':isLatest?'Última coleta':'Coleta registrada';
+  const state=e.status==='rejected'?'Reprovada':e.status==='pending_recording'?'Áudio pendente · não contabilizada':e.calibration?'Calibração':isLatest?'Última coleta':'Coleta registrada';
   return `<b>${esc(e.name)}</b><br><span>${esc(e.cota||'Sem cota')} · ${state}</span><br><small>${new Date(e.ts).toLocaleString('pt-BR')}</small>`;
 }
 function buildMapPopup(e,isLatest){
   const statusExtra=e.status==='rejected'
     ?'<span class="pill pill-red">✕ Reprovada</span>'+(e.rejectReason?`<div class="map-popup-reason">Motivo: ${esc(e.rejectReason)}</div>`:'')
-    :e.calibration?'<span class="pill pill-blue">◎ Calibração</span>':'';
+    :e.status==='pending_recording'?'<span class="pill pill-amber">Áudio pendente · não contabilizada</span>':e.calibration?'<span class="pill pill-blue">◎ Calibração</span>':'';
   return `<div class="map-popup">
     <div class="map-popup-title">${esc(e.name)}${isLatest?'<span class="map-popup-latest">Última</span>':''}</div>
     <div class="map-popup-meta"><b>${esc(e.cota||'Sem cota')}</b><br>${new Date(e.ts).toLocaleString('pt-BR')}<br>Precisão do GPS: ±${Math.round(e.acc)}m</div>
@@ -4886,6 +4886,13 @@ function collectionRecordingCell(e){
   if(e.recordingStatus==='pending_upload')return'<span class="pill pill-amber">⏳ Áudio pendente</span>';
   return'<span class="pill pill-amber">Selecionada · sem áudio</span>';
 }
+function collectionNightAudioIssue(e){
+  if(e.status!=='valid'||e.recordingStatus==='uploaded')return false;
+  const date=new Date(e.ts);
+  if(!Number.isFinite(date.getTime()))return false;
+  const hour=Number(new Intl.DateTimeFormat('en-GB',{hour:'2-digit',hourCycle:'h23',timeZone:'America/Sao_Paulo'}).format(date));
+  return hour>=21;
+}
 async function openCollectionRecording(eventId){
   if(!collectionCanManageRecording())return;
   const rec=COLLECTION_RECORDINGS[eventId];
@@ -4895,6 +4902,20 @@ async function openCollectionRecording(eventId){
     if(error||!data?.signedUrl)throw new Error(error?.message||'URL temporária indisponível');
     window.open(data.signedUrl,'_blank','noopener');
   }catch(ex){alert('Não foi possível abrir a confirmação gravada: '+ex.message);}
+}
+async function recoverCollectionRecording(eventId){
+  if(!collectionCanManageRecording())return;
+  if(!confirm('Procurar e vincular o áudio desta entrevista no armazenamento privado? Nenhum pagamento ou status de aprovação anterior será modificado.'))return;
+  try{
+    const {data,error}=await sb.rpc('recover_collection_recording',{p_collection_event_id:eventId});
+    if(error)throw new Error(error.message);
+    if(data==='not_found'){alert('Nenhum arquivo de áudio foi localizado para esta entrevista. Mantenha-a em auditoria e avalie a reprovação manual.');return;}
+    if(data==='ambiguous'){alert('Mais de um arquivo foi localizado. Não foi vinculado automaticamente; solicite revisão técnica antes de decidir.');return;}
+    if(data!=='restored')throw new Error('Resposta inesperada do servidor');
+    delete AUDIT_AUDIO_URLS[eventId];
+    if(COLLECT_IDX!=null)await pollCollectEvents(COLLECT_IDX);
+    alert('Gravação vinculada. Confira o áudio na auditoria antes de aprovar ou manter esta entrevista.');
+  }catch(ex){alert('Não foi possível recuperar a gravação. Verifique se a migration corrigir-gravacao-noturna-e-recuperar-audios.sql foi executada. Detalhe: '+ex.message);}
 }
 function renderAudit(idx){
   const el=document.getElementById('auditBody');if(!el)return;
@@ -4944,7 +4965,10 @@ function renderAudit(idx){
     if(suspect)flags.push('Intervalo muito curto p/ outra entrevista');
     if(distSuspect)flags.push('Georreferenciamento muito próximo da coleta anterior');
     const rejected=e.status==='rejected';
+    const pendingAudio=e.status==='pending_recording';
     const statusCell=`${e.synced?'<span class="pill pill-green">Sincronizado</span>':'<span class="pill pill-amber">Pendente</span>'}`+
+      (pendingAudio?'<div style="margin-top:5px"><span class="pill pill-amber">Áudio pendente · não contabilizada</span></div>':'')+
+      (collectionNightAudioIssue(e)?'<div style="margin-top:5px"><span class="pill pill-red">Válida sem áudio · revisar financeiro</span></div>':'')+
       (rejected?`<div style="margin-top:5px"><span class="pill pill-red" title="${esc(e.rejectReason||'')}">✕ Reprovada</span><div style="font-size:10.5px;color:var(--ink3);margin-top:2px;max-width:170px">${esc(e.rejectReason||'')}</div></div>`:'')+
       (e.calibration?'<div style="margin-top:5px"><span class="pill pill-blue">◎ Calibração</span></div>':'');
     const recordingCell=collectionRecordingCell(e);
@@ -4955,6 +4979,7 @@ function renderAudit(idx){
     const actionsEvidence=`<div class="audit-actions-evidence"><div><span class="audit-evidence-label">Duração</span><b>${e.durationSeconds!=null?fmtInterviewDuration(e.durationSeconds):'Não registrado'}</b></div><div><span class="audit-evidence-label">Gravação</span>${collectionRecordingCell(e)}</div></div>`;
     const actionsCell=`<div class="audit-actions-stack">
       ${actionsEvidence}
+      ${(e.recordingStatus==='failed'||e.recordingStatus==='pending_upload')&&e.recordingRequired?`<button class="btn-ghost" type="button" onclick="recoverCollectionRecording('${e.id}')">Recuperar áudio do armazenamento</button>`:''}
       ${conversationButton(e.phone,'Olá '+e.name+'! Podemos conversar sobre a coleta '+(e.cota||'')+'?')}
       <button class="btn-ghost" style="font-size:11px;padding:3px 8px" onclick="auditReject('${e.id}')">${rejected?'↺ Reaprovar':'✕ Reprovar'}</button>
       <button class="btn-ghost" style="font-size:11px;padding:3px 8px" onclick="auditToggleCalibration('${e.id}')">${e.calibration?'↺ Nos resultados':'◎ Calibração'}</button>
@@ -6076,7 +6101,7 @@ async function acollectSubmit(){
     eventPayload.recording_status=ACOLLECT_RECORDING_STATUS==='failed'?'failed':ACOLLECT_RECORDING_STATUS==='declined'?'declined':'not_selected';
     eventPayload.recording_error=ACOLLECT_RECORDING_ERROR||null;
   }
-  let eventId=null,serverRejectedReason='';
+  let eventId=null,serverRejectedReason='',serverPendingAudio=false;
   try{
     const buildEventPayload=()=>{
       const payload={...eventPayload};
@@ -6096,6 +6121,7 @@ async function acollectSubmit(){
     if(error)throw new Error(error.message);
     eventId=data.id;
     if(data.status==='rejected')serverRejectedReason=COLLECT_MIN_DURATION_REJECTION_MESSAGE;
+    serverPendingAudio=data.status==='pending_recording';
   }catch(ex){
     ACOLLECT_SUBMITTING=false;
     renderAcollectActionState();
@@ -6133,6 +6159,8 @@ async function acollectSubmit(){
   if(msg){
     msg.innerHTML=serverRejectedReason
       ?`<div class="offline-banner collection-rejection-message"><b>✕ Coleta rejeitada automaticamente.</b><span>${esc(serverRejectedReason)}</span><small>O registro foi preservado para auditoria. Consulte “Meus ganhos” para ver este motivo novamente.</small></div>`
+      :serverPendingAudio&&!recordingResult.ok
+        ?'<div class="offline-banner">A coleta foi salva, mas permanece pendente de gravação e NÃO conta como válida nem gera pagamento. Avise a coordenação para verificar o áudio.</div>'
       :recordingResult.ok
         ?'<div class="online-banner">✓ Coleta enviada com sucesso</div>'
         :'<div class="offline-banner">✓ Coleta enviada; a confirmação de áudio não pôde ser anexada.</div>';
@@ -6188,7 +6216,7 @@ function renderGeoLog(){
   const mine=COLLECT_EVENTS.filter(e=>e.researcherId===myId).sort((a,b)=>b.ts-a.ts).slice(0,6);
   el.innerHTML=mine.length?mine.map(g=>{
     const s=SURVEYS.find(x=>x.id===g.surveyId);
-    const statusBadge=g.status==='rejected'?' <span class="pill pill-red">✕ Reprovada</span>':g.calibration?' <span class="pill pill-blue">◎ Calibração</span>':'';
+    const statusBadge=g.status==='rejected'?' <span class="pill pill-red">✕ Reprovada</span>':g.status==='pending_recording'?' <span class="pill pill-amber">Áudio pendente · não contabilizada</span>':g.calibration?' <span class="pill pill-blue">◎ Calibração</span>':'';
     return `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--line);font-size:11.5px">
       <span style="width:16px;text-align:center;flex-shrink:0">${g.synced?'✓':'⏳'}</span>
       <span style="flex:1;color:var(--ink2)">${esc(g.cota||'(sem cota)')}${s?' · <span style="color:var(--ink3)">'+esc(s.name)+'</span>':''}${statusBadge}</span>
@@ -8583,7 +8611,7 @@ function financeStatementPaymentsSection(payment,survey,options={}){
   return `<section class="finance-statement-payments finance-statement-section"><div class="finance-statement-section-head"><div><h3>Pagamentos realizados e comprovantes</h3><p>Confira cada repasse, valor, data, referência e arquivo anexado. Ações de edição ficam disponíveis somente para a gestão.</p></div><span class="pill pill-green">${receipts.length}</span></div><div class="finance-statement-payment-summary"><span>Total lançado <b>${brl(received)}</b></span><span>Saldo aprovado a pagar <b>${brl(balance)}</b></span></div><div class="finance-statement-payment-list">${body}</div>${registerButton?`<div class="finance-statement-payment-footer">${registerButton}</div>`:''}</section>`;
 }
 function financeStatementRender(researcher, survey, payment, events, options={}){
-  const isAuditCollectionStatus=event=>['audit','auditoria','em_auditoria','pending_audit','under_review'].includes(String(event?.status||'').toLocaleLowerCase('pt-BR').replace(/[ -]/g,'_'))||event?.audit===true||event?.underAudit===true;
+  const isAuditCollectionStatus=event=>['audit','auditoria','em_auditoria','pending_audit','pending_recording','under_review'].includes(String(event?.status||'').toLocaleLowerCase('pt-BR').replace(/[ -]/g,'_'))||event?.audit===true||event?.underAudit===true;
   const validEvents=events.filter(event=>event.status==='valid'&&!isAuditCollectionStatus(event)).sort((a,b)=>a.ts-b.ts);
   const auditEvents=events.filter(isAuditCollectionStatus).sort((a,b)=>a.ts-b.ts);
   const rejectedEvents=events.filter(event=>event.status==='rejected').sort((a,b)=>(b.rejectedAt||b.ts)-(a.rejectedAt||a.ts));
@@ -8598,7 +8626,7 @@ function financeStatementRender(researcher, survey, payment, events, options={})
   const paidRows=validEvents.slice(0,paidEquivalent).map(event=>({event,status:'Aprovada e já paga',amount:price}));
   const toPayRows=validEvents.slice(paidEquivalent,approvedCount).map(event=>({event,status:'Aprovada e a pagar',amount:price}));
   const pendingRows=validEvents.slice(approvedCount).map(event=>({event,status:'Válida — aguardando aprovação financeira',amount:price}));
-  const auditRowsFromEvents=auditEvents.map(event=>({event,status:'Em auditoria — pode ser aprovada',amount:price}));
+  const auditRowsFromEvents=auditEvents.map(event=>({event,status:event.status==='pending_recording'?'Áudio pendente — não aprovada; valor potencial':'Em auditoria — pode ser aprovada',amount:price}));
   const auditEventIds=new Set(auditRowsFromEvents.map(row=>row.event.id).filter(Boolean));
   const auditRowsFromPayment=paymentIsUnderAudit?pendingRows.filter(row=>!auditEventIds.has(row.event.id)) : [];
   const auditRows=[...auditRowsFromEvents,...auditRowsFromPayment];

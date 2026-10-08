@@ -30,6 +30,6 @@ O relatório não deve misturar respostas entre pesquisas diferentes, porque iss
 - Todos os smoke tests: aprovados.
 - Novo teste: `reports-duplicate-survey-smoke-test.js` aprovado.
 - CSS balanceado e `.finance-table-scroll` preservado.
-- Cache local atualizado para `20261008162850`.
+- Cache local atualizado para `20261008164650`.
 
 A v147 foi preparada para publicação após autorização específica desta correção.

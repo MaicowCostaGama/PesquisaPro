@@ -51,7 +51,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261008162850';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261008164650';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -202,7 +202,7 @@ async function enableResearcherPush(){
   try{
     const permission=await Notification.requestPermission();
     if(permission!=='granted'){PUSH_STATUS='blocked';go('dashboard-pesq');return;}
-    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261008162850',{scope:'./'});
+    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261008164650',{scope:'./'});
     const subscription=await PUSH_SW_REGISTRATION.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:pushKeyToUint8Array(window.PP_PUSH_PUBLIC_KEY)});
     const json=subscription.toJSON();
     const {error}=await sb.from('push_subscriptions').upsert({user_id:CURRENT_PROFILE.id,endpoint:json.endpoint,subscription:json,user_agent:navigator.userAgent,updated_at:new Date().toISOString()},{onConflict:'endpoint'});
@@ -1555,6 +1555,7 @@ function selectCampaign(surveyId){
   const available=campaignSurveysForCurrentUser();
   if(!available.some(s=>s.id===surveyId))return;
   ACTIVE_CAMPAIGN_ID=surveyId;
+  if(typeof RP_REPORT_SURVEY_MANUALLY_SELECTED!=='undefined')RP_REPORT_SURVEY_MANUALLY_SELECTED=false;
   closeCampaignSwitcher();
   updateCampaignSwitcherButton();
   const key=document.querySelector('.nav-item.on')?.dataset.key;
@@ -6373,18 +6374,39 @@ let RP_REPORT_CROSSINGS=[];
 let RP_ACTIVE_CROSSING_ID=null;
 let RP_REPORT_DRAFT_SECTIONS=null;
 let RP_REPORT_DUPLICATE_DIAGNOSTIC_CACHE={key:'',matches:[],checked:false};
+let RP_REPORT_SURVEY_MANUALLY_SELECTED=false;
 function reportsAvailableSurveys(){return SURVEYS.filter(s=>reportsQuestionsForSurvey(s).length>0||openQuestionsForSurvey(s).length>0);}
 function reportsCurrentSurvey(){return SURVEYS.find(s=>s.id===RP_SURVEY_ID)||null;}
 function reportsCurrentQuestions(){return reportsQuestionsForSurvey(reportsCurrentSurvey()||{});}
 function reportsSurveyNameKey(value){return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^\p{L}\p{N}]+/gu,' ').trim().toLocaleLowerCase('pt-BR');}
+function reportsSurveyNameTokens(value){return new Set(reportsSurveyNameKey(value).split(/\s+/).filter(token=>token.length>2));}
+function reportsSurveyQuestionKeys(s){return (s?.questions||[]).slice(0,5).map(q=>reportsSurveyNameKey(q.text)).filter(Boolean);}
+function reportsSurveyLooksLikeSameCampaign(a,b){
+  if(!a||!b||a.id===b.id)return false;
+  if(reportsSurveyNameKey(a.name)===reportsSurveyNameKey(b.name))return true;
+  const aTokens=reportsSurveyNameTokens(a.name),bTokens=reportsSurveyNameTokens(b.name);
+  const union=new Set([...aTokens,...bTokens]),shared=[...aTokens].filter(token=>bTokens.has(token)).length;
+  const nameSimilarity=union.size>=3&&shared/union.size>=.72;
+  const aQuestions=reportsSurveyQuestionKeys(a),bQuestions=reportsSurveyQuestionKeys(b),bQuestionSet=new Set(bQuestions);
+  const sharedQuestions=aQuestions.filter(text=>bQuestionSet.has(text)).length;
+  const clientIdsA=new Set(a.clientIds||[]),clientOverlap=(a.clientIds||[]).some(id=>(b.clientIds||[]).includes(id));
+  return nameSimilarity&&(sharedQuestions>=1||clientOverlap);
+}
+function reportsPreferredSurvey(surveys){
+  const available=surveys||[];
+  const activeById=ACTIVE_CAMPAIGN_ID?available.find(s=>s.id===ACTIVE_CAMPAIGN_ID):null;
+  if(activeById)return activeById;
+  const active=typeof activeCampaignSurvey==='function'?activeCampaignSurvey():null;
+  return active&&available.some(s=>s.id===active.id)?active:null;
+}
 function reportsSurveyOptionLabel(s,surveys){
-  const same=(surveys||[]).filter(item=>reportsSurveyNameKey(item.name)===reportsSurveyNameKey(s.name));
+  const same=(surveys||[]).filter(item=>reportsSurveyLooksLikeSameCampaign(s,item)||item.id===s.id);
   if(same.length<2)return s.name||'Pesquisa sem nome';
   const date=s.createdAt?new Date(s.createdAt).toLocaleDateString('pt-BR'):'data indisponível';
   const base=reportsLocalValidBase(s.id);
   return `${s.name||'Pesquisa sem nome'} · ${date} · ID ${String(s.id||'').slice(0,8)}${base!=null?` · ${base.toLocaleString('pt-BR')} válidas`:''}`;
 }
-function reportsDuplicateSurveyCandidates(s,surveys){return (surveys||[]).filter(item=>item.id!==s?.id&&reportsSurveyNameKey(item.name)===reportsSurveyNameKey(s?.name));}
+function reportsDuplicateSurveyCandidates(s,surveys){return (surveys||[]).filter(item=>reportsSurveyLooksLikeSameCampaign(s,item));}
 function reportsCrossingQuestionIds(crossing){return [...(crossing?.questionIds||crossing?.crossQuestionIds||[])].filter(Boolean).slice(0,3);}
 function reportsMakeCrossing(questionIds=[],index=RP_REPORT_CROSSINGS.length){return {id:'cross-'+Date.now()+'-'+Math.random().toString(36).slice(2,7),title:'Cruzamento '+(index+1),questionIds:questionIds.filter(Boolean).slice(0,3),include:true};}
 function reportsNormalizeCrossings(sections){
@@ -6442,7 +6464,9 @@ PAGES.reports=()=>{
   if(!COLLECT_EVENTS_LOADED)loadCollectEventsIfNeeded();
   const surveys=reportsAvailableSurveys();
   if(!surveys.length)return head('Relatórios','Resultados em tempo real e análises cruzadas')+'<div class="card"><div class="empty">Nenhuma pesquisa com perguntas configuradas ainda.</div></div>';
-  if(RP_SURVEY_ID==null||!surveys.some(s=>s.id===RP_SURVEY_ID))RP_SURVEY_ID=surveys[0].id;
+  const preferred=reportsPreferredSurvey(surveys);
+  if(!RP_REPORT_SURVEY_MANUALLY_SELECTED&&preferred)RP_SURVEY_ID=preferred.id;
+  if(RP_SURVEY_ID==null||!surveys.some(s=>s.id===RP_SURVEY_ID))RP_SURVEY_ID=preferred?.id||surveys[0].id;
   const survey=reportsCurrentSurvey()||surveys[0];
   const qs=reportsQuestionsForSurvey(survey),crossQs=reportsCrossQuestionsForSurvey(survey);
   reportsEnsureCrossSelection(crossQs);
@@ -6457,7 +6481,7 @@ PAGES.reports=()=>{
   ${reportsDocumentEditorMarkup(survey,qs)}
   <div class="callout reports-footnote"><b>Base de análise:</b> entrevistas válidas, excluindo coletas reprovadas e de calibração. Os dados são atualizados automaticamente enquanto esta aba estiver aberta.</div>`;
 };
-function reportsPickSurvey(id){RP_SURVEY_ID=id;RP_CROSS_QUESTION_IDS=[];RP_REPORT_CROSSINGS=[];RP_ACTIVE_CROSSING_ID=null;RP_REPORT_DRAFT_SECTIONS=null;RP_REPORT_DOCUMENT_ID=null;RP_REPORT_DOCUMENT_STATUS='new';RP_REPORT_DRAFT_HYDRATED=false;RP_REPORT_ANALYSIS_CACHE={surveyId:null,overviewRows:[],crossRows:[],crossIds:[]};RP_REPORT_CROSS_ANALYSIS_CACHE={};go('reports');}
+function reportsPickSurvey(id){if(!SURVEYS.some(s=>s.id===id))return;RP_REPORT_SURVEY_MANUALLY_SELECTED=true;RP_SURVEY_ID=id;RP_CROSS_QUESTION_IDS=[];RP_REPORT_CROSSINGS=[];RP_ACTIVE_CROSSING_ID=null;RP_REPORT_DRAFT_SECTIONS=null;RP_REPORT_DOCUMENT_ID=null;RP_REPORT_DOCUMENT_STATUS='new';RP_REPORT_DRAFT_HYDRATED=false;RP_REPORT_ANALYSIS_CACHE={surveyId:null,overviewRows:[],crossRows:[],crossIds:[]};RP_REPORT_CROSS_ANALYSIS_CACHE={};RP_REPORT_DUPLICATE_DIAGNOSTIC_CACHE={key:'',matches:[],checked:false};go('reports');}
 function reportsSetMode(mode){RP_REPORT_MODE=mode;RP_REPORT_DRAFT_HYDRATED=true;go('reports');}
 function reportsAddCrossing(){const crossing=reportsMakeCrossing([],RP_REPORT_CROSSINGS.length);RP_REPORT_CROSSINGS=[...RP_REPORT_CROSSINGS,crossing];RP_ACTIVE_CROSSING_ID=crossing.id;reportsSyncActiveCrossing();go('reports');}
 function reportsSetActiveCrossing(id){if(!RP_REPORT_CROSSINGS.some(crossing=>crossing.id===id))return;RP_ACTIVE_CROSSING_ID=id;reportsSyncActiveCrossing();go('reports');}

@@ -25,7 +25,7 @@ for(const token of [
   'position:sticky',
   '@media(max-width:760px)',
 ])ok(css.includes(token),`style.css sem ${token}`);
-ok(html.includes('app.js?v=20261008162850'),'cache do app não atualizado');
-ok(html.includes('style.css?v=20261008162850'),'cache do CSS não atualizado');
+ok(html.includes('app.js?v=20261008164650'),'cache do app não atualizado');
+ok(html.includes('style.css?v=20261008164650'),'cache do CSS não atualizado');
 ok(!/create table|alter table|drop table|delete from/i.test(app),'navegação de auditoria não deve alterar o banco pelo frontend');
 console.log('Audit section navigation smoke test: PASS — atalhos, contadores, painéis exclusivos, foco acessível e responsividade verificados.');

@@ -8,6 +8,8 @@ function assert(condition, message) {
 
 assert(app.includes('createdAt:row.created_at||null'), 'o snapshot deve preservar a data original da pesquisa');
 assert(app.includes('function reportsSurveyNameKey'), 'deve existir uma chave normalizada para comparar nomes');
+assert(app.includes('function reportsSurveyLooksLikeSameCampaign'), 'deve detectar versões semelhantes mesmo quando o nome não é idêntico');
+assert(app.includes('function reportsPreferredSurvey'), 'o Relatório deve respeitar a campanha ativa como seleção inicial');
 assert(app.includes('function reportsSurveyOptionLabel'), 'o seletor deve ter rótulo diferenciado para pesquisas homônimas');
 assert(app.includes('ID ${String(s.id||\'\').slice(0,8)}'), 'o rótulo deve exibir um identificador curto da pesquisa homônima');
 assert(app.includes('function reportsDuplicateSurveyCandidates'), 'deve existir uma lista explícita de versões homônimas');
@@ -16,6 +18,7 @@ assert(app.includes('reportsCheckDuplicateSurveyCoverage'), 'o relatório deve v
 assert(app.includes('reportsRenderDuplicateNotice'), 'o relatório deve renderizar aviso quando outra versão possui dados');
 assert(app.includes('O relatório não mistura pesquisas diferentes'), 'a interface deve evitar mistura silenciosa entre campanhas');
 assert(app.includes('id="rp-duplicate-diagnostic"'), 'deve haver área reservada para o aviso de diagnóstico');
+assert(app.includes('RP_REPORT_SURVEY_MANUALLY_SELECTED'), 'uma escolha manual no Relatório não pode ser sobrescrita pela campanha ativa');
 assert(css.includes('.reports-duplicate-notice'), 'o aviso deve ter estilo visual próprio');
 assert(css.includes('.reports-duplicate-action'), 'a ação para abrir outra versão deve ser visível e responsiva');
 console.log('reports duplicate survey smoke test: PASS');

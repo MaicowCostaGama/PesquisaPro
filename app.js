@@ -51,7 +51,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261007205401';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261007212549';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -72,6 +72,7 @@ let MY_SURVEY_RESEARCHER_MESSAGES_LAST_LOADED=0,MY_SURVEY_RESEARCHER_MESSAGES_LO
 let CLIENT_APPROVAL_REQUEST_ID=null,CLIENT_APPROVAL_REQUEST=null,CLIENT_APPROVAL_REQUEST_LOADED=false,CLIENT_APPROVAL_LOADING=false,CLIENT_APPROVAL_RESPONDING=false,CLIENT_APPROVAL_SCHEMA_MISSING=false;
 let RESEARCHER_LINK_TOKEN=null,RESEARCHER_LINK_CONTEXT=null,RESEARCHER_LINK_LOADING=false,RESEARCHER_LINK_ACCEPTING=false;
 let ADMIN_APPROVAL_STATUS_BY_CLIENT={},ADMIN_APPROVAL_STATUS_LOADING={},ADMIN_APPROVAL_STATUS_LOADED={};
+let STAFF_NAV_PENDING_COUNTS=null,STAFF_NAV_PENDING_LOADING=false,STAFF_NAV_PENDING_LAST_LOADED=0,STAFF_NAV_PENDING_TIMER=null,STAFF_NAV_PENDING_REFRESH_TIMER=null,STAFF_NAV_PENDING_GENERATION=0;
 
 function researcherUpdateVersionFromHtml(html){
   const match=String(html||'').match(/name=["']pesquisapro-app-version["'][^>]*content=["']([^"']+)["']/i);
@@ -201,7 +202,7 @@ async function enableResearcherPush(){
   try{
     const permission=await Notification.requestPermission();
     if(permission!=='granted'){PUSH_STATUS='blocked';go('dashboard-pesq');return;}
-    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261007205401',{scope:'./'});
+    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261007212549',{scope:'./'});
     const subscription=await PUSH_SW_REGISTRATION.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:pushKeyToUint8Array(window.PP_PUSH_PUBLIC_KEY)});
     const json=subscription.toJSON();
     const {error}=await sb.from('push_subscriptions').upsert({user_id:CURRENT_PROFILE.id,endpoint:json.endpoint,subscription:json,user_agent:navigator.userAgent,updated_at:new Date().toISOString()},{onConflict:'endpoint'});
@@ -425,6 +426,7 @@ async function requestOwnPasswordReset(){
 
 async function afterLogin(user){
   stopResearcherVersionMonitor();
+  stopStaffNavPendingMonitor();
   chatStopRealtime();CHAT_CHANNELS=[];CHAT_CHANNELS_LOADED=false;CHAT_CHANNELS_LOADING=false;CHAT_SCHEMA_MISSING=false;CHAT_ACTIVE_CHANNEL_ID=null;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=false;CHAT_MESSAGES_LOADING=false;CHAT_SUPPORT_CHANNEL_ID=null;CHAT_SUPPORT_READY=false;CHAT_SUPPORT_LOADING=false;
   PUSH_STATUS='unknown';PUSH_STATUS_LOADING=false;PUSH_SCHEMA_MISSING=false;PUSH_SW_REGISTRATION=null;RESEARCHER_ALERT_PREFS={email_enabled:false,push_enabled:false};RESEARCHER_ALERT_PREFS_LOADED=false;RESEARCHER_ALERT_PREFS_LOADING=false;RESEARCHER_ALERT_PREFS_SAVING=false;RESEARCHER_ALERT_PREFS_SCHEMA_MISSING=false;RESEARCHER_ALERT_PREFS_ERROR=false;MY_COMMUNICATIONS=[];MY_COMMUNICATIONS_LOADED=false;MY_COMMUNICATIONS_LOADING=false;MY_SURVEY_RESEARCHER_MESSAGES=[];MY_SURVEY_RESEARCHER_MESSAGES_LOADED=false;MY_SURVEY_RESEARCHER_MESSAGES_LOADING=false;MY_SURVEY_RESEARCHER_MESSAGES_SCHEMA_MISSING=false;MY_SURVEY_RESEARCHER_MESSAGES_LAST_LOADED=0;MY_SURVEY_RESEARCHER_MESSAGES_LOAD_ERROR=false;
   ACTIVE_CAMPAIGN_ID=null;CLIENT_SURVEY_VIEW_ID=null;
@@ -454,6 +456,7 @@ async function afterLogin(user){
   buildSidebar();
   const nav=ROLE_NAV[profile.role]||['dashboard'];
   go(nav[0]);
+  startStaffNavPendingMonitor();
   if(profile.role==='pesq'){
     startResearcherVersionMonitor();
     checkResearcherAppVersion();
@@ -465,6 +468,7 @@ async function afterLogin(user){
 
 async function logout(){
   stopResearcherVersionMonitor();
+  stopStaffNavPendingMonitor();
   if(typeof acollectCloseNoticeGate==='function')acollectCloseNoticeGate(true);
   await sb.auth.signOut();
   chatStopRealtime();
@@ -496,6 +500,68 @@ sb.auth.onAuthStateChange((event)=>{
   }catch(ex){console.error('Falha ao inicializar sessão:',ex);}
 })();
 
+const STAFF_NAV_BADGE_LABELS={contracts:'contratos aguardando assinatura',communication:'conversas aguardando resposta',users:'usuários aguardando análise'};
+function staffNavPendingEnabled(){return ['admin','admpro','coord','gerente'].includes(CURRENT_PROFILE?.role);}
+function renderStaffNavPendingCounts(){
+  Object.entries(STAFF_NAV_BADGE_LABELS).forEach(([key,description])=>{
+    const button=document.querySelector(`.nav-item[data-key="${key}"]`);
+    if(!button)return;
+    const badge=button.querySelector('.nav-pending-badge');if(!badge)return;
+    const count=Math.max(0,Number(STAFF_NAV_PENDING_COUNTS?.[key])||0);
+    badge.hidden=!count;
+    badge.textContent=count>99?'99+':String(count);
+    const label=NAV_META[key].label;
+    button.setAttribute('aria-label',count?`${label}: ${count} ${description}`:label);
+    button.title=count?`${count} ${description}`:label;
+  });
+}
+async function refreshStaffNavPendingCounts(force=false){
+  if(!staffNavPendingEnabled()||STAFF_NAV_PENDING_LOADING)return;
+  if(!force&&Date.now()-STAFF_NAV_PENDING_LAST_LOADED<30000)return;
+  STAFF_NAV_PENDING_LOADING=true;
+  const generation=STAFF_NAV_PENDING_GENERATION,userId=CURRENT_PROFILE.id;
+  try{
+    const {data,error}=await sb.rpc('staff_navigation_pending_counts');
+    if(error)throw error;
+    if(generation!==STAFF_NAV_PENDING_GENERATION||CURRENT_PROFILE?.id!==userId)return;
+    STAFF_NAV_PENDING_COUNTS=data||null;
+    renderStaffNavPendingCounts();
+  }catch(ex){
+    if(generation===STAFF_NAV_PENDING_GENERATION&&CURRENT_PROFILE?.id===userId){
+      STAFF_NAV_PENDING_COUNTS=null;renderStaffNavPendingCounts();
+      console.warn('Contadores de pendências indisponíveis; execute a migration contadores-pendencias-menu.sql quando autorizado:',ex);
+    }
+  }finally{
+    if(generation===STAFF_NAV_PENDING_GENERATION){STAFF_NAV_PENDING_LOADING=false;STAFF_NAV_PENDING_LAST_LOADED=Date.now();}
+  }
+}
+function stopStaffNavPendingMonitor(){
+  if(STAFF_NAV_PENDING_TIMER)clearInterval(STAFF_NAV_PENDING_TIMER);
+  if(STAFF_NAV_PENDING_REFRESH_TIMER)clearTimeout(STAFF_NAV_PENDING_REFRESH_TIMER);
+  STAFF_NAV_PENDING_REFRESH_TIMER=null;
+  STAFF_NAV_PENDING_TIMER=null;STAFF_NAV_PENDING_GENERATION++;
+  STAFF_NAV_PENDING_COUNTS=null;STAFF_NAV_PENDING_LOADING=false;STAFF_NAV_PENDING_LAST_LOADED=0;
+}
+function invalidateStaffNavPendingCounts(){
+  if(!staffNavPendingEnabled()||STAFF_NAV_PENDING_REFRESH_TIMER)return;
+  STAFF_NAV_PENDING_REFRESH_TIMER=setTimeout(()=>{
+    STAFF_NAV_PENDING_REFRESH_TIMER=null;
+    if(!staffNavPendingEnabled())return;
+    STAFF_NAV_PENDING_GENERATION++;STAFF_NAV_PENDING_LOADING=false;STAFF_NAV_PENDING_LAST_LOADED=0;
+    refreshStaffNavPendingCounts(true);
+  },350);
+}
+function startStaffNavPendingMonitor(){
+  if(!staffNavPendingEnabled())return;
+  refreshStaffNavPendingCounts(true);
+  STAFF_NAV_PENDING_TIMER=setInterval(()=>{
+    if(document.visibilityState!=='hidden')refreshStaffNavPendingCounts(true);
+  },45000);
+}
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='visible'&&staffNavPendingEnabled())refreshStaffNavPendingCounts();
+});
+
 function buildSidebar(){
   const allow=ROLE_NAV[selectedRole]||(ROLES[selectedRole]&&ROLES[selectedRole].nav)||[];
   const groups={};
@@ -512,7 +578,7 @@ function buildSidebar(){
     if(visible.length===0)return;
     html+=`<div class="nav-group" data-nav-group><div class="ng-label">${g}</div>`;
     visible.forEach(i=>{
-      html+=`<button class="nav-item" data-key="${i.key}" onclick="go('${i.key}')"><span class="ico ico-3d">${icon3d(i.ico,'#c9dcff')}</span><span class="nav-label">${i.label}</span></button>`;
+      html+=`<button class="nav-item" data-key="${i.key}" onclick="go('${i.key}')"><span class="ico ico-3d">${icon3d(i.ico,'#c9dcff')}</span><span class="nav-label">${i.label}</span>${staffNavPendingEnabled()&&STAFF_NAV_BADGE_LABELS[i.key]?'<span class="nav-pending-badge" hidden aria-hidden="true"></span>':''}</button>`;
     });
     html+='</div>';
   });
@@ -523,6 +589,7 @@ function buildSidebar(){
   html+='<p class="sidebar-search-empty" id="sidebarSearchEmpty" hidden>Nenhuma página encontrada.</p>';
   document.getElementById('sidebar').innerHTML=html;
   updateCampaignSwitcherButton();
+  renderStaffNavPendingCounts();
 }
 function filterSidebarNavigation(query){
   const sidebar=document.getElementById('sidebar');if(!sidebar)return;
@@ -531,7 +598,7 @@ function filterSidebarNavigation(query){
   sidebar.querySelectorAll('[data-nav-group]').forEach(group=>{
     let groupFound=0;
     group.querySelectorAll('.nav-item').forEach(item=>{
-      const match=!term||normalize(item.textContent).includes(term);
+      const match=!term||normalize(item.querySelector('.nav-label')?.textContent||item.textContent).includes(term);
       item.hidden=!match;if(match)groupFound++;
     });
     group.hidden=groupFound===0;found+=groupFound;
@@ -548,6 +615,7 @@ function openResearcherSupport(){
 }
 
 function go(key){
+  if(staffNavPendingEnabled())refreshStaffNavPendingCounts();
   const previousKey=document.querySelector('.nav-item.on')?.dataset.key;
   document.querySelectorAll('.nav-item').forEach(n=>{
     const active=n.dataset.key===key;
@@ -698,6 +766,7 @@ function chatStartRealtime(){
       const channel=CHAT_CHANNELS.find(item=>item.id===message.channel_id);if(channel)channel.last_message_at=message.created_at;
       if(message.channel_id===CHAT_ACTIVE_CHANNEL_ID)chatAppendMessage(message);
       else chatRefreshChannelList();
+      if(channel?.audience_type==='support')invalidateStaffNavPendingCounts();
     }).subscribe();
 }
 function chatStopRealtime(){
@@ -755,6 +824,7 @@ async function chatSendMessage(){
     const {data,error}=await sb.rpc('chat_send_message',{p_channel_id:CHAT_ACTIVE_CHANNEL_ID,p_body:body});
     if(error)throw new Error(error.message);
     chatAppendMessage(data);const channel=CHAT_CHANNELS.find(item=>item.id===CHAT_ACTIVE_CHANNEL_ID);if(channel)channel.last_message_at=data.created_at;
+    if(channel?.audience_type==='support')invalidateStaffNavPendingCounts();
     if(input){input.value='';input.disabled=false;input.focus();}
   }catch(ex){alert('Não foi possível enviar a mensagem: '+ex.message);if(input)input.disabled=false;}
   CHAT_SENDING=false;
@@ -6938,6 +7008,7 @@ async function signupEnsureApprovedProfile(i){
   const existingIndex=USERS.findIndex(u=>u.id===profile.id);
   if(existingIndex>=0)USERS[existingIndex]=local;else USERS.unshift(local);
   s.status='aprovado';s.approvedProfileId=profile.id;
+  invalidateStaffNavPendingCounts();
   return {newProfile,resetSent};
 }
 function loadSignupsIfNeeded(){
@@ -7325,6 +7396,7 @@ async function signupReject(i){
   if(!confirm('Reprovar o cadastro de '+s.name+'? O histórico de origem será preservado.'))return;
   if(s.id){const {error}=await sb.from('signups').update({status:'reprovado'}).eq('id',s.id);if(error){alert('Não foi possível registrar a reprovação: '+error.message);return;}}
   SIGNUPS.splice(i,1);
+  invalidateStaffNavPendingCounts();
   alert('Cadastro reprovado. O histórico da captação foi preservado.');
   refreshSignups();
 }
@@ -7590,6 +7662,7 @@ async function approvePesqCommon(i){
   const {error}=await sb.from('profiles').update({status:'ativo'}).eq('id',u.id);
   if(error){alert('Não foi possível registrar a aprovação: '+error.message);return false;}
   u.status='ativo';
+  invalidateStaffNavPendingCounts();
   alert('Cadastro aprovado. Pesquisador ativo e salvo no banco.');
   return true;
 }
@@ -7953,6 +8026,7 @@ async function userSaveStaff(isNew){
     }
   }catch(ex){userSaveSetBusy(false);alert('Não foi possível salvar: '+ex.message);return;}
   _docDraft=null;USER_EDIT=null;
+  invalidateStaffNavPendingCounts();
   alert(isNew?'Usuário cadastrado.':'Alterações salvas.');
   go('users');
 }
@@ -7987,6 +8061,7 @@ async function userSaveLight(isNew,role){
     }
   }catch(ex){userSaveSetBusy(false);alert('Não foi possível salvar: '+ex.message);return;}
   USER_EDIT=null;
+  invalidateStaffNavPendingCounts();
   alert(isNew?'Usuário cadastrado.':'Alterações salvas.');
   go('users');
 }
@@ -8016,6 +8091,7 @@ async function userSaveCliente(isNew){
     }
   }catch(ex){userSaveSetBusy(false);alert('Não foi possível salvar: '+ex.message);return;}
   USER_EDIT=null;
+  invalidateStaffNavPendingCounts();
   alert(isNew?'Cliente cadastrado.':'Alterações salvas.');
   go('users');
 }
@@ -8056,6 +8132,7 @@ async function userSavePesq(isNew){
     }
   }catch(ex){userSaveSetBusy(false);alert('Não foi possível salvar: '+ex.message);return;}
   _docFotoDraft=null;_docCompDraft=null;_pesqCidadesDraft=[];USER_EDIT=null;
+  invalidateStaffNavPendingCounts();
   alert(isNew?'Pesquisador cadastrado.':'Alterações salvas.');
   go('users');
 }
@@ -9044,6 +9121,7 @@ async function adminSignAllPendingContracts(expectedCount){
       signedCount++;
     }
     ALL_CONTRACTS_LOADED=false;await loadAllContractsIfNeeded();
+    invalidateStaffNavPendingCounts();
     const failureText=failures.length?'\n\nNão concluídos ('+failures.length+'): '+failures.slice(0,4).join('; ')+(failures.length>4?'…':''):'';
     alert(signedCount+' contrato'+(signedCount===1?'':'s')+' pendente'+(signedCount===1?'':'s')+' assinado'+(signedCount===1?'':'s')+' com sucesso. Contratos já assinados foram preservados.'+failureText);
     go('contracts');
@@ -9072,6 +9150,7 @@ async function adminSignResearcherContract(researcherId,researcherName){
     if(!data)throw new Error('A assinatura não retornou registro.');
     ALL_CONTRACTS_LOADED=false;
     await loadAllContractsIfNeeded();
+    invalidateStaffNavPendingCounts();
     go('contracts');
   }catch(ex){
     alert('Não foi possível assinar este cadastro: '+ex.message+'\\n\\nVerifique se a migration assinatura-admin-pesquisador.sql foi aplicada no Supabase.');
@@ -9114,6 +9193,7 @@ async function signCompanyContract(){
     if(!inserted)throw new Error('A assinatura foi processada, mas não retornou registro. Atualize a tela e tente novamente.');
     COMPANY_SIGNATURE=companySignatureRowToEntry(inserted);
     COMPANY_SIGNATURE_LOADED=true;
+    invalidateStaffNavPendingCounts();
   }catch(ex){
     alert('Não foi possível registrar a assinatura da CONTRATANTE: '+ex.message+'\n\nSe a migration de contratos ainda não foi aplicada, execute-a no Supabase e tente novamente.');
     if(btn){btn.disabled=false;btn.textContent='✎ Assinar todos os contratos pela CONTRATANTE';}
@@ -9308,6 +9388,7 @@ async function createContractVersion(){
     CONTRACT_VERSION=typeof data==='string'?data:version;
     resetContractCachesForVersion();
     CONTRACT_SETTINGS_LOADED=true;
+    invalidateStaffNavPendingCounts();
     alert('Nova versão '+CONTRACT_VERSION+' criada. O formulário de assinatura está disponível nesta tela.');
     go('contracts');
   }catch(ex){alert('Não foi possível criar a nova versão: '+ex.message+'\\n\\nExecute a migration contratos-versoes.sql no Supabase e tente novamente.');}

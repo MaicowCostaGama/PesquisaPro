@@ -51,7 +51,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261008144000';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261008153000';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -202,7 +202,7 @@ async function enableResearcherPush(){
   try{
     const permission=await Notification.requestPermission();
     if(permission!=='granted'){PUSH_STATUS='blocked';go('dashboard-pesq');return;}
-    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261008144000',{scope:'./'});
+    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261008153000',{scope:'./'});
     const subscription=await PUSH_SW_REGISTRATION.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:pushKeyToUint8Array(window.PP_PUSH_PUBLIC_KEY)});
     const json=subscription.toJSON();
     const {error}=await sb.from('push_subscriptions').upsert({user_id:CURRENT_PROFILE.id,endpoint:json.endpoint,subscription:json,user_agent:navigator.userAgent,updated_at:new Date().toISOString()},{onConflict:'endpoint'});
@@ -1984,7 +1984,7 @@ function surveyRowToSnapshot(row,questionRows,clientCompanyNames,teamNames){
       if(typeof options==='string'){try{options=JSON.parse(options);}catch(ex){options=[];}}
       return {id:field.id,label:field.label||'',type:field.type||'open',options:Array.isArray(options)?options.map(v=>String(v??'')):[]};
     });
-    return {id:localId,dbId:q.id,text:q.text||'',type:q.type||'single',difficulty:Math.min(5,Math.max(1,Number(q.difficulty)||3)),opts:opts.map(o=>o.label||''),endsInterview:opts.map(o=>!!o.ends_interview),fields:fields.length===2?fields:DEFAULT_PAIR_FIELDS(),isRegion:!!q.is_region};
+    return {id:localId,position:Number.isFinite(Number(q.position))?Number(q.position):qi,dbId:q.id,text:q.text||'',type:q.type||'single',difficulty:Math.min(5,Math.max(1,Number(q.difficulty)||3)),opts:opts.map(o=>o.label||''),endsInterview:opts.map(o=>!!o.ends_interview),fields:fields.length===2?fields:DEFAULT_PAIR_FIELDS(),isRegion:!!q.is_region};
   });
   return {
     id:row.id,
@@ -6482,7 +6482,9 @@ async function reportsLoadAndRender(isLive=false){
   RP_REPORT_LOADING=true;if(!isLive)out.innerHTML='<div class="empty" style="padding:28px 0">Carregando resultados reais…</div>';reportsSetLiveStatus(isLive?'Atualizado agora':'Carregando dados…',isLive?'live':'loading');
   try{
     if(RP_REPORT_MODE==='overview'){
-      const {data,error}=await sb.rpc('survey_report_all_questions',{p_survey_id:survey.id});
+      let reportResult=await sb.rpc('survey_report_all_questions_v2',{p_survey_id:survey.id});
+      if(reportResult.error&&/does not exist|schema cache|could not find the function/i.test(reportResult.error.message||''))reportResult=await sb.rpc('survey_report_all_questions',{p_survey_id:survey.id});
+      const {data,error}=reportResult;
       if(error)throw error;
       RP_REPORT_ANALYSIS_CACHE={surveyId:survey.id,overviewRows:data||[],crossRows:RP_REPORT_ANALYSIS_CACHE.crossRows||[],crossIds:RP_REPORT_ANALYSIS_CACHE.crossIds||[]};
       renderReportsOverview(out,data||[],qs);
@@ -6507,10 +6509,10 @@ function reportsLocalValidBase(surveyId){
   return COLLECT_EVENTS.filter(event=>event.surveyId===surveyId&&event.status==='valid'&&!event.calibration).length;
 }
 function renderReportsOverview(out,rows,qs){
-  const byQ={};(rows||[]).forEach(r=>(byQ[r.question_id]||(byQ[r.question_id]=[])).push(r));
+  const byQ={},byPosition={};(rows||[]).forEach(r=>{(byQ[r.question_id]||(byQ[r.question_id]=[])).push(r);const position=Number(r.question_position);if(Number.isFinite(position))(byPosition[position]||(byPosition[position]=[])).push(r);});
   const localBase=reportsLocalValidBase(reportsCurrentSurvey()?.id);
   const cards=qs.map((q,qi)=>{
-    const data=byQ[q.dbId]||[];const base=Number(data[0]?.valid_base)||localBase||0;const total=data.reduce((sum,r)=>sum+Number(r.cnt||0),0);const max=Math.max(1,...data.map(r=>Number(r.cnt||0)));
+    const data=byQ[q.dbId]||byPosition[q.position]||[];const base=Number(data[0]?.valid_base)||localBase||0;const total=data.reduce((sum,r)=>sum+Number(r.cnt||0),0);const max=Math.max(1,...data.map(r=>Number(r.cnt||0)));
     if(q.type==='open'){
       const answers=data.filter(r=>String(r.value_label||'').trim()&&String(r.value_label).trim()!=='(sem resposta)').slice(0,100);
       const answerRows=answers.length?answers.map(r=>{const cnt=Number(r.cnt||0),pct=reportPercent(cnt,base||total);return `<li class="reports-open-answer"><div><p>${esc(r.value_label)}</p><small>${cnt.toLocaleString('pt-BR')} ocorrência${cnt===1?'':'s'} · ${pct}% da base válida</small></div><span class="pill pill-blue">${pct}%</span></li>`;}).join(''):`<li class="empty" style="padding:16px 0">${base?'Nenhuma resposta foi registrada para esta pergunta na base válida.':'Ainda não há respostas textuais válidas.'}</li>`;

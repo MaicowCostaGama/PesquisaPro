@@ -51,7 +51,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261008155630';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261008161120';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -202,7 +202,7 @@ async function enableResearcherPush(){
   try{
     const permission=await Notification.requestPermission();
     if(permission!=='granted'){PUSH_STATUS='blocked';go('dashboard-pesq');return;}
-    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261008155630',{scope:'./'});
+    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261008161120',{scope:'./'});
     const subscription=await PUSH_SW_REGISTRATION.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:pushKeyToUint8Array(window.PP_PUSH_PUBLIC_KEY)});
     const json=subscription.toJSON();
     const {error}=await sb.from('push_subscriptions').upsert({user_id:CURRENT_PROFILE.id,endpoint:json.endpoint,subscription:json,user_agent:navigator.userAgent,updated_at:new Date().toISOString()},{onConflict:'endpoint'});
@@ -6510,9 +6510,10 @@ function reportsLocalValidBase(surveyId){
 }
 function renderReportsOverview(out,rows,qs){
   const byQ={},byPosition={},byText={},byOrdinal={};const normalizeReportQuestionText=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^\p{L}\p{N}]+/gu,' ').trim().toLocaleLowerCase('pt-BR');(rows||[]).forEach(r=>{(byQ[r.question_id]||(byQ[r.question_id]=[])).push(r);const position=Number(r.question_position);if(Number.isFinite(position))(byPosition[position]||(byPosition[position]=[])).push(r);const textKey=normalizeReportQuestionText(r.question_text);if(textKey)(byText[textKey]||(byText[textKey]=[])).push(r);});const orderedPositions=Object.keys(byPosition).map(Number).sort((a,b)=>a-b);if(orderedPositions.length===qs.length)orderedPositions.forEach((position,index)=>{byOrdinal[index]=byPosition[position];});
+  const reportRowsWithCounts=candidates=>{for(const candidate of candidates){if(Array.isArray(candidate)&&candidate.some(row=>Number(row?.cnt||0)>0))return candidate;}return candidates.find(Array.isArray)||[];};
   const localBase=reportsLocalValidBase(reportsCurrentSurvey()?.id);
   const cards=qs.map((q,qi)=>{
-    const data=byQ[q.dbId]||byPosition[q.position]||byText[normalizeReportQuestionText(q.text)]||byOrdinal[qi]||[];const base=Number(data[0]?.valid_base)||localBase||0;const total=data.reduce((sum,r)=>sum+Number(r.cnt||0),0);const max=Math.max(1,...data.map(r=>Number(r.cnt||0)));
+    const data=reportRowsWithCounts([byQ[q.dbId],byPosition[q.position],byText[normalizeReportQuestionText(q.text)],byOrdinal[qi]]);const base=Number(data[0]?.valid_base)||localBase||0;const total=data.reduce((sum,r)=>sum+Number(r.cnt||0),0);const max=Math.max(1,...data.map(r=>Number(r.cnt||0)));
     if(q.type==='open'){
       const answers=data.filter(r=>String(r.value_label||'').trim()&&String(r.value_label).trim()!=='(sem resposta)').slice(0,100);
       const answerRows=answers.length?answers.map(r=>{const cnt=Number(r.cnt||0),pct=reportPercent(cnt,base||total);return `<li class="reports-open-answer"><div><p>${esc(r.value_label)}</p><small>${cnt.toLocaleString('pt-BR')} ocorrência${cnt===1?'':'s'} · ${pct}% da base válida</small></div><span class="pill pill-blue">${pct}%</span></li>`;}).join(''):`<li class="empty" style="padding:16px 0">${base?'Nenhuma resposta foi registrada para esta pergunta na base válida.':'Ainda não há respostas textuais válidas.'}</li>`;

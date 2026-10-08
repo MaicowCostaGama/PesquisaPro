@@ -63,8 +63,8 @@ for (const token of [
   assert(css.includes(token), `estilo de aviso financeiro ausente: ${token}`);
 }
 
-assert(html.includes('app.js?v=20261008164650'), 'cache do app não foi atualizado para o aviso financeiro');
-assert(html.includes('style.css?v=20261008164650'), 'cache do CSS não foi atualizado para o aviso financeiro');
+assert(html.includes('app.js?v=20261008171600'), 'cache do app não foi atualizado para o aviso financeiro');
+assert(html.includes('style.css?v=20261008171600'), 'cache do CSS não foi atualizado para o aviso financeiro');
 assert(app.includes("sb.rpc('announce_payment_schedule'"), 'botão não chama a RPC de programação');
 assert(app.includes("sb.from('payment_notices').select('*')"), 'pesquisador/gestão não carregam avisos');
 assert(app.includes("stat('A receber',brl(aReceber)"), 'resumo financeiro do pesquisador não foi preservado');

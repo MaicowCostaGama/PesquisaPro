@@ -7,9 +7,11 @@ for(const token of [
   'const CLIENT_RPC_TIMEOUT_MS=30000',
   'Promise.allSettled([',
   'quotaError',
-  'clientWithTimeout(sb.rpc(\'client_report_all_questions\'',
-  "'os resultados agregados',45000",
-  "'os cruzamentos do relatório',45000",
+  "reportsReadAllPages(()=>reportsOverviewOrder(sb.rpc('client_report_all_questions'",
+  "reportsReadAllPages(()=>reportsCrossOrder(sb.rpc('client_report_cross_tab'",
+  'const deadline=Date.now()+120000',
+  'controller.abort(),Math.min(20000,deadline-Date.now())',
+  '.abortSignal(controller.signal)',
   'O restante do monitoramento continua disponível',
   'A consulta demorou mais que o limite'
 ])assert(app.includes(token),`app sem ${token}`);
@@ -23,5 +25,5 @@ for(const token of [
   'idx_report_documents_client_survey_status'
 ])assert(sql.includes(token),`migration sem ${token}`);
 assert(!/drop table|drop column|truncate|delete from/i.test(sql),'migration contém operação destrutiva');
-assert(html.includes('app.js?v=20261008164650'),'cache não atualizado');
+assert(html.includes('app.js?v=20261008171600'),'cache não atualizado');
 console.log('Client monitoring performance smoke test: PASS — consultas parciais, timeouts e índices verificados.');

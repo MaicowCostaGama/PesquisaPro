@@ -51,7 +51,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261008164650';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261008171600';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -202,7 +202,7 @@ async function enableResearcherPush(){
   try{
     const permission=await Notification.requestPermission();
     if(permission!=='granted'){PUSH_STATUS='blocked';go('dashboard-pesq');return;}
-    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261008164650',{scope:'./'});
+    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261008171600',{scope:'./'});
     const subscription=await PUSH_SW_REGISTRATION.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:pushKeyToUint8Array(window.PP_PUSH_PUBLIC_KEY)});
     const json=subscription.toJSON();
     const {error}=await sb.from('push_subscriptions').upsert({user_id:CURRENT_PROFILE.id,endpoint:json.endpoint,subscription:json,user_agent:navigator.userAgent,updated_at:new Date().toISOString()},{onConflict:'endpoint'});
@@ -1826,10 +1826,12 @@ async function clientLoadReportOverview(){
       if(docError)throw docError;
       publishedDocument=docs?.[0]||null;
     }catch(ex){documentError=ex;}
-    const {data:overviewRows,error:overviewError}=await clientWithTimeout(sb.rpc('client_report_all_questions',{p_survey_id:s.id}),'os resultados agregados',45000);
+    const {data:overviewRows,error:overviewError}=await reportsReadAllPages(()=>reportsOverviewOrder(sb.rpc('client_report_all_questions',{p_survey_id:s.id},{count:'exact'})));
     if(overviewError)throw overviewError;
     const crossings=clientPublishedCrossings(publishedDocument,crossQs),crossRowsById={},crossErrors=[];
-    for(const crossing of crossings){const ids=reportsCrossingQuestionIds(crossing);try{const {data,error}=await clientWithTimeout(sb.rpc('client_report_cross_tab',{p_survey_id:s.id,p_question_ids:ids}),'os cruzamentos do relatório',45000);if(error)throw error;crossRowsById[crossing.id]=data||[];}catch(ex){crossErrors.push(ex);}}
+    for(const crossing of crossings){const ids=reportsCrossingQuestionIds(crossing);try{const {data,error}=await reportsReadAllPages(()=>reportsCrossOrder(sb.rpc('client_report_cross_tab',{p_survey_id:s.id,p_question_ids:ids},{count:'exact'})));if(error)throw error;crossRowsById[crossing.id]=data||[];}catch(ex){crossErrors.push(ex);}}
+    if(crossErrors.length)throw crossErrors[0];
+    if(!out.isConnected||clientSelfSurvey()?.id!==s.id||!clientResultsReleasedForSurvey(c,s))return;
     CR_CLIENT_REPORT_CACHE={surveyId:s.id,overviewRows:overviewRows||[],crossRowsById,document:publishedDocument};
     clientRenderReportOverview(out,s,qs,overviewRows||[],publishedDocument,crossings);
   }catch(ex){
@@ -6375,6 +6377,53 @@ let RP_ACTIVE_CROSSING_ID=null;
 let RP_REPORT_DRAFT_SECTIONS=null;
 let RP_REPORT_DUPLICATE_DIAGNOSTIC_CACHE={key:'',matches:[],checked:false};
 let RP_REPORT_SURVEY_MANUALLY_SELECTED=false;
+// A API limita linhas por requisição; categorias de respostas abertas também contam.
+async function reportsReadAllPages(makeQuery){
+  const pageSize=500,maxPages=200;
+  const deadline=Date.now()+120000;
+  for(let attempt=0;attempt<2;attempt++){
+    const rows=[];let offset=0,total=null,base=null,changed=false;
+    for(let page=0;page<maxPages;page++){
+      if(Date.now()>=deadline)throw new Error('O carregamento completo do relatório excedeu o tempo disponível. Tente novamente.');
+      const controller=new AbortController();
+      const timeout=setTimeout(()=>controller.abort(),Math.min(20000,deadline-Date.now()));
+      let result;
+      try{result=await makeQuery().range(offset,offset+pageSize-1).abortSignal(controller.signal);}finally{clearTimeout(timeout);}
+      if(result.error)throw result.error;
+      if(!Array.isArray(result.data))throw new Error('Formato inválido no resultado agregado do relatório.');
+      const data=result.data;
+      const count=result.count==null?null:Number(result.count);
+      if(count!=null&&(!Number.isSafeInteger(count)||count<0))throw new Error('Contagem inválida no relatório.');
+      if(count!=null){if(total==null)total=count;else if(total!==count){changed=true;break;}}
+      for(const row of data){
+        if(row.valid_base==null)continue;
+        const nextBase=Number(row.valid_base);
+        if(base==null)base=nextBase;else if(base!==nextBase){changed=true;break;}
+      }
+      if(changed)break;
+      rows.push(...data);offset+=data.length;
+      if(total!=null&&offset>=total){
+        if(offset!==total)throw new Error('O relatório retornou uma quantidade inconsistente de agrupamentos.');
+        return {data:rows,error:null,count:total};
+      }
+      if(!data.length){
+        if(total!=null&&offset<total)throw new Error('A API interrompeu o carregamento do relatório antes de retornar todos os agrupamentos.');
+        return {data:rows,error:null,count:offset};
+      }
+    }
+    if(!changed)throw new Error('O relatório excedeu o limite seguro de páginas; nenhum resultado parcial foi exibido.');
+  }
+  throw new Error('A coleta mudou durante o carregamento. Aguarde a próxima atualização para obter o relatório completo.');
+}
+function reportsOverviewOrder(query){return query.order('question_id',{ascending:true}).order('cnt',{ascending:false}).order('value_label',{ascending:true});}
+function reportsCrossOrder(query){return query.order('variable_1',{ascending:true}).order('variable_2',{ascending:true}).order('variable_3',{ascending:true});}
+async function reportsFetchOverview(surveyId){
+  try{return await reportsReadAllPages(()=>reportsOverviewOrder(sb.rpc('survey_report_all_questions_v2',{p_survey_id:surveyId},{count:'exact'})));}
+  catch(error){
+    if(error?.code!=='PGRST202'&&error?.code!=='42883'&&!/could not find the function|function .* does not exist/i.test(error?.message||''))throw error;
+    return reportsReadAllPages(()=>reportsOverviewOrder(sb.rpc('survey_report_all_questions',{p_survey_id:surveyId},{count:'exact'})));
+  }
+}
 function reportsAvailableSurveys(){return SURVEYS.filter(s=>reportsQuestionsForSurvey(s).length>0||openQuestionsForSurvey(s).length>0);}
 function reportsCurrentSurvey(){return SURVEYS.find(s=>s.id===RP_SURVEY_ID)||null;}
 function reportsCurrentQuestions(){return reportsQuestionsForSurvey(reportsCurrentSurvey()||{});}
@@ -6502,8 +6551,7 @@ async function reportsCheckDuplicateSurveyCoverage(survey,qs,surveys){
   if(!candidates.length){RP_REPORT_DUPLICATE_DIAGNOSTIC_CACHE={key,matches:[],checked:true};return[];}
   const results=await Promise.all(candidates.map(async candidate=>{
     try{
-      let result=await sb.rpc('survey_report_all_questions_v2',{p_survey_id:candidate.id});
-      if(result.error&&/does not exist|schema cache|could not find the function/i.test(result.error.message||''))result=await sb.rpc('survey_report_all_questions',{p_survey_id:candidate.id});
+      const result=await reportsFetchOverview(candidate.id);
       if(result.error)throw result.error;
       const rows=result.data||[];
       const hasCounts=rows.some(row=>Number(row?.cnt||0)>0);
@@ -6545,27 +6593,28 @@ async function reportsLoadAndRender(isLive=false){
   RP_REPORT_LOADING=true;if(!isLive)out.innerHTML='<div class="empty" style="padding:28px 0">Carregando resultados reais…</div>';reportsSetLiveStatus(isLive?'Atualizado agora':'Carregando dados…',isLive?'live':'loading');
   try{
     if(RP_REPORT_MODE==='overview'){
-      let reportResult=await sb.rpc('survey_report_all_questions_v2',{p_survey_id:survey.id});
-      if(reportResult.error&&/does not exist|schema cache|could not find the function/i.test(reportResult.error.message||''))reportResult=await sb.rpc('survey_report_all_questions',{p_survey_id:survey.id});
+      const reportResult=await reportsFetchOverview(survey.id);
       const {data,error}=reportResult;
       if(error)throw error;
+      if(reportsCurrentSurvey()?.id!==survey.id||!out.isConnected)return;
       RP_REPORT_ANALYSIS_CACHE={surveyId:survey.id,overviewRows:data||[],crossRows:RP_REPORT_ANALYSIS_CACHE.crossRows||[],crossIds:RP_REPORT_ANALYSIS_CACHE.crossIds||[]};
       renderReportsOverview(out,data||[],qs);
       const duplicateMatches=await reportsCheckDuplicateSurveyCoverage(survey,qs,reportsAvailableSurveys());
+      if(reportsCurrentSurvey()?.id!==survey.id||!out.isConnected)return;
       reportsRenderDuplicateNotice(survey,qs,data||[],duplicateMatches);
     }else{
       const active=reportsActiveCrossing();const ids=reportsCrossingQuestionIds(active);
       if(!ids.length){out.innerHTML='<div class="card"><div class="empty">Escolha pelo menos uma variável no cruzamento ativo para montar a prévia.</div></div>';return;}
-      const {data,error}=await sb.rpc('survey_report_cross_tab',{p_survey_id:survey.id,p_question_ids:ids});
+      const {data,error}=await reportsReadAllPages(()=>reportsCrossOrder(sb.rpc('survey_report_cross_tab',{p_survey_id:survey.id,p_question_ids:ids},{count:'exact'})));
       if(error)throw error;
+      if(reportsCurrentSurvey()?.id!==survey.id||!out.isConnected)return;
       RP_REPORT_ANALYSIS_CACHE={surveyId:survey.id,overviewRows:RP_REPORT_ANALYSIS_CACHE.overviewRows||[],crossRows:data||[],crossIds:ids};
       renderReportsCross(out,data||[],ids,qs);
     }
     reportsSetLiveStatus(isLive?'Atualizado agora':'Atualização automática ativa','live');
   }catch(ex){
     const msg=String(ex?.message||ex);
-    out.innerHTML=`<div class="callout warn"><b>O relatório avançado ainda não está disponível.</b><br>Execute a migration <code>deploy/relatorios-tempo-real-cruzamentos.sql</code> no Supabase. Detalhe técnico: ${esc(msg)}</div>`;
-    reportsSetLiveStatus('Aguardando configuração','warn');
+    if(out.isConnected&&reportsCurrentSurvey()?.id===survey.id){out.innerHTML=`<div class="callout warn"><b>Não foi possível carregar o relatório completo.</b><br>Nenhum resultado parcial foi apresentado como completo. Tente novamente na próxima atualização. Detalhe técnico: ${esc(msg)}</div>`;reportsSetLiveStatus('Falha no carregamento','warn');}
   }finally{RP_REPORT_LOADING=false;}
 }
 function reportPercent(cnt,total){return total?Math.round((Number(cnt)/Number(total))*100):0;}
@@ -6724,9 +6773,9 @@ async function surveyFormPdfDownload(index){
 }
 async function reportsEnsurePdfData(payload){
   const survey=reportsCurrentSurvey();if(!survey)return;
-  if(payload.sections.includeOverview&&RP_REPORT_ANALYSIS_CACHE.surveyId!==survey.id||payload.sections.includeOverview&&!RP_REPORT_ANALYSIS_CACHE.overviewRows.length){const {data,error}=await sb.rpc('survey_report_all_questions',{p_survey_id:survey.id});if(error)throw error;RP_REPORT_ANALYSIS_CACHE.overviewRows=data||[];RP_REPORT_ANALYSIS_CACHE.surveyId=survey.id;}
+  if(payload.sections.includeOverview&&RP_REPORT_ANALYSIS_CACHE.surveyId!==survey.id||payload.sections.includeOverview&&!RP_REPORT_ANALYSIS_CACHE.overviewRows.length){const {data,error}=await reportsFetchOverview(survey.id);if(error)throw error;RP_REPORT_ANALYSIS_CACHE.overviewRows=data||[];RP_REPORT_ANALYSIS_CACHE.surveyId=survey.id;}
   const crossings=payload.sections.includeCross?(payload.sections.crossings||[]).filter(crossing=>crossing.include!==false&&crossing.questionIds?.length):[];
-  for(const crossing of crossings){const ids=reportsCrossingQuestionIds(crossing);const cached=RP_REPORT_CROSS_ANALYSIS_CACHE[crossing.id];if(!cached||cached.surveyId!==survey.id||JSON.stringify(cached.ids)!==JSON.stringify(ids)){const {data,error}=await sb.rpc('survey_report_cross_tab',{p_survey_id:survey.id,p_question_ids:ids});if(error)throw error;RP_REPORT_CROSS_ANALYSIS_CACHE[crossing.id]={surveyId:survey.id,ids,rows:data||[]};}}
+  for(const crossing of crossings){const ids=reportsCrossingQuestionIds(crossing);const cached=RP_REPORT_CROSS_ANALYSIS_CACHE[crossing.id];if(!cached||cached.surveyId!==survey.id||JSON.stringify(cached.ids)!==JSON.stringify(ids)){const {data,error}=await reportsReadAllPages(()=>reportsCrossOrder(sb.rpc('survey_report_cross_tab',{p_survey_id:survey.id,p_question_ids:ids},{count:'exact'})));if(error)throw error;RP_REPORT_CROSS_ANALYSIS_CACHE[crossing.id]={surveyId:survey.id,ids,rows:data||[]};}}
 }
 function reportsPdfWriteCrossing(doc,crossing,payload,M,bodyW){
   const ids=reportsCrossingQuestionIds(crossing),rows=(RP_REPORT_CROSS_ANALYSIS_CACHE[crossing.id]?.rows)||[],thirdValues=ids.length>=3?reportsCrossOrderedValues(rows,2,ids[2]):[null];

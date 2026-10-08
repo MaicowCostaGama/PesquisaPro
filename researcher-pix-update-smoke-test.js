@@ -29,5 +29,5 @@ if(migration){
   assert(!migration.includes('payments')&&!migration.includes('payment_receipts'),'migration não deve alterar financeiro ou recibos');
 }
 
-assert(html.includes('app.js?v=20261008164650'),'cache do app não foi atualizado para a correção do PIX');
+assert(html.includes('app.js?v=20261008171600'),'cache do app não foi atualizado para a correção do PIX');
 console.log('researcher-pix-update-smoke-test: PASS — Meus ganhos usa RPC protegida e o SQL manual é aditivo.');

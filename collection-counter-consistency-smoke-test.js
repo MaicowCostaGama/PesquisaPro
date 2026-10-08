@@ -12,6 +12,6 @@ assert(app.includes('function refreshCollectCount(idx)'), 'função de atualiza�
 assert(app.includes("document.querySelector('#collectCollectedStat .s-val')"), 'valor do cartão Coletado não é atualizado');
 assert(app.includes('refreshCollectCount(idx);\n  refreshCollectionTeamRows(idx);\n  renderLiveFeed(idx);'), 'poll ao vivo não atualiza o contador superior e a equipe');
 assert(app.includes("const valid=eventsForSurveyIdx(idx).filter(event=>event.status==='valid'"), 'a evolução não conta entrevistas válidas por evento');
-assert(html.includes('app.js?v=20261008154530'), 'cache do app não atualizado');
-assert(html.includes('style.css?v=20261008154530'), 'cache do CSS não atualizado');
+assert(html.includes('app.js?v=20261008155630'), 'cache do app não atualizado');
+assert(html.includes('style.css?v=20261008155630'), 'cache do CSS não atualizado');
 console.log('Collection counter consistency smoke test: PASS — Coletado e Total válido usam a mesma fonte após atualização ao vivo.');

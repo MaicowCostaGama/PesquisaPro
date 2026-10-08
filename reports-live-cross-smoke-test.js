@@ -17,8 +17,8 @@ assert(/reportsStartLive/.test(app)&&/postgres_changes/.test(app)&&/setInterval\
 assert(/reportsExportCurrent/.test(app),'Exportação CSV não encontrada');
 assert(/survey_report_all_questions/.test(sql)&&/survey_report_cross_tab/.test(sql),'Migration das RPCs ausente');
 assert(/question_count > 3/.test(sql),'Limite de três variáveis não está protegido no banco');
-assert(/ce\.status = 'valid'/.test(sql)&&/ce\.is_calibration = false/.test(sql),'Filtros de respostas válidas ausentes');
+assert(/ce\.status = 'valid'/.test(sql)&&/coalesce\(ce\.is_calibration, false\) = false/.test(sql),'Filtros de respostas válidas ausentes ou vulneráveis a NULL');
 assert(/public\.is_staff\(\)/.test(sql),'Restrição à gestão ausente');
 assert(/reports-question-card/.test(css)&&/reports-builder-grid/.test(css)&&/max-width:760px/.test(css),'Layout responsivo dos relatórios ausente');
-assert(html.includes('app.js?v=20261008095930'),'Cache do painel não atualizado');
+assert(html.includes('app.js?v=20261008144000'),'Cache do painel não atualizado');
 console.log('reports-live-cross-smoke-test: PASS');

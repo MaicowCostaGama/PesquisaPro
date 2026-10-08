@@ -29,6 +29,6 @@ Nenhuma migration nova é necessária. A solução usa somente os dados que já 
 - `audit-recording-duration-smoke-test.js`: aprovado.
 - `geo-collection-navigation-smoke-test.js`: aprovado.
 - Suíte completa de smoke tests: aprovada.
-- Cache atualizado para `20261008095930`.
+- Cache atualizado para `20261008144000`.
 
 A publicação no GitHub/Vercel permanece pendente de autorização explícita para a v141.

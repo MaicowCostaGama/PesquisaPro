@@ -9,6 +9,6 @@ assert(/const row=snapshotToSurveyRow\(d\);\s*if\(existingSurvey\?\.status\)row\
 assert(app.includes("status:d.status||'rascunho'"),'o payload ainda precisa manter o status padrão para pesquisas novas');
 assert(app.includes("update({status:'campo'})"),'o início manual da coleta continua separado da edição');
 assert(app.includes("update({status:'encerrada'})"),'o encerramento manual continua separado da edição');
-assert(html.includes('app.js?v=20261008095930'),'cache do app não atualizado');
-assert(html.includes('style.css?v=20261008095930'),'cache do CSS não atualizado');
+assert(html.includes('app.js?v=20261008144000'),'cache do app não atualizado');
+assert(html.includes('style.css?v=20261008144000'),'cache do CSS não atualizado');
 console.log('Survey status preservation smoke test: PASS — edições preservam Em campo, Rascunho ou Concluída sem alterar o histórico.');

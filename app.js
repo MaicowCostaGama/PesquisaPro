@@ -51,7 +51,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261008161120';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261008162850';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -202,7 +202,7 @@ async function enableResearcherPush(){
   try{
     const permission=await Notification.requestPermission();
     if(permission!=='granted'){PUSH_STATUS='blocked';go('dashboard-pesq');return;}
-    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261008161120',{scope:'./'});
+    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261008162850',{scope:'./'});
     const subscription=await PUSH_SW_REGISTRATION.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:pushKeyToUint8Array(window.PP_PUSH_PUBLIC_KEY)});
     const json=subscription.toJSON();
     const {error}=await sb.from('push_subscriptions').upsert({user_id:CURRENT_PROFILE.id,endpoint:json.endpoint,subscription:json,user_agent:navigator.userAgent,updated_at:new Date().toISOString()},{onConflict:'endpoint'});
@@ -2001,7 +2001,7 @@ function surveyRowToSnapshot(row,questionRows,clientCompanyNames,teamNames){
     formStarted:!!row.form_started,formApprovalRequired:!!row.form_approval_required,questions,quotas,quotaOff,remote,
     minimumCollectionSeconds:Number.isFinite(Number(row.minimum_collection_seconds))&&Number(row.minimum_collection_seconds)>0?Math.round(Number(row.minimum_collection_seconds)):null,
     collected:row.collected||0,status:row.status||'rascunho',archivedAt:row.archived_at||null,
-    created:fmtRelativo(row.created_at),
+    created:fmtRelativo(row.created_at),createdAt:row.created_at||null,
     team:teamNames||[],coord:'',isNew:false,
   };
 }
@@ -6372,9 +6372,19 @@ let RP_REPORT_DRAFT_HYDRATED=false;
 let RP_REPORT_CROSSINGS=[];
 let RP_ACTIVE_CROSSING_ID=null;
 let RP_REPORT_DRAFT_SECTIONS=null;
+let RP_REPORT_DUPLICATE_DIAGNOSTIC_CACHE={key:'',matches:[],checked:false};
 function reportsAvailableSurveys(){return SURVEYS.filter(s=>reportsQuestionsForSurvey(s).length>0||openQuestionsForSurvey(s).length>0);}
 function reportsCurrentSurvey(){return SURVEYS.find(s=>s.id===RP_SURVEY_ID)||null;}
 function reportsCurrentQuestions(){return reportsQuestionsForSurvey(reportsCurrentSurvey()||{});}
+function reportsSurveyNameKey(value){return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^\p{L}\p{N}]+/gu,' ').trim().toLocaleLowerCase('pt-BR');}
+function reportsSurveyOptionLabel(s,surveys){
+  const same=(surveys||[]).filter(item=>reportsSurveyNameKey(item.name)===reportsSurveyNameKey(s.name));
+  if(same.length<2)return s.name||'Pesquisa sem nome';
+  const date=s.createdAt?new Date(s.createdAt).toLocaleDateString('pt-BR'):'data indisponível';
+  const base=reportsLocalValidBase(s.id);
+  return `${s.name||'Pesquisa sem nome'} · ${date} · ID ${String(s.id||'').slice(0,8)}${base!=null?` · ${base.toLocaleString('pt-BR')} válidas`:''}`;
+}
+function reportsDuplicateSurveyCandidates(s,surveys){return (surveys||[]).filter(item=>item.id!==s?.id&&reportsSurveyNameKey(item.name)===reportsSurveyNameKey(s?.name));}
 function reportsCrossingQuestionIds(crossing){return [...(crossing?.questionIds||crossing?.crossQuestionIds||[])].filter(Boolean).slice(0,3);}
 function reportsMakeCrossing(questionIds=[],index=RP_REPORT_CROSSINGS.length){return {id:'cross-'+Date.now()+'-'+Math.random().toString(36).slice(2,7),title:'Cruzamento '+(index+1),questionIds:questionIds.filter(Boolean).slice(0,3),include:true};}
 function reportsNormalizeCrossings(sections){
@@ -6439,11 +6449,11 @@ PAGES.reports=()=>{
   return head('Relatórios','Resultados em tempo real e análises cruzadas')+`
   <div class="card reports-toolbar mb">
     <div class="reports-toolbar-top"><div><div class="reports-eyebrow">CENTRAL DE ANÁLISE</div><h2>Resultados da pesquisa</h2><p>Veja todas as perguntas e monte cruzamentos com até três variáveis.</p></div><span id="rp-live-status" class="reports-live-badge"><i></i>Atualizando automaticamente</span></div>
-    <div class="reports-toolbar-grid"><div><label class="lbl">Pesquisa</label><select class="inp" id="rp-survey" onchange="reportsPickSurvey(this.value)">${surveys.map(s=>`<option value="${s.id}" ${s.id===RP_SURVEY_ID?'selected':''}>${esc(s.name)}</option>`).join('')}</select></div><div class="reports-mode-switch" role="tablist" aria-label="Modo de relatório">${reportsModeButton('overview','Todas as perguntas','▦')}${reportsModeButton('builder','Montar relatório','⚒')}</div></div>
+    <div class="reports-toolbar-grid"><div><label class="lbl">Pesquisa</label><select class="inp" id="rp-survey" onchange="reportsPickSurvey(this.value)">${surveys.map(s=>`<option value="${s.id}" ${s.id===RP_SURVEY_ID?'selected':''}>${esc(reportsSurveyOptionLabel(s,surveys))}</option>`).join('')}</select>${reportsDuplicateSurveyCandidates(survey,surveys).length?'<small class="reports-survey-helper">Existem versões com o mesmo nome; confira data, ID curto e base válida antes de escolher.</small>':''}</div><div class="reports-mode-switch" role="tablist" aria-label="Modo de relatório">${reportsModeButton('overview','Todas as perguntas','▦')}${reportsModeButton('builder','Montar relatório','⚒')}</div></div>
     ${RP_REPORT_MODE==='builder'?`<div class="reports-builder-note">Cada cartão abaixo representa um cruzamento independente. Cada cruzamento aceita de uma a três variáveis e pode ser incluído ou retirado do PDF separadamente. Ranking e “Duas respostas” aparecem no resultado geral, mas não são escolhidos como uma única variável de cruzamento.</div>${reportsCrossingsBuilderMarkup(crossQs)}`:''}
   </div>
   ${reportsHeatmapMarkup(survey)}
-  <div id="rp-output"><div class="empty" style="padding:28px 0">Carregando resultados reais…</div></div>
+  <div id="rp-duplicate-diagnostic"></div><div id="rp-output"><div class="empty" style="padding:28px 0">Carregando resultados reais…</div></div>
   ${reportsDocumentEditorMarkup(survey,qs)}
   <div class="callout reports-footnote"><b>Base de análise:</b> entrevistas válidas, excluindo coletas reprovadas e de calibração. Os dados são atualizados automaticamente enquanto esta aba estiver aberta.</div>`;
 };
@@ -6460,6 +6470,35 @@ function reportsCrossingForPayload(crossing){return reportsCrossingPayloads().fi
 function reportsSetLiveStatus(text,kind='live'){
   const el=document.getElementById('rp-live-status');if(!el)return;
   el.className='reports-live-badge '+kind;el.innerHTML=`<i></i>${esc(text)}`;
+}
+async function reportsCheckDuplicateSurveyCoverage(survey,qs,surveys){
+  const candidates=reportsDuplicateSurveyCandidates(survey,surveys);
+  const key=[survey?.id,...candidates.map(item=>item.id)].join('|');
+  if(RP_REPORT_DUPLICATE_DIAGNOSTIC_CACHE.key===key&&RP_REPORT_DUPLICATE_DIAGNOSTIC_CACHE.checked)return RP_REPORT_DUPLICATE_DIAGNOSTIC_CACHE.matches;
+  if(!candidates.length){RP_REPORT_DUPLICATE_DIAGNOSTIC_CACHE={key,matches:[],checked:true};return[];}
+  const results=await Promise.all(candidates.map(async candidate=>{
+    try{
+      let result=await sb.rpc('survey_report_all_questions_v2',{p_survey_id:candidate.id});
+      if(result.error&&/does not exist|schema cache|could not find the function/i.test(result.error.message||''))result=await sb.rpc('survey_report_all_questions',{p_survey_id:candidate.id});
+      if(result.error)throw result.error;
+      const rows=result.data||[];
+      const hasCounts=rows.some(row=>Number(row?.cnt||0)>0);
+      const laterCounts=rows.some(row=>Number(row?.question_position)>=12&&Number(row?.cnt||0)>0);
+      return {survey:candidate,validBase:Number(rows[0]?.valid_base)||0,hasCounts,laterCounts};
+    }catch(error){return {survey:candidate,validBase:0,hasCounts:false,laterCounts:false,error:String(error?.message||error)};}
+  }));
+  const matches=results.filter(item=>item.hasCounts);
+  RP_REPORT_DUPLICATE_DIAGNOSTIC_CACHE={key,matches,checked:true};
+  return matches;
+}
+function reportsRenderDuplicateNotice(survey,qs,rows,matches){
+  const el=document.getElementById('rp-duplicate-diagnostic');if(!el)return;
+  const currentHasCounts=(rows||[]).some(row=>Number(row?.cnt||0)>0);
+  const currentHasLaterCounts=(rows||[]).some(row=>Number(row?.question_position)>=12&&Number(row?.cnt||0)>0);
+  const relevant=matches.filter(item=>item.laterCounts||!currentHasLaterCounts);
+  if(currentHasLaterCounts||!relevant.length){el.innerHTML='';return;}
+  const options=relevant.map(item=>{const s=item.survey;const date=s.createdAt?new Date(s.createdAt).toLocaleDateString('pt-BR'):'data indisponível';return `<button class="btn btn-out reports-duplicate-action" onclick="reportsPickSurvey('${esc(s.id)}')">Abrir ${esc(date)} · ${item.validBase.toLocaleString('pt-BR')} válidas</button>`;}).join('');
+  el.innerHTML=`<div class="callout warn reports-duplicate-notice"><strong>Há uma versão homônima desta pesquisa com respostas agregadas.</strong><p>Esta versão possui ${currentHasCounts?'algumas respostas, mas':'não possui'} dados nas perguntas a partir da 13ª. O relatório não mistura pesquisas diferentes para evitar duplicidade; escolha a versão correta abaixo.</p><div class="reports-duplicate-actions">${options}</div></div>`;
 }
 function reportsStartLive(){
   reportsStopLive();
@@ -6488,6 +6527,8 @@ async function reportsLoadAndRender(isLive=false){
       if(error)throw error;
       RP_REPORT_ANALYSIS_CACHE={surveyId:survey.id,overviewRows:data||[],crossRows:RP_REPORT_ANALYSIS_CACHE.crossRows||[],crossIds:RP_REPORT_ANALYSIS_CACHE.crossIds||[]};
       renderReportsOverview(out,data||[],qs);
+      const duplicateMatches=await reportsCheckDuplicateSurveyCoverage(survey,qs,reportsAvailableSurveys());
+      reportsRenderDuplicateNotice(survey,qs,data||[],duplicateMatches);
     }else{
       const active=reportsActiveCrossing();const ids=reportsCrossingQuestionIds(active);
       if(!ids.length){out.innerHTML='<div class="card"><div class="empty">Escolha pelo menos uma variável no cruzamento ativo para montar a prévia.</div></div>';return;}

@@ -51,7 +51,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261007215922';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261007222347';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -202,7 +202,7 @@ async function enableResearcherPush(){
   try{
     const permission=await Notification.requestPermission();
     if(permission!=='granted'){PUSH_STATUS='blocked';go('dashboard-pesq');return;}
-    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261007215922',{scope:'./'});
+    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261007222347',{scope:'./'});
     const subscription=await PUSH_SW_REGISTRATION.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:pushKeyToUint8Array(window.PP_PUSH_PUBLIC_KEY)});
     const json=subscription.toJSON();
     const {error}=await sb.from('push_subscriptions').upsert({user_id:CURRENT_PROFILE.id,endpoint:json.endpoint,subscription:json,user_agent:navigator.userAgent,updated_at:new Date().toISOString()},{onConflict:'endpoint'});
@@ -6828,6 +6828,15 @@ function userBelongsToTabStatus(user,tab){
   return true;
 }
 function usersInTab(tab){const roles=USER_TAB_ROLES[tab]||[];return USERS.map((u,i)=>({u,i})).filter(x=>roles.includes(x.u.role)&&userBelongsToTabStatus(x.u,tab)&&userMatchesSearch(x.u)&&userMatchesGeneralFilters(x.u,tab)&&userMatchesResearcherFilters(x.u,tab));}
+function researcherWorkflowCount(){
+  const profiles=usersInTab('pesq').map(x=>x.u),profileIds=new Set(profiles.map(u=>u.id).filter(Boolean)),profileEmails=new Set(profiles.map(u=>normalizeUserSearch(u.email)).filter(Boolean));
+  const signups=[...signupPendingRows(),...signupOrphanRows()].filter(signupMatchesUsersView);
+  const additional=signups.filter(s=>{
+    const id=s.approvedProfileId||s.authUserId,email=normalizeUserSearch(s.email);
+    return !(id&&profileIds.has(id))&&!(email&&profileEmails.has(email));
+  });
+  return profiles.length+additional.length;
+}
 function userGeneralFilterOptions(tab){
   const roles=USER_TAB_ROLES[tab]||[],base=USERS.filter(user=>roles.includes(user.role)&&userBelongsToTabStatus(user,tab)),cities=new Map();
   base.forEach(user=>[user.cidade,user.addr,...(user.cidadesAtuacao||[])].filter(Boolean).forEach(value=>{const part=locationParts(value);if(part?.city){const key=normalizeUserSearch(part.city);cities.set(key,part.city+(part.uf?'/'+part.uf:''));}}));
@@ -7093,23 +7102,24 @@ PAGES.users=()=>{
 };
 function userSetTab(tab){USER_GENERAL_FILTERS={status:'',city:''};USER_RESEARCHER_FILTERS={state:'',city:'',schooling:''};USER_TAB=tab;USER_VIEW=null;USER_EDIT=null;USER_ARMED=true;go('users');}
 function userTabBar(){
-  const total=usersInTab(USER_TAB).length;
+  const total=USER_TAB==='pesq'?researcherWorkflowCount():usersInTab(USER_TAB).length;
   const activeLabel=(USER_TABS.find(t=>t.key===USER_TAB)||{}).label||'Usuários';
   return `<nav class="user-tabs" aria-label="Tipos de usuário">
     <div class="user-tabs-head"><div><span class="eyebrow">CATEGORIA</span><strong>Escolha um perfil para administrar</strong></div><div class="user-tab-context"><span class="user-tab-context-icon">${icon3d('☺','#2563eb')}</span><div><span class="eyebrow">${activeLabel.toUpperCase()}</span><strong>${total} ${total===1?'registro':'registros'}</strong></div></div></div>
-    <div class="user-tabs-track">${USER_TABS.map(t=>{const count=usersInTab(t.key).length;return `<button class="user-tab ${USER_TAB===t.key?'is-active':''}" aria-current="${USER_TAB===t.key?'page':'false'}" onclick="userSetTab('${t.key}')"><span>${t.label}</span><b>${count}</b></button>`;}).join('')}</div>
+    <div class="user-tabs-track">${USER_TABS.map(t=>{const count=t.key==='pesq'?researcherWorkflowCount():usersInTab(t.key).length;return `<button class="user-tab ${USER_TAB===t.key?'is-active':''}" aria-current="${USER_TAB===t.key?'page':'false'}" onclick="userSetTab('${t.key}')"><span>${t.label}</span><b>${count}</b></button>`;}).join('')}</div>
   </nav>`;
 }
 function userTabStats(tab){
   const list=usersInTab(tab).map(x=>x.u);
   if(tab==='pesq'){
     const pendingSignups=signupPendingRows().filter(signupMatchesUsersView);
+    const orphanSignups=signupOrphanRows().filter(signupMatchesUsersView);
     const pendingProfiles=list.filter(u=>u.status==='pendente');
     const missingDocs=list.filter(u=>!u.docFoto||!u.docComprovante).length+pendingSignups.filter(s=>!s.docFoto||!s.docComprovante).length;
     return `<div class="grid g4" style="margin-bottom:16px">
-      ${stat('Pesquisadores',String(list.length),'cadastrados','☺','#2563eb')}
+      ${stat('Pesquisadores e cadastros',String(researcherWorkflowCount()),'perfis e cadastros recebidos','☺','#2563eb')}
       ${stat('Ativos',String(list.filter(u=>u.status==='ativo').length),'liberados para coleta','✓','#059669')}
-      ${stat('Aguardando análise',String(pendingProfiles.length+pendingSignups.length),'perfis e cadastros pendentes','◷','#d97706')}
+      ${stat('Aguardando análise',String(pendingProfiles.length+pendingSignups.length+orphanSignups.length),'perfis e cadastros pendentes','◷','#d97706')}
       ${stat('Docs faltando',String(missingDocs),'com algum documento pendente','◷','#dc2626')}
     </div>`;
   }

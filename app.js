@@ -51,7 +51,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261007222347';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261008092042';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -202,7 +202,7 @@ async function enableResearcherPush(){
   try{
     const permission=await Notification.requestPermission();
     if(permission!=='granted'){PUSH_STATUS='blocked';go('dashboard-pesq');return;}
-    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261007222347',{scope:'./'});
+    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261008092042',{scope:'./'});
     const subscription=await PUSH_SW_REGISTRATION.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:pushKeyToUint8Array(window.PP_PUSH_PUBLIC_KEY)});
     const json=subscription.toJSON();
     const {error}=await sb.from('push_subscriptions').upsert({user_id:CURRENT_PROFILE.id,endpoint:json.endpoint,subscription:json,user_agent:navigator.userAgent,updated_at:new Date().toISOString()},{onConflict:'endpoint'});
@@ -679,6 +679,9 @@ let CHAT_CHANNELS=[],CHAT_CHANNELS_LOADED=false,CHAT_CHANNELS_LOADING=false,CHAT
 let CHAT_ACTIVE_CHANNEL_ID=null,CHAT_MESSAGES=[],CHAT_MESSAGES_LOADED=false,CHAT_MESSAGES_LOADING=false;
 let CHAT_REALTIME_CHANNEL=null,CHAT_SENDING=false,CHAT_NEW_AUDIENCE_TYPE='all',CHAT_NEW_SURVEY_ID=null,CHAT_PENDING_SURVEY_ID=null;
 let CHAT_SUPPORT_CHANNEL_ID=null,CHAT_SUPPORT_READY=false,CHAT_SUPPORT_LOADING=false;
+let CHAT_CHANNEL_STATUS_LOADED=false,CHAT_CHANNEL_STATUS_LOADING=false,CHAT_CHANNEL_STATUS_ERROR=false,CHAT_CHANNEL_LAST_MESSAGES={};
+let CHAT_RESPONSE_FILTER='needs_response';
+const CHAT_STAFF_ROLES=['admin','coord','gerente','admpro'];
 const CHAT_AUDIENCE_LABELS={all:'Todos os usuários',region:'Região',state:'Estado',city:'Cidade',survey:'Pesquisa',support:'Atendimento privado'};
 const CHAT_REGIONS=['Norte','Nordeste','Centro-Oeste','Sudeste','Sul'];
 const CHAT_STATES=['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
@@ -690,6 +693,48 @@ function chatChannelDescription(channel){
   if(channel.audience_type==='survey'){const survey=SURVEYS.find(item=>item.id===channel.survey_id);return survey?'Participantes de '+survey.name:'Participantes da pesquisa';}
   return chatAudienceLabel(channel.audience_type)+': '+(channel.audience_value||'—');
 }
+function chatIsStaffProfile(){return CHAT_STAFF_ROLES.includes(CURRENT_PROFILE?.role);}
+function chatRememberLatestMessage(message){
+  if(!message?.channel_id)return;
+  const current=CHAT_CHANNEL_LAST_MESSAGES[message.channel_id];
+  if(!current||new Date(message.created_at)>=new Date(current.created_at))CHAT_CHANNEL_LAST_MESSAGES[message.channel_id]=message;
+}
+function chatChannelResponseStatus(channel){
+  if(!channel)return 'empty';
+  if(channel.is_archived)return 'archived';
+  if(CHAT_CHANNEL_STATUS_ERROR)return 'unknown';
+  const latest=CHAT_CHANNEL_LAST_MESSAGES[channel.id];
+  if(!latest)return 'empty';
+  return CHAT_STAFF_ROLES.includes(latest.sender_role)||latest.sender_id===CURRENT_PROFILE?.id?'awaiting_return':'needs_response';
+}
+function chatChannelResponseLabel(status){
+  return ({needs_response:'Aguardando sua resposta',awaiting_return:'Aguardando retorno',empty:'Sem mensagens',archived:'Arquivado',unknown:'Classificação indisponível'})[status]||'Status da conversa';
+}
+function chatVisibleChannels(){
+  if(!chatIsStaffProfile()||CHAT_RESPONSE_FILTER==='all'||CHAT_CHANNEL_STATUS_ERROR)return CHAT_CHANNELS;
+  return CHAT_CHANNELS.filter(channel=>chatChannelResponseStatus(channel)===CHAT_RESPONSE_FILTER);
+}
+function chatResponseCounts(){
+  return CHAT_CHANNELS.reduce((counts,channel)=>{const status=chatChannelResponseStatus(channel);if(status==='needs_response')counts.needs_response++;if(status==='awaiting_return')counts.awaiting_return++;return counts;},{needs_response:0,awaiting_return:0});
+}
+function chatResponseTriageMarkup(){
+  if(!chatIsStaffProfile())return '';
+  if(CHAT_CHANNEL_STATUS_ERROR)return '<div class="chat-response-warning" role="status"><b>Não foi possível classificar as conversas agora.</b><span>A lista completa continua disponível. Tente entrar novamente na aba Comunicação para atualizar a triagem.</span></div>';
+  const counts=chatResponseCounts();
+  const allCount=CHAT_CHANNELS.length;
+  const button=(filter,label,count,description)=>`<button type="button" class="chat-response-tab ${CHAT_RESPONSE_FILTER===filter?'is-active':''}" aria-pressed="${CHAT_RESPONSE_FILTER===filter}" onclick="chatSetResponseFilter('${filter}')"><span class="chat-response-tab-copy"><b>${label}</b><small>${description}</small></span><strong>${count}</strong></button>`;
+  return `<section class="chat-response-triage" aria-labelledby="chat-response-triage-title"><div class="chat-response-triage-head"><div><span class="eyebrow">Fila de atendimento</span><h2 id="chat-response-triage-title">O que precisa da gestão?</h2><p>As conversas são classificadas pela última mensagem registrada. Mensagem recebida fica aguardando sua resposta; mensagem enviada pela gestão fica aguardando retorno.</p></div><span class="chat-response-total">${allCount}<small>canais</small></span></div><div class="chat-response-tabs">${button('needs_response','Aguardando sua resposta',counts.needs_response,'Última mensagem veio de pesquisador ou cliente')}${button('awaiting_return','Aguardando retorno',counts.awaiting_return,'A gestão respondeu e aguarda a outra pessoa')}${button('all','Todas',allCount,'Inclui canais sem mensagens e arquivados')}</div></section>`;
+}
+function chatSetResponseFilter(filter){
+  if(!chatIsStaffProfile()||!['needs_response','awaiting_return','all'].includes(filter))return;
+  CHAT_RESPONSE_FILTER=filter;
+  const visible=chatVisibleChannels(),current=CHAT_ACTIVE_CHANNEL_ID;
+  if(!visible.some(channel=>channel.id===current)){
+    CHAT_ACTIVE_CHANNEL_ID=visible[0]?.id||null;
+    CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=!CHAT_ACTIVE_CHANNEL_ID;
+  }
+  go('communication');
+}
 function chatLocationValues(){
   const values=new Map();
   USERS.forEach(user=>[user?.cidade,...(user?.cidadesAtuacao||[])].filter(Boolean).forEach(value=>{const part=locationParts(value);if(part?.city){const raw=String(part.city)+(part.uf?'/'+part.uf:'');values.set(normalizeUserSearch(raw),raw);}}));
@@ -700,8 +745,12 @@ function chatRefreshChannelList(){
   list.innerHTML=chatChannelListMarkup();
 }
 function chatChannelListMarkup(){
-  if(!CHAT_CHANNELS.length)return '<div class="chat-empty-small">Nenhum canal disponível para seu perfil.</div>';
-  return CHAT_CHANNELS.map(channel=>`<button type="button" class="chat-channel-item ${CHAT_ACTIVE_CHANNEL_ID===channel.id?'is-active':''}" onclick="chatOpenChannel('${channel.id}')"><span class="chat-channel-icon">${channel.audience_type==='survey'?'⌁':channel.audience_type==='support'?'◉':'✉'}</span><span class="chat-channel-copy"><b>${esc(channel.name)}</b><small>${esc(chatChannelDescription(channel))}</small>${channel.last_message_at?`<time>${esc(new Date(channel.last_message_at).toLocaleString('pt-BR'))}</time>`:''}</span></button>`).join('');
+  const channels=chatVisibleChannels();
+  if(!channels.length){
+    const message=chatIsStaffProfile()&&CHAT_RESPONSE_FILTER==='needs_response'?'Nenhuma conversa aguardando resposta.':chatIsStaffProfile()&&CHAT_RESPONSE_FILTER==='awaiting_return'?'Nenhuma conversa aguardando retorno.':'Nenhum canal disponível para seu perfil.';
+    return `<div class="chat-empty-small">${message}</div>`;
+  }
+  return channels.map(channel=>{const status=chatIsStaffProfile()?chatChannelResponseStatus(channel):null;return `<button type="button" class="chat-channel-item ${CHAT_ACTIVE_CHANNEL_ID===channel.id?'is-active':''}" onclick="chatOpenChannel('${channel.id}')"><span class="chat-channel-icon">${channel.audience_type==='survey'?'⌁':channel.audience_type==='support'?'◉':'✉'}</span><span class="chat-channel-copy"><b>${esc(channel.name)}</b>${status?`<span class="chat-channel-status chat-channel-status-${status.replace(/_/g,'-')}" data-response-status="${status}">${chatChannelResponseLabel(status)}</span>`:''}<small>${esc(chatChannelDescription(channel))}</small>${channel.last_message_at?`<time>${esc(new Date(channel.last_message_at).toLocaleString('pt-BR'))}</time>`:''}</span></button>`;}).join('');
 }
 function chatMessageMarkup(message){
   const own=message.sender_id===CURRENT_PROFILE?.id;
@@ -724,7 +773,7 @@ async function ensurePrivateSupportChatIfNeeded(){
   try{
     const {data,error}=await sb.rpc('get_or_create_private_support_chat');
     if(error){if(/get_or_create_private_support_chat|chat_channels|relation .* does not exist|schema cache/i.test(error.message||'')){CHAT_SCHEMA_MISSING=true;}throw error;}
-    CHAT_SUPPORT_CHANNEL_ID=data?.id||null;CHAT_SUPPORT_READY=true;CHAT_CHANNELS_LOADED=false;CHAT_ACTIVE_CHANNEL_ID=CHAT_SUPPORT_CHANNEL_ID;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=false;
+    CHAT_SUPPORT_CHANNEL_ID=data?.id||null;CHAT_SUPPORT_READY=true;CHAT_CHANNELS_LOADED=false;CHAT_CHANNEL_STATUS_LOADED=false;CHAT_CHANNEL_STATUS_ERROR=false;CHAT_CHANNEL_LAST_MESSAGES={};CHAT_ACTIVE_CHANNEL_ID=CHAT_SUPPORT_CHANNEL_ID;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=false;
   }catch(ex){console.error('Erro ao preparar o chat privado:',ex);if(CHAT_SCHEMA_MISSING)CHAT_SUPPORT_READY=true;}
   CHAT_SUPPORT_LOADING=false;
   if(document.querySelector('.nav-item.on')?.dataset.key==='communication')go('communication');
@@ -737,6 +786,7 @@ async function loadChatChannelsIfNeeded(){
     if(error){if(/chat_channels|relation .* does not exist|schema cache/i.test(error.message||''))CHAT_SCHEMA_MISSING=true;throw error;}
     const privateSupportOnly=['cliente','pesq'].includes(CURRENT_PROFILE?.role);
     CHAT_CHANNELS=privateSupportOnly?(data||[]).filter(channel=>channel.audience_type==='support'&&channel.private_user_id===CURRENT_PROFILE.id):(data||[]);
+    CHAT_CHANNEL_STATUS_LOADED=false;CHAT_CHANNEL_STATUS_ERROR=false;CHAT_CHANNEL_LAST_MESSAGES={};
     CHAT_CHANNELS_LOADED=true;
     if(CHAT_ACTIVE_CHANNEL_ID&&!CHAT_CHANNELS.some(channel=>channel.id===CHAT_ACTIVE_CHANNEL_ID))CHAT_ACTIVE_CHANNEL_ID=null;
     if(CHAT_PENDING_SURVEY_ID){
@@ -750,13 +800,36 @@ async function loadChatChannelsIfNeeded(){
   const key=document.querySelector('.nav-item.on')?.dataset.key;
   if(key==='communication')go('communication');
 }
+async function loadChatChannelStatusesIfNeeded(){
+  if(!chatIsStaffProfile()||CHAT_CHANNEL_STATUS_LOADED||CHAT_CHANNEL_STATUS_LOADING)return;
+  CHAT_CHANNEL_STATUS_LOADING=true;CHAT_CHANNEL_STATUS_ERROR=false;
+  try{
+    const ids=CHAT_CHANNELS.filter(channel=>!channel.is_archived).map(channel=>channel.id);
+    CHAT_CHANNEL_LAST_MESSAGES={};
+    if(ids.length){
+      const {data,error}=await sb.from('chat_messages').select('id,channel_id,sender_id,sender_role,created_at').in('channel_id',ids).order('created_at',{ascending:false});
+      if(error){if(/chat_messages|relation .* does not exist|schema cache/i.test(error.message||''))CHAT_SCHEMA_MISSING=true;throw error;}
+      (data||[]).forEach(chatRememberLatestMessage);
+    }
+    CHAT_CHANNEL_STATUS_LOADED=true;
+  }catch(ex){console.error('Erro ao classificar canais de chat:',ex);CHAT_CHANNEL_STATUS_ERROR=true;CHAT_CHANNEL_STATUS_LOADED=true;}
+  CHAT_CHANNEL_STATUS_LOADING=false;
+  if(chatIsStaffProfile()&&!CHAT_CHANNEL_STATUS_ERROR){
+    const visible=chatVisibleChannels();
+    if(!visible.some(channel=>channel.id===CHAT_ACTIVE_CHANNEL_ID)){
+      CHAT_ACTIVE_CHANNEL_ID=visible[0]?.id||null;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=!CHAT_ACTIVE_CHANNEL_ID;
+    }
+  }
+  const key=document.querySelector('.nav-item.on')?.dataset.key;
+  if(key==='communication')go('communication');
+}
 async function loadChatMessagesIfNeeded(){
   if(!CHAT_ACTIVE_CHANNEL_ID||CHAT_MESSAGES_LOADED||CHAT_MESSAGES_LOADING)return;
   CHAT_MESSAGES_LOADING=true;
   try{
     const {data,error}=await sb.from('chat_messages').select('*').eq('channel_id',CHAT_ACTIVE_CHANNEL_ID).order('created_at',{ascending:true}).limit(500);
     if(error){if(/chat_messages|relation .* does not exist|schema cache/i.test(error.message||''))CHAT_SCHEMA_MISSING=true;throw error;}
-    CHAT_MESSAGES=data||[];CHAT_MESSAGES_LOADED=true;
+    CHAT_MESSAGES=data||[];CHAT_MESSAGES.forEach(chatRememberLatestMessage);CHAT_CHANNEL_STATUS_LOADED=chatIsStaffProfile()?true:CHAT_CHANNEL_STATUS_LOADED;CHAT_MESSAGES_LOADED=true;
     await sb.rpc('chat_mark_read',{p_channel_id:CHAT_ACTIVE_CHANNEL_ID});
   }catch(ex){console.error('Erro ao carregar mensagens:',ex);if(CHAT_SCHEMA_MISSING)CHAT_MESSAGES_LOADED=true;}
   CHAT_MESSAGES_LOADING=false;
@@ -770,8 +843,12 @@ function chatStartRealtime(){
       const message=payload.new;
       if(!CHAT_CHANNELS.some(channel=>channel.id===message.channel_id))return;
       const channel=CHAT_CHANNELS.find(item=>item.id===message.channel_id);if(channel)channel.last_message_at=message.created_at;
+      chatRememberLatestMessage(message);
       if(message.channel_id===CHAT_ACTIVE_CHANNEL_ID)chatAppendMessage(message);
       else chatRefreshChannelList();
+      if(chatIsStaffProfile()&&CHAT_CHANNEL_STATUS_LOADED&&CHAT_RESPONSE_FILTER!=='all'&&CHAT_ACTIVE_CHANNEL_ID===message.channel_id&&chatChannelResponseStatus(channel)!==CHAT_RESPONSE_FILTER){
+        CHAT_ACTIVE_CHANNEL_ID=null;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=true;go('communication');
+      }else if(chatIsStaffProfile())chatRefreshChannelList();
       if(channel?.audience_type==='support')invalidateStaffNavPendingCounts();
     }).subscribe();
 }
@@ -800,7 +877,7 @@ async function chatCreateChannel(){
   try{
     const {data,error}=await sb.rpc('chat_create_channel',{p_name:name,p_audience_type:type,p_audience_value:value,p_survey_id:surveyId});
     if(error)throw new Error(error.message);
-    CHAT_CHANNELS_LOADED=false;CHAT_ACTIVE_CHANNEL_ID=data?.id||null;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=false;CHAT_NEW_AUDIENCE_TYPE='all';CHAT_NEW_SURVEY_ID=null;await loadChatChannelsIfNeeded();
+    CHAT_CHANNELS_LOADED=false;CHAT_CHANNEL_STATUS_LOADED=false;CHAT_CHANNEL_STATUS_ERROR=false;CHAT_ACTIVE_CHANNEL_ID=data?.id||null;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=false;CHAT_NEW_AUDIENCE_TYPE='all';CHAT_NEW_SURVEY_ID=null;await loadChatChannelsIfNeeded();
   }catch(ex){alert('Não foi possível criar o canal. Execute a migration deploy/chat-comunicacao-segmentada.sql no Supabase e tente novamente.');console.error(ex);}
 }
 function chatOpenChannel(channelId){
@@ -808,7 +885,7 @@ function chatOpenChannel(channelId){
   CHAT_ACTIVE_CHANNEL_ID=channelId;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=false;go('communication');
 }
 async function openResearcherSurveyChat(surveyId){
-  CHAT_PENDING_SURVEY_ID=surveyId;CHAT_ACTIVE_CHANNEL_ID=null;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=false;CHAT_CHANNELS_LOADED=false;
+  CHAT_PENDING_SURVEY_ID=surveyId;CHAT_ACTIVE_CHANNEL_ID=null;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=false;CHAT_CHANNELS_LOADED=false;CHAT_CHANNEL_STATUS_LOADED=false;CHAT_CHANNEL_STATUS_ERROR=false;
   go('communication');
   await loadChatChannelsIfNeeded();
 }
@@ -829,26 +906,36 @@ async function chatSendMessage(){
   try{
     const {data,error}=await sb.rpc('chat_send_message',{p_channel_id:CHAT_ACTIVE_CHANNEL_ID,p_body:body});
     if(error)throw new Error(error.message);
-    chatAppendMessage(data);const channel=CHAT_CHANNELS.find(item=>item.id===CHAT_ACTIVE_CHANNEL_ID);if(channel)channel.last_message_at=data.created_at;
+    chatAppendMessage(data);chatRememberLatestMessage(data);const channel=CHAT_CHANNELS.find(item=>item.id===CHAT_ACTIVE_CHANNEL_ID);if(channel)channel.last_message_at=data.created_at;
+    if(chatIsStaffProfile()&&CHAT_RESPONSE_FILTER==='needs_response'){CHAT_RESPONSE_FILTER='awaiting_return';}
+    if(chatIsStaffProfile())chatRefreshChannelList();
     if(channel?.audience_type==='support')invalidateStaffNavPendingCounts();
     if(input){input.value='';input.disabled=false;input.focus();}
   }catch(ex){alert('Não foi possível enviar a mensagem: '+ex.message);if(input)input.disabled=false;}
   CHAT_SENDING=false;
+  if(chatIsStaffProfile()&&document.querySelector('.nav-item.on')?.dataset.key==='communication')go('communication');
 }
 function chatHandleKeydown(event){if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();chatSendMessage();}}
 PAGES.communication=()=>{
   if(!CURRENT_PROFILE)return head('Comunicação','Entre no sistema para acessar o chat')+'<div class="empty">Faça login para acessar suas conversas.</div>';
-  if(CHAT_SCHEMA_MISSING){const privateChat=['cliente','pesq'].includes(CURRENT_PROFILE.role);return head('Comunicação',privateChat?'Atendimento direto com a equipe PesquisaPro':'Canais de avisos, suporte e acompanhamento de pesquisas')+`<div class="callout warn chat-migration-callout"><b>Chat ainda não ativado.</b><br>O administrador precisa executar ${privateChat?'<code>deploy/chat-comunicacao-segmentada.sql</code> e <code>deploy/chat-atendimento-privado.sql</code>':'a migration <code>deploy/chat-comunicacao-segmentada.sql</code>'} no SQL Editor do Supabase. As migrations são aditivas e não apagam dados existentes.</div>`;}
+  if(CHAT_SCHEMA_MISSING){const privateChat=['cliente','pesq'].includes(CURRENT_PROFILE.role);return head('Comunicação',privateChat?'Atendimento direto com a equipe PesquisaPro':'Canais de avisos, suporte e acompanhamento de pesquisas')+`<div class="callout warn chat-migration-callout"><b>Chat ainda não ativado.</b><br>O administrador precisa executar ${privateChat?'<code>deploy/chat-comunicacao-segmentada.sql</code> e <code>deploy/chat-atendimento-privado.sql</code>':'<code>deploy/chat-comunicacao-segmentada.sql</code>'} no SQL Editor do Supabase. As migrations são aditivas e não apagam dados existentes.</div>`;}
   if(['cliente','pesq'].includes(CURRENT_PROFILE.role)&&!CHAT_SUPPORT_READY){ensurePrivateSupportChatIfNeeded();return head('Comunicação','Atendimento direto com a equipe PesquisaPro')+'<div class="empty">Preparando seu chat privado de atendimento…</div>';}
   if(!CHAT_CHANNELS_LOADED){loadChatChannelsIfNeeded();return head('Comunicação','Canais de avisos, suporte e acompanhamento de pesquisas')+'<div class="empty">Carregando canais de comunicação…</div>';}
+  if(chatIsStaffProfile()&&!CHAT_CHANNEL_STATUS_LOADED){loadChatChannelStatusesIfNeeded();return head('Comunicação','Triagem de conversas da gestão')+'<div class="empty">Classificando conversas por última resposta…</div>';}
   if(!SURVEYS_LOADED)loadSurveysIfNeeded();
-  if(['admin','coord','gerente','admpro'].includes(CURRENT_PROFILE.role)&&!SURVEYS_LOADED)return head('Comunicação','Canais de avisos, suporte e acompanhamento de pesquisas')+'<div class="empty">Carregando pesquisas para criar canais…</div>';
+  if(chatIsStaffProfile()&&!SURVEYS_LOADED)return head('Comunicação','Canais de avisos, suporte e acompanhamento de pesquisas')+'<div class="empty">Carregando pesquisas para criar canais…</div>';
   if(CHAT_ACTIVE_CHANNEL_ID&&!CHAT_MESSAGES_LOADED){loadChatMessagesIfNeeded();return head('Comunicação','Canais de avisos, suporte e acompanhamento de pesquisas')+'<div class="empty">Carregando mensagens…</div>';}
   const active=CHAT_CHANNELS.find(channel=>channel.id===CHAT_ACTIVE_CHANNEL_ID)||null;
   if(active)chatStartRealtime();
   const isPrivateSupport=['cliente','pesq'].includes(CURRENT_PROFILE.role);
   const supportNotice=isPrivateSupport?'<div class="chat-support-banner"><span class="chat-support-banner-icon">◉</span><div><b>Atendimento PesquisaPro</b><p>Este é um chat privado para tirar dúvidas, receber orientações e relatar problemas da pesquisa. Apenas a equipe PesquisaPro administra o atendimento.</p></div></div>':'';
-  return head('Comunicação',isPrivateSupport?'Fale diretamente com a equipe PesquisaPro':'Converse com equipes, pesquisadores e participantes de cada pesquisa')+`<div class="chat-page">${supportNotice}${chatCreatePanel()}<div class="chat-layout"><aside class="card chat-channel-panel"><div class="chat-panel-heading"><div><div class="card-t">${isPrivateSupport?'Atendimento':'Canais'}</div><div class="card-d">${isPrivateSupport?'Sua conversa privada com a equipe PesquisaPro.':'Você vê somente os canais permitidos para seu perfil.'}</div></div><span class="pill pill-blue">${CHAT_CHANNELS.length}</span></div><div id="chat-channel-list" class="chat-channel-list">${chatChannelListMarkup()}</div></aside><section class="card chat-room-panel">${active?`<header class="chat-room-header"><div><span class="eyebrow">${esc(chatAudienceLabel(active.audience_type))}</span><h2>${esc(active.name)}</h2><p>${esc(chatChannelDescription(active))}</p></div><span class="chat-live-pill"><i></i> Atualização ao vivo</span></header><div id="chat-messages" class="chat-messages" aria-live="polite">${CHAT_MESSAGES.length?CHAT_MESSAGES.map(chatMessageMarkup).join(''):'<div class="chat-empty-room"><span>✉</span><b>Nenhuma mensagem ainda</b><small>Envie a primeira mensagem para iniciar esta conversa.</small></div>'}</div><form class="chat-compose" onsubmit="event.preventDefault();chatSendMessage()"><textarea id="chat-message-input" class="inp" rows="2" maxlength="4000" placeholder="Escreva sua dúvida ou mensagem para a equipe PesquisaPro…" aria-label="Mensagem" onkeydown="chatHandleKeydown(event)"></textarea><button class="btn btn-fill" type="submit" ${CHAT_SENDING?'disabled':''}>Enviar</button></form>`:'<div class="chat-empty-room chat-no-selection"><span>✉</span><b>Selecione um canal</b><small>Escolha uma conversa na lista ao lado para visualizar e enviar mensagens.</small></div>'}</section></div></div>`;
+  const visibleChannels=chatVisibleChannels();
+  const emptyRoomTitle=chatIsStaffProfile()&&CHAT_RESPONSE_FILTER==='needs_response'?'Nenhuma conversa aguardando resposta':chatIsStaffProfile()&&CHAT_RESPONSE_FILTER==='awaiting_return'?'Nenhuma conversa aguardando retorno':'Selecione um canal';
+  const emptyRoomHint=chatIsStaffProfile()&&CHAT_RESPONSE_FILTER!=='all'?'Troque o filtro acima para consultar outras conversas.':'Escolha uma conversa na lista ao lado para visualizar e enviar mensagens.';
+  const activeRoom=active?`<header class="chat-room-header"><div><span class="eyebrow">${esc(chatAudienceLabel(active.audience_type))}</span><h2>${esc(active.name)}</h2><p>${esc(chatChannelDescription(active))}</p></div><span class="chat-live-pill"><i></i> Atualização ao vivo</span></header><div id="chat-messages" class="chat-messages" aria-live="polite">${CHAT_MESSAGES.length?CHAT_MESSAGES.map(chatMessageMarkup).join(''):'<div class="chat-empty-room"><span>✉</span><b>Nenhuma mensagem ainda</b><small>Envie a primeira mensagem para iniciar esta conversa.</small></div>'}</div><form class="chat-compose" onsubmit="event.preventDefault();chatSendMessage()"><textarea id="chat-message-input" class="inp" rows="2" maxlength="4000" placeholder="Escreva sua dúvida ou mensagem para a equipe PesquisaPro…" aria-label="Mensagem" onkeydown="chatHandleKeydown(event)"></textarea><button class="btn btn-fill" type="submit" ${CHAT_SENDING?'disabled':''}>Enviar</button></form>`:`<div class="chat-empty-room chat-no-selection"><span>✉</span><b>${emptyRoomTitle}</b><small>${emptyRoomHint}</small></div>`;
+  const panelLabel=isPrivateSupport?'Atendimento':'Canais';
+  const panelDescription=isPrivateSupport?'Sua conversa privada com a equipe PesquisaPro.':chatIsStaffProfile()?'Use a triagem acima para priorizar as conversas.':'Você vê somente os canais permitidos para seu perfil.';
+  return head('Comunicação',isPrivateSupport?'Fale diretamente com a equipe PesquisaPro':'Converse com equipes, pesquisadores e participantes de cada pesquisa')+`<div class="chat-page">${supportNotice}${chatCreatePanel()}${chatResponseTriageMarkup()}<div class="chat-layout"><aside class="card chat-channel-panel"><div class="chat-panel-heading"><div><div class="card-t">${panelLabel}</div><div class="card-d">${panelDescription}</div></div><span class="pill pill-blue">${visibleChannels.length}</span></div><div id="chat-channel-list" class="chat-channel-list">${chatChannelListMarkup()}</div></aside><section class="card chat-room-panel">${activeRoom}</section></div></div>`;
 };
 
 /* ============ carregamento sob demanda de bibliotecas locais ============ */

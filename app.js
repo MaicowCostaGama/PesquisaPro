@@ -51,13 +51,16 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261008171600';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261009095920';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
 let RESEARCHER_PROFILE_CITIES_LOADED=false;
 let RESEARCHER_PROFILE_CITIES_LOADING=false;
 let RESEARCHER_PROFILE_SAVING=false;
+let RESEARCHER_PROFILE_SAVE_OPERATION=null;
+let RESEARCHER_PROFILE_FORM_DRAFT=null;
+let RESEARCHER_PIX_FORM_DRAFT=null;
 let RESEARCHER_REFERRALS=[];
 let RESEARCHER_REFERRALS_LOADED=false;
 let RESEARCHER_REFERRALS_LOADING=false;
@@ -202,7 +205,7 @@ async function enableResearcherPush(){
   try{
     const permission=await Notification.requestPermission();
     if(permission!=='granted'){PUSH_STATUS='blocked';go('dashboard-pesq');return;}
-    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261008171600',{scope:'./'});
+    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261009095920',{scope:'./'});
     const subscription=await PUSH_SW_REGISTRATION.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:pushKeyToUint8Array(window.PP_PUSH_PUBLIC_KEY)});
     const json=subscription.toJSON();
     const {error}=await sb.from('push_subscriptions').upsert({user_id:CURRENT_PROFILE.id,endpoint:json.endpoint,subscription:json,user_agent:navigator.userAgent,updated_at:new Date().toISOString()},{onConflict:'endpoint'});
@@ -427,6 +430,9 @@ async function requestOwnPasswordReset(){
 async function afterLogin(user){
   stopResearcherVersionMonitor();
   stopStaffNavPendingMonitor();
+  RESEARCHER_PROFILE_SAVING=false;RESEARCHER_PROFILE_SAVE_OPERATION=null;RESEARCHER_PROFILE_FORM_DRAFT=null;RESEARCHER_PIX_FORM_DRAFT=null;
+  RESEARCHER_PROFILE_CITIES=[];RESEARCHER_PROFILE_CITIES_DRAFT=[];RESEARCHER_PROFILE_CITIES_LOADED=false;RESEARCHER_PROFILE_CITIES_LOADING=false;
+  USERS=[];USERS_LOADED=false;USERS_LOADING=false;_usersLoadPromise=null;
   chatStopRealtime();CHAT_CHANNELS=[];CHAT_CHANNELS_LOADED=false;CHAT_CHANNELS_LOADING=false;CHAT_SCHEMA_MISSING=false;CHAT_ACTIVE_CHANNEL_ID=null;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=false;CHAT_MESSAGES_LOADING=false;CHAT_SUPPORT_CHANNEL_ID=null;CHAT_SUPPORT_READY=false;CHAT_SUPPORT_LOADING=false;
   PUSH_STATUS='unknown';PUSH_STATUS_LOADING=false;PUSH_SCHEMA_MISSING=false;PUSH_SW_REGISTRATION=null;RESEARCHER_ALERT_PREFS={email_enabled:false,push_enabled:false};RESEARCHER_ALERT_PREFS_LOADED=false;RESEARCHER_ALERT_PREFS_LOADING=false;RESEARCHER_ALERT_PREFS_SAVING=false;RESEARCHER_ALERT_PREFS_SCHEMA_MISSING=false;RESEARCHER_ALERT_PREFS_ERROR=false;MY_COMMUNICATIONS=[];MY_COMMUNICATIONS_LOADED=false;MY_COMMUNICATIONS_LOADING=false;MY_SURVEY_RESEARCHER_MESSAGES=[];MY_SURVEY_RESEARCHER_MESSAGES_LOADED=false;MY_SURVEY_RESEARCHER_MESSAGES_LOADING=false;MY_SURVEY_RESEARCHER_MESSAGES_SCHEMA_MISSING=false;MY_SURVEY_RESEARCHER_MESSAGES_LAST_LOADED=0;MY_SURVEY_RESEARCHER_MESSAGES_LOAD_ERROR=false;
   ACTIVE_CAMPAIGN_ID=null;CLIENT_SURVEY_VIEW_ID=null;
@@ -483,6 +489,8 @@ async function logout(){
   PAYMENTS=[];PAYMENTS_LOADED=false;PAYMENTS_LOADING=false;PAYMENT_RECEIPTS=[];PAYMENT_RECEIPTS_LOADED=false;PAYMENT_RECEIPTS_LOADING=false;PAYMENT_RECEIPTS_SCHEMA_MISSING=false;PAYMENT_RECEIPTS_DELETE_SCHEMA_MISSING=false;
   COLLECT_INAPP_ORIENTATION_COUNTS={};COLLECT_INAPP_ORIENTATION_STATUS='idle';COLLECT_INAPP_ORIENTATION_LOADING=false;COLLECT_BATCH_ORIENTATION_SENDING=false;COLLECT_IDX=null;closeSurveyResearcherMessageModal();
   CURRENT_PROFILE=null;
+  RESEARCHER_PROFILE_SAVING=false;RESEARCHER_PROFILE_SAVE_OPERATION=null;RESEARCHER_PROFILE_FORM_DRAFT=null;RESEARCHER_PIX_FORM_DRAFT=null;
+  USERS=[];USERS_LOADED=false;USERS_LOADING=false;_usersLoadPromise=null;
   ACTIVE_CAMPAIGN_ID=null;CLIENT_SURVEY_VIEW_ID=null;
   updateCampaignSwitcherButton();
   document.getElementById('app').classList.remove('show');
@@ -628,6 +636,7 @@ function go(key){
     n.classList.toggle('on',active);
     if(active)n.setAttribute('aria-current','page');else n.removeAttribute('aria-current');
   });
+  if(previousKey!==key&&['users','finance'].includes(key)&&['admin','admpro','coord','gerente'].includes(CURRENT_PROFILE?.role))USERS_LOADED=false;
   if(window._beforeRender)window._beforeRender(key);
   document.getElementById('main').innerHTML=PAGES[key]?PAGES[key]():'<div class="empty">Em construção</div>';
   updateCampaignSwitcherButton();
@@ -1228,7 +1237,7 @@ PAGES['researcher-profile']=()=>{
   if(!SURVEYS_LOADED)loadSurveysIfNeeded();
   if(!MY_INVITES_LOADED)loadMyInvitesIfNeeded();
   if(!RESEARCHER_PROFILE_CITIES_LOADED||!RESEARCHER_REFERRALS_LOADED||!MY_INVITES_LOADED||!SURVEYS_LOADED){if(!RESEARCHER_PROFILE_CITIES_LOADED)loadResearcherProfileCities();if(!RESEARCHER_REFERRALS_LOADED)loadResearcherReferrals();return head('Meus dados','Carregando seus dados cadastrais…')+'<div class="empty">Carregando convites e dados…</div>';}
-  const p=CURRENT_PROFILE||{};
+  const p={...(CURRENT_PROFILE||{}),...(RESEARCHER_PROFILE_FORM_DRAFT||{})};
   return head('Meus dados','Corrija seus dados cadastrais e mantenha suas cidades de atuação atualizadas')+`<div class="researcher-profile-page">
     <div class="callout mb"><strong>Você pode corrigir seus dados pessoais e de contato.</strong> CPF, e-mail, status, aprovação e documentos oficiais permanecem protegidos e são atualizados somente pela gestão. O PIX é opcional e pode ser informado depois.</div>
     ${researcherProfileInvitesMarkup()}
@@ -1249,28 +1258,101 @@ PAGES['researcher-profile']=()=>{
     ${researcherReferralsMarkup()}
     <section class="card mb"><div class="card-t">Dados de pagamento <span class="pill pill-gray">Opcional</span></div><div class="card-d">Você pode informar ou corrigir o PIX agora ou depois. Ele será usado somente para repasses aprovados.</div>
       <div class="field-row mb"><div><label class="lbl">Chave PIX</label><input class="inp" id="researcher-profile-pix-key" value="${esc(p.pix_key||'')}" placeholder="CPF, e-mail, celular ou chave aleatória"></div><div><label class="lbl">Banco</label><input class="inp" id="researcher-profile-pix-bank" value="${esc(p.pix_bank||'')}"></div></div>
-      <div class="field-row"><div><label class="lbl">CPF/CNPJ do titular</label><input class="inp" id="researcher-profile-pix-doc" value="${esc(p.pix_doc||'')}"></div><div><label class="lbl">Agência / conta</label><input class="inp" id="researcher-profile-pix-account" value="${esc([p.pix_ag,p.pix_acc].filter(Boolean).join(' / '))}"></div></div>
+      <div class="mb"><label class="lbl">CPF/CNPJ do titular</label><input class="inp" id="researcher-profile-pix-doc" value="${esc(p.pix_doc||'')}"></div>
+      <div class="field-row"><div><label class="lbl">Agência</label><input class="inp" id="researcher-profile-pix-ag" value="${esc(p.pix_ag||'')}" placeholder="Opcional"></div><div><label class="lbl">Conta</label><input class="inp" id="researcher-profile-pix-acc" value="${esc(p.pix_acc||'')}" placeholder="Conta e dígito"></div></div>
     </section>
-    <div class="researcher-profile-actions"><button class="btn btn-fill" onclick="saveResearcherOwnProfile()" ${RESEARCHER_PROFILE_SAVING?'disabled':''}>${RESEARCHER_PROFILE_SAVING?'Salvando…':'Salvar meus dados'}</button><button class="btn btn-out" onclick="go('dashboard-pesq')">Cancelar</button></div>
+    <div class="researcher-profile-actions"><button id="researcher-profile-save" type="button" class="btn btn-fill" onclick="saveResearcherOwnProfile()" ${RESEARCHER_PROFILE_SAVING?'disabled':''}>${RESEARCHER_PROFILE_SAVING?'Salvando…':'Salvar meus dados'}</button><button id="researcher-profile-cancel" type="button" class="btn btn-out" onclick="cancelResearcherProfileEdit()" ${RESEARCHER_PROFILE_SAVING?'disabled':''}>Cancelar</button></div>
   </div>`;
 };
+const RESEARCHER_EDITABLE_INPUTS={name:'name',birth:'birth',phone:'phone',cidade:'cidade',rua:'rua',numero:'numero',cep:'cep','pix-key':'pix_key','pix-doc':'pix_doc','pix-bank':'pix_bank','pix-ag':'pix_ag','pix-acc':'pix_acc'};
+function researcherProfileFormSnapshot(){
+  const result={};
+  for(const [suffix,field] of Object.entries(RESEARCHER_EDITABLE_INPUTS)){
+    const input=document.getElementById('researcher-profile-'+suffix);
+    if(!input)throw new Error('O formulário mudou. Abra Meus dados e tente novamente.');
+    result[field]=String(input.value||'').trim();
+  }
+  return result;
+}
+document.addEventListener('input',event=>{
+  const id=event.target?.id||'';
+  if(CURRENT_PROFILE?.role!=='pesq')return;
+  if(id.startsWith('researcher-profile-')){
+    const field=RESEARCHER_EDITABLE_INPUTS[id.slice('researcher-profile-'.length)];
+    if(field)RESEARCHER_PROFILE_FORM_DRAFT={...(RESEARCHER_PROFILE_FORM_DRAFT||{}),[field]:event.target.value};
+  }else if(id==='me-pix-key'||id==='me-pix-bank'){
+    const field=id==='me-pix-key'?'pix_key':'pix_bank';
+    RESEARCHER_PIX_FORM_DRAFT={...(RESEARCHER_PIX_FORM_DRAFT||{}),[field]:event.target.value};
+  }
+});
+function researcherSetSaveBusy(busy){
+  const controls=document.querySelectorAll('.researcher-profile-page input,.researcher-profile-page select,#researcher-profile-cities-wrap button,#me-pix-key,#me-pix-bank');
+  controls.forEach(input=>{
+    if(busy&&!input.disabled){input.dataset.profileSaveLocked='1';input.disabled=true;}
+    else if(!busy&&input.dataset.profileSaveLocked==='1'){input.disabled=false;delete input.dataset.profileSaveLocked;}
+  });
+  const cancel=document.getElementById('researcher-profile-cancel');if(cancel)cancel.disabled=busy;
+  for(const id of ['researcher-profile-save','me-pix-save']){
+    const button=document.getElementById(id);
+    if(button){button.disabled=busy;button.textContent=busy?'Salvando e conferindo…':id==='me-pix-save'?'Salvar dados':'Salvar meus dados';}
+  }
+}
+function cancelResearcherProfileEdit(){
+  if(RESEARCHER_PROFILE_SAVING)return;
+  RESEARCHER_PROFILE_FORM_DRAFT=null;RESEARCHER_PROFILE_CITIES_DRAFT=RESEARCHER_PROFILE_CITIES.slice();go('dashboard-pesq');
+}
+function researcherProfileComparable(value){return String(value??'').trim();}
+async function researcherReadSavedProfile(profile,expected,cities=null){
+  const fields='id,role,name,birth,phone,cidade,rua,numero,cep,pix_key,pix_doc,pix_bank,pix_ag,pix_acc'+(cities?',profile_cidades_atuacao(cidade)':'');
+  const {data,error}=await sb.from('profiles').select(fields).eq('id',profile.id).single();
+  if(CURRENT_PROFILE!==profile)return null;
+  if(error||!data||data.id!==profile.id||data.role!=='pesq')throw new Error('Não foi possível conferir a gravação no banco. Seus dados digitados foram mantidos; tente novamente.');
+  for(const field of Object.keys(expected)){
+    if(researcherProfileComparable(data[field])!==researcherProfileComparable(expected[field]))throw new Error('O banco não confirmou todas as alterações. Seus dados digitados foram mantidos; tente novamente ou fale com a gestão.');
+  }
+  const savedCities=data.profile_cidades_atuacao?(data.profile_cidades_atuacao||[]).map(row=>row.cidade).filter(Boolean):(profile.cidadesAtuacao||[]).slice();
+  if(cities&&JSON.stringify([...new Set(savedCities)].sort())!==JSON.stringify([...new Set(cities)].sort()))throw new Error('As cidades de atuação não foram confirmadas no banco. Seus dados digitados foram mantidos.');
+  return {...data,cidadesAtuacao:savedCities};
+}
+function researcherApplySavedProfile(profile,saved){
+  if(CURRENT_PROFILE!==profile||!saved)return;
+  const {profile_cidades_atuacao,...fields}=saved;
+  Object.assign(CURRENT_PROFILE,fields);
+  const user=profileRowToUser({...CURRENT_PROFILE,profile_cidades_atuacao:CURRENT_PROFILE.cidadesAtuacao.map(cidade=>({cidade}))});
+  const index=USERS.findIndex(item=>item.id===profile.id);
+  if(index>=0)Object.assign(USERS[index],user);
+  PAYMENTS.forEach(payment=>{if(payment.researcherId===profile.id)Object.assign(payment,{name:user.name,phone:user.phone,pixKey:user.pixKey});});
+  const name=document.getElementById('tbName'),avatar=document.getElementById('tbAvatar');
+  if(name)name.textContent=CURRENT_PROFILE.name;
+  if(avatar)avatar.textContent=initialsOf(CURRENT_PROFILE.name);
+}
 async function saveResearcherOwnProfile(){
   if(RESEARCHER_PROFILE_SAVING||!CURRENT_PROFILE?.id||CURRENT_PROFILE.role!=='pesq')return;
-  const get=id=>(document.getElementById(id)?.value||'').trim();
-  const name=get('researcher-profile-name'),birth=get('researcher-profile-birth'),phone=get('researcher-profile-phone'),cidade=get('researcher-profile-cidade'),rua=get('researcher-profile-rua'),numero=get('researcher-profile-numero'),cep=get('researcher-profile-cep');
-  const cities=(RESEARCHER_PROFILE_CITIES_DRAFT||[]).filter(Boolean).slice(0,5);
-  if(!name||!phone||!cidade){alert('Preencha nome completo, celular e cidade onde mora.');return;}
+  const profile=CURRENT_PROFILE;
+  let snapshot;
+  try{snapshot=researcherProfileFormSnapshot();}catch(ex){alert(ex.message);return;}
+  const cities=[...new Set((RESEARCHER_PROFILE_CITIES_DRAFT||[]).map(city=>String(city).trim()).filter(Boolean))];
+  if(!snapshot.name||!snapshot.phone||!snapshot.cidade){alert('Preencha nome completo, celular e cidade onde mora.');return;}
   if(!cities.length){alert('Escolha pelo menos uma cidade em que pode atuar.');return;}
-  RESEARCHER_PROFILE_SAVING=true;go('researcher-profile');
+  if(cities.length>5){alert('Escolha no máximo cinco cidades de atuação.');return;}
+  RESEARCHER_PROFILE_FORM_DRAFT={...snapshot};
+  const payload={p_name:snapshot.name,p_birth:snapshot.birth||null,p_phone:snapshot.phone,p_cidade:snapshot.cidade,p_rua:snapshot.rua||null,p_numero:snapshot.numero||null,p_cep:snapshot.cep||null,p_pix_key:snapshot.pix_key||null,p_pix_doc:snapshot.pix_doc||null,p_pix_bank:snapshot.pix_bank||null,p_pix_ag:snapshot.pix_ag||null,p_pix_acc:snapshot.pix_acc||null,p_cidades:cities};
+  const operation={profile};RESEARCHER_PROFILE_SAVE_OPERATION=operation;RESEARCHER_PROFILE_SAVING=true;researcherSetSaveBusy(true);
   try{
-    const account=(get('researcher-profile-pix-account')||'').split('/').map(v=>v.trim());
-    const {error}=await sb.rpc('update_my_researcher_profile',{p_name:name,p_birth:birth||null,p_phone:phone,p_cidade:cidade,p_rua:rua||null,p_numero:numero||null,p_cep:cep||null,p_pix_key:get('researcher-profile-pix-key')||null,p_pix_doc:get('researcher-profile-pix-doc')||null,p_pix_bank:get('researcher-profile-pix-bank')||null,p_pix_ag:account[0]||null,p_pix_acc:account.slice(1).join(' / ')||null,p_cidades: cities});
-    if(error)throw new Error(error.message);
-    CURRENT_PROFILE.name=name;CURRENT_PROFILE.birth=birth;CURRENT_PROFILE.phone=phone;CURRENT_PROFILE.cidade=cidade;CURRENT_PROFILE.rua=rua;CURRENT_PROFILE.numero=numero;CURRENT_PROFILE.cep=cep;CURRENT_PROFILE.pix_key=get('researcher-profile-pix-key');CURRENT_PROFILE.pix_doc=get('researcher-profile-pix-doc');CURRENT_PROFILE.pix_bank=get('researcher-profile-pix-bank');CURRENT_PROFILE.pix_ag=account[0]||'';CURRENT_PROFILE.pix_acc=account.slice(1).join(' / ');RESEARCHER_PROFILE_CITIES=cities.slice();RESEARCHER_PROFILE_CITIES_DRAFT=cities.slice();
-    document.getElementById('tbName').textContent=name;document.getElementById('tbAvatar').textContent=initialsOf(name);alert('Seus dados foram atualizados.');
-  }catch(ex){alert('Não foi possível salvar seus dados agora: '+ex.message);}
-  finally{RESEARCHER_PROFILE_SAVING=false;go('researcher-profile');}
+    const {error}=await sb.rpc('update_my_researcher_profile',payload);
+    if(CURRENT_PROFILE!==profile)return;
+    if(error)throw new Error(/PGRST202|42883/.test(error.code||'')?'A gestão precisa habilitar deploy/perfil-pesquisador-edicao.sql no Supabase.':error.message);
+    const saved=await researcherReadSavedProfile(profile,snapshot,cities);
+    if(!saved)return;
+    researcherApplySavedProfile(profile,saved);
+    RESEARCHER_PROFILE_CITIES=saved.cidadesAtuacao.slice();RESEARCHER_PROFILE_CITIES_DRAFT=saved.cidadesAtuacao.slice();RESEARCHER_PROFILE_CITIES_LOADED=true;
+    RESEARCHER_PROFILE_FORM_DRAFT=null;RESEARCHER_PIX_FORM_DRAFT=null;
+    if(document.querySelector('.nav-item.on')?.dataset.key==='researcher-profile')go('researcher-profile');
+    alert('Seus dados foram salvos e conferidos no banco.');
+  }catch(ex){if(CURRENT_PROFILE===profile)alert('Não foi possível confirmar seus dados: '+ex.message);}
+  finally{if(RESEARCHER_PROFILE_SAVE_OPERATION===operation){RESEARCHER_PROFILE_SAVING=false;RESEARCHER_PROFILE_SAVE_OPERATION=null;researcherSetSaveBusy(false);}}
 }
+
 function researcherBadgePublicUrl(){
   const token=CURRENT_PROFILE?.badge_public_token||CURRENT_PROFILE?.badgePublicToken;
   if(!token)return '';
@@ -7210,11 +7292,13 @@ let _usersLoadPromise=null;
    (ex.: chamado ao mesmo tempo pelo Painel e pela tela de Pesquisas), quem
    chamar depois espera o mesmo carregamento terminar em vez de disparar
    outro ou seguir em frente com USERS ainda vazio. */
-function loadUsersIfNeeded(){
-  if(USERS_LOADED)return Promise.resolve();
+function loadUsersIfNeeded(options={}){
+  if(USERS_LOADED&&!options.force)return Promise.resolve(true);
   if(_usersLoadPromise)return _usersLoadPromise;
-  _usersLoadPromise=(async()=>{
-    USERS_LOADING=true;
+  const session=CURRENT_PROFILE;
+  USERS_LOADING=true;
+  const request=(async()=>{
+    let loaded=false;
     try{
       let result=await sb.from('profiles').select('id,name,email,phone,role,status,cpf,cpf_cnpj,pf_pj,birth,escolaridade,cidade,rua,numero,cep,contact_person,doc_url,doc_foto_url,doc_comprovante_url,pix_key,pix_doc,pix_bank,pix_ag,pix_acc,results_released,approved_at,commission_rate,commission_rate_with_indicator,recruiter_code,recruiter_capture_value,profile_cidades_atuacao(cidade)').order('created_at',{ascending:false});
       if(result.error&&/escolaridade|schema cache|column .* does not exist/i.test(result.error.message||'')){
@@ -7222,18 +7306,26 @@ function loadUsersIfNeeded(){
         result=await sb.from('profiles').select('id,name,email,phone,role,status,cpf,cpf_cnpj,pf_pj,birth,cidade,rua,numero,cep,contact_person,doc_url,doc_foto_url,doc_comprovante_url,pix_key,pix_doc,pix_bank,pix_ag,pix_acc,results_released,approved_at,commission_rate,commission_rate_with_indicator,recruiter_code,recruiter_capture_value,profile_cidades_atuacao(cidade)').order('created_at',{ascending:false});
       }
       const {data,error}=result;
-      if(!error){USERS=(data||[]).map(profileRowToUser);USERS_LOADED=true;}
-      else console.error('Erro ao carregar usuários:',error);
-    }catch(ex){console.error('Erro de conexão ao carregar usuários:',ex);}
-    USERS_LOADING=false;
-    _usersLoadPromise=null;
-    refreshClientSurveyLinks();
-    const onKey=document.querySelector('.nav-item.on');
-    const k=onKey&&onKey.dataset.key;
-    if(k==='users'||k==='dashboard'||k==='survey-team'||k==='contracts'||k==='recruitment'||k==='communication'||k==='researcher-ranking'){go(k);if(k==='survey-team')setTimeout(teamFilterRows,0);}
+      if(CURRENT_PROFILE!==session)return false;
+      if(error)throw new Error(error.message);
+      USERS=(data||[]).map(profileRowToUser);USERS_LOADED=true;loaded=true;
+      refreshClientSurveyLinks();
+      const k=document.querySelector('.nav-item.on')?.dataset.key;
+      const pages=['users','dashboard','survey-team','contracts','recruitment','communication','researcher-ranking','finance'];
+      if(options.render!==false&&pages.includes(k)){
+        if(k==='finance'&&FIN_IDX!=null)FIN_ARMED=true;
+        go(k);if(k==='survey-team')setTimeout(teamFilterRows,0);
+      }
+    }catch(ex){if(CURRENT_PROFILE===session)console.error('Erro ao carregar usuários:',ex);}
+    return loaded;
   })();
-  return _usersLoadPromise;
+  const tracked=request.finally(()=>{
+    if(_usersLoadPromise===tracked){USERS_LOADING=false;_usersLoadPromise=null;}
+  });
+  _usersLoadPromise=tracked;
+  return tracked;
 }
+
 async function syncPesqCidades(profileId,cidades){
   const {error:delErr}=await sb.from('profile_cidades_atuacao').delete().eq('profile_id',profileId);
   if(delErr)throw new Error('Não foi possível salvar as cidades de atuação: '+delErr.message);
@@ -7510,7 +7602,7 @@ function userList(){
   const researcherQueue=tab==='pesq'?researcherApprovalQueueMarkup():'';
   const newButton=tab==='pesq_inativos'?'':`<button class="btn btn-fill" onclick="userOpen('new')">＋ Novo ${USER_TAB_NEW_LABEL[tab]||'usuário'}</button>`;
   return `<div class="users-page"><div class="users-context"><div><span class="eyebrow">${tabInfo[0]}</span><p>${tabInfo[1]}</p></div><span class="users-count-chip">${currentCount} ${currentCount===1?'perfil':'perfis'}</span></div>`+
-  head('Usuários','Cadastre e gerencie os diferentes perfis de usuário do sistema',
+  head('Usuários','Cadastre e gerencie os diferentes perfis de usuário do sistema',profilesRefreshButton()+
     newButton)+
   userTabBar()+
   userTabStats(tab)+
@@ -8465,10 +8557,15 @@ async function userSavePesq(isNew){
       const user=profileRowToUser(inserted);user.cidadesAtuacao=cidadesAtuacao;
       USERS.unshift(user);
     }else{
-      const {error}=await updateProfileSafe(USERS[USER_EDIT].id,userToProfileRow(rec,'pesq'));
-      if(error)throw new Error(error.message);
+      const {data:saved,error}=await updateProfileSafeSelect(USERS[USER_EDIT].id,userToProfileRow(rec,'pesq'));
+      if(error||!saved)throw new Error(error?.message||'O banco não confirmou o cadastro.');
+      const submitted=userToProfileRow(rec,'pesq');
+      for(const field of Object.keys(submitted)){
+        if(field==='escolaridade'&&PROFILE_SCHOOLING_SCHEMA_MISSING)continue;
+        if(researcherProfileComparable(saved[field])!==researcherProfileComparable(submitted[field]))throw new Error('O banco não confirmou todas as alterações do cadastro.');
+      }
       await syncPesqCidades(USERS[USER_EDIT].id,cidadesAtuacao);
-      Object.assign(USERS[USER_EDIT],rec);
+      Object.assign(USERS[USER_EDIT],profileRowToUser({...saved,profile_cidades_atuacao:cidadesAtuacao.map(cidade=>({cidade}))}));
     }
   }catch(ex){userSaveSetBusy(false);alert('Não foi possível salvar: '+ex.message);return;}
   _docFotoDraft=null;_docCompDraft=null;_pesqCidadesDraft=[];USER_EDIT=null;
@@ -8778,6 +8875,7 @@ async function saveFinStatus(surveyId,researcherId,status){
 function finRows(idx){
   const s=SURVEYS[idx];if(!s)return [];
   const real=PAYMENTS.filter(p=>p.surveyId===s.id);
+  real.forEach(payment=>{const user=USERS.find(item=>item.id===payment.researcherId);if(user)Object.assign(payment,{name:user.name,phone:user.phone||'',pixKey:user.pixKey||''});});
   const covered=new Set(real.map(p=>p.researcherId));
   const virtual=(s.team||[]).map(name=>pesqUsers().find(u=>u.name===name)).filter(Boolean)
     .filter(u=>!covered.has(u.id))
@@ -8825,6 +8923,9 @@ function financeReceivablesExportRows(idx){
 }
 async function financeExportReceivables(idx=null){
   if(!financeStaffCanManageReceipts())return;
+  const session=CURRENT_PROFILE;
+  if(!await loadUsersIfNeeded({force:true,render:false})){alert('Não foi possível conferir os cadastros e o PIX antes da exportação. Tente novamente.');return;}
+  if(CURRENT_PROFILE!==session)return;
   const rows=financeReceivablesExportRows(idx);
   if(!rows.length){alert('Não há pesquisadores com saldo aprovado a receber neste escopo.');return;}
   try{
@@ -9010,7 +9111,8 @@ async function researcherOpenOwnStatement(surveyId){
 }
 
 PAGES.finance=()=>{
-  if(!SURVEYS_LOADED||!PAYMENTS_LOADED||!PAYMENT_RECEIPTS_LOADED||!PAYMENT_NOTICES_LOADED){
+  if(!USERS_LOADED||!SURVEYS_LOADED||!PAYMENTS_LOADED||!PAYMENT_RECEIPTS_LOADED||!PAYMENT_NOTICES_LOADED){
+    if(!USERS_LOADED)loadUsersIfNeeded();
     if(!SURVEYS_LOADED)loadSurveysIfNeeded();
     if(!PAYMENTS_LOADED)loadPaymentsIfNeeded();
     if(!PAYMENT_RECEIPTS_LOADED)loadPaymentReceiptsIfNeeded();
@@ -9021,6 +9123,16 @@ PAGES.finance=()=>{
   if(FIN_IDX!=null)return financeDetail(FIN_IDX);
   return financeList();
 };
+function profilesRefreshButton(){return '<button type="button" class="btn btn-out" onclick="refreshManagementProfiles()">Atualizar cadastros / PIX</button>';}
+async function refreshManagementProfiles(){
+  if(!['admin','admpro','coord','gerente'].includes(CURRENT_PROFILE?.role))return;
+  const key=document.querySelector('.nav-item.on')?.dataset.key,session=CURRENT_PROFILE;
+  if(!['users','finance'].includes(key))return;
+  const loaded=await loadUsersIfNeeded({force:true,render:false});
+  if(CURRENT_PROFILE!==session)return;
+  if(!loaded){alert('Não foi possível atualizar os cadastros. Verifique a conexão e tente novamente.');return;}
+  if(document.querySelector('.nav-item.on')?.dataset.key===key){if(key==='finance'&&FIN_IDX!=null)FIN_ARMED=true;go(key);}
+}
 function financeList(){
   const entries=SURVEYS.map((s,i)=>({s,i,t:finTotals(i)})).filter(entry=>!entry.s.archivedAt);
   const totalValor=entries.reduce((a,e)=>a+e.t.valor,0);
@@ -9038,7 +9150,7 @@ function financeList(){
       <td>${t.aReceber?'<span class="pill pill-blue">'+brl(t.aReceber)+' a receber</span>':t.pendingValor?'<span class="pill pill-amber">'+brl(t.pendingValor)+' pendente</span>':(t.count?'<span class="pill pill-green">Tudo em dia</span>':'<span style="color:var(--ink3)">—</span>')}</td>
       <td><span class="pill pill-blue">Abrir →</span></td></tr>`).join('')||'<tr><td colspan="6" class="empty">Nenhuma pesquisa cadastrada.</td></tr>';
   return head('Financeiro','Pagamentos separados por pesquisa · calculado por entrevista válida coletada',
-    '<button class="btn btn-out" onclick="announcePaymentSchedule()">◷ Anunciar programação de pagamento</button><button class="btn btn-out" onclick="financeExportReceivables()">⇩ Exportar Excel — saldos a receber</button>')+`
+    profilesRefreshButton()+'<button class="btn btn-out" onclick="announcePaymentSchedule()">◷ Anunciar programação de pagamento</button><button class="btn btn-out" onclick="financeExportReceivables()">⇩ Exportar Excel — saldos a receber</button>')+`
   ${paymentReceiptMigrationNotice()}
   ${paymentNoticeMigrationNotice()}
   ${financePaymentScheduleMarkup(null)}
@@ -9086,7 +9198,7 @@ function financeDetail(idx){
       <td class="finance-actions-cell"><div class="finance-row-actions">${statementButton}${whatsappButton}${approveButton}${receiptButton}${receiptRowAction}${statusButton}</div></td></tr>`;
   }).join(''):'<tr><td colspan="10" class="empty">Nenhum pesquisador atribuído a esta pesquisa ainda — atribua a equipe em Minhas pesquisas.</td></tr>';
   return head('Financeiro — '+s.name,'Pagamento por entrevista válida coletada nesta pesquisa',
-    '<button class="btn btn-out" onclick="financeBack()">← Financeiro</button>'+ 
+    profilesRefreshButton()+'<button class="btn btn-out" onclick="financeBack()">← Financeiro</button>'+
     (rows.length?'<button class="btn btn-out" onclick="finApproveAll('+idx+')">✓ Aprovar todos os pagamentos</button><button class="btn btn-out" onclick="announcePaymentSchedule('+idx+')">◷ Anunciar pagamento deste saldo</button><button class="btn btn-out" onclick="financeExportReceivables('+idx+')">⇩ Exportar Excel — saldos a receber</button>':''))+`
   ${paymentReceiptMigrationNotice()}
   ${paymentNoticeMigrationNotice()}
@@ -9286,8 +9398,8 @@ PAGES['my-earnings']=()=>{
   <div class="card">
     <div class="card-t" style="font-size:13px">Meus dados de pagamento</div>
     <div class="card-d">Necessários para receber. Armazenados com segurança.</div>
-    <div class="field-row mb"><div><label class="lbl">Chave PIX</label><input class="inp" id="me-pix-key" value="${esc((CURRENT_PROFILE&&CURRENT_PROFILE.pix_key)||'')}"></div><div><label class="lbl">Banco</label><input class="inp" id="me-pix-bank" value="${esc((CURRENT_PROFILE&&CURRENT_PROFILE.pix_bank)||'')}"></div></div>
-    <button class="btn btn-fill" onclick="saveMyPixData()">Salvar dados</button>
+    <div class="field-row mb"><div><label class="lbl">Chave PIX</label><input class="inp" id="me-pix-key" value="${esc(RESEARCHER_PIX_FORM_DRAFT?.pix_key??CURRENT_PROFILE?.pix_key??'')}"></div><div><label class="lbl">Banco</label><input class="inp" id="me-pix-bank" value="${esc(RESEARCHER_PIX_FORM_DRAFT?.pix_bank??CURRENT_PROFILE?.pix_bank??'')}"></div></div>
+    <button id="me-pix-save" type="button" class="btn btn-fill" onclick="saveMyPixData()" ${RESEARCHER_PROFILE_SAVING?'disabled':''}>${RESEARCHER_PROFILE_SAVING?'Salvando e conferindo…':'Salvar dados'}</button>
   </div>`;
 };
 function paymentReceiptDateBR(value){
@@ -9313,22 +9425,32 @@ function myReceiptHistoryHtml(rowsData){
   return `<div class="card mb"><div class="card-t">Comprovantes de pagamento por pesquisa</div><div class="card-d">Consulte, separadamente por pesquisa, cada pagamento inserido pela PesquisaPro, com data, valor e referência do repasse.</div><div class="researcher-receipts-by-survey">${body}</div></div>`;
 }
 async function saveMyPixData(){
-  if(!CURRENT_PROFILE)return;
-  const pixKey=(document.getElementById('me-pix-key').value||'').trim();
-  const pixBank=(document.getElementById('me-pix-bank').value||'').trim();
+  if(RESEARCHER_PROFILE_SAVING||!CURRENT_PROFILE?.id||CURRENT_PROFILE.role!=='pesq')return;
+  const profile=CURRENT_PROFILE;
+  const keyInput=document.getElementById('me-pix-key'),bankInput=document.getElementById('me-pix-bank');
+  if(!keyInput||!bankInput){alert('Abra Meus ganhos para salvar os dados de pagamento.');return;}
+  const pixKey=String(keyInput.value||'').trim(),pixBank=String(bankInput.value||'').trim();
+  const expected={pix_key:pixKey,pix_bank:pixBank};RESEARCHER_PIX_FORM_DRAFT={...expected};
+  const operation={profile};RESEARCHER_PROFILE_SAVE_OPERATION=operation;RESEARCHER_PROFILE_SAVING=true;researcherSetSaveBusy(true);
   try{
     const {error}=await sb.rpc('update_my_researcher_payment_data',{p_pix_key:pixKey||null,p_pix_bank:pixBank||null});
+    if(CURRENT_PROFILE!==profile)return;
     if(error)throw new Error(error.message);
-    CURRENT_PROFILE.pix_key=pixKey;CURRENT_PROFILE.pix_bank=pixBank;
+    const saved=await researcherReadSavedProfile(profile,expected);
+    if(!saved)return;
+    researcherApplySavedProfile(profile,saved);RESEARCHER_PIX_FORM_DRAFT=null;
+    // Only the fields submitted here supersede any unsaved full-profile draft.
+    if(RESEARCHER_PROFILE_FORM_DRAFT)Object.assign(RESEARCHER_PROFILE_FORM_DRAFT,expected);
+    alert('Dados de pagamento salvos e conferidos no banco.');
   }catch(ex){
+    if(CURRENT_PROFILE!==profile)return;
     const message=String(ex?.message||ex||'');
     const migrationHint=/update_my_researcher_payment_data|schema cache|does not exist|function .* does not exist/i.test(message)
-      ?' A gestão precisa executar a migration deploy/corrigir-atualizacao-pix-pesquisador.sql no Supabase.'
-      :'';
-    alert('Não foi possível salvar a chave PIX: '+message+'.'+migrationHint);return;
-  }
-  alert('Dados de pagamento salvos.');
+      ?' A gestão precisa executar a migration deploy/corrigir-atualizacao-pix-pesquisador.sql no Supabase.':'';
+    alert('Não foi possível confirmar a chave PIX: '+message+'.'+migrationHint);
+  }finally{if(RESEARCHER_PROFILE_SAVE_OPERATION===operation){RESEARCHER_PROFILE_SAVING=false;RESEARCHER_PROFILE_SAVE_OPERATION=null;researcherSetSaveBusy(false);}}
 }
+
 function renderMyRejected(){
   const el=document.getElementById('myRejected');if(!el)return;
   const myId=CURRENT_PROFILE&&CURRENT_PROFILE.id;
@@ -10090,6 +10212,7 @@ window._afterRender=function(key){
   if(key==='client-results'){clientLoadReportOverview();clientLoadPublishedReports();clientGeoStartLive();responseHeatmapLoad('client');}
   if(key==='reports'){reportsLoadAndRender();reportsStartLive();reportsLoadDraft();responseHeatmapLoad('master');}
   if(key==='my-earnings')renderMyRejected();
+  if(key==='researcher-profile'||key==='my-earnings')researcherSetSaveBusy(RESEARCHER_PROFILE_SAVING);
   if(key==='sample'){calcSample();}
   if(key==='permissions'){drawPerms();}
   if(key==='finance'){

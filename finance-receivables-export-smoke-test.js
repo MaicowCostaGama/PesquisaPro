@@ -28,7 +28,7 @@ for (const token of [
 }
 
 assert(xlsx.length > 500000, 'biblioteca XLSX local não foi empacotada corretamente');
-assert(html.includes('app.js?v=20261008171600'), 'cache do app não foi atualizado para a exportação Excel');
+assert(html.includes('app.js?v=20261009095920'), 'cache do app não foi atualizado para a exportação Excel');
 const exportFunction = app.match(/async function financeExportReceivables[\s\S]*?\nPAGES\.finance=/)?.[0] || '';
 assert(exportFunction, 'função de exportação não foi delimitada corretamente');
 assert(!/\bsb\.(from|rpc|storage)\b/.test(exportFunction), 'exportação não deve enviar dados financeiros ao Supabase');

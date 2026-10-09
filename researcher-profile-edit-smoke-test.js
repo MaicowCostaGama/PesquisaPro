@@ -10,7 +10,8 @@ assert(app.includes("PAGES['researcher-profile']"),'página própria do pesquisa
 assert(app.includes('saveResearcherOwnProfile'),'handler de salvamento próprio ausente');
 assert(app.includes('Escolha pelo menos uma cidade em que pode atuar'),'validação de pelo menos uma cidade ausente');
 assert(app.includes('slice(0,5)'),'limite de cinco cidades ausente');
-assert(app.includes('p_pix_key:get(\'researcher-profile-pix-key\')||null'),'PIX deve ser opcional no payload próprio');
+assert(app.includes('p_pix_key:snapshot.pix_key||null'),'PIX deve ser opcional no snapshot do payload próprio');
+assert(app.includes('researcherProfileFormSnapshot()'),'formulário deve ser capturado integralmente antes do envio');
 assert(!app.includes("missing.push('Chave PIX')"),'PIX ainda aparece como obrigatório');
 assert(app.includes('CPF</label><input class="inp" value="${esc(p.cpf||\'\')}" disabled'),'CPF não está protegido como somente leitura');
 assert(app.includes('E-mail</label><input class="inp" value="${esc(p.email||\'\')}" disabled'),'e-mail não está protegido como somente leitura');
@@ -19,7 +20,7 @@ assert(migration.includes("role = 'pesq'"),'RPC não restringe ao papel pesquisa
 assert(migration.includes('v_city_count < 1 or v_city_count > 5'),'RPC não valida de uma a cinco cidades');
 assert(migration.includes('auth.uid() = profile_id'),'RLS das cidades não restringe ao próprio perfil');
 assert(migration.includes('grant execute on function public.update_my_researcher_profile'),'RPC não foi liberada apenas para authenticated');
-assert(html.includes('public-cities.js?v=20261008171600'),'lista pública de cidades não está carregada no painel');
+assert(html.includes('public-cities.js?v=20261009095920'),'lista pública de cidades não está carregada no painel');
 assert(publicCities,'public-cities.js não está presente no projeto');
 const citiesJs=fs.readFileSync(path.join(__dirname,'public-cities.js'),'utf8');
 assert(citiesJs.includes('window.PP_PUBLIC_CITIES'),'lista nacional PP_PUBLIC_CITIES ausente');

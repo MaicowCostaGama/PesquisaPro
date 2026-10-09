@@ -14,7 +14,8 @@ assert(handler.includes("sb.rpc('update_my_researcher_payment_data'"),'Meus ganh
 assert(handler.includes('p_pix_key:pixKey||null'),'a chave PIX não é enviada como parâmetro da RPC');
 assert(handler.includes('p_pix_bank:pixBank||null'),'o banco não é enviado como parâmetro da RPC');
 assert(!handler.includes("sb.from('profiles').update"),'o handler ainda usa update direto em profiles');
-assert(handler.includes('CURRENT_PROFILE.pix_key=pixKey;CURRENT_PROFILE.pix_bank=pixBank'),'estado local só é atualizado após a RPC');
+assert(handler.includes('researcherReadSavedProfile(profile,expected)'),'PIX deve ser relido do banco para confirmar persistência');
+assert(handler.indexOf('researcherApplySavedProfile(profile,saved)')>handler.indexOf('await researcherReadSavedProfile'),'estado local só pode ser atualizado após releitura confirmada');
 assert(handler.includes('corrigir-atualizacao-pix-pesquisador.sql'),'erro de migration ausente não orienta o usuário');
 
 if(migration){
@@ -29,5 +30,5 @@ if(migration){
   assert(!migration.includes('payments')&&!migration.includes('payment_receipts'),'migration não deve alterar financeiro ou recibos');
 }
 
-assert(html.includes('app.js?v=20261008171600'),'cache do app não foi atualizado para a correção do PIX');
+assert(html.includes('app.js?v=20261009095920'),'cache do app não foi atualizado para a correção do PIX');
 console.log('researcher-pix-update-smoke-test: PASS — Meus ganhos usa RPC protegida e o SQL manual é aditivo.');

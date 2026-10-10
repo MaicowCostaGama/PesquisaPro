@@ -51,7 +51,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261009095920';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261010134750';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -205,7 +205,7 @@ async function enableResearcherPush(){
   try{
     const permission=await Notification.requestPermission();
     if(permission!=='granted'){PUSH_STATUS='blocked';go('dashboard-pesq');return;}
-    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261009095920',{scope:'./'});
+    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261010134750',{scope:'./'});
     const subscription=await PUSH_SW_REGISTRATION.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:pushKeyToUint8Array(window.PP_PUSH_PUBLIC_KEY)});
     const json=subscription.toJSON();
     const {error}=await sb.from('push_subscriptions').upsert({user_id:CURRENT_PROFILE.id,endpoint:json.endpoint,subscription:json,user_agent:navigator.userAgent,updated_at:new Date().toISOString()},{onConflict:'endpoint'});
@@ -428,6 +428,7 @@ async function requestOwnPasswordReset(){
 }
 
 async function afterLogin(user){
+  resetCollectionEventCache();
   stopResearcherVersionMonitor();
   stopStaffNavPendingMonitor();
   RESEARCHER_PROFILE_SAVING=false;RESEARCHER_PROFILE_SAVE_OPERATION=null;RESEARCHER_PROFILE_FORM_DRAFT=null;RESEARCHER_PIX_FORM_DRAFT=null;
@@ -479,6 +480,7 @@ async function afterLogin(user){
 }
 
 async function logout(){
+  resetCollectionEventCache();
   stopResearcherVersionMonitor();
   stopStaffNavPendingMonitor();
   if(typeof acollectCloseNoticeGate==='function')acollectCloseNoticeGate(true);
@@ -4649,37 +4651,109 @@ let COLLECTION_RECORDINGS={};
 let AUDIT_AUDIO_URLS={};
 const COLLECTION_RECORDING_STAFF_ROLES=['admin','coord','gerente','admpro'];
 function collectionCanManageRecording(){return COLLECTION_RECORDING_STAFF_ROLES.includes(selectedRole);}
-async function fetchCollectionEvents({surveyId=null,ownOnly=false}={}){
-  const build=select=>{
-    let query=sb.from('collection_events').select(select).order('occurred_at',{ascending:false});
+const COLLECTION_EVENTS_PAGE_SIZE=500;
+const COLLECTION_EVENTS_MAX_ROWS=100000;
+const COLLECTION_EVENTS_TOTAL_TIMEOUT_MS=60000;
+let COLLECTION_EVENTS_SESSION_GENERATION=0;
+let COLLECTION_EVENTS_REQUESTS=new Map();
+function resetCollectionEventCache(){
+  COLLECTION_EVENTS_SESSION_GENERATION++;
+  COLLECTION_EVENTS_REQUESTS.clear();
+  COLLECT_EVENTS=[];COLLECT_EVENTS_LOADED=false;COLLECT_EVENTS_LOADING=false;
+  COLLECTION_RECORDINGS={};AUDIT_AUDIO_URLS={};
+  stopCollectLive();
+}
+async function fetchCollectionEventPages(select,{surveyId,ownOnly,profile,generation}){
+  const rows=[],ids=new Set(),started=Date.now();
+  let expectedCount=null,snapshot=null;
+  for(let offset=0;offset<COLLECTION_EVENTS_MAX_ROWS;){
+    if(generation!==COLLECTION_EVENTS_SESSION_GENERATION||CURRENT_PROFILE!==profile)throw new Error('Sessão alterada durante a leitura das coletas.');
+    const remaining=COLLECTION_EVENTS_TOTAL_TIMEOUT_MS-(Date.now()-started);
+    if(remaining<=0)throw new Error('Tempo esgotado ao carregar o histórico completo de coletas.');
+    let query=sb.from('collection_events').select(select,{count:'exact'})
+      .order('occurred_at',{ascending:false}).order('id',{ascending:false});
+    // Congela o topo pelo timestamp retornado pelo banco, não pelo relógio do aparelho.
+    if(snapshot)query=query.lte('occurred_at',snapshot);
     if(surveyId)query=query.eq('survey_id',surveyId);
-    if(ownOnly&&CURRENT_PROFILE&&CURRENT_PROFILE.id)query=query.eq('researcher_id',CURRENT_PROFILE.id);
-    return query;
-  };
-  const firstSelect=COLLECT_DURATION_COLUMN_AVAILABLE
-    ?(COLLECT_RECORDING_COLUMNS_AVAILABLE?COLLECT_EVENT_SELECT:COLLECT_EVENT_SELECT_DURATION)
-    :(COLLECT_RECORDING_COLUMNS_AVAILABLE?COLLECT_EVENT_SELECT_RECORDING_NO_DURATION:COLLECT_EVENT_SELECT_BASE);
-  let result=await build(firstSelect);
-  if(result.error&&COLLECT_DURATION_COLUMN_AVAILABLE&&/duration_seconds|column|schema cache/i.test(result.error.message||'')){
-    COLLECT_DURATION_COLUMN_AVAILABLE=false;
-    result=await build(COLLECT_RECORDING_COLUMNS_AVAILABLE?COLLECT_EVENT_SELECT_RECORDING_NO_DURATION:COLLECT_EVENT_SELECT_BASE);
+    if(ownOnly)query=query.eq('researcher_id',profile.id);
+    const result=await clientWithTimeout(query.range(offset,offset+COLLECTION_EVENTS_PAGE_SIZE-1),'o histórico completo de coletas',Math.min(15000,remaining));
+    if(generation!==COLLECTION_EVENTS_SESSION_GENERATION||CURRENT_PROFILE!==profile)throw new Error('Sessão alterada durante a leitura das coletas.');
+    if(result.error)return {data:null,error:result.error};
+    if(!Array.isArray(result.data))throw new Error('Retorno inválido ao carregar coletas.');
+    const page=result.data;
+    if(!snapshot&&page.length){
+      if(!page[0].occurred_at)throw new Error('Data de coleta ausente no histórico.');
+      snapshot=page[0].occurred_at;
+    }
+    if(page.length>COLLECTION_EVENTS_PAGE_SIZE)throw new Error('Página de coletas maior que o lote solicitado.');
+    if(result.count!=null){
+      const count=Number(result.count);
+      if(!Number.isSafeInteger(count)||count<0||count>COLLECTION_EVENTS_MAX_ROWS)throw new Error('Não foi possível conferir o total de coletas.');
+      if(expectedCount==null)expectedCount=count;
+      else if(count!==expectedCount)throw new Error('As coletas mudaram durante a atualização. Tente atualizar novamente.');
+    }
+    for(const row of page){
+      if(!row.id||ids.has(row.id))throw new Error('Histórico de coletas incompleto ou duplicado. Tente atualizar novamente.');
+      ids.add(row.id);rows.push(row);
+    }
+    offset+=page.length;
+    if(expectedCount!=null&&rows.length>=expectedCount){
+      if(rows.length!==expectedCount)throw new Error('O total recebido diverge do total de coletas.');
+      return {data:rows,error:null,count:expectedCount};
+    }
+    if(!page.length){
+      if(expectedCount!=null&&rows.length!==expectedCount)throw new Error('Histórico incompleto: faltam páginas de coletas.');
+      return {data:rows,error:null,count:rows.length};
+    }
   }
-  if(result.error&&COLLECT_RECORDING_COLUMNS_AVAILABLE&&/recording_|column|schema cache/i.test(result.error.message||'')){
-    COLLECT_RECORDING_COLUMNS_AVAILABLE=false;
-    result=await build(COLLECT_DURATION_COLUMN_AVAILABLE?COLLECT_EVENT_SELECT_DURATION:COLLECT_EVENT_SELECT_BASE);
-  }
-  return result;
+  throw new Error('Histórico acima do limite seguro de leitura. Nenhum resultado parcial foi aplicado.');
+}
+async function fetchCollectionEvents({surveyId=null,ownOnly=false}={}){
+  const profile=CURRENT_PROFILE,generation=COLLECTION_EVENTS_SESSION_GENERATION;
+  if(!profile?.id)return {data:null,error:{message:'Sessão necessária para consultar coletas.'}};
+  // Mesmo chamadas da gestão mantêm RLS; pesquisador sempre fica limitado ao próprio ID.
+  ownOnly=ownOnly||profile.role==='pesq';
+  const key=JSON.stringify([generation,profile.id,surveyId,ownOnly]);
+  if(COLLECTION_EVENTS_REQUESTS.has(key))return COLLECTION_EVENTS_REQUESTS.get(key);
+  const operation=(async()=>{
+    try{
+      const options={surveyId,ownOnly,profile,generation};
+      for(let attempt=0;attempt<3;attempt++){
+        const select=COLLECT_DURATION_COLUMN_AVAILABLE
+          ?(COLLECT_RECORDING_COLUMNS_AVAILABLE?COLLECT_EVENT_SELECT:COLLECT_EVENT_SELECT_DURATION)
+          :(COLLECT_RECORDING_COLUMNS_AVAILABLE?COLLECT_EVENT_SELECT_RECORDING_NO_DURATION:COLLECT_EVENT_SELECT_BASE);
+        const result=await fetchCollectionEventPages(select,options);
+        if(!result.error)return result;
+        if(COLLECT_DURATION_COLUMN_AVAILABLE&&/duration_seconds/i.test(result.error.message||'')){
+          COLLECT_DURATION_COLUMN_AVAILABLE=false;continue;
+        }
+        if(COLLECT_RECORDING_COLUMNS_AVAILABLE&&/recording_/i.test(result.error.message||'')){
+          COLLECT_RECORDING_COLUMNS_AVAILABLE=false;continue;
+        }
+        return result;
+      }
+      return {data:null,error:{message:'Não foi possível carregar o histórico com o schema disponível.'}};
+    }catch(ex){return {data:null,error:{message:ex.message||'Não foi possível carregar as coletas completas.'}};}
+  })();
+  COLLECTION_EVENTS_REQUESTS.set(key,operation);
+  try{return await operation;}finally{if(COLLECTION_EVENTS_REQUESTS.get(key)===operation)COLLECTION_EVENTS_REQUESTS.delete(key);}
 }
 async function loadCollectionRecordingsForEvents(events){
   if(!collectionCanManageRecording())return;
-  const ids=events.map(e=>e.id).filter(Boolean);
+  const profile=CURRENT_PROFILE,generation=COLLECTION_EVENTS_SESSION_GENERATION;
+  const ids=[...new Set(events.map(e=>e.id).filter(Boolean))];
   if(!ids.length)return;
   try{
-    const {data,error}=await sb.from('collection_recordings')
-      .select('collection_event_id,storage_path,mime_type,duration_ms,created_at')
-      .in('collection_event_id',ids);
-    if(error)return;
-    (data||[]).forEach(r=>{COLLECTION_RECORDINGS[r.collection_event_id]=r;});
+    // Lotes pequenos evitam URLs excessivas e o corte de 1.000 vínculos de áudio.
+    for(let offset=0;offset<ids.length;offset+=250){
+      if(CURRENT_PROFILE!==profile||generation!==COLLECTION_EVENTS_SESSION_GENERATION)return;
+      const {data,error}=await clientWithTimeout(sb.from('collection_recordings')
+        .select('collection_event_id,storage_path,mime_type,duration_ms,created_at')
+        .in('collection_event_id',ids.slice(offset,offset+250)),'os vínculos de gravação',15000);
+      if(CURRENT_PROFILE!==profile||generation!==COLLECTION_EVENTS_SESSION_GENERATION)return;
+      if(error)return;
+      (data||[]).forEach(r=>{COLLECTION_RECORDINGS[r.collection_event_id]=r;});
+    }
   }catch(ex){/* migration ainda não aplicada ou tabela indisponível */}
 }
 let COLLECT_EVENTS=[];
@@ -4722,14 +4796,18 @@ function collectionEventRowToEntry(row){
    ganhos"). */
 async function loadCollectEventsIfNeeded(){
   if(COLLECT_EVENTS_LOADED||COLLECT_EVENTS_LOADING)return;
+  const profile=CURRENT_PROFILE,generation=COLLECTION_EVENTS_SESSION_GENERATION;
   COLLECT_EVENTS_LOADING=true;
-  await loadUsersIfNeeded();
   try{
+    await loadUsersIfNeeded();
+    if(CURRENT_PROFILE!==profile||generation!==COLLECTION_EVENTS_SESSION_GENERATION)return;
     const {data,error}=await fetchCollectionEvents({ownOnly:selectedRole==='pesq'});
+    if(CURRENT_PROFILE!==profile||generation!==COLLECTION_EVENTS_SESSION_GENERATION)return;
     if(!error){COLLECT_EVENTS=(data||[]).map(collectionEventRowToEntry);COLLECT_EVENTS_LOADED=true;await loadCollectionRecordingsForEvents(COLLECT_EVENTS);}
     else console.error('Erro ao carregar coletas:',error);
   }catch(ex){console.error('Erro de conexão ao carregar coletas:',ex);}
-  COLLECT_EVENTS_LOADING=false;
+  finally{if(CURRENT_PROFILE===profile&&generation===COLLECTION_EVENTS_SESSION_GENERATION)COLLECT_EVENTS_LOADING=false;}
+  if(CURRENT_PROFILE!==profile||generation!==COLLECTION_EVENTS_SESSION_GENERATION)return;
   const onKey=document.querySelector('.nav-item.on');
   const k=onKey&&onKey.dataset.key;
   if(k==='collect'||k==='app-collect'||k==='my-earnings'||k==='dashboard'||k==='dashboard-pesq')go(k);
@@ -4761,13 +4839,15 @@ function refreshCollectCount(idx){
    pelo "ao vivo" da tela do admin/coord quanto depois de o pesquisador
    enviar uma coleta nova pelo app */
 async function pollCollectEvents(idx){
+  const profile=CURRENT_PROFILE,generation=COLLECTION_EVENTS_SESSION_GENERATION;
   const survey=SURVEYS[idx];
   if(!survey||!survey.id)return;
   try{
     const {data,error}=await fetchCollectionEvents({surveyId:survey.id});
-    if(error)return;
+    if(error||CURRENT_PROFILE!==profile||generation!==COLLECTION_EVENTS_SESSION_GENERATION)return;
     const fresh=(data||[]).map(collectionEventRowToEntry);
     await loadCollectionRecordingsForEvents(fresh);
+    if(CURRENT_PROFILE!==profile||generation!==COLLECTION_EVENTS_SESSION_GENERATION)return;
     /* Mantém no cache as outras pesquisas e substitui somente a pesquisa aberta. */
     COLLECT_EVENTS=COLLECT_EVENTS.filter(e=>e.surveyId!==survey.id).concat(fresh)
       .sort((a,b)=>b.ts-a.ts);
@@ -6202,8 +6282,10 @@ function acollectCancel(){
   applyPendingResearcherUpdateIfSafe();
 }
 async function loadCollectEventsForced(){
+  const profile=CURRENT_PROFILE,generation=COLLECTION_EVENTS_SESSION_GENERATION;
   try{
     const {data,error}=await fetchCollectionEvents({ownOnly:selectedRole==='pesq'});
+    if(CURRENT_PROFILE!==profile||generation!==COLLECTION_EVENTS_SESSION_GENERATION)return;
     if(!error){COLLECT_EVENTS=(data||[]).map(collectionEventRowToEntry);COLLECT_EVENTS_LOADED=true;await loadCollectionRecordingsForEvents(COLLECT_EVENTS);}
   }catch(ex){ /* mantém os dados já carregados se a nova busca falhar */ }
 }

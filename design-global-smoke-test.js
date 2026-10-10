@@ -17,5 +17,5 @@ ok(css.includes('.guide-video-frame video{object-fit:contain!important}'), 'Víd
 ok(css.includes('.researcher-update-card{max-height:'), 'Tela de atualização pode cortar o botão');
 ok(css.includes('.grid,.grid>*{min-width:0}')&&css.includes('.g4{grid-template-columns:repeat(4,minmax(0,1fr))}'), 'Grades podem extrapolar o viewport');
 ok(css.includes('.researcher-badge-main>div:last-child{min-width:0}'), 'Nome pode sobrepor foto no crachá');
-ok(html.includes('style.css?v=20261009095920')&&html.includes('app.js?v=20261009095920'), 'Cache visual desatualizado');
+ok(html.includes('style.css?v=20261010134750')&&html.includes('app.js?v=20261010134750'), 'Cache visual desatualizado');
 console.log('Design global smoke test: PASS — menu, responsividade, mídia e acessibilidade.');

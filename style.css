@@ -1931,3 +1931,13 @@ body.acollect-notice-gate-open{overflow:hidden}
 .reports-duplicate-action{border-color:#d4a849;background:#fff;color:#745116;font-size:11px}
 .reports-duplicate-action:hover{border-color:#b98218;background:#fff9ec}
 @media(max-width:700px){.reports-duplicate-actions{display:grid;grid-template-columns:1fr}.reports-duplicate-action{width:100%}}
+
+/* Concluídas: acesso ao painel completo da coleta sem reabrir a pesquisa */
+.completed-survey-actions-cell{vertical-align:middle}
+.completed-survey-actions{display:flex;flex-wrap:wrap;align-items:center;gap:6px;min-width:0;max-width:590px;white-space:normal}
+.survey-table-scroll .completed-survey-actions .btn-ghost{margin:0;white-space:nowrap}
+.btn-ghost.completed-collection-access{color:#17479a;border-color:#aac8ec;background:#edf5ff;font-weight:700}
+.btn-ghost.completed-collection-access:hover{color:#10356f;border-color:#6b9bd8;background:#dfeeff}
+.completed-collection-access:focus-visible{outline:3px solid #2563eb;outline-offset:3px}
+.completed-collection-notice{margin:0 0 14px;border-color:#d7c8f0;background:#faf7ff;color:#58417c;line-height:1.6}
+@media(max-width:720px){.completed-survey-actions{gap:8px;max-width:400px}.completed-collection-notice{font-size:12px}}

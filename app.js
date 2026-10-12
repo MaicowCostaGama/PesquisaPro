@@ -51,7 +51,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261010134750';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261012130930';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -205,7 +205,7 @@ async function enableResearcherPush(){
   try{
     const permission=await Notification.requestPermission();
     if(permission!=='granted'){PUSH_STATUS='blocked';go('dashboard-pesq');return;}
-    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261010134750',{scope:'./'});
+    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261012130930',{scope:'./'});
     const subscription=await PUSH_SW_REGISTRATION.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:pushKeyToUint8Array(window.PP_PUSH_PUBLIC_KEY)});
     const json=subscription.toJSON();
     const {error}=await sb.from('push_subscriptions').upsert({user_id:CURRENT_PROFILE.id,endpoint:json.endpoint,subscription:json,user_agent:navigator.userAgent,updated_at:new Date().toISOString()},{onConflict:'endpoint'});
@@ -489,7 +489,7 @@ async function logout(){
   CHAT_CHANNELS=[];CHAT_CHANNELS_LOADED=false;CHAT_CHANNELS_LOADING=false;CHAT_SCHEMA_MISSING=false;CHAT_ACTIVE_CHANNEL_ID=null;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=false;CHAT_MESSAGES_LOADING=false;CHAT_SUPPORT_CHANNEL_ID=null;CHAT_SUPPORT_READY=false;CHAT_SUPPORT_LOADING=false;CHAT_PENDING_SURVEY_ID=null;
   RESEARCHER_PROFILE_CITIES=[];RESEARCHER_PROFILE_CITIES_DRAFT=[];RESEARCHER_PROFILE_CITIES_LOADED=false;MY_INVITES=[];MY_INVITES_LOADED=false;MY_INVITES_LOADING=false;MY_INVITE_LOAD_PROMISE=null;MY_INVITE_RESPONDING=null;PUSH_STATUS='unknown';PUSH_STATUS_LOADING=false;PUSH_SCHEMA_MISSING=false;PUSH_SW_REGISTRATION=null;RESEARCHER_ALERT_PREFS={email_enabled:false,push_enabled:false};RESEARCHER_ALERT_PREFS_LOADED=false;RESEARCHER_ALERT_PREFS_LOADING=false;RESEARCHER_ALERT_PREFS_SAVING=false;RESEARCHER_ALERT_PREFS_SCHEMA_MISSING=false;RESEARCHER_ALERT_PREFS_ERROR=false;MY_COMMUNICATIONS=[];MY_COMMUNICATIONS_LOADED=false;MY_COMMUNICATIONS_LOADING=false;MY_SURVEY_RESEARCHER_MESSAGES=[];MY_SURVEY_RESEARCHER_MESSAGES_LOADED=false;MY_SURVEY_RESEARCHER_MESSAGES_LOADING=false;MY_SURVEY_RESEARCHER_MESSAGES_SCHEMA_MISSING=false;MY_SURVEY_RESEARCHER_MESSAGES_LAST_LOADED=0;MY_SURVEY_RESEARCHER_MESSAGES_LOAD_ERROR=false;CLIENT_APPROVAL_REQUEST_ID=null;CLIENT_APPROVAL_REQUEST=null;CLIENT_APPROVAL_LOADING=false;CLIENT_APPROVAL_RESPONDING=false;CLIENT_APPROVAL_SCHEMA_MISSING=false;RESEARCHER_LINK_TOKEN=null;RESEARCHER_LINK_CONTEXT=null;RESEARCHER_LINK_LOADING=false;RESEARCHER_LINK_ACCEPTING=false;
   PAYMENTS=[];PAYMENTS_LOADED=false;PAYMENTS_LOADING=false;PAYMENT_RECEIPTS=[];PAYMENT_RECEIPTS_LOADED=false;PAYMENT_RECEIPTS_LOADING=false;PAYMENT_RECEIPTS_SCHEMA_MISSING=false;PAYMENT_RECEIPTS_DELETE_SCHEMA_MISSING=false;
-  COLLECT_INAPP_ORIENTATION_COUNTS={};COLLECT_INAPP_ORIENTATION_STATUS='idle';COLLECT_INAPP_ORIENTATION_LOADING=false;COLLECT_BATCH_ORIENTATION_SENDING=false;COLLECT_IDX=null;closeSurveyResearcherMessageModal();
+  COLLECT_INAPP_ORIENTATION_COUNTS={};COLLECT_INAPP_ORIENTATION_STATUS='idle';COLLECT_INAPP_ORIENTATION_LOADING=false;COLLECT_BATCH_ORIENTATION_SENDING=false;COLLECT_IDX=null;COLLECT_RETURN_PAGE='collect';closeSurveyResearcherMessageModal();
   CURRENT_PROFILE=null;
   RESEARCHER_PROFILE_SAVING=false;RESEARCHER_PROFILE_SAVE_OPERATION=null;RESEARCHER_PROFILE_FORM_DRAFT=null;RESEARCHER_PIX_FORM_DRAFT=null;
   USERS=[];USERS_LOADED=false;USERS_LOADING=false;_usersLoadPromise=null;
@@ -3255,7 +3255,8 @@ function surveyRow(s,idx,opts){
       <button class="btn-ghost survey-pdf-action" onclick="surveyFormPdfDownload(${idx})">📄 PDF formulário</button>
       <button class="btn-ghost" style="color:var(--teal)" onclick="surveyRestore(${idx})">Restaurar</button>`
     :opts&&opts.done
-    ?`<button class="btn-ghost" onclick="chatOpenSurveyChannel('${s.id}')">Chat</button>
+    ?`<button type="button" class="btn-ghost completed-collection-access" onclick="collectOpenCompletedSurvey('${esc(s.id)}')" title="Acessar equipe, mapa ao vivo, auditoria, metas de cotas e evolução sem reabrir a pesquisa">Coleta completa</button>
+      <button class="btn-ghost" onclick="chatOpenSurveyChannel('${s.id}')">Chat</button>
       <button class="btn-ghost" onclick="go('reports')">Ver relatório</button>
       <button class="btn-ghost" onclick="surveyDuplicate(${idx})">Duplicar</button>
       <button class="btn-ghost survey-pdf-action" onclick="surveyFormPdfDownload(${idx})">📄 PDF formulário</button>
@@ -3276,7 +3277,7 @@ function surveyRow(s,idx,opts){
     <td>${coll}</td>
     <td>${teamN?teamN+(teamN===1?' pessoa':' pessoas'):'<span style="color:var(--ink3)">não atribuída</span>'}</td>
     <td>${isArchived?STATUS_PILL.arquivada:(STATUS_PILL[s.status]||STATUS_PILL.rascunho)}</td>
-    <td style="white-space:nowrap">${actions}</td></tr>`;
+    <td ${!isArchived&&opts?.done?'class="completed-survey-actions-cell"':'style="white-space:nowrap"'}>${!isArchived&&opts?.done?'<div class="completed-survey-actions">'+actions+'</div>':actions}</td></tr>`;
 }
 PAGES.surveys=()=>{
   if(!SURVEYS_LOADED){
@@ -3304,16 +3305,16 @@ PAGES.surveys=()=>{
 PAGES['surveys-done']=()=>{
   if(!SURVEYS_LOADED){
     loadSurveysIfNeeded();
-    return head('Pesquisas concluídas','Pesquisas encerradas — acesse os relatórios ou reabra se precisar.')+'<div class="empty">Carregando pesquisas do banco de dados…</div>';
+    return head('Pesquisas concluídas','Pesquisas encerradas — acesse a coleta completa e os relatórios sem reabrir.')+'<div class="empty">Carregando pesquisas do banco de dados…</div>';
   }
   const done=SURVEYS.map((s,idx)=>({s,idx})).filter(x=>!x.s.archivedAt&&x.s.status==='encerrada');
   const rows=done.map(x=>surveyRow(x.s,x.idx,{done:true})).join('')
     ||'<tr><td colspan="7" class="empty">Nenhuma pesquisa concluída ainda.</td></tr>';
-  return head('Pesquisas concluídas','Pesquisas encerradas — acesse os relatórios ou reabra se precisar.',
+  return head('Pesquisas concluídas','Pesquisas encerradas — acesse a coleta completa e os relatórios sem reabrir.',
   '<button class="btn btn-out" onclick="go(\'surveys\')">← Em desenvolvimento</button><button class="btn btn-out" onclick="go(\'surveys-archived\')">Arquivadas</button>')+`
   <div class="grid g4" style="margin-bottom:16px">
     ${stat('Concluídas',String(done.length),'encerradas','✓','#7c3aed')}
-    ${stat('Coletas totais',done.reduce((a,x)=>a+(x.s.collected||0),0).toLocaleString('pt-BR'),'somadas','◫','#059669')}
+    ${stat('Coletas totais',done.reduce((a,x)=>a+surveyCollectedCount(x.s),0).toLocaleString('pt-BR'),'somadas','◫','#059669')}
     ${stat('Em desenvolvimento',String(SURVEYS.filter(s=>!s.archivedAt&&s.status!=='encerrada').length),'na outra aba','❒','#2563eb')}
     ${stat('Arquivadas',String(SURVEYS.filter(s=>!!s.archivedAt).length),'histórico preservado','▤','#64748b')}
   </div>
@@ -3321,7 +3322,7 @@ PAGES['surveys-done']=()=>{
     <div class="survey-table-scroll"><table><thead><tr><th>Pesquisa</th><th>Formulário</th><th>Amostra</th><th>Coletado</th><th>Equipe</th><th>Status</th><th></th></tr></thead>
     <tbody>${rows}</tbody></table></div>
   </div>
-  <div class="callout" style="margin-top:16px"><b>Reabrir</b> devolve a pesquisa para "em desenvolvimento". <b>Arquivadas</b> preserva histórico e comprovantes, mas não entra no financeiro pendente. <b>Duplicar</b> cria uma cópia como novo rascunho.</div>`;
+  <div class="callout" style="margin-top:16px"><b>Coleta completa</b> abre equipe, mapa ao vivo, auditoria, metas de cotas e evolução sem reabrir a pesquisa. <b>Reabrir</b> devolve a pesquisa para "em desenvolvimento". <b>Arquivadas</b> preserva histórico e comprovantes, mas não entra no financeiro pendente. <b>Duplicar</b> cria uma cópia como novo rascunho.</div>`;
 };
 
 PAGES['surveys-archived']=()=>{
@@ -4049,6 +4050,18 @@ function openSurveyQuotaProgress(index){
 /* ============ COLLECT (gestão de campo) ============ */
 /* ============ COLLECT (lista de pesquisas → pesquisadores) ============ */
 let COLLECT_IDX=null;
+let COLLECT_RETURN_PAGE='collect';
+function collectOpenCompletedSurvey(surveyId){
+  const allow=ROLE_NAV[CURRENT_PROFILE?.role]||ROLES[CURRENT_PROFILE?.role]?.nav||[];
+  if(!CURRENT_PROFILE||!allow.includes('collect')){alert('Seu perfil não possui acesso à gestão da coleta.');return;}
+  const idx=SURVEYS.findIndex(s=>s.id===surveyId&&!s.archivedAt&&s.status==='encerrada');
+  if(idx<0){alert('Esta pesquisa não está mais na lista de concluídas. Atualize a lista de pesquisas.');return;}
+  collectOpen(idx,'surveys-done');
+}
+function collectStatusLabel(s){
+  if(s.archivedAt)return 'Arquivada';
+  return STATUS_LABEL[s.status]||'Status não informado';
+}
 let COLLECT_ORIENTATION_COUNTS={},COLLECT_ORIENTATION_COUNTS_STATUS='idle',COLLECT_ORIENTATION_COUNTS_LOADING=false;
 let COLLECT_INAPP_ORIENTATION_COUNTS={},COLLECT_INAPP_ORIENTATION_STATUS='idle',COLLECT_INAPP_ORIENTATION_LOADING=false;
 let COLLECT_TEAM_INVITES=[],COLLECT_TEAM_INVITES_LOADED=false,COLLECT_TEAM_INVITES_LOADING=false,COLLECT_TEAM_INVITES_LOAD_ERROR=false;
@@ -4405,8 +4418,8 @@ function collectList(){
     <tbody>${rows}</tbody></table>
   </div>`;
 }
-function collectOpen(i){COLLECT_IDX=i;COLLECT_ARMED=true;AUDIT_INTERNAL_VIEW='flagged';AUDIT_FLAGGED_COUNT=0;COLLECT_ORIENTATION_COUNTS={};COLLECT_ORIENTATION_COUNTS_STATUS='loading';COLLECT_ORIENTATION_COUNTS_LOADING=false;COLLECT_INAPP_ORIENTATION_COUNTS={};COLLECT_INAPP_ORIENTATION_STATUS='idle';COLLECT_INAPP_ORIENTATION_LOADING=false;COLLECT_TEAM_INVITES=[];COLLECT_TEAM_INVITES_LOADED=false;COLLECT_TEAM_INVITES_LOADING=false;COLLECT_TEAM_INVITES_LOAD_ERROR=false;COLLECT_FUNNEL_TAB='available';COLLECT_FUNNEL_SEARCH={available:'',invited:'',accepted:'',team:''};COLLECT_EVOLUTION_MODE='day';disposeCollectEvolutionChart();_collectMapFilters={researcher:'all',researcherQuery:'',status:'all',latest:false};_collectMapFocusId=null;_collectMapDidFit=false;go('collect');}
-function collectBack(){COLLECT_IDX=null;COLLECT_ORIENTATION_COUNTS={};COLLECT_ORIENTATION_COUNTS_STATUS='idle';COLLECT_ORIENTATION_COUNTS_LOADING=false;COLLECT_INAPP_ORIENTATION_COUNTS={};COLLECT_INAPP_ORIENTATION_STATUS='idle';COLLECT_INAPP_ORIENTATION_LOADING=false;COLLECT_TEAM_INVITES=[];COLLECT_TEAM_INVITES_LOADED=false;COLLECT_TEAM_INVITES_LOADING=false;COLLECT_TEAM_INVITES_LOAD_ERROR=false;disposeCollectEvolutionChart();_collectMapFocusId=null;go('collect');}
+function collectOpen(i,returnPage='collect'){COLLECT_RETURN_PAGE=returnPage==='surveys-done'?'surveys-done':'collect';COLLECT_IDX=i;COLLECT_ARMED=true;AUDIT_INTERNAL_VIEW='flagged';AUDIT_FLAGGED_COUNT=0;COLLECT_ORIENTATION_COUNTS={};COLLECT_ORIENTATION_COUNTS_STATUS='loading';COLLECT_ORIENTATION_COUNTS_LOADING=false;COLLECT_INAPP_ORIENTATION_COUNTS={};COLLECT_INAPP_ORIENTATION_STATUS='idle';COLLECT_INAPP_ORIENTATION_LOADING=false;COLLECT_TEAM_INVITES=[];COLLECT_TEAM_INVITES_LOADED=false;COLLECT_TEAM_INVITES_LOADING=false;COLLECT_TEAM_INVITES_LOAD_ERROR=false;COLLECT_FUNNEL_TAB='available';COLLECT_FUNNEL_SEARCH={available:'',invited:'',accepted:'',team:''};COLLECT_EVOLUTION_MODE='day';disposeCollectEvolutionChart();_collectMapFilters={researcher:'all',researcherQuery:'',status:'all',latest:false};_collectMapFocusId=null;_collectMapDidFit=false;go('collect');}
+function collectBack(){const returnPage=COLLECT_RETURN_PAGE;COLLECT_RETURN_PAGE='collect';COLLECT_IDX=null;COLLECT_ORIENTATION_COUNTS={};COLLECT_ORIENTATION_COUNTS_STATUS='idle';COLLECT_ORIENTATION_COUNTS_LOADING=false;COLLECT_INAPP_ORIENTATION_COUNTS={};COLLECT_INAPP_ORIENTATION_STATUS='idle';COLLECT_INAPP_ORIENTATION_LOADING=false;COLLECT_TEAM_INVITES=[];COLLECT_TEAM_INVITES_LOADED=false;COLLECT_TEAM_INVITES_LOADING=false;COLLECT_TEAM_INVITES_LOAD_ERROR=false;disposeCollectEvolutionChart();_collectMapFocusId=null;go(returnPage);}
 let COLLECT_ARMED=false;
 function collectDetail(idx){
   const s=SURVEYS[idx];if(!s)return collectList();
@@ -4421,16 +4434,17 @@ function collectDetail(idx){
   const mapResearchers=[...new Set(team)].sort((a,b)=>a.localeCompare(b));
   const mapResearcherOptions=mapResearchers.map(name=>`<option value="${esc(name)}">${esc(name)}</option>`).join('');
   const researcherSearchMarkup=`<div class="collect-researcher-search" role="search" aria-label="Buscar coletas por pesquisador"><label><span>Buscar pesquisador</span><input id="collectResearcherSearch" type="search" value="${esc(_collectMapFilters.researcherQuery||'')}" placeholder="Digite o nome do pesquisador" list="collectResearcherOptions" oninput="collectApplyResearcherSearch(this.value)" autocomplete="off"><datalist id="collectResearcherOptions">${mapResearchers.map(name=>`<option value="${esc(name)}"></option>`).join('')}</datalist></label><button type="button" class="btn btn-out" onclick="collectClearResearcherSearch()">Limpar</button><span id="collectResearcherSearchSummary" class="collect-researcher-search-summary">Todas as coletas</span></div>`;
-  return head('Coleta e campo — '+s.name,'Pesquisadores vinculados a esta pesquisa',
-    '<button class="btn btn-out" onclick="collectBack()">← Pesquisas</button><button type="button" class="btn btn-out" disabled title="Exportação bruta indisponível; não gera CSV/SPSS">Exportar dados · indisponível</button>')+`
+  return head('Coleta e campo — '+s.name,s.status==='encerrada'?'Consulta completa da pesquisa concluída — sem reabrir a coleta':'Pesquisadores vinculados a esta pesquisa',
+    '<button class="btn btn-out" onclick="collectBack()">'+(COLLECT_RETURN_PAGE==='surveys-done'?'← Concluídas':'← Pesquisas')+'</button><button type="button" class="btn btn-out" disabled title="Exportação bruta indisponível; não gera CSV/SPSS">Exportar dados · indisponível</button>')+`
   <div class="grid g5" style="margin-bottom:16px">
     ${stat('Pesquisadores',String(team.length),'vinculados','☺','#2563eb')}
     ${stat('Coletado',collected.toLocaleString('pt-BR'),'de '+sample.toLocaleString('pt-BR'),'✓','#059669','collectCollectedStat')}
     ${stat('Coletas válidas',statusCounts.valid.toLocaleString('pt-BR'),'status válido','✓','#0f766e','collectValidStat')}
     ${stat('Coletas rejeitadas',statusCounts.rejected.toLocaleString('pt-BR'),'status rejeitado','✕','#dc2626','collectRejectedStat')}
-    ${stat('Status',s.status==='campo'?'Em campo':'Rascunho','','◷','#d97706')}
+    ${stat('Status',collectStatusLabel(s),s.status==='encerrada'?'novas coletas encerradas':'','◷',s.status==='encerrada'?'#7c3aed':'#d97706')}
   </div>
 
+  ${s.status==='encerrada'?'<div class="callout completed-collection-notice" role="note"><b>Pesquisa concluída.</b> A equipe, o mapa das coletas registradas, a auditoria, as metas de cotas e a evolução continuam acessíveis e atualizados. Abrir este painel não reabre a pesquisa nem libera novas entrevistas.</div>':''}
   ${researcherSearchMarkup}
 
   <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
@@ -10264,7 +10278,7 @@ PAGES.company=()=>head('Dados da empresa','Referência informativa; edição ain
    one-click-behind bug where returning to a list via the sidebar first
    re-rendered the previous detail view). */
 window._beforeRender=function(key){
-  if(key==='collect'){ if(!COLLECT_ARMED)COLLECT_IDX=null; COLLECT_ARMED=false; }
+  if(key==='collect'){ if(!COLLECT_ARMED){COLLECT_IDX=null;COLLECT_RETURN_PAGE='collect';} COLLECT_ARMED=false; }
   if(key==='users'){ if(!USER_ARMED){USER_EDIT=null;USER_VIEW=null;} USER_ARMED=false; }
   if(key==='new-survey'){
     if(!WIZ.editArmed){WIZ.editIndex=null;WIZ.step=1;WIZ.data=blankSurveyData();WIZ_QID=1;}

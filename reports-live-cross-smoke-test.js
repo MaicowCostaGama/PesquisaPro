@@ -13,7 +13,7 @@ assert(/slice\(0,3\)/.test(app),'Limite de três variáveis não está protegido
 assert(/crossQuestionIds/.test(app)&&/crossTitle/.test(app)&&/reportsLoadDraft/.test(app),'Persistência dos cruzamentos no rascunho ausente');
 assert(/Salvar cruzamentos na estrutura/.test(app)&&/reportsCrossingsBuilderMarkup/.test(app),'Ação visível para salvar múltiplos cruzamentos ausente');
 assert(/Adicionar outro cruzamento/.test(app)&&/reportsRemoveCrossing/.test(app),'Controles de múltiplos cruzamentos ausentes');
-assert(/reportsStartLive/.test(app)&&/postgres_changes/.test(app)&&/setInterval\(\(\)=>reportsLoadAndRender\(true\),15000\)/.test(app),'Atualização automática não está configurada');
+assert(/reportsStartLive/.test(app)&&/postgres_changes/.test(app)&&/setInterval\(\(\)=>\{reportsLoadAndRender\(true\);reportsGeoLoad\(true\);\},15000\)/.test(app),'Atualização automática dos resultados e georreferenciamento não está configurada');
 assert(/reportsExportCurrent/.test(app),'Exportação CSV não encontrada');
 assert(/survey_report_all_questions/.test(sql)&&/survey_report_cross_tab/.test(sql),'Migration das RPCs ausente');
 assert(/question_position/.test(app)&&/byPosition\[q\.position\]/.test(app),'Fallback por posição persistida ausente');
@@ -21,5 +21,5 @@ assert(/question_count > 3/.test(sql),'Limite de três variáveis não está pro
 assert(/ce\.status = 'valid'/.test(sql)&&/coalesce\(ce\.is_calibration, false\) = false/.test(sql),'Filtros de respostas válidas ausentes ou vulneráveis a NULL');
 assert(/public\.is_staff\(\)/.test(sql),'Restrição à gestão ausente');
 assert(/reports-question-card/.test(css)&&/reports-builder-grid/.test(css)&&/max-width:760px/.test(css),'Layout responsivo dos relatórios ausente');
-assert(html.includes('app.js?v=20261012130930'),'Cache do painel não atualizado');
+assert(html.includes('app.js?v=20261012134830'),'Cache do painel não atualizado');
 console.log('reports-live-cross-smoke-test: PASS');

@@ -1992,3 +1992,18 @@ body.acollect-notice-gate-open{overflow:hidden}
 .reports-open-dialog .reports-open-body::-webkit-scrollbar-thumb{background:#64748b;border:2px solid #e2e8f0;border-radius:6px}
 .reports-open-dialog .reports-open-body::-webkit-scrollbar-thumb:hover{background:#475569}
 .reports-open-dialog .reports-open-body #rp-open-content{overflow:visible;min-height:auto;flex:none}
+
+/* v158 — revisão manual separada por respostas pendentes e categorizadas */
+.reports-open-manual-shortcut{display:flex;margin-top:10px;background:#fff;white-space:normal;text-align:left}
+.reports-open-dialog #rp-open-manual{scroll-margin-block:12px}
+.reports-open-filter-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-bottom:8px}
+.reports-open-filter-tab{display:flex;align-items:center;justify-content:space-between;gap:7px;min-width:0;padding:10px 9px;border:1px solid #d6e1ef;border-radius:10px;background:#f8fafc;color:#475569;font-size:11px;font-weight:700;text-align:left;line-height:1.4}
+.reports-open-filter-tab span{min-width:0;overflow-wrap:anywhere}
+.reports-open-filter-tab b{flex:none;min-width:24px;padding:2px 5px;border-radius:7px;background:#e2e8f0;color:#334155;text-align:center;font-size:11px}
+.reports-open-filter-tab.is-active{border-color:#93b8ef;background:#eff6ff;color:#1d4ed8}
+.reports-open-filter-tab.is-active b{background:#2563eb;color:#fff}
+.reports-open-filter-tab:hover{border-color:#93b8ef}
+.reports-open-filter-total{margin:0 0 10px;color:#334155;font-size:11px;line-height:1.6;overflow-wrap:anywhere}
+.reports-open-filter-hint{margin:0 0 12px;font-size:11px;line-height:1.6;color:#64748b}
+.reports-open-pending-empty{padding:16px;color:#475569;font-size:12px;line-height:1.7}
+@media(max-width:760px){.reports-open-filter-tab{flex-direction:column;align-items:flex-start;gap:5px;padding:8px;font-size:11px}.reports-open-manual-shortcut{width:100%}}

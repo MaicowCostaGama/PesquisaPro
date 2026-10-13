@@ -55,16 +55,35 @@ Deno.serve(async req => {
   const model = Deno.env.get('OPENAI_GROUPING_MODEL') || 'gpt-5-mini';
   try {
     const response = await fetch('https://api.openai.com/v1/chat/completions',{
-      method:'POST',headers:{'Authorization':`Bearer ${key}`,'Content-Type':'application/json'},signal:AbortSignal.timeout(60000),
+      method:'POST',headers:{'Authorization':`Bearer ${key}`,'Content-Type':'application/json'},signal:AbortSignal.timeout(90000),
       body:JSON.stringify({model,store:false,max_completion_tokens:10000,reasoning_effort:'low',messages:[
         {role:'system',content:SYSTEM_PROMPT},
         {role:'user',content:JSON.stringify({question:containsContact(question.text)?'Pergunta aberta de pesquisa (contatos omitidos)':String(question.text).slice(0,1500),answers:safeItems})}
       ],response_format:{type:'json_schema',json_schema:{name:'open_answer_groups',strict:true,schema:GROUP_SCHEMA}}})
     });
-    if (!response.ok) return json({error:response.status===429?'Provedor de IA indisponível por limite de uso. Tente mais tarde.':'Não foi possível consultar a IA. Verifique chave e modelo no servidor.'},502);
-    const result = await response.json(), choice = result.choices?.[0];
-    if (choice?.finish_reason !== 'stop' || choice.message?.refusal || typeof choice.message?.content !== 'string') throw new Error();
-    const suggestion = validateSuggestion(JSON.parse(choice.message.content),safeItems);
-    return json({...suggestion,excluded_ids,model});
-  } catch { return json({error:'A IA não concluiu uma sugestão válida no prazo. Nenhuma categoria foi aplicada.'},502); }
+    if (!response.ok) return json({code:'IA_PROVIDER_ERROR',error:response.status===429?'Provedor de IA indisponível por limite de uso. Tente mais tarde.':'Não foi possível consultar a IA. Verifique chave e modelo no servidor.'},502);
+    let result;
+    try { result = await response.json(); } catch (ex) {
+      if (['TimeoutError','AbortError'].includes((ex as Error)?.name)) throw ex;
+      return json({code:'IA_INVALID_JSON',error:'A IA retornou uma resposta ilegível. Nenhuma categoria foi aplicada. Tente um lote menor.'},502);
+    }
+    const choice = result?.choices?.[0];
+    if (choice?.finish_reason === 'length') return json({code:'IA_TRUNCATED',error:'A IA atingiu o limite de geração antes de concluir o lote. Nenhuma categoria foi aplicada. Selecione menos textos e tente novamente.'},502);
+    if (choice?.message?.refusal || choice?.finish_reason === 'content_filter') return json({code:'IA_REFUSAL',error:'A IA não pôde analisar este conteúdo. Nenhuma categoria foi aplicada. Revise os textos ou use o agrupamento manual.'},422);
+    if (choice?.finish_reason !== 'stop' || typeof choice?.message?.content !== 'string') return json({code:'IA_INCOMPLETE',error:'A IA não retornou um resultado completo. Nenhuma categoria foi aplicada. Tente um lote menor.'},502);
+    let parsed;
+    try { parsed = JSON.parse(choice.message.content); } catch {
+      return json({code:'IA_INVALID_JSON',error:'A IA retornou uma resposta ilegível. Nenhuma categoria foi aplicada. Tente um lote menor.'},502);
+    }
+    try {
+      const suggestion = validateSuggestion(parsed,safeItems);
+      return json({...suggestion,excluded_ids,model});
+    } catch (ex) {
+      // Só expõe mensagens fixas do validador; nunca o conteúdo enviado ou devolvido pelo provedor.
+      return json({code:'IA_INVALID_GROUPS',error:(ex as Error).message+' Nenhuma categoria foi aplicada. Selecione menos textos ou agrupe manualmente.'},502);
+    }
+  } catch (ex) {
+    const timedOut = ['TimeoutError','AbortError'].includes((ex as Error)?.name);
+    return json({code:timedOut?'IA_TIMEOUT':'IA_NETWORK_ERROR',error:timedOut?'A IA excedeu o prazo de 90 segundos. Nenhuma categoria foi aplicada. Selecione menos textos e tente novamente.':'Falha de conexão com a IA. Nenhuma categoria foi aplicada. Tente novamente mais tarde.'},timedOut?504:502);
+  }
 });

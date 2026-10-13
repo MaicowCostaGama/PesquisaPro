@@ -6,10 +6,10 @@ const sql=fs.readFileSync('deploy/relatorios-tempo-real-cruzamentos.sql','utf8')
 const html=fs.readFileSync('app.html','utf8');
 assert(app.includes('function reportsQuestionsForSurvey(s){\n  return (s.questions||[]).filter(q=>q.dbId);'),'perguntas abertas continuam filtradas');
 assert(app.includes('function reportsQuestionsForClient(s)'),'filtro separado do cliente ausente');
-assert(app.includes("const answers=data.filter(r=>String(r.value_label||'').trim()"),'lista de respostas abertas ausente');
+assert(app.includes('function reportsOpenRows(data)')&&app.includes('function reportsOpenModel(data,config,validBase)')&&app.includes("if(q.type==='open')return reportsOpenCard(q,qi,data,base);"),'lista completa e modelo consolidado das respostas abertas ausentes');
 assert(app.includes('reports-open-answer-list'),'marcação das respostas abertas ausente');
 assert(app.includes('Resposta aberta · '),'contador das respostas abertas ausente');
 assert(css.includes('.reports-open-answer-list')&&css.includes('.reports-open-answer{'),'estilo de respostas abertas ausente');
 assert(sql.includes('coalesce(nullif(trim(a.value_text), \'\'), a.value_number::text, \'(sem resposta)\')'),'RPC não retorna texto das respostas');
-assert(html.includes('app.js?v=20261012134830'),'cache não atualizado');
+assert(html.includes('app.js?v=20261013105130'),'cache não atualizado');
 console.log('open-answers-results-smoke-test: PASS');

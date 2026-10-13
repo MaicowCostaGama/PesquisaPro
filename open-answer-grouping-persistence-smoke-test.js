@@ -1,0 +1,17 @@
+const fs=require('fs'),vm=require('vm'),assert=require('node:assert/strict');
+const app=fs.readFileSync('app.js','utf8');
+const source=app.slice(app.indexOf('/* Categorias revisadas de respostas abertas:'),app.indexOf('function renderReportsOverview'));
+function fn(name){const a=app.indexOf(name),b=app.indexOf('\n}',a);assert(a>=0&&b>a);return app.slice(a,b+2);}
+const c=vm.createContext({CURRENT_PROFILE:{id:'staff1',role:'admin'},survey:{id:'s1'},RP_REPORT_DOCUMENT_ID:'old-report',RP_REPORT_DOCUMENT_STATUS:'draft',RP_REPORT_DRAFT_HYDRATED:true,RP_REPORT_DRAFT_SECTIONS:{old:true},RP_REPORT_MODE:'overview',RP_REPORT_ANALYSIS_CACHE:{surveyId:'s1',overviewRows:[]},client:'c1',feedback:'',document:{getElementById:()=>null,removeEventListener(){}},reportsCurrentSurvey:()=>c.survey,reportsCurrentQuestions:()=>[{dbId:'q1',type:'open'}],reportsDocValue:()=>c.client,reportsDocFeedback:msg=>c.feedback=msg,reportsUpdateCrossSelectionSummary(){},reportsSetDocumentStatus(){},reportsFillDraft:draft=>c.reportsOpenHydrate(draft.sections)});
+vm.runInContext(source+'\n'+fn('async function reportsLoadDraft(')+'\n'+fn('async function reportsSaveDraft('),c);
+const run=s=>vm.runInContext(s,c);
+(async()=>{
+ c.reportsOpenEnsureScope();assert.equal(c.RP_REPORT_DOCUMENT_ID,null,'Documento de sessão anterior persistiu');assert.equal(c.RP_REPORT_DRAFT_HYDRATED,false);assert.equal(c.RP_REPORT_DRAFT_SECTIONS,null);
+ c.sb={rpc:async()=>({error:{message:'Teste de conexão'},data:null})};await c.reportsLoadDraft();assert.equal(c.RP_REPORT_DRAFT_HYDRATED,false,'Falha foi marcada como leitura concluída');assert(c.feedback.includes('Não foi possível ler'));await c.reportsOpenEdit('q1');assert.equal(run('RP_OPEN_EDITOR'),null,'Editor abriu mesmo sem conhecer categorias anteriores');
+ c.sb={rpc:async()=>({error:null,data:[{sections:{openAnswerGrouping:{surveyId:'s1',questions:{q1:{denominator:'answered',groups:[{id:'g1',label:'Preço',members:['Caro']}]}}}}}]})};await c.reportsLoadDraft();assert.equal(c.reportsOpenConfig('q1').groups[0].label,'Preço');assert(c.RP_REPORT_DRAFT_HYDRATED);
+ c.RP_REPORT_DRAFT_HYDRATED=false;let resolve;c.sb={rpc:()=>new Promise(r=>resolve=r)};const loading=c.reportsLoadDraft();c.reportsOpenCommit('q1',{denominator:'valid',groups:[{id:'g2',label:'Nova revisão',members:['Caro']}]});resolve({data:[{sections:{}}],error:null});await loading;assert.equal(c.reportsOpenConfig('q1').groups[0].label,'Nova revisão','Leitura tardia apagou revisão local');
+ c.reportsDocPayload=()=>({surveyId:c.survey.id,clientId:c.client,title:'Relatório',sections:{openAnswerGrouping:c.reportsOpenSerialize()}});c.sb={rpc:async()=>({data:'report-2',error:null})};await c.reportsSaveDraft();assert.equal(c.RP_REPORT_DOCUMENT_ID,'report-2');assert.equal(run('reportsOpenDirty()'),false);assert.equal(c.RP_REPORT_DRAFT_SECTIONS.openAnswerGrouping.questions.q1.groups[0].label,'Nova revisão');assert.equal(run('RP_OPEN_GROUPING.clientId'),'c1');
+ c.CURRENT_PROFILE={id:'staff2',role:'admin'};c.reportsOpenEnsureScope();assert.equal(c.RP_REPORT_DOCUMENT_ID,null);assert.equal(c.RP_REPORT_DRAFT_SECTIONS,null);assert.equal(c.reportsOpenConfig('q1').groups.length,0,'Categoria de outra conta persistiu');
+ assert(app.includes("window.addEventListener('beforeunload'"),'Sem aviso ao fechar com categorias pendentes');
+ console.log('open-answer-grouping-persistence-smoke-test: PASS — falha, leitura tardia, rascunho, confirmação e sessões isoladas.');
+})().catch(e=>{console.error(e);process.exit(1);});

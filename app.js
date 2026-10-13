@@ -51,7 +51,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261012134830';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261013105130';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -205,7 +205,7 @@ async function enableResearcherPush(){
   try{
     const permission=await Notification.requestPermission();
     if(permission!=='granted'){PUSH_STATUS='blocked';go('dashboard-pesq');return;}
-    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261012134830',{scope:'./'});
+    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261013105130',{scope:'./'});
     const subscription=await PUSH_SW_REGISTRATION.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:pushKeyToUint8Array(window.PP_PUSH_PUBLIC_KEY)});
     const json=subscription.toJSON();
     const {error}=await sb.from('push_subscriptions').upsert({user_id:CURRENT_PROFILE.id,endpoint:json.endpoint,subscription:json,user_agent:navigator.userAgent,updated_at:new Date().toISOString()},{onConflict:'endpoint'});
@@ -459,6 +459,7 @@ async function afterLogin(user){
     return;
   }
   CURRENT_PROFILE={...profile,commissionRate:Number(profile.commission_rate)||0,commissionRateWithIndicator:Number(profile.commission_rate_with_indicator)||0,recruiterCode:profile.recruiter_code||'',recruiterCaptureValue:Number(profile.recruiter_capture_value)||0};
+  reportsOpenReset();
   selectedRole=CURRENT_PROFILE.role;
   document.getElementById('login').style.display='none';
   document.getElementById('app').classList.add('show');
@@ -489,7 +490,7 @@ async function logout(){
   CHAT_CHANNELS=[];CHAT_CHANNELS_LOADED=false;CHAT_CHANNELS_LOADING=false;CHAT_SCHEMA_MISSING=false;CHAT_ACTIVE_CHANNEL_ID=null;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=false;CHAT_MESSAGES_LOADING=false;CHAT_SUPPORT_CHANNEL_ID=null;CHAT_SUPPORT_READY=false;CHAT_SUPPORT_LOADING=false;CHAT_PENDING_SURVEY_ID=null;
   RESEARCHER_PROFILE_CITIES=[];RESEARCHER_PROFILE_CITIES_DRAFT=[];RESEARCHER_PROFILE_CITIES_LOADED=false;MY_INVITES=[];MY_INVITES_LOADED=false;MY_INVITES_LOADING=false;MY_INVITE_LOAD_PROMISE=null;MY_INVITE_RESPONDING=null;PUSH_STATUS='unknown';PUSH_STATUS_LOADING=false;PUSH_SCHEMA_MISSING=false;PUSH_SW_REGISTRATION=null;RESEARCHER_ALERT_PREFS={email_enabled:false,push_enabled:false};RESEARCHER_ALERT_PREFS_LOADED=false;RESEARCHER_ALERT_PREFS_LOADING=false;RESEARCHER_ALERT_PREFS_SAVING=false;RESEARCHER_ALERT_PREFS_SCHEMA_MISSING=false;RESEARCHER_ALERT_PREFS_ERROR=false;MY_COMMUNICATIONS=[];MY_COMMUNICATIONS_LOADED=false;MY_COMMUNICATIONS_LOADING=false;MY_SURVEY_RESEARCHER_MESSAGES=[];MY_SURVEY_RESEARCHER_MESSAGES_LOADED=false;MY_SURVEY_RESEARCHER_MESSAGES_LOADING=false;MY_SURVEY_RESEARCHER_MESSAGES_SCHEMA_MISSING=false;MY_SURVEY_RESEARCHER_MESSAGES_LAST_LOADED=0;MY_SURVEY_RESEARCHER_MESSAGES_LOAD_ERROR=false;CLIENT_APPROVAL_REQUEST_ID=null;CLIENT_APPROVAL_REQUEST=null;CLIENT_APPROVAL_LOADING=false;CLIENT_APPROVAL_RESPONDING=false;CLIENT_APPROVAL_SCHEMA_MISSING=false;RESEARCHER_LINK_TOKEN=null;RESEARCHER_LINK_CONTEXT=null;RESEARCHER_LINK_LOADING=false;RESEARCHER_LINK_ACCEPTING=false;
   PAYMENTS=[];PAYMENTS_LOADED=false;PAYMENTS_LOADING=false;PAYMENT_RECEIPTS=[];PAYMENT_RECEIPTS_LOADED=false;PAYMENT_RECEIPTS_LOADING=false;PAYMENT_RECEIPTS_SCHEMA_MISSING=false;PAYMENT_RECEIPTS_DELETE_SCHEMA_MISSING=false;
-  COLLECT_INAPP_ORIENTATION_COUNTS={};COLLECT_INAPP_ORIENTATION_STATUS='idle';COLLECT_INAPP_ORIENTATION_LOADING=false;COLLECT_BATCH_ORIENTATION_SENDING=false;COLLECT_IDX=null;COLLECT_RETURN_PAGE='collect';closeSurveyResearcherMessageModal();
+  COLLECT_INAPP_ORIENTATION_COUNTS={};COLLECT_INAPP_ORIENTATION_STATUS='idle';COLLECT_INAPP_ORIENTATION_LOADING=false;COLLECT_BATCH_ORIENTATION_SENDING=false;COLLECT_IDX=null;COLLECT_RETURN_PAGE='collect';closeSurveyResearcherMessageModal();reportsOpenReset();
   CURRENT_PROFILE=null;
   RESEARCHER_PROFILE_SAVING=false;RESEARCHER_PROFILE_SAVE_OPERATION=null;RESEARCHER_PROFILE_FORM_DRAFT=null;RESEARCHER_PIX_FORM_DRAFT=null;
   USERS=[];USERS_LOADED=false;USERS_LOADING=false;_usersLoadPromise=null;
@@ -6677,7 +6678,7 @@ function reportsClientsForSurvey(survey){
 }
 function reportsDocumentEditorMarkup(survey){
   const clients=reportsClientsForSurvey(survey);RP_REPORT_CLIENTS=clients;
-  const defaultClient=clients[0]?.id||'';
+  const groupScope=reportsOpenEnsureScope();const defaultClient=clients.some(c=>c.id===groupScope.clientId)?groupScope.clientId:(clients[0]?.id||'');groupScope.clientId=defaultClient;
   const title='Relatório de resultados — '+(survey?.name||'Pesquisa');
   const draftSections=RP_REPORT_DRAFT_SECTIONS||{};const sections=[['includeMethodology','Ficha técnica e metodologia',draftSections.includeMethodology??true],['includeOverview','Resultados de todas as perguntas',draftSections.includeOverview??(RP_REPORT_MODE==='overview')],['includeCross','Gráficos e tabelas de cruzamentos',draftSections.includeCross??(RP_REPORT_MODE==='builder')],['includeSummary','Síntese executiva',draftSections.includeSummary??true]];
   return `<section class="card reports-document-editor" id="reports-document-editor">
@@ -6831,8 +6832,8 @@ PAGES.reports=()=>{
   ${reportsDocumentEditorMarkup(survey,qs)}
   <div class="callout reports-footnote"><b>Base de análise:</b> entrevistas válidas, excluindo coletas reprovadas e de calibração. Os dados são atualizados automaticamente enquanto esta aba estiver aberta.</div>`;
 };
-function reportsPickSurvey(id){if(!SURVEYS.some(s=>s.id===id))return;RP_REPORT_SURVEY_MANUALLY_SELECTED=true;RP_SURVEY_ID=id;RP_CROSS_QUESTION_IDS=[];RP_REPORT_CROSSINGS=[];RP_ACTIVE_CROSSING_ID=null;RP_REPORT_DRAFT_SECTIONS=null;RP_REPORT_DOCUMENT_ID=null;RP_REPORT_DOCUMENT_STATUS='new';RP_REPORT_DRAFT_HYDRATED=false;RP_REPORT_ANALYSIS_CACHE={surveyId:null,overviewRows:[],crossRows:[],crossIds:[]};RP_REPORT_CROSS_ANALYSIS_CACHE={};RP_REPORT_DUPLICATE_DIAGNOSTIC_CACHE={key:'',matches:[],checked:false};go('reports');}
-function reportsSetMode(mode){RP_REPORT_MODE=mode;RP_REPORT_DRAFT_HYDRATED=true;go('reports');}
+function reportsPickSurvey(id){if(!SURVEYS.some(s=>s.id===id))return;if(!reportsOpenConfirmDiscard()){const select=document.getElementById('rp-survey');if(select)select.value=RP_SURVEY_ID;return;}reportsOpenReset();RP_REPORT_SURVEY_MANUALLY_SELECTED=true;RP_SURVEY_ID=id;RP_CROSS_QUESTION_IDS=[];RP_REPORT_CROSSINGS=[];RP_ACTIVE_CROSSING_ID=null;RP_REPORT_DRAFT_SECTIONS=null;RP_REPORT_DOCUMENT_ID=null;RP_REPORT_DOCUMENT_STATUS='new';RP_REPORT_DRAFT_HYDRATED=false;RP_REPORT_ANALYSIS_CACHE={surveyId:null,overviewRows:[],crossRows:[],crossIds:[]};RP_REPORT_CROSS_ANALYSIS_CACHE={};RP_REPORT_DUPLICATE_DIAGNOSTIC_CACHE={key:'',matches:[],checked:false};go('reports');}
+function reportsSetMode(mode){reportsOpenClose();RP_REPORT_MODE=mode;RP_REPORT_DRAFT_HYDRATED=true;go('reports');}
 function reportsAddCrossing(){const crossing=reportsMakeCrossing([],RP_REPORT_CROSSINGS.length);RP_REPORT_CROSSINGS=[...RP_REPORT_CROSSINGS,crossing];RP_ACTIVE_CROSSING_ID=crossing.id;reportsSyncActiveCrossing();go('reports');}
 function reportsSetActiveCrossing(id){if(!RP_REPORT_CROSSINGS.some(crossing=>crossing.id===id))return;RP_ACTIVE_CROSSING_ID=id;reportsSyncActiveCrossing();go('reports');}
 function reportsUpdateCrossingTitle(id,title){const normalized=String(title||'').trim();RP_REPORT_CROSSINGS=RP_REPORT_CROSSINGS.map(crossing=>crossing.id===id?{...crossing,title:normalized||'Cruzamento'}:crossing);}
@@ -6924,18 +6925,139 @@ function reportsLocalValidBase(surveyId){
   if(!COLLECT_EVENTS_LOADED)return null;
   return COLLECT_EVENTS.filter(event=>event.surveyId===surveyId&&event.status==='valid'&&!event.calibration).length;
 }
+/* Categorias revisadas de respostas abertas: não altera collection_answers. */
+let RP_OPEN_GROUPING={surveyId:null,profile:null,questions:{},clientId:null,revision:0,savedRevision:0};
+let RP_OPEN_EDITOR=null;
+function reportsOpenReset(){reportsOpenClose();RP_OPEN_GROUPING={surveyId:null,profile:null,questions:{},clientId:null,revision:0,savedRevision:0};}
+function reportsOpenEnsureScope(){
+  const id=reportsCurrentSurvey()?.id||null;
+  if(RP_OPEN_GROUPING.surveyId!==id||RP_OPEN_GROUPING.profile!==CURRENT_PROFILE){reportsOpenReset();RP_OPEN_GROUPING.surveyId=id;RP_OPEN_GROUPING.profile=CURRENT_PROFILE;RP_REPORT_DOCUMENT_ID=null;RP_REPORT_DOCUMENT_STATUS='new';RP_REPORT_DRAFT_HYDRATED=false;RP_REPORT_DRAFT_SECTIONS=null;}
+  return RP_OPEN_GROUPING;
+}
+function reportsOpenCanEdit(){return ['admin','admpro','coord','gerente'].includes(CURRENT_PROFILE?.role);}
+function reportsOpenDirty(){return RP_OPEN_GROUPING.profile===CURRENT_PROFILE&&RP_OPEN_GROUPING.revision!==RP_OPEN_GROUPING.savedRevision;}
+function reportsOpenConfirmDiscard(){return !reportsOpenDirty()||confirm('Há agrupamentos ainda não salvos na estrutura do relatório. Deseja sair sem salvar esses agrupamentos?');}
+if(typeof window!=='undefined')window.addEventListener('beforeunload',event=>{if(reportsOpenDirty()){event.preventDefault();event.returnValue='';}});
+function reportsOpenNormalizeQuestions(input){
+  const result={};if(!input||typeof input!=='object'||Array.isArray(input))return result;
+  for(const [qid,config] of Object.entries(input)){
+    if(!reportsCurrentQuestions().some(q=>q.dbId===qid&&q.type==='open'))continue;
+    const used=new Set(),ids=new Set(),groups=[];
+    for(const item of Array.isArray(config?.groups)?config.groups:[]){
+      const id=String(item?.id||'').slice(0,100),label=String(item?.label||'').trim().slice(0,160);
+      if(!id||ids.has(id)||!label)continue;
+      const members=[...new Set((Array.isArray(item.members)?item.members:[]).filter(x=>typeof x==='string').map(x=>x.trim()).filter(x=>x&&x!=='(sem resposta)'&&!used.has(x)))];
+      if(!members.length)continue;members.forEach(x=>used.add(x));ids.add(id);groups.push({id,label,members});
+    }
+    result[qid]={denominator:config?.denominator==='valid'?'valid':'answered',groups};
+  }return result;
+}
+function reportsOpenSerialize(){const state=reportsOpenEnsureScope();return {version:1,surveyId:state.surveyId,questions:JSON.parse(JSON.stringify(state.questions))};}
+function reportsOpenHydrate(sec){
+  const state=reportsOpenEnsureScope(),saved=sec?.openAnswerGrouping;
+  if(state.revision!==state.savedRevision)return;
+  state.questions=saved?.surveyId===state.surveyId?reportsOpenNormalizeQuestions(saved.questions):{};
+  state.revision=0;state.savedRevision=0;reportsOpenRefreshOverview();
+}
+function reportsOpenConfig(qid){const state=reportsOpenEnsureScope();return state.questions[qid]||{denominator:'answered',groups:[]};}
+function reportsOpenRows(data){
+  const counts=new Map();for(const r of data||[]){const label=String(r.value_label||'').trim(),count=Number(r.cnt||0);if(!label||label==='(sem resposta)'||!Number.isFinite(count)||count<=0)continue;counts.set(label,(counts.get(label)||0)+count);}
+  return [...counts].map(([value_label,cnt])=>({value_label,cnt})).sort((a,b)=>b.cnt-a.cnt||a.value_label.localeCompare(b.value_label,'pt-BR'));
+}
+function reportsOpenModel(data,config,validBase){
+  const originals=reportsOpenRows(data),answered=originals.reduce((sum,r)=>sum+r.cnt,0),groupByMember=new Map(),buckets=new Map();
+  for(const group of config?.groups||[])for(const member of group.members||[])if(!groupByMember.has(member))groupByMember.set(member,group);
+  for(const row of originals){const group=groupByMember.get(row.value_label),key=group?'group:'+group.id:'raw:'+row.value_label;let bucket=buckets.get(key);if(!bucket){bucket={value_label:group?.label||row.value_label,cnt:0,groupId:group?.id||null,originals:[]};buckets.set(key,bucket);}bucket.cnt+=row.cnt;bucket.originals.push(row);}
+  const denominator=config?.denominator==='valid'?'valid':'answered',base=Number(validBase)>0?Number(validBase):0;
+  const rows=[...buckets.values()].sort((a,b)=>b.cnt-a.cnt||a.value_label.localeCompare(b.value_label,'pt-BR'));
+  return {rows,originals,answered,validBase:base,denominator,percentBase:denominator==='valid'?base:answered};
+}
+function reportsOpenPercent(count,base){return base?Number(count)/Number(base)*100:0;}
+function reportsOpenPercentText(count,base){return reportsOpenPercent(count,base).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1})+'%';}
+function reportsOpenQuestionData(qid){
+  const q=reportsCurrentQuestions().find(q=>q.dbId===qid&&q.type==='open');if(!q||RP_REPORT_ANALYSIS_CACHE.surveyId!==reportsCurrentSurvey()?.id)return [];
+  return (RP_REPORT_ANALYSIS_CACHE.overviewRows||[]).filter(r=>r.question_id===qid);
+}
+function reportsOpenRefreshOverview(){const out=document.getElementById('rp-output');if(out&&RP_REPORT_MODE==='overview'&&RP_REPORT_ANALYSIS_CACHE.surveyId===reportsCurrentSurvey()?.id)renderReportsOverview(out,RP_REPORT_ANALYSIS_CACHE.overviewRows,reportsCurrentQuestions());}
+function reportsOpenCard(q,qi,data,base){
+  const config=reportsOpenConfig(q.dbId),model=reportsOpenModel(data,config,base),shown=model.rows.slice(0,100),grouped=model.rows.filter(r=>r.groupId).length;
+  const rows=shown.map(r=>`<li class="reports-open-answer"><div><p>${esc(r.value_label)}</p><small>${r.cnt.toLocaleString('pt-BR')} ocorrência${r.cnt===1?'':'s'} · ${reportsOpenPercentText(r.cnt,model.answered)} das respondidas · ${reportsOpenPercentText(r.cnt,base)} da base válida</small>${r.groupId?`<details class="reports-open-members"><summary>Ver ${r.originals.length} texto${r.originals.length===1?'':'s'} original${r.originals.length===1?'':'is'}</summary>${r.originals.map(o=>`<div>${esc(o.value_label)} <b>(${o.cnt})</b></div>`).join('')}</details>`:''}</div><span class="pill pill-blue">${reportsOpenPercentText(r.cnt,model.percentBase)}</span></li>`).join('')||`<li class="empty" style="padding:16px 0">${base?'Nenhuma resposta foi registrada para esta pergunta na base válida.':'Ainda não há respostas textuais válidas.'}</li>`;
+  return `<article class="card reports-question-card reports-open-question-card"><div class="reports-question-head"><div><span class="reports-question-number">${String(qi+1).padStart(2,'0')}</span><h3>${esc(q.text||'(pergunta sem texto)')}</h3></div><span class="pill pill-blue">${base.toLocaleString('pt-BR')} válidas</span></div><div class="reports-question-meta">Resposta aberta · ${model.originals.length} textos diferentes · ${grouped} categorias revisadas</div><div class="reports-open-tools"><div><strong>Base do percentual: ${config.denominator==='valid'?'entrevistas válidas':'respostas preenchidas desta pergunta'}</strong><small>${model.answered.toLocaleString('pt-BR')} respostas preenchidas / ${base.toLocaleString('pt-BR')} entrevistas válidas. Textos não agrupados permanecem separados. Percentuais arredondados podem não somar exatamente 100%.</small></div>${reportsOpenCanEdit()?`<button class="btn btn-out" onclick="reportsOpenEdit(${jsArg(q.dbId)})">Agrupar respostas</button><button class="btn btn-out" onclick="reportsOpenExport(${jsArg(q.dbId)})">Exportar categorias</button>`:''}</div><ul class="reports-open-answer-list">${rows}</ul>${model.rows.length>100?'<div class="reports-open-more">Exibindo as primeiras 100 categorias. O agrupador, o CSV e o PDF usam todas as respostas.</div>':''}</article>`;
+}
+function reportsOpenCommit(qid,config){
+  if(!reportsOpenCanEdit()||!reportsCurrentQuestions().some(q=>q.dbId===qid&&q.type==='open'))return;
+  const state=reportsOpenEnsureScope();state.questions[qid]=reportsOpenNormalizeQuestions({[qid]:config})[qid]||{denominator:'answered',groups:[]};state.revision++;reportsOpenRefreshOverview();
+}
+async function reportsOpenEdit(qid){
+  if(!reportsOpenCanEdit())return;const surveyId=reportsCurrentSurvey()?.id,profile=CURRENT_PROFILE;reportsOpenEnsureScope();
+  if(typeof reportsLoadDraft==='function'&&!RP_REPORT_DRAFT_HYDRATED&&!reportsOpenDirty()){await reportsLoadDraft();if(CURRENT_PROFILE!==profile||reportsCurrentSurvey()?.id!==surveyId)return;if(!RP_REPORT_DRAFT_HYDRATED){reportsDocFeedback('Não foi possível ler a estrutura salva. Tente abrir o agrupador novamente antes de editar, para não sobrescrever categorias anteriores.','warn');return;}}
+  const q=reportsCurrentQuestions().find(q=>q.dbId===qid&&q.type==='open');if(!q)return;
+  reportsOpenClose();const data=reportsOpenQuestionData(qid),base=Number(data[0]?.valid_base)||reportsLocalValidBase(reportsCurrentSurvey()?.id)||0;
+  const model=reportsOpenModel(data,reportsOpenConfig(qid),base);
+  RP_OPEN_EDITOR={qid,surveyId:reportsCurrentSurvey().id,profile:CURRENT_PROFILE,originals:model.originals,base,selected:new Set(),search:'',page:0,focus:document.activeElement};
+  const overlay=document.createElement('div');overlay.id='rp-open-dialog';overlay.className='reports-open-overlay';overlay.innerHTML=`<section class="reports-open-dialog" role="dialog" aria-modal="true" aria-labelledby="rp-open-title"><header><div><h2 id="rp-open-title">Agrupar respostas abertas</h2><p>${esc(q.text)}</p></div><button class="btn btn-out" onclick="reportsOpenClose()" aria-label="Fechar agrupador">Fechar</button></header><div class="reports-open-guidance">Selecione textos que expressem a mesma resposta e dê um nome à categoria. Nenhum agrupamento semântico é aplicado automaticamente. Não una opiniões opostas ou assuntos apenas parecidos. Os textos originais são preservados.</div><div id="rp-open-content"></div><footer><span id="rp-open-save-status" role="status">${reportsOpenDirty()?'Há agrupamentos não salvos.':'Nenhuma alteração pendente.'}</span><button class="btn btn-fill" id="rp-open-save" onclick="reportsOpenSave()">Salvar agrupamentos na estrutura</button></footer></section>`;
+  document.body.appendChild(overlay);document.addEventListener('keydown',reportsOpenKeydown);reportsOpenEditorRender();overlay.querySelector('#rp-open-search')?.focus();
+}
+function reportsOpenEditorValid(){return RP_OPEN_EDITOR&&RP_OPEN_EDITOR.profile===CURRENT_PROFILE&&RP_OPEN_EDITOR.surveyId===reportsCurrentSurvey()?.id&&reportsOpenCanEdit();}
+function reportsOpenClose(){const focus=RP_OPEN_EDITOR?.focus;document.getElementById('rp-open-dialog')?.remove();document.removeEventListener('keydown',reportsOpenKeydown);RP_OPEN_EDITOR=null;if(focus?.isConnected)focus.focus({preventScroll:true});}
+function reportsOpenKeydown(event){
+  const dialog=document.getElementById('rp-open-dialog');if(!dialog)return;
+  if(event.key==='Escape'){event.preventDefault();reportsOpenClose();return;}
+  if(event.key==='Tab'){const nodes=[...dialog.querySelectorAll('button,input,select,summary')].filter(el=>!el.disabled&&el.getClientRects().length);const first=nodes[0],last=nodes[nodes.length-1];if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}}
+}
+function reportsOpenEditorRender(){
+  if(!reportsOpenEditorValid()){reportsOpenClose();return;}const editor=RP_OPEN_EDITOR,config=reportsOpenConfig(editor.qid),model=reportsOpenModel(editor.originals,config,editor.base);
+  const selectedCount=editor.originals.reduce((sum,r,index)=>sum+(editor.selected.has(index)?r.cnt:0),0);
+  document.getElementById('rp-open-content').innerHTML=`<div class="reports-open-summary"><b>${editor.originals.length} textos diferentes · ${model.answered} respostas preenchidas · ${editor.base} entrevistas válidas</b><label>Calcular percentual principal sobre <select class="inp" id="rp-open-denominator" onchange="reportsOpenDenominator(this.value)"><option value="answered" ${config.denominator==='answered'?'selected':''}>Respostas preenchidas desta pergunta</option><option value="valid" ${config.denominator==='valid'?'selected':''}>Todas as entrevistas válidas</option></select></label></div><div class="reports-open-columns"><section><h3>Textos originais</h3><label class="lbl" for="rp-open-search">Buscar texto (sem alterar seleção)</label><input class="inp" id="rp-open-search" value="${esc(editor.search)}" oninput="reportsOpenSearch(this.value)" placeholder="Buscar nas respostas…"><div id="rp-open-choices"></div></section><section><h3>Criar ou completar categoria</h3><div class="reports-open-assignment"><label class="lbl" for="rp-open-target">Categoria existente</label><select class="inp" id="rp-open-target"><option value="">Criar nova categoria</option>${config.groups.map(g=>`<option value="${esc(g.id)}">${esc(g.label)}</option>`).join('')}</select><label class="lbl" for="rp-open-label">Nome da nova categoria</label><input class="inp" id="rp-open-label" maxlength="160" placeholder="Ex.: Preço elevado"><div id="rp-open-selected">${editor.selected.size} textos selecionados · ${selectedCount} ocorrências</div><button class="btn btn-fill" onclick="reportsOpenAssign()">Aplicar aos textos selecionados</button><button class="btn btn-out" onclick="reportsOpenClearSelection()">Limpar seleção</button><p id="rp-open-feedback" role="status"></p></div><h3>Categorias revisadas</h3><div class="reports-open-groups">${config.groups.map(g=>{const bucket=model.rows.find(r=>r.groupId===g.id);return `<article><label class="lbl">Nome da categoria <input class="inp" maxlength="160" value="${esc(g.label)}" onchange="reportsOpenRename(${jsArg(g.id)},this.value)"></label><b>${bucket?.cnt||0} ocorrências · ${reportsOpenPercentText(bucket?.cnt||0,model.percentBase)}</b><details><summary>Ver textos vinculados (${g.members.length})</summary>${g.members.map(m=>`<div>${esc(m)}</div>`).join('')}</details><button class="btn btn-out" onclick="reportsOpenRemove(${jsArg(g.id)})">Desfazer agrupamento</button></article>`;}).join('')||'<p>Nenhuma categoria criada. As respostas permanecem separadas.</p>'}</div></section></div>`;
+  reportsOpenChoicesRender();
+}
+function reportsOpenChoicesRender(){
+  if(!reportsOpenEditorValid())return;const editor=RP_OPEN_EDITOR,config=reportsOpenConfig(editor.qid),needle=editor.search.toLocaleLowerCase('pt-BR');
+  const indexes=editor.originals.map((_,i)=>i).filter(i=>editor.originals[i].value_label.toLocaleLowerCase('pt-BR').includes(needle)),pages=Math.max(1,Math.ceil(indexes.length/50));editor.page=Math.min(editor.page,pages-1);
+  document.getElementById('rp-open-choices').innerHTML=`<div class="reports-open-choice-list">${indexes.slice(editor.page*50,editor.page*50+50).map(i=>{const row=editor.originals[i],group=config.groups.find(g=>g.members.includes(row.value_label));return `<label class="reports-open-choice"><input type="checkbox" data-open-index="${i}" onchange="reportsOpenSelect(${i},this.checked)" ${editor.selected.has(i)?'checked':''}><span>${esc(row.value_label)}<small>${row.cnt} ocorrências${group?' · Categoria: '+esc(group.label):' · Não agrupada'}</small></span></label>`;}).join('')||'<p>Nenhum texto encontrado.</p>'}</div><div class="reports-open-pagination"><button class="btn btn-out" onclick="reportsOpenPage(-1)" ${editor.page===0?'disabled':''}>Anterior</button><span>Página ${editor.page+1} de ${pages} · ${indexes.length} textos</span><button class="btn btn-out" onclick="reportsOpenPage(1)" ${editor.page>=pages-1?'disabled':''}>Próxima</button></div>`;
+}
+function reportsOpenSearch(value){if(!reportsOpenEditorValid())return;RP_OPEN_EDITOR.search=String(value);RP_OPEN_EDITOR.page=0;reportsOpenChoicesRender();}
+function reportsOpenPage(delta){if(!reportsOpenEditorValid())return;RP_OPEN_EDITOR.page=Math.max(0,RP_OPEN_EDITOR.page+delta);reportsOpenChoicesRender();}
+function reportsOpenSelect(index,checked){if(!reportsOpenEditorValid()||!RP_OPEN_EDITOR.originals[index])return;checked?RP_OPEN_EDITOR.selected.add(index):RP_OPEN_EDITOR.selected.delete(index);const count=RP_OPEN_EDITOR.originals.reduce((sum,r,i)=>sum+(RP_OPEN_EDITOR.selected.has(i)?r.cnt:0),0);document.getElementById('rp-open-selected').textContent=RP_OPEN_EDITOR.selected.size+' textos selecionados · '+count+' ocorrências';}
+function reportsOpenClearSelection(){if(!reportsOpenEditorValid())return;RP_OPEN_EDITOR.selected.clear();reportsOpenEditorRender();}
+function reportsOpenDenominator(value){if(!reportsOpenEditorValid())return;reportsOpenCommit(RP_OPEN_EDITOR.qid,{...reportsOpenConfig(RP_OPEN_EDITOR.qid),denominator:value==='valid'?'valid':'answered'});reportsOpenEditorRender();}
+function reportsOpenAssign(){
+  if(!reportsOpenEditorValid())return;const editor=RP_OPEN_EDITOR,config=reportsOpenConfig(editor.qid),feedback=document.getElementById('rp-open-feedback'),target=document.getElementById('rp-open-target').value,label=document.getElementById('rp-open-label').value.trim();
+  if(!editor.selected.size){feedback.textContent='Selecione ao menos um texto original.';return;}
+  if(!target&&(!label||label==='(sem resposta)')){feedback.textContent='Informe um nome para a categoria.';return;}
+  const existing=config.groups.find(g=>g.id===target);if(target&&!existing)return;
+  if(!target&&config.groups.some(g=>g.label.toLocaleLowerCase('pt-BR')===label.toLocaleLowerCase('pt-BR'))){feedback.textContent='Esta categoria já existe. Selecione-a na lista.';return;}
+  const members=[...editor.selected].map(i=>editor.originals[i].value_label),selected=new Set(members),id=existing?.id||'og-'+(window.crypto?.randomUUID?.()||Date.now()+'-'+Math.random().toString(36).slice(2));
+  const groups=config.groups.map(g=>({...g,members:g.members.filter(m=>!selected.has(m))}));let group=groups.find(g=>g.id===id);if(!group){group={id,label,members:[]};groups.push(group);}group.members=[...new Set([...group.members,...members])];
+  reportsOpenCommit(editor.qid,{...config,groups:groups.filter(g=>g.members.length)});editor.selected.clear();reportsOpenEditorRender();document.getElementById('rp-open-feedback').textContent='Categoria aplicada na prévia e no PDF. Salve a estrutura para manter o agrupamento.';
+}
+function reportsOpenRename(id,label){if(!reportsOpenEditorValid())return;label=String(label||'').trim();const config=reportsOpenConfig(RP_OPEN_EDITOR.qid);if(!label||label==='(sem resposta)'||config.groups.some(g=>g.id!==id&&g.label.toLocaleLowerCase('pt-BR')===label.toLocaleLowerCase('pt-BR'))){reportsOpenEditorRender();return;}reportsOpenCommit(RP_OPEN_EDITOR.qid,{...config,groups:config.groups.map(g=>g.id===id?{...g,label}:g)});reportsOpenEditorRender();}
+function reportsOpenRemove(id){if(!reportsOpenEditorValid())return;const qid=RP_OPEN_EDITOR.qid,config=reportsOpenConfig(qid);reportsOpenCommit(qid,{...config,groups:config.groups.filter(g=>g.id!==id)});reportsOpenEditorRender();}
+async function reportsOpenSave(){
+  if(!reportsOpenEditorValid())return;const editor=RP_OPEN_EDITOR,button=document.getElementById('rp-open-save');button.disabled=true;
+  try{const id=await reportsSaveDraft();if(RP_OPEN_EDITOR===editor&&reportsOpenEditorValid())document.getElementById('rp-open-save-status').textContent=id?(reportsOpenDirty()?'Novas alterações pendentes. Salve novamente.':'Agrupamentos salvos na estrutura do relatório.'):'Não foi possível salvar. Confira cliente, título e mensagem na estrutura do relatório.';}
+  finally{if(button.isConnected)button.disabled=false;}
+}
+function reportsOpenExport(qid){
+  if(!reportsOpenCanEdit())return;const data=reportsOpenQuestionData(qid),model=reportsOpenModel(data,reportsOpenConfig(qid),Number(data[0]?.valid_base)||reportsLocalValidBase(reportsCurrentSurvey()?.id)||0);
+  const records=[['Categoria / texto','Ocorrências','% das respondidas','% da base válida','Base respondida','Base válida','Tipo','Textos originais']];
+  for(const r of model.rows)records.push([r.value_label,r.cnt,reportsOpenPercentText(r.cnt,model.answered),reportsOpenPercentText(r.cnt,model.validBase),model.answered,model.validBase,r.groupId?'Categoria revisada':'Texto não agrupado',r.originals.map(o=>o.value_label+' ('+o.cnt+')').join(' | ')]);
+  const cell=value=>'"'+String(value).replace(/^[\s]*[=+@-]/,m=>"'"+m).replace(/"/g,'""')+'"';
+  const url=URL.createObjectURL(new Blob(['\ufeff'+records.map(row=>row.map(cell).join(';')).join('\n')],{type:'text/csv;charset=utf-8'})),a=document.createElement('a');a.href=url;a.download='categorias-respostas-abertas-'+String(qid).replace(/[^a-zA-Z0-9-]/g,'')+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);
+}
+function reportsOpenPdfRows(q,rows,payload,base){
+  if(q.type!=='open')return {rows,base,note:''};
+  const saved=payload.sections?.openAnswerGrouping,config=saved?.surveyId===payload.surveyId?saved.questions?.[q.dbId]:null,model=reportsOpenModel(rows,config||{denominator:'answered',groups:[]},base);
+  return {rows:model.rows,base:model.percentBase,note:'Resposta aberta — categorias revisadas e textos não agrupados. Base percentual: '+(model.denominator==='valid'?'entrevistas válidas':'respostas preenchidas desta pergunta')+' ('+model.percentBase+'). Respostas preenchidas: '+model.answered+'; entrevistas válidas: '+model.validBase+'.'};
+}
+
 function renderReportsOverview(out,rows,qs){
   const byQ={},byPosition={},byText={},byOrdinal={};const normalizeReportQuestionText=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^\p{L}\p{N}]+/gu,' ').trim().toLocaleLowerCase('pt-BR');(rows||[]).forEach(r=>{(byQ[r.question_id]||(byQ[r.question_id]=[])).push(r);const position=Number(r.question_position);if(Number.isFinite(position))(byPosition[position]||(byPosition[position]=[])).push(r);const textKey=normalizeReportQuestionText(r.question_text);if(textKey)(byText[textKey]||(byText[textKey]=[])).push(r);});const orderedPositions=Object.keys(byPosition).map(Number).sort((a,b)=>a-b);if(orderedPositions.length===qs.length)orderedPositions.forEach((position,index)=>{byOrdinal[index]=byPosition[position];});
   const reportRowsWithCounts=candidates=>{for(const candidate of candidates){if(Array.isArray(candidate)&&candidate.some(row=>Number(row?.cnt||0)>0))return candidate;}return candidates.find(Array.isArray)||[];};
   const localBase=reportsLocalValidBase(reportsCurrentSurvey()?.id);
   const cards=qs.map((q,qi)=>{
     const data=reportRowsWithCounts([byQ[q.dbId],byPosition[q.position],byText[normalizeReportQuestionText(q.text)],byOrdinal[qi]]);const base=Number(data[0]?.valid_base)||localBase||0;const total=data.reduce((sum,r)=>sum+Number(r.cnt||0),0);const max=Math.max(1,...data.map(r=>Number(r.cnt||0)));
-    if(q.type==='open'){
-      const answers=data.filter(r=>String(r.value_label||'').trim()&&String(r.value_label).trim()!=='(sem resposta)').slice(0,100);
-      const answerRows=answers.length?answers.map(r=>{const cnt=Number(r.cnt||0),pct=reportPercent(cnt,base||total);return `<li class="reports-open-answer"><div><p>${esc(r.value_label)}</p><small>${cnt.toLocaleString('pt-BR')} ocorrência${cnt===1?'':'s'} · ${pct}% da base válida</small></div><span class="pill pill-blue">${pct}%</span></li>`;}).join(''):`<li class="empty" style="padding:16px 0">${base?'Nenhuma resposta foi registrada para esta pergunta na base válida.':'Ainda não há respostas textuais válidas.'}</li>`;
-      const omitted=Math.max(0,answers.length<100?0:data.filter(r=>String(r.value_label||'').trim()&&String(r.value_label).trim()!=='(sem resposta)').length-answers.length);
-      return `<article class="card reports-question-card reports-open-question-card"><div class="reports-question-head"><div><span class="reports-question-number">${String(qi+1).padStart(2,'0')}</span><h3>${esc(q.text||'(pergunta sem texto)')}</h3></div><span class="pill pill-blue">${base.toLocaleString('pt-BR')} válidas</span></div><div class="reports-question-meta">Resposta aberta · ${answers.length.toLocaleString('pt-BR')} resposta${answers.length===1?'':'s'} textuais agrupadas</div><ul class="reports-open-answer-list">${answerRows}</ul>${omitted?`<div class="reports-open-more">Exibindo as primeiras 100 respostas diferentes.</div>`:''}</article>`;
-    }
+    if(q.type==='open')return reportsOpenCard(q,qi,data,base);
     const lines=data.length?data.map((r,i)=>{const cnt=Number(r.cnt||0),pct=reportPercent(cnt,base||total);return `<div class="reports-answer-row"><div class="reports-answer-head"><span>${esc(r.value_label||'(sem resposta)')}</span><strong>${cnt.toLocaleString('pt-BR')} · ${pct}%</strong></div><div class="reports-answer-bar"><i style="width:${Math.min(100,Math.round((cnt/max)*100))}%"></i></div></div>`;}).join(''):`<div class="empty" style="padding:16px 0">${base?'Nenhuma resposta foi registrada para esta pergunta na base válida.':'Ainda não há respostas válidas.'}</div>`;
     return `<article class="card reports-question-card"><div class="reports-question-head"><div><span class="reports-question-number">${String(qi+1).padStart(2,'0')}</span><h3>${esc(q.text||'(pergunta sem texto)')}</h3></div><span class="pill pill-blue">${base.toLocaleString('pt-BR')} válidas</span></div><div class="reports-question-meta">${esc(Q_TYPES[q.type]||q.type||'Pergunta')}</div>${lines}</article>`;
   }).join('');
@@ -6952,7 +7074,7 @@ function reportsDocValue(id){return (document.getElementById(id)?.value||'').tri
 function reportsDocChecked(id){return !!document.getElementById(id)?.checked;}
 function reportsDocPayload(){
   const survey=reportsCurrentSurvey();
-  const active=reportsActiveCrossing();const crossings=reportsCrossingPayloads();return {surveyId:survey?.id||null,clientId:reportsDocValue('rp-doc-client'),title:reportsDocValue('rp-doc-title'),subtitle:reportsDocValue('rp-doc-subtitle'),period:reportsDocValue('rp-doc-period'),presentation:reportsDocValue('rp-doc-presentation'),methodology:reportsDocValue('rp-doc-methodology-text'),executiveSummary:reportsDocValue('rp-doc-summary-text'),sections:{includeMethodology:reportsDocChecked('rp-doc-methodology'),includeOverview:reportsDocChecked('rp-doc-overview'),includeCross:reportsDocChecked('rp-doc-cross'),includeSummary:reportsDocChecked('rp-doc-summary'),period:reportsDocValue('rp-doc-period'),crossTitle:active?.title||'Cruzamentos selecionados',crossQuestionIds:reportsCrossingQuestionIds(active),crossings}};
+  const active=reportsActiveCrossing();const crossings=reportsCrossingPayloads();return {surveyId:survey?.id||null,clientId:reportsDocValue('rp-doc-client'),title:reportsDocValue('rp-doc-title'),subtitle:reportsDocValue('rp-doc-subtitle'),period:reportsDocValue('rp-doc-period'),presentation:reportsDocValue('rp-doc-presentation'),methodology:reportsDocValue('rp-doc-methodology-text'),executiveSummary:reportsDocValue('rp-doc-summary-text'),sections:{includeMethodology:reportsDocChecked('rp-doc-methodology'),includeOverview:reportsDocChecked('rp-doc-overview'),includeCross:reportsDocChecked('rp-doc-cross'),includeSummary:reportsDocChecked('rp-doc-summary'),period:reportsDocValue('rp-doc-period'),crossTitle:active?.title||'Cruzamentos selecionados',crossQuestionIds:reportsCrossingQuestionIds(active),openAnswerGrouping:reportsOpenSerialize(),crossings}};
 }
 function reportsDocFeedback(text,kind=''){const el=document.getElementById('rp-document-feedback');if(el){el.className='reports-document-feedback '+kind;el.textContent=text;}}
 function reportsSetDocumentStatus(status){RP_REPORT_DOCUMENT_STATUS=status||'draft';const el=document.getElementById('rp-document-status');if(!el)return;el.className='reports-document-status '+status;el.textContent=status==='published'?'Publicado':status==='draft'?'Rascunho':'Novo';}
@@ -6961,7 +7083,7 @@ function reportsFillDraft(r){
   const values={ 'rp-doc-client':r.client_id,'rp-doc-title':r.title,'rp-doc-subtitle':r.subtitle,'rp-doc-presentation':r.presentation,'rp-doc-methodology-text':r.methodology,'rp-doc-summary-text':r.executive_summary };
   Object.entries(values).forEach(([id,value])=>{const el=document.getElementById(id);if(el&&value!=null)el.value=value;});
   const sec=typeof r.sections==='string'?JSON.parse(r.sections||'{}'):r.sections||{};
-  RP_REPORT_DRAFT_SECTIONS=sec;
+  RP_REPORT_DRAFT_SECTIONS=sec;reportsOpenHydrate(sec);
   RP_REPORT_CROSSINGS=reportsNormalizeCrossings(sec);RP_ACTIVE_CROSSING_ID=RP_REPORT_CROSSINGS[0]?.id||null;reportsSyncActiveCrossing();
   document.querySelectorAll('[data-crossing-question]').forEach(el=>{const crossing=RP_REPORT_CROSSINGS.find(item=>item.id===el.dataset.crossingQuestion);const index=Number(el.dataset.crossingIndex||0);el.value=reportsCrossingQuestionIds(crossing)[index]||'';});
   document.querySelectorAll('[data-crossing-title]').forEach(el=>{const crossing=RP_REPORT_CROSSINGS.find(item=>item.id===el.dataset.crossingTitle);if(crossing)el.value=crossing.title;});
@@ -6972,19 +7094,19 @@ function reportsFillDraft(r){
   reportsUpdateCrossSelectionSummary();
 }
 async function reportsLoadDraft(){
-  if(RP_REPORT_DRAFT_HYDRATED)return;
-  const survey=reportsCurrentSurvey(),clientId=reportsDocValue('rp-doc-client');if(!survey||!clientId||!sb?.rpc){RP_REPORT_DRAFT_HYDRATED=true;return;}
-  try{const {data,error}=await sb.rpc('report_document_latest',{p_survey_id:survey.id,p_client_id:clientId});if(error)throw error;reportsFillDraft(Array.isArray(data)?data[0]:data);}catch(ex){/* migration ainda não aplicada: o editor continua utilizável localmente */}
-  RP_REPORT_DRAFT_HYDRATED=true;reportsUpdateCrossSelectionSummary();
+  reportsOpenEnsureScope();if(RP_REPORT_DRAFT_HYDRATED||reportsOpenDirty())return;
+  const survey=reportsCurrentSurvey(),clientId=reportsDocValue('rp-doc-client'),profile=CURRENT_PROFILE,state=reportsOpenEnsureScope(),revision=state.revision;if(!survey||!clientId||!sb?.rpc){RP_REPORT_DRAFT_HYDRATED=true;return;}
+  try{const {data,error}=await sb.rpc('report_document_latest',{p_survey_id:survey.id,p_client_id:clientId});if(error)throw error;if(CURRENT_PROFILE!==profile||reportsCurrentSurvey()?.id!==survey.id||reportsDocValue('rp-doc-client')!==clientId||RP_OPEN_GROUPING!==state||state.revision!==revision)return;const draft=Array.isArray(data)?data[0]:data;if(draft)reportsFillDraft(draft);else reportsOpenHydrate({});}catch(ex){if(CURRENT_PROFILE===profile&&reportsCurrentSurvey()?.id===survey.id&&RP_OPEN_GROUPING===state)reportsDocFeedback('Não foi possível ler a estrutura salva. Abra o agrupador novamente para tentar carregar antes de editar.','warn');return;}
+  if(CURRENT_PROFILE===profile&&reportsCurrentSurvey()?.id===survey.id&&reportsDocValue('rp-doc-client')===clientId){RP_REPORT_DRAFT_HYDRATED=true;reportsUpdateCrossSelectionSummary();}
 }
-function reportsDocClientChanged(){RP_REPORT_DOCUMENT_ID=null;RP_CROSS_QUESTION_IDS=[];RP_REPORT_CROSSINGS=[];RP_ACTIVE_CROSSING_ID=null;RP_REPORT_DRAFT_SECTIONS=null;RP_REPORT_CROSS_ANALYSIS_CACHE={};RP_REPORT_DRAFT_HYDRATED=false;reportsSetDocumentStatus('new');reportsLoadDraft();}
+function reportsDocClientChanged(){const select=document.getElementById('rp-doc-client'),previous=RP_OPEN_GROUPING.clientId;if(!reportsOpenConfirmDiscard()){if(select)select.value=previous||'';return;}const clientId=select?.value||'';reportsOpenReset();reportsOpenEnsureScope().clientId=clientId;reportsOpenRefreshOverview();RP_REPORT_DOCUMENT_ID=null;RP_CROSS_QUESTION_IDS=[];RP_REPORT_CROSSINGS=[];RP_ACTIVE_CROSSING_ID=null;RP_REPORT_DRAFT_SECTIONS=null;RP_REPORT_CROSS_ANALYSIS_CACHE={};RP_REPORT_DRAFT_HYDRATED=false;reportsSetDocumentStatus('new');reportsLoadDraft();}
 async function reportsSaveDraft(silent=false){
-  const p=reportsDocPayload();
+  const p=reportsDocPayload(),groupState=reportsOpenEnsureScope(),groupRevision=groupState.revision,profile=CURRENT_PROFILE;
   if(!p.surveyId||!p.clientId){if(!silent)reportsDocFeedback('Selecione o cliente vinculado à pesquisa antes de salvar.','warn');return null;}
   if(!p.title){if(!silent)reportsDocFeedback('Informe um título para o relatório.','warn');return null;}
   try{
     const {data,error}=await sb.rpc('report_document_save',{p_report_id:RP_REPORT_DOCUMENT_ID,p_survey_id:p.surveyId,p_client_id:p.clientId,p_title:p.title,p_subtitle:p.subtitle,p_presentation:p.presentation,p_methodology:p.methodology,p_executive_summary:p.executiveSummary,p_sections:p.sections});
-    if(error)throw error;RP_REPORT_DOCUMENT_ID=data;reportsSetDocumentStatus('draft');if(!silent)reportsDocFeedback('Estrutura salva como rascunho.','ok');return data;
+    if(error)throw error;if(!data)throw new Error('O banco não confirmou o salvamento da estrutura.');if(CURRENT_PROFILE!==profile||reportsCurrentSurvey()?.id!==p.surveyId||reportsDocValue('rp-doc-client')!==p.clientId||RP_OPEN_GROUPING!==groupState)return null;groupState.savedRevision=groupRevision;groupState.clientId=p.clientId;RP_REPORT_DOCUMENT_ID=data;RP_REPORT_DRAFT_SECTIONS=p.sections;RP_REPORT_DRAFT_HYDRATED=true;reportsSetDocumentStatus('draft');if(!silent)reportsDocFeedback('Estrutura e agrupamentos salvos como rascunho.','ok');return data;
   }catch(ex){if(!silent)reportsDocFeedback('Não foi possível salvar. Execute a migration relatorios-pdf-clientes.sql. '+(ex.message||ex),'warn');return null;}
 }
 function reportsPdfLines(doc,text,x,y,width,lineHeight=5){const lines=doc.splitTextToSize(String(text||''),width);doc.text(lines,x,y);return y+lines.length*lineHeight;}
@@ -7107,7 +7229,27 @@ async function reportsCreateMultiCrossPdfBlob(payload){
   if(payload.presentation){doc.setFont('helvetica','bold');doc.setFontSize(15);doc.text('Apresentação',M,y);y+=9;doc.setFont('helvetica','normal');doc.setFontSize(10);doc.setTextColor(51,65,85);y=reportsPdfLines(doc,payload.presentation,M,y,bodyW,5)+8;}
   if(payload.sections.includeMethodology){doc.setFont('helvetica','bold');doc.setFontSize(15);doc.setTextColor(15,42,86);doc.text('Ficha técnica e metodologia',M,y);y+=9;doc.setFont('helvetica','normal');doc.setFontSize(10);doc.setTextColor(51,65,85);y=reportsPdfLines(doc,payload.methodology,M,y,bodyW,5)+8;}
   if(payload.sections.includeSummary&&payload.executiveSummary){doc.setFillColor(239,246,255);doc.roundedRect(M,y,bodyW,34,3,3,'F');doc.setTextColor(15,42,86);doc.setFont('helvetica','bold');doc.setFontSize(12);doc.text('Síntese executiva',M+6,y+9);doc.setFont('helvetica','normal');doc.setTextColor(51,65,85);doc.setFontSize(9.5);reportsPdfLines(doc,payload.executiveSummary,M+6,y+17,bodyW-12,4.8);y+=45;}
-  if(payload.sections.includeOverview){doc.addPage();y=reportsPdfHeader(doc,'Resultados por pergunta',payload.title);const byQ={};(RP_REPORT_ANALYSIS_CACHE.overviewRows||[]).forEach(row=>(byQ[row.question_id]||(byQ[row.question_id]=[])).push(row));for(const [qi,q] of reportsCurrentQuestions().entries()){const rows=byQ[q.dbId]||[];if(!rows.length)continue;if(y>250){doc.addPage();y=reportsPdfHeader(doc,'Resultados por pergunta',payload.title);}doc.setTextColor(15,42,86);doc.setFont('helvetica','bold');doc.setFontSize(11);y=reportsPdfLines(doc,(qi+1)+'. '+q.text,M,y,bodyW,5)+3;const base=Number(rows[0]?.valid_base)||rows.reduce((sum,row)=>sum+Number(row.cnt||0),0);for(const row of rows){const cnt=Number(row.cnt||0),pct=base?Math.round(cnt/base*100):0;doc.setTextColor(51,65,85);doc.setFont('helvetica','normal');doc.setFontSize(9);doc.text(String(row.value_label||'(sem resposta)'),M,y);doc.text(cnt.toLocaleString('pt-BR')+' · '+pct+'%',194,y,{align:'right'});doc.setFillColor(226,232,240);doc.roundedRect(M,y+2,bodyW,3,1,1,'F');doc.setFillColor(37,99,235);doc.roundedRect(M,y+2,Math.max(1,bodyW*Math.min(100,pct)/100),3,1,1,'F');y+=11;}y+=7;}}
+  if(payload.sections.includeOverview){
+    doc.addPage();y=reportsPdfHeader(doc,'Resultados por pergunta',payload.title);
+    const byQ={};(RP_REPORT_ANALYSIS_CACHE.overviewRows||[]).forEach(row=>(byQ[row.question_id]||(byQ[row.question_id]=[])).push(row));
+    for(const [qi,q] of reportsCurrentQuestions().entries()){
+      const sourceRows=byQ[q.dbId]||[];if(!sourceRows.length)continue;
+      const validBase=Number(sourceRows[0]?.valid_base)||0,model=reportsOpenPdfRows(q,sourceRows,payload,validBase),rows=model.rows,base=q.type==='open'?model.base:(validBase||sourceRows.reduce((sum,row)=>sum+Number(row.cnt||0),0));
+      if(y>245){doc.addPage();y=reportsPdfHeader(doc,'Resultados por pergunta',payload.title);}
+      doc.setTextColor(15,42,86);doc.setFont('helvetica','bold');doc.setFontSize(11);y=reportsPdfLines(doc,(qi+1)+'. '+q.text,M,y,bodyW,5)+3;
+      if(model.note){doc.setFont('helvetica','normal');doc.setFontSize(8);y=reportsPdfLines(doc,model.note,M,y,bodyW,4)+4;}
+      for(const row of rows){
+        const cnt=Number(row.cnt||0),pct=q.type==='open'?reportsOpenPercent(cnt,base):(base?Math.round(cnt/base*100):0),pctLabel=q.type==='open'?reportsOpenPercentText(cnt,base):pct+'%';
+        doc.setFont('helvetica','normal');doc.setFontSize(9);const labelLines=doc.splitTextToSize(String(row.value_label||'(sem resposta)'),bodyW-36);
+        for(let lineIndex=0;lineIndex<labelLines.length;lineIndex++){
+          if(y>265){doc.addPage();y=reportsPdfHeader(doc,'Resultados por pergunta (continuação)',payload.title);doc.setFont('helvetica','normal');doc.setFontSize(9);}
+          doc.setTextColor(51,65,85);doc.text(labelLines[lineIndex],M,y);if(lineIndex===0)doc.text(cnt.toLocaleString('pt-BR')+' · '+pctLabel,194,y,{align:'right'});y+=4.5;
+        }
+        if(y>266){doc.addPage();y=reportsPdfHeader(doc,'Resultados por pergunta (continuação)',payload.title);}
+        doc.setFillColor(226,232,240);doc.roundedRect(M,y,bodyW,3,1,1,'F');if(pct>0){doc.setFillColor(37,99,235);doc.roundedRect(M,y,Math.max(1,bodyW*Math.min(100,pct)/100),3,1,1,'F');}y+=9;
+      }y+=7;
+    }
+  }
   const crossings=payload.sections.includeCross?(payload.sections.crossings||[]).filter(crossing=>crossing.include!==false&&reportsCrossingQuestionIds(crossing).length):[];crossings.forEach(crossing=>reportsPdfWriteCrossing(doc,crossing,payload,M,bodyW));reportsPdfFooter(doc);return {blob:doc.output('blob'),payload};
 }
 async function reportsCreatePdfBlob(){
@@ -10402,6 +10544,7 @@ PAGES.company=()=>head('Dados da empresa','Referência informativa; edição ain
    one-click-behind bug where returning to a list via the sidebar first
    re-rendered the previous detail view). */
 window._beforeRender=function(key){
+  reportsOpenClose();
   if(key==='collect'){ if(!COLLECT_ARMED){COLLECT_IDX=null;COLLECT_RETURN_PAGE='collect';} COLLECT_ARMED=false; }
   if(key==='users'){ if(!USER_ARMED){USER_EDIT=null;USER_VIEW=null;} USER_ARMED=false; }
   if(key==='new-survey'){
@@ -10414,7 +10557,7 @@ window._beforeRender=function(key){
 window._afterRender=function(key){
   if(key!=='collect'){stopCollectLive();disposeCollectEvolutionChart();}if(key!=='client-results'&&key!=='client-progress'){clientGeoStopLive();}if(key!=='client-progress'){clientProgressStopLive();}
   if(key!=='app-collect'){stopAcollectQuotaLive();}
-  if(key!=='reports'){reportsStopLive();}
+  if(key!=='reports'){reportsStopLive();reportsOpenClose();}
   if(key!=='communication'){chatStopRealtime();}
   if(key!=='dashboard'&&key!=='finance')disposeDashboardCharts();
   if(key==='collect'){

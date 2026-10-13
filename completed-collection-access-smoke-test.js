@@ -26,6 +26,7 @@ function harness(documentOverride){
   alert:msg=>calls.push(['alert',msg]),setTimeout:fn=>fn(),
   disposeCollectEvolutionChart:()=>calls.push(['dispose']),loadSurveysIfNeeded:()=>{},
   loadCollectionTeamFunnelIfNeeded:()=>{},loadCollectionOrientationCounts:()=>{},loadCollectionInAppOrientationCounts:()=>{},
+  reportsOpenClose:()=>{},
   renderCollectMap:i=>calls.push(['mapa',i]),renderAudit:i=>calls.push(['auditoria',i]),renderCollectQuotaProgress:i=>calls.push(['metas',i]),renderCollectEvolution:i=>calls.push(['evolucao',i]),
   window:{},PAGES:{},calls,panels,buttons};
   vm.createContext(c);

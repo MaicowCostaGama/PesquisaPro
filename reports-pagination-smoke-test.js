@@ -26,6 +26,10 @@ function environment(rows,options={}){
   }};
   const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
   const context={sb,AbortController,setTimeout,clearTimeout,esc,COLLECT_EVENTS_LOADED:true,COLLECT_EVENTS:Array.from({length:677},()=>({surveyId:'survey-A',status:'valid',calibration:false})),reportsCurrentSurvey:()=>({id:'survey-A'}),Q_TYPES:{single:'Escolha única'}};
+  context.CURRENT_PROFILE={id:'gestao-teste',role:'admin'};
+  context.document={getElementById:()=>null,removeEventListener(){}};
+  context.jsArg=value=>esc(JSON.stringify(value));
+  context.reportsCurrentQuestions=()=>fixture().qs;
   vm.createContext(context);vm.runInContext(helper+'\n'+render,context);
   return {context,calls};
 }

@@ -51,7 +51,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261013130500';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261013133000';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -205,7 +205,7 @@ async function enableResearcherPush(){
   try{
     const permission=await Notification.requestPermission();
     if(permission!=='granted'){PUSH_STATUS='blocked';go('dashboard-pesq');return;}
-    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261013130500',{scope:'./'});
+    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261013133000',{scope:'./'});
     const subscription=await PUSH_SW_REGISTRATION.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:pushKeyToUint8Array(window.PP_PUSH_PUBLIC_KEY)});
     const json=subscription.toJSON();
     const {error}=await sb.from('push_subscriptions').upsert({user_id:CURRENT_PROFILE.id,endpoint:json.endpoint,subscription:json,user_agent:navigator.userAgent,updated_at:new Date().toISOString()},{onConflict:'endpoint'});
@@ -6995,8 +6995,8 @@ async function reportsOpenEdit(qid){
   reportsOpenClose();const data=reportsOpenQuestionData(qid),base=Number(data[0]?.valid_base)||reportsLocalValidBase(reportsCurrentSurvey()?.id)||0;
   const model=reportsOpenModel(data,reportsOpenConfig(qid),base);
   RP_OPEN_EDITOR={qid,surveyId:reportsCurrentSurvey().id,profile:CURRENT_PROFILE,originals:model.originals,base,selected:new Set(),search:'',page:0,focus:document.activeElement};
-  const overlay=document.createElement('div');overlay.id='rp-open-dialog';overlay.className='reports-open-overlay';overlay.innerHTML=`<section class="reports-open-dialog" role="dialog" aria-modal="true" aria-labelledby="rp-open-title"><header><div><h2 id="rp-open-title">Agrupar respostas abertas</h2><p>${esc(q.text)}</p></div><button class="btn btn-out" onclick="reportsOpenClose()" aria-label="Fechar agrupador">Fechar</button></header><div class="reports-open-guidance">Selecione textos que expressem a mesma resposta e dê um nome à categoria. Nenhum agrupamento semântico é aplicado automaticamente. Não una opiniões opostas ou assuntos apenas parecidos. Os textos originais são preservados. Use a IA abaixo para sugerir equivalências com revisão.</div><div id="rp-open-ai" class="reports-ai-panel"></div><div id="rp-open-content"></div><footer><span id="rp-open-save-status" role="status">${reportsOpenDirty()?'Há agrupamentos não salvos.':'Nenhuma alteração pendente.'}</span><button class="btn btn-fill" id="rp-open-save" onclick="reportsOpenSave()">Salvar agrupamentos na estrutura</button></footer></section>`;
-  document.body.appendChild(overlay);document.addEventListener('keydown',reportsOpenKeydown);reportsOpenEditorRender();overlay.querySelector('#rp-open-search')?.focus();
+  const overlay=document.createElement('div');overlay.id='rp-open-dialog';overlay.className='reports-open-overlay';overlay.innerHTML=`<section class="reports-open-dialog" role="dialog" aria-modal="true" aria-labelledby="rp-open-title"><header><div><h2 id="rp-open-title">Agrupar respostas abertas</h2><p>${esc(q.text)}</p></div><button class="btn btn-out" onclick="reportsOpenClose()" aria-label="Fechar agrupador">Fechar</button></header><div id="rp-open-scroll" class="reports-open-body" tabindex="0" role="region" aria-label="Sugestões e agrupamento de respostas"><div class="reports-open-guidance">Selecione textos que expressem a mesma resposta e dê um nome à categoria. Nenhum agrupamento semântico é aplicado automaticamente. Não una opiniões opostas ou assuntos apenas parecidos. Os textos originais são preservados. Use a IA abaixo para sugerir equivalências com revisão.</div><div id="rp-open-ai" class="reports-ai-panel"></div><div id="rp-open-content"></div></div><footer><span id="rp-open-save-status" role="status">${reportsOpenDirty()?'Há agrupamentos não salvos.':'Nenhuma alteração pendente.'}</span><button class="btn btn-fill" id="rp-open-save" onclick="reportsOpenSave()">Salvar agrupamentos na estrutura</button></footer></section>`;
+  document.body.appendChild(overlay);document.addEventListener('keydown',reportsOpenKeydown);reportsOpenEditorRender();overlay.querySelector('[aria-label="Fechar agrupador"]')?.focus({preventScroll:true});
 }
 function reportsOpenEditorValid(){return RP_OPEN_EDITOR&&RP_OPEN_EDITOR.profile===CURRENT_PROFILE&&RP_OPEN_EDITOR.surveyId===reportsCurrentSurvey()?.id&&reportsOpenCanEdit();}
 function reportsOpenClose(){RP_OPEN_EDITOR?.ai?.controller?.abort();const focus=RP_OPEN_EDITOR?.focus;document.getElementById('rp-open-dialog')?.remove();document.removeEventListener('keydown',reportsOpenKeydown);RP_OPEN_EDITOR=null;if(focus?.isConnected)focus.focus({preventScroll:true});}

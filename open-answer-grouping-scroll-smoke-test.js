@@ -1,0 +1,17 @@
+const fs=require('fs'),assert=require('node:assert/strict');
+const app=fs.readFileSync('app.js','utf8'),css=fs.readFileSync('style.css','utf8');
+const start=app.indexOf("overlay.id='rp-open-dialog'"),end=app.indexOf('function reportsOpenEditorValid',start);
+assert(start>=0&&end>start);const editor=app.slice(start,end);
+const body=editor.indexOf('id="rp-open-scroll"'),guidance=editor.indexOf('class="reports-open-guidance"'),ai=editor.indexOf('id="rp-open-ai"'),content=editor.indexOf('id="rp-open-content"'),footer=editor.indexOf('<footer>');
+assert(body>=0&&body<guidance&&guidance<ai&&ai<content&&content<footer);
+assert(editor.includes('<div id="rp-open-content"></div></div><footer>'),'Footer deve ficar fora do corpo rolável');
+assert(editor.includes('tabindex="0" role="region" aria-label="Sugestões e agrupamento de respostas"'));
+assert(editor.includes("focus({preventScroll:true})"),'Abertura não deve saltar para os campos no fim');
+const marker=css.indexOf('/* v157 — rolagem única');assert(marker>=0);const patch=css.slice(marker);
+assert(patch.includes('.reports-open-dialog .reports-open-body{flex:1 1 auto;min-height:0;overflow-y:scroll;overflow-x:hidden;'));
+assert(patch.includes('scrollbar-gutter:stable'));assert(patch.includes('scrollbar-width:auto'));assert(patch.includes('::-webkit-scrollbar{width:12px}'));
+assert(patch.includes('.reports-open-body #rp-open-content{overflow:visible;'));
+assert(!patch.includes('body{overflow'),'Não alterar rolagem global de outras páginas');
+assert(!patch.includes('display:none'));assert(!patch.includes('position:fixed'));
+assert(app.includes('reportsOpenAiApply()'));assert(app.includes('Salvar agrupamentos na estrutura'));
+console.log('open-answer-grouping-scroll-smoke-test: PASS — área única para IA e manual, rodapé fora da rolagem, foco inicial e barra visível.');

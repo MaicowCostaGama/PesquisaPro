@@ -1983,3 +1983,12 @@ body.acollect-notice-gate-open{overflow:hidden}
 .reports-ai-proposals details{margin-top:10px}.reports-ai-proposals summary{cursor:pointer;line-height:1.5}.reports-ai-member{padding:7px 0;border-bottom:1px solid #e8edf5}
 .reports-ai-panel input:focus-visible,.reports-ai-panel button:focus-visible{outline:2px solid #245ac7;outline-offset:3px}
 @media(max-width:760px){.reports-ai-panel{margin:12px;padding:12px}.reports-ai-proposals{grid-template-columns:1fr}.reports-ai-actions .btn{width:100%}.reports-ai-heading .pill{white-space:normal}}
+
+/* v157 — rolagem única para sugestões de IA e agrupamento manual; cabeçalho/rodapé permanecem acessíveis */
+.reports-open-dialog .reports-open-body{flex:1 1 auto;min-height:0;overflow-y:scroll;overflow-x:hidden;overscroll-behavior:contain;scrollbar-gutter:stable;scrollbar-width:auto;scrollbar-color:#64748b #e2e8f0;scroll-padding-block:14px;-webkit-overflow-scrolling:touch}
+.reports-open-dialog .reports-open-body:focus-visible{outline:2px solid #2563eb;outline-offset:-2px}
+.reports-open-dialog .reports-open-body::-webkit-scrollbar{width:12px}
+.reports-open-dialog .reports-open-body::-webkit-scrollbar-track{background:#e2e8f0;border-radius:6px}
+.reports-open-dialog .reports-open-body::-webkit-scrollbar-thumb{background:#64748b;border:2px solid #e2e8f0;border-radius:6px}
+.reports-open-dialog .reports-open-body::-webkit-scrollbar-thumb:hover{background:#475569}
+.reports-open-dialog .reports-open-body #rp-open-content{overflow:visible;min-height:auto;flex:none}

@@ -51,7 +51,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261013105130';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261013115400';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -205,7 +205,7 @@ async function enableResearcherPush(){
   try{
     const permission=await Notification.requestPermission();
     if(permission!=='granted'){PUSH_STATUS='blocked';go('dashboard-pesq');return;}
-    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261013105130',{scope:'./'});
+    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261013115400',{scope:'./'});
     const subscription=await PUSH_SW_REGISTRATION.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:pushKeyToUint8Array(window.PP_PUSH_PUBLIC_KEY)});
     const json=subscription.toJSON();
     const {error}=await sb.from('push_subscriptions').upsert({user_id:CURRENT_PROFILE.id,endpoint:json.endpoint,subscription:json,user_agent:navigator.userAgent,updated_at:new Date().toISOString()},{onConflict:'endpoint'});
@@ -6995,11 +6995,11 @@ async function reportsOpenEdit(qid){
   reportsOpenClose();const data=reportsOpenQuestionData(qid),base=Number(data[0]?.valid_base)||reportsLocalValidBase(reportsCurrentSurvey()?.id)||0;
   const model=reportsOpenModel(data,reportsOpenConfig(qid),base);
   RP_OPEN_EDITOR={qid,surveyId:reportsCurrentSurvey().id,profile:CURRENT_PROFILE,originals:model.originals,base,selected:new Set(),search:'',page:0,focus:document.activeElement};
-  const overlay=document.createElement('div');overlay.id='rp-open-dialog';overlay.className='reports-open-overlay';overlay.innerHTML=`<section class="reports-open-dialog" role="dialog" aria-modal="true" aria-labelledby="rp-open-title"><header><div><h2 id="rp-open-title">Agrupar respostas abertas</h2><p>${esc(q.text)}</p></div><button class="btn btn-out" onclick="reportsOpenClose()" aria-label="Fechar agrupador">Fechar</button></header><div class="reports-open-guidance">Selecione textos que expressem a mesma resposta e dê um nome à categoria. Nenhum agrupamento semântico é aplicado automaticamente. Não una opiniões opostas ou assuntos apenas parecidos. Os textos originais são preservados.</div><div id="rp-open-content"></div><footer><span id="rp-open-save-status" role="status">${reportsOpenDirty()?'Há agrupamentos não salvos.':'Nenhuma alteração pendente.'}</span><button class="btn btn-fill" id="rp-open-save" onclick="reportsOpenSave()">Salvar agrupamentos na estrutura</button></footer></section>`;
+  const overlay=document.createElement('div');overlay.id='rp-open-dialog';overlay.className='reports-open-overlay';overlay.innerHTML=`<section class="reports-open-dialog" role="dialog" aria-modal="true" aria-labelledby="rp-open-title"><header><div><h2 id="rp-open-title">Agrupar respostas abertas</h2><p>${esc(q.text)}</p></div><button class="btn btn-out" onclick="reportsOpenClose()" aria-label="Fechar agrupador">Fechar</button></header><div class="reports-open-guidance">Selecione textos que expressem a mesma resposta e dê um nome à categoria. Nenhum agrupamento semântico é aplicado automaticamente. Não una opiniões opostas ou assuntos apenas parecidos. Os textos originais são preservados. Use a IA abaixo para sugerir equivalências com revisão.</div><div id="rp-open-ai" class="reports-ai-panel"></div><div id="rp-open-content"></div><footer><span id="rp-open-save-status" role="status">${reportsOpenDirty()?'Há agrupamentos não salvos.':'Nenhuma alteração pendente.'}</span><button class="btn btn-fill" id="rp-open-save" onclick="reportsOpenSave()">Salvar agrupamentos na estrutura</button></footer></section>`;
   document.body.appendChild(overlay);document.addEventListener('keydown',reportsOpenKeydown);reportsOpenEditorRender();overlay.querySelector('#rp-open-search')?.focus();
 }
 function reportsOpenEditorValid(){return RP_OPEN_EDITOR&&RP_OPEN_EDITOR.profile===CURRENT_PROFILE&&RP_OPEN_EDITOR.surveyId===reportsCurrentSurvey()?.id&&reportsOpenCanEdit();}
-function reportsOpenClose(){const focus=RP_OPEN_EDITOR?.focus;document.getElementById('rp-open-dialog')?.remove();document.removeEventListener('keydown',reportsOpenKeydown);RP_OPEN_EDITOR=null;if(focus?.isConnected)focus.focus({preventScroll:true});}
+function reportsOpenClose(){RP_OPEN_EDITOR?.ai?.controller?.abort();const focus=RP_OPEN_EDITOR?.focus;document.getElementById('rp-open-dialog')?.remove();document.removeEventListener('keydown',reportsOpenKeydown);RP_OPEN_EDITOR=null;if(focus?.isConnected)focus.focus({preventScroll:true});}
 function reportsOpenKeydown(event){
   const dialog=document.getElementById('rp-open-dialog');if(!dialog)return;
   if(event.key==='Escape'){event.preventDefault();reportsOpenClose();return;}
@@ -7009,7 +7009,7 @@ function reportsOpenEditorRender(){
   if(!reportsOpenEditorValid()){reportsOpenClose();return;}const editor=RP_OPEN_EDITOR,config=reportsOpenConfig(editor.qid),model=reportsOpenModel(editor.originals,config,editor.base);
   const selectedCount=editor.originals.reduce((sum,r,index)=>sum+(editor.selected.has(index)?r.cnt:0),0);
   document.getElementById('rp-open-content').innerHTML=`<div class="reports-open-summary"><b>${editor.originals.length} textos diferentes · ${model.answered} respostas preenchidas · ${editor.base} entrevistas válidas</b><label>Calcular percentual principal sobre <select class="inp" id="rp-open-denominator" onchange="reportsOpenDenominator(this.value)"><option value="answered" ${config.denominator==='answered'?'selected':''}>Respostas preenchidas desta pergunta</option><option value="valid" ${config.denominator==='valid'?'selected':''}>Todas as entrevistas válidas</option></select></label></div><div class="reports-open-columns"><section><h3>Textos originais</h3><label class="lbl" for="rp-open-search">Buscar texto (sem alterar seleção)</label><input class="inp" id="rp-open-search" value="${esc(editor.search)}" oninput="reportsOpenSearch(this.value)" placeholder="Buscar nas respostas…"><div id="rp-open-choices"></div></section><section><h3>Criar ou completar categoria</h3><div class="reports-open-assignment"><label class="lbl" for="rp-open-target">Categoria existente</label><select class="inp" id="rp-open-target"><option value="">Criar nova categoria</option>${config.groups.map(g=>`<option value="${esc(g.id)}">${esc(g.label)}</option>`).join('')}</select><label class="lbl" for="rp-open-label">Nome da nova categoria</label><input class="inp" id="rp-open-label" maxlength="160" placeholder="Ex.: Preço elevado"><div id="rp-open-selected">${editor.selected.size} textos selecionados · ${selectedCount} ocorrências</div><button class="btn btn-fill" onclick="reportsOpenAssign()">Aplicar aos textos selecionados</button><button class="btn btn-out" onclick="reportsOpenClearSelection()">Limpar seleção</button><p id="rp-open-feedback" role="status"></p></div><h3>Categorias revisadas</h3><div class="reports-open-groups">${config.groups.map(g=>{const bucket=model.rows.find(r=>r.groupId===g.id);return `<article><label class="lbl">Nome da categoria <input class="inp" maxlength="160" value="${esc(g.label)}" onchange="reportsOpenRename(${jsArg(g.id)},this.value)"></label><b>${bucket?.cnt||0} ocorrências · ${reportsOpenPercentText(bucket?.cnt||0,model.percentBase)}</b><details><summary>Ver textos vinculados (${g.members.length})</summary>${g.members.map(m=>`<div>${esc(m)}</div>`).join('')}</details><button class="btn btn-out" onclick="reportsOpenRemove(${jsArg(g.id)})">Desfazer agrupamento</button></article>`;}).join('')||'<p>Nenhuma categoria criada. As respostas permanecem separadas.</p>'}</div></section></div>`;
-  reportsOpenChoicesRender();
+  reportsOpenChoicesRender();reportsOpenAiRender();
 }
 function reportsOpenChoicesRender(){
   if(!reportsOpenEditorValid())return;const editor=RP_OPEN_EDITOR,config=reportsOpenConfig(editor.qid),needle=editor.search.toLocaleLowerCase('pt-BR');
@@ -7038,6 +7038,75 @@ async function reportsOpenSave(){
   try{const id=await reportsSaveDraft();if(RP_OPEN_EDITOR===editor&&reportsOpenEditorValid())document.getElementById('rp-open-save-status').textContent=id?(reportsOpenDirty()?'Novas alterações pendentes. Salve novamente.':'Agrupamentos salvos na estrutura do relatório.'):'Não foi possível salvar. Confira cliente, título e mensagem na estrutura do relatório.';}
   finally{if(button.isConnected)button.disabled=false;}
 }
+// Sugestões semânticas: efêmeras até a gestão selecionar e aplicar.
+function reportsOpenAiState(){
+  if(!reportsOpenEditorValid())return null;
+  const editor=RP_OPEN_EDITOR;
+  if(!editor.ai)editor.ai={busy:false,consent:false,done:new Set(),groups:[],message:'',revision:reportsOpenEnsureScope().revision,undo:null};
+  return editor.ai;
+}
+function reportsOpenAiEligible(editor){
+  const assigned=new Set(reportsOpenConfig(editor.qid).groups.flatMap(g=>g.members));
+  return editor.originals.map((_,i)=>i).filter(i=>!assigned.has(editor.originals[i].value_label)&&!editor.ai?.done.has(i));
+}
+function reportsOpenAiRender(){
+  const ai=reportsOpenAiState(),host=document.getElementById('rp-open-ai');if(!ai||!host)return;
+  const editor=RP_OPEN_EDITOR,remaining=reportsOpenAiEligible(editor),answered=editor.originals.reduce((s,r)=>s+r.cnt,0),base=reportsOpenConfig(editor.qid).denominator==='valid'?editor.base:answered;
+  host.innerHTML=`<div class="reports-ai-heading"><div><h3>Sugerir agrupamentos por significado</h3><p>IA sugere; você revisa nomes e textos antes de aplicar. Categorias existentes não serão substituídas.</p></div><span class="pill pill-blue">${remaining.length} textos disponíveis</span></div><label class="reports-ai-consent"><input type="checkbox" onchange="reportsOpenAiConsent(this.checked)" ${ai.consent?'checked':''} ${ai.busy?'disabled':''}><span>Autorizo enviar à OpenAI os textos deste lote para gerar sugestões. Revise antes e não envie dados pessoais. Contatos e documentos detectáveis são excluídos no servidor; nomes e outros dados podem exigir remoção manual.</span></label><div class="reports-ai-actions"><button class="btn btn-fill" id="rp-open-ai-generate" onclick="reportsOpenAiGenerate()" ${ai.busy||!ai.consent||!remaining.length?'disabled':''}>${ai.busy?'Analisando lote…':'Sugerir com IA (até 120 textos)'}</button><button class="btn btn-out" onclick="reportsOpenAiDiscard()" ${ai.busy||!ai.groups.length?'disabled':''}>Descartar sugestões</button><button class="btn btn-out" onclick="reportsOpenAiUndo()" ${ai.busy||!ai.undo?'disabled':''}>Desfazer última aplicação da IA</button></div><p class="reports-ai-status" role="status">${esc(ai.message||'Selecione textos originais para limitar o lote, ou analise os não agrupados. Nenhuma resposta será alterada.')}</p><div class="reports-ai-proposals">${ai.groups.map((g,index)=>{const count=g.indexes.reduce((s,i)=>s+editor.originals[i].cnt,0);return `<article><label class="reports-ai-check"><input type="checkbox" onchange="reportsOpenAiCheck(${index},this.checked)" ${g.checked?'checked':''}><strong>Aplicar esta sugestão</strong></label><label class="lbl">Nome revisável <input class="inp" maxlength="160" value="${esc(g.label)}" onchange="reportsOpenAiLabel(${index},this.value)"></label><p>${esc(g.reason)} <small>Avaliação qualitativa da IA: ${g.confidence==='high'?'alta':g.confidence==='medium'?'média':'baixa'} (não é probabilidade).</small></p><b>${count} ocorrências · ${reportsOpenPercentText(count,base)}</b><details><summary>Revisar ${g.indexes.length} textos originais</summary>${g.indexes.map(i=>`<label class="reports-ai-member"><input type="checkbox" checked onchange="reportsOpenAiRemoveMember(${index},${i},this.checked)"><span>${esc(editor.originals[i].value_label)} <b>(${editor.originals[i].cnt})</b></span></label>`).join('')}</details></article>`;}).join('')}</div>${ai.groups.length?'<button class="btn btn-fill" onclick="reportsOpenAiApply()">Aplicar somente sugestões selecionadas</button><p>Os percentuais só mudam depois de aplicar. Para persistir, use “Salvar agrupamentos na estrutura”.</p>':''}`;
+}
+function reportsOpenAiConsent(value){const ai=reportsOpenAiState();if(ai&&!ai.busy){ai.consent=!!value;reportsOpenAiRender();}}
+function reportsOpenAiCheck(index,value){const ai=reportsOpenAiState();if(ai?.groups[index])ai.groups[index].checked=!!value;}
+function reportsOpenAiLabel(index,value){const ai=reportsOpenAiState();if(ai?.groups[index])ai.groups[index].label=String(value).trim();}
+function reportsOpenAiRemoveMember(groupIndex,index,checked){const ai=reportsOpenAiState();if(!ai||checked||!ai.groups[groupIndex])return;ai.groups[groupIndex].indexes=ai.groups[groupIndex].indexes.filter(i=>i!==index);if(ai.groups[groupIndex].indexes.length<2)ai.groups.splice(groupIndex,1);reportsOpenAiRender();}
+function reportsOpenAiDiscard(){const ai=reportsOpenAiState();if(!ai||ai.busy)return;ai.groups=[];ai.done.clear();ai.message='Sugestões descartadas. Categorias aplicadas anteriormente permanecem intactas.';reportsOpenAiRender();}
+function reportsOpenAiValidate(data,batch){
+  const allowed=new Map(batch.map(item=>[item.id,item.index])),used=new Set();
+  if(!data||!Array.isArray(data.groups)||!Array.isArray(data.ungrouped_ids)||!Array.isArray(data.excluded_ids))throw new Error('Resposta inválida da IA. Nenhuma sugestão aplicada.');
+  const take=id=>{if(!allowed.has(id)||used.has(id))throw new Error('IDs inválidos ou duplicados na sugestão.');used.add(id);return allowed.get(id);};
+  const labels=new Set();const groups=data.groups.map(g=>{
+    if(!g||typeof g.label!=='string'||!g.label.trim()||g.label.trim().length>160||g.label==='(sem resposta)'||typeof g.reason!=='string'||g.reason.length>600||!['high','medium','low'].includes(g.confidence)||!Array.isArray(g.member_ids)||g.member_ids.length<2)throw new Error('Categoria inválida na sugestão.');
+    const key=g.label.trim().toLocaleLowerCase('pt-BR');if(labels.has(key))throw new Error('Categorias repetidas na sugestão.');labels.add(key);
+    return {label:g.label.trim(),reason:g.reason,confidence:g.confidence,indexes:g.member_ids.map(take),checked:false};
+  });data.ungrouped_ids.forEach(take);data.excluded_ids.forEach(take);if(used.size!==batch.length)throw new Error('O lote retornou incompleto. Nenhuma sugestão aplicada.');return groups;
+}
+async function reportsOpenAiGenerate(){
+  const ai=reportsOpenAiState();if(!ai||ai.busy||!ai.consent)return;
+  const editor=RP_OPEN_EDITOR,state=reportsOpenEnsureScope(),revision=state.revision;
+  if(ai.groups.length&&ai.revision!==revision){ai.groups=[];ai.done.clear();}
+  const eligible=reportsOpenAiEligible(editor),selected=eligible.filter(i=>editor.selected.has(i)),indexes=(editor.selected.size?selected:eligible).slice(0,120);
+  if(!indexes.length){ai.message='Selecione textos ainda não agrupados e não analisados, ou limpe a seleção.';reportsOpenAiRender();return;}
+  if(indexes.some(i=>editor.originals[i].value_label.length>1200)){ai.message='Um texto selecionado excede 1.200 caracteres. Selecione outros textos; trate esse manualmente. Nada foi enviado.';reportsOpenAiRender();return;}
+  const batch=indexes.map(index=>({id:'r'+index,text:editor.originals[index].value_label,index}));
+  ai.busy=true;ai.message='Analisando '+batch.length+' textos. Nenhuma categoria será aplicada automaticamente.';ai.controller=new AbortController();reportsOpenAiRender();
+  const timer=setTimeout(()=>ai.controller?.abort(),90000);
+  try{
+    const {data,error}=await sb.functions.invoke('suggest-open-answer-groups',{body:{survey_id:editor.surveyId,question_id:editor.qid,consent:true,items:batch.map(({id,text})=>({id,text}))},signal:ai.controller.signal});
+    if(RP_OPEN_EDITOR!==editor||!reportsOpenEditorValid()||reportsOpenEnsureScope()!==state)return;
+    if(error){let message='IA indisponível. Confira a ativação da função, o SQL e os segredos no Supabase.';try{const payload=await error.context?.json();if(payload?.error)message=String(payload.error);}catch(_){}throw new Error(message);}
+    if(data?.error)throw new Error(String(data.error));
+    const groups=reportsOpenAiValidate(data,batch);
+    if(state.revision!==revision)throw new Error('Os agrupamentos mudaram durante a análise. Gere novamente; nada foi aplicado.');
+    ai.groups.push(...groups);batch.forEach(item=>ai.done.add(item.index));ai.revision=revision;
+    ai.message=groups.length+' sugestões neste lote; '+data.ungrouped_ids.length+' textos mantidos separados e '+data.excluded_ids.length+' excluídos por conter possíveis dados pessoais. Restam '+reportsOpenAiEligible(editor).length+' textos disponíveis. Os lotes são independentes; confira categorias equivalentes entre lotes.';
+  }catch(ex){if(RP_OPEN_EDITOR===editor&&reportsOpenEditorValid())ai.message=ai.controller?.signal.aborted?'Análise cancelada ou prazo excedido. Nenhuma categoria aplicada.':String(ex.message||'Não foi possível gerar sugestões.');}
+  finally{clearTimeout(timer);ai.busy=false;ai.controller=null;if(RP_OPEN_EDITOR===editor&&reportsOpenEditorValid())reportsOpenAiRender();}
+}
+function reportsOpenAiApply(){
+  const ai=reportsOpenAiState();if(!ai||ai.busy)return;const editor=RP_OPEN_EDITOR,state=reportsOpenEnsureScope(),config=reportsOpenConfig(editor.qid);
+  if(ai.revision!==state.revision){ai.message='Categorias alteradas desde a análise. Descarte as sugestões e gere novamente.';reportsOpenAiRender();return;}
+  const picked=ai.groups.filter(g=>g.checked);if(!picked.length){ai.message='Marque explicitamente as sugestões que deseja aplicar.';reportsOpenAiRender();return;}
+  const groups=JSON.parse(JSON.stringify(config.groups)),used=new Set(groups.flatMap(g=>g.members));
+  for(const g of picked){
+    const label=g.label.trim();if(!label||label.length>160||label==='(sem resposta)'||g.indexes.length<2||g.indexes.some(i=>!editor.originals[i]||used.has(editor.originals[i].value_label))){ai.message='Revise os nomes e os textos: há conflito com uma categoria existente.';reportsOpenAiRender();return;}
+    const members=g.indexes.map(i=>editor.originals[i].value_label);members.forEach(m=>used.add(m));
+    let group=groups.find(x=>x.label.toLocaleLowerCase('pt-BR')===label.toLocaleLowerCase('pt-BR'));
+    if(group)group.members.push(...members);else groups.push({id:'ai-'+(window.crypto?.randomUUID?.()||Date.now()+'-'+groups.length),label,members});
+  }
+  ai.undo={config:JSON.parse(JSON.stringify(config)),revision:state.revision+1};
+  reportsOpenCommit(editor.qid,{...config,groups});ai.groups=[];ai.revision=state.revision;ai.message='Categorias revisadas aplicadas à prévia e ao PDF. Salve os agrupamentos na estrutura para persistir.';reportsOpenEditorRender();
+}
+function reportsOpenAiUndo(){const ai=reportsOpenAiState();if(!ai?.undo||ai.busy)return;const state=reportsOpenEnsureScope();if(state.revision!==ai.undo.revision){ai.message='Há edições posteriores. Use “Desfazer agrupamento” na categoria para não perder essas edições.';reportsOpenAiRender();return;}reportsOpenCommit(RP_OPEN_EDITOR.qid,ai.undo.config);ai.undo=null;ai.groups=[];ai.done.clear();ai.revision=state.revision;ai.message='Última aplicação da IA desfeita. Salve a estrutura para persistir a reversão.';reportsOpenEditorRender();}
+
 function reportsOpenExport(qid){
   if(!reportsOpenCanEdit())return;const data=reportsOpenQuestionData(qid),model=reportsOpenModel(data,reportsOpenConfig(qid),Number(data[0]?.valid_base)||reportsLocalValidBase(reportsCurrentSurvey()?.id)||0);
   const records=[['Categoria / texto','Ocorrências','% das respondidas','% da base válida','Base respondida','Base válida','Tipo','Textos originais']];

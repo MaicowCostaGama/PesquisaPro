@@ -51,7 +51,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261014182200';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261014192200';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -205,7 +205,7 @@ async function enableResearcherPush(){
   try{
     const permission=await Notification.requestPermission();
     if(permission!=='granted'){PUSH_STATUS='blocked';go('dashboard-pesq');return;}
-    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261014182200',{scope:'./'});
+    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261014192200',{scope:'./'});
     const subscription=await PUSH_SW_REGISTRATION.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:pushKeyToUint8Array(window.PP_PUSH_PUBLIC_KEY)});
     const json=subscription.toJSON();
     const {error}=await sb.from('push_subscriptions').upsert({user_id:CURRENT_PROFILE.id,endpoint:json.endpoint,subscription:json,user_agent:navigator.userAgent,updated_at:new Date().toISOString()},{onConflict:'endpoint'});
@@ -6874,6 +6874,7 @@ PAGES.reports=()=>{
   <div class="card reports-toolbar mb">
     <div class="reports-toolbar-top"><div><div class="reports-eyebrow">CENTRAL DE ANÁLISE</div><h2>Resultados da pesquisa</h2><p>Veja todas as perguntas e monte cruzamentos com até seis variáveis.</p></div><span id="rp-live-status" class="reports-live-badge"><i></i>Atualizando automaticamente</span></div>
     <div class="reports-toolbar-grid"><div><label class="lbl">Pesquisa</label><select class="inp" id="rp-survey" onchange="reportsPickSurvey(this.value)">${surveys.map(s=>`<option value="${s.id}" ${s.id===RP_SURVEY_ID?'selected':''}>${esc(reportsSurveyOptionLabel(s,surveys))}</option>`).join('')}</select>${reportsDuplicateSurveyCandidates(survey,surveys).length?'<small class="reports-survey-helper">Existem versões com o mesmo nome; confira data, ID curto e base válida antes de escolher.</small>':''}</div><div class="reports-mode-switch" role="tablist" aria-label="Modo de relatório">${reportsModeButton('overview','Todas as perguntas','▦')}${reportsModeButton('builder','Montar relatório','⚒')}</div></div>
+    ${reportsExcelToolbar()}
     ${RP_REPORT_MODE==='builder'?`<div class="reports-builder-note">Cada cartão abaixo representa um cruzamento independente. Cada cruzamento aceita de uma a seis variáveis e pode ser incluído ou retirado do PDF separadamente. As duas primeiras formam linhas e colunas; as demais criam recortes combinados, sem misturar suas bases. Ranking e “Duas respostas” aparecem no resultado geral, mas não são escolhidos como uma única variável de cruzamento.</div>${reportsCrossingsBuilderMarkup(crossQs)}`:''}
   </div>
   ${reportsHeatmapMarkup(survey)}
@@ -7045,7 +7046,7 @@ function reportsOpenRefreshOverview(){
 function reportsOpenCard(q,qi,data,base){
   const config=reportsOpenConfig(q.dbId),saved=reportsOpenSerialize(),cache=typeof RP_REPORT_OFFICIAL_OVERVIEW==='undefined'?null:RP_REPORT_OFFICIAL_OVERVIEW,official=cache?.surveyId===saved.surveyId&&cache.profile===CURRENT_PROFILE&&cache.signature===JSON.stringify(saved),model=official?reportsOfficialMappedModel(cache.rows.filter(row=>row.question_id===q.dbId),config,base):reportsOfficialOpenModel(data,reportsOfficialConfig(saved,reportsCurrentSurvey()?.id,q.dbId),base),shown=model.rows.slice(0,100);
   const rows=shown.map(r=>`<li class="reports-open-answer"><div><p>${esc(r.value_label)}</p><small>${r.cnt.toLocaleString('pt-BR')} ocorrências · ${reportsOpenPercentText(r.cnt,model.answered)} das respondidas · ${reportsOpenPercentText(r.cnt,base)} da base válida</small></div><span class="pill pill-blue">${reportsOpenPercentText(r.cnt,model.percentBase)}</span></li>`).join('')||'<li class="empty">Nenhuma resposta preenchida na base válida.</li>';
-  return `<article class="card reports-question-card reports-open-question-card"><div class="reports-question-head"><div><span class="reports-question-number">${String(qi+1).padStart(2,'0')}</span><h3>${esc(q.text||'(pergunta sem texto)')}</h3></div><span class="pill pill-blue">${base.toLocaleString('pt-BR')} válidas</span></div><div class="reports-question-meta">Resposta aberta · categorias revisadas e textos não agrupados</div><div class="reports-open-tools"><div><strong>Base do percentual: ${config.denominator==='valid'?'entrevistas válidas':'respostas preenchidas desta pergunta'}</strong><small>${model.answered.toLocaleString('pt-BR')} respostas preenchidas. ${Number.isFinite(model.pending)?model.pending.toLocaleString('pt-BR')+' ainda não categorizadas. ':''}Textos vinculados aparecem na categoria; os demais permanecem separados pelo texto original.</small></div>${reportsOpenCanEdit()?`<button class="btn btn-out" onclick="reportsOpenEdit(${jsArg(q.dbId)})">Agrupar respostas</button><button class="btn btn-out" onclick="reportsOpenExport(${jsArg(q.dbId)})">Exportar categorias (interno)</button>`:''}</div><ul class="reports-open-answer-list">${rows}</ul>${model.rows.length>100?'<div class="reports-open-more">Exibindo os primeiros 100 resultados (categorias e textos). O PDF inclui todos os resultados.</div>':''}</article>`;
+  return `<article class="card reports-question-card reports-open-question-card"><div class="reports-question-head"><div><span class="reports-question-number">${String(qi+1).padStart(2,'0')}</span><h3>${esc(q.text||'(pergunta sem texto)')}</h3></div><span class="pill pill-blue">${base.toLocaleString('pt-BR')} válidas</span></div><div class="reports-question-meta">Resposta aberta · categorias revisadas e textos não agrupados</div><div class="reports-open-tools"><div><strong>Base do percentual: ${config.denominator==='valid'?'entrevistas válidas':'respostas preenchidas desta pergunta'}</strong><small>${model.answered.toLocaleString('pt-BR')} respostas preenchidas. ${Number.isFinite(model.pending)?model.pending.toLocaleString('pt-BR')+' ainda não categorizadas. ':''}Textos vinculados aparecem na categoria; os demais permanecem separados pelo texto original.</small></div>${reportsOpenCanEdit()?`<button class="btn btn-out" onclick="reportsOpenEdit(${jsArg(q.dbId)})">Agrupar respostas</button><button class="btn btn-out" onclick="reportsOpenExport(${jsArg(q.dbId)})">Exportar categorias (interno)</button>${reportsExcelQuestionButton(q.dbId)}`:''}</div><ul class="reports-open-answer-list">${rows}</ul>${model.rows.length>100?'<div class="reports-open-more">Exibindo os primeiros 100 resultados (categorias e textos). O PDF inclui todos os resultados.</div>':''}</article>`;
 }
 
 function reportsOpenCommit(qid,config){
@@ -7242,6 +7243,80 @@ function reportsOpenAiApply(){
 }
 function reportsOpenAiUndo(){const ai=reportsOpenAiState();if(!ai?.undo||ai.busy)return;const state=reportsOpenEnsureScope();if(state.revision!==ai.undo.revision){ai.message='Há edições posteriores. Use “Desfazer agrupamento” na categoria para não perder essas edições.';reportsOpenAiRender();return;}reportsOpenCommit(RP_OPEN_EDITOR.qid,ai.undo.config);ai.undo=null;ai.groups=[];ai.done.clear();ai.revision=state.revision;ai.message='Última aplicação da IA desfeita. Salve a estrutura para persistir a reversão.';reportsOpenEditorRender();}
 
+/* Excel por pergunta: distribuição agregada completa, sem dados de entrevistados. */
+let RP_REPORT_EXCEL_MODE='treated';
+function reportsExcelModeDescription(){return RP_REPORT_EXCEL_MODE==='original'?'Textos originais e alternativas fechadas, sem aplicar os agrupamentos. Uso interno.':'Categorias revisadas substituem seus membros; respostas ainda não agrupadas continuam pelo texto original.';}
+function reportsExcelSetMode(mode){RP_REPORT_EXCEL_MODE=mode==='original'?'original':'treated';const el=document.getElementById('rp-excel-mode-description');if(el)el.textContent=reportsExcelModeDescription();}
+function reportsExcelToolbar(){
+  if(!reportsOpenCanEdit())return '';
+  return `<div class="reports-excel-tools"><div><label class="lbl" for="rp-excel-mode">Conteúdo do Excel</label><select id="rp-excel-mode" class="inp" onchange="reportsExcelSetMode(this.value)"><option value="treated" ${RP_REPORT_EXCEL_MODE==='treated'?'selected':''}>Resultados tratados</option><option value="original" ${RP_REPORT_EXCEL_MODE==='original'?'selected':''}>Respostas originais</option></select><small id="rp-excel-mode-description">${reportsExcelModeDescription()}</small><small>Arquivo .xlsx com uma aba por pergunta. Inclui todas as respostas da base válida, não apenas as visíveis na tela.</small></div><button type="button" class="btn btn-out" data-reports-excel onclick="reportsExportQuestionsExcel()">Baixar todas as perguntas em Excel</button><span id="rp-excel-feedback" role="status" aria-live="polite"></span></div>`;
+}
+function reportsExcelQuestionButton(qid){return reportsOpenCanEdit()?`<button type="button" class="btn btn-out" data-reports-excel onclick="reportsExportQuestionsExcel(${jsArg(qid)})">Baixar esta pergunta em Excel</button>`:'';}
+function reportsExcelFeedback(message,busy=false){
+  const el=document.getElementById('rp-excel-feedback');if(el)el.textContent=message;
+  document.querySelectorAll('[data-reports-excel]').forEach(button=>button.disabled=busy);
+}
+function reportsExcelSafeName(value){return String(value||'pesquisa').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/gi,'-').replace(/^-+|-+$/g,'').slice(0,90)||'pesquisa';}
+function reportsExcelQuestionRows(q,rows,grouping,mode){
+  const data=rows.filter(row=>row.question_id===q.dbId),base=Number(rows[0]?.valid_base)||0,counts=new Map();
+  for(const row of data){const label=String(row.value_label??'(sem resposta)');counts.set(label,(counts.get(label)||0)+Number(row.cnt));}
+  if(['single','multi'].includes(q.type))for(const value of q.opts||[]){const label=String(value||'').trim();if(label&&!counts.has(label))counts.set(label,0);}
+  const config=reportsOfficialConfig(grouping,grouping?.surveyId,q.dbId),answered=q.type==='open'?[...counts].reduce((total,[label,count])=>total+(label==='(sem resposta)'?0:count),0):null;
+  const percentBase=q.type==='open'&&config.denominator!=='valid'?answered:base;
+  const content=q.type==='open'?(mode==='original'?'Texto original':config.groups.length?'Categoria ou texto não agrupado':'Texto não agrupado'):'Resposta fechada';
+  const values=[...counts].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],'pt-BR')).map(([label,count])=>({label,count,percent:q.type==='open'&&label==='(sem resposta)'&&config.denominator!=='valid'?null:percentBase?count/percentBase:0,content:label==='(sem resposta)'?'Sem resposta':content}));
+  return {values,base,answered,percentBase,occurrences:values.reduce((sum,row)=>sum+row.count,0),basis:q.type==='open'&&config.denominator!=='valid'?'Respostas preenchidas desta pergunta':'Entrevistas válidas'};
+}
+function reportsExcelValidateRows(rows,questions){
+  if(!Array.isArray(rows))throw new Error('O servidor não retornou uma distribuição válida.');
+  const ids=new Set(questions.map(q=>q.dbId));let base=null;
+  for(const row of rows){const count=Number(row.cnt),next=Number(row.valid_base);if(!ids.has(row.question_id)||typeof row.value_label!=='string'||row.cnt==null||!Number.isSafeInteger(count)||count<0||row.valid_base==null||!Number.isSafeInteger(next)||next<0)throw new Error('Dados inconsistentes na exportação; nenhum arquivo parcial foi baixado.');if(base==null)base=next;else if(base!==next)throw new Error('A base válida mudou durante a exportação. Tente novamente.');}
+}
+function reportsExcelSheet(lib,records,widths){
+  if(records.length>1048576)throw new Error('A pergunta excede o limite de linhas do Excel. Nenhum arquivo parcial foi baixado.');
+  for(const row of records)for(const value of row)if(typeof value==='string'&&value.length>32767)throw new Error('Uma resposta excede o limite de texto de uma célula Excel. Nenhum texto foi cortado; nenhum arquivo foi baixado.');
+  const sheet=lib.utils.aoa_to_sheet(records);sheet['!cols']=widths.map(wch=>({wch}));
+  // Textos de usuário são células de texto, nunca fórmulas nem hyperlinks automáticos.
+  for(const [address,cell] of Object.entries(sheet)){if(address.startsWith('!'))continue;if(cell.t==='s'){delete cell.f;delete cell.l;}}
+  return sheet;
+}
+function reportsExcelWorkbook(lib,survey,questions,rows,grouping,mode,generatedAt){
+  reportsExcelValidateRows(rows,reportsQuestionsForSurvey(survey));
+  const workbook=lib.utils.book_new(),summary=[['Pergunta nº','Pergunta','Tipo','Aba','Resultados distintos','Ocorrências','Base válida','Base percentual','Critério do percentual','Respostas preenchidas (abertas)']],sheets=[];
+  for(const q of questions){
+    const index=reportsQuestionsForSurvey(survey).findIndex(item=>item.dbId===q.dbId)+1,name='Q'+String(index).padStart(2,'0')+' '+(q.type==='open'?'Aberta':'Fechada'),model=reportsExcelQuestionRows(q,rows,grouping,mode);
+    const records=[['Pergunta nº',index],['Pergunta',String(q.text||'')],['Tipo',Q_TYPES[q.type]||q.type||'Pergunta'],['Tratamento',mode==='original'?'Respostas originais (uso interno)':'Categorias revisadas + textos não agrupados'],['Base válida',model.base],['Base percentual',model.percentBase],['Critério do percentual',model.basis],['Total de ocorrências',model.occurrences],['Observação','Base: entrevistas válidas, sem rejeitadas nem calibração. Múltipla escolha, ranking e duas respostas podem ter mais ocorrências que entrevistas.'],[],['Resposta / categoria','Quantidade','Percentual','Base percentual','Tipo de resultado']];
+    for(const item of model.values)records.push([item.label,item.count,item.percent,model.percentBase,item.content]);
+    const sheet=reportsExcelSheet(lib,records,[80,18,18,22,38]);sheet['!autofilter']={ref:'A11:E'+Math.max(11,records.length)};
+    for(let row=12;row<=records.length;row++)if(sheet['C'+row])sheet['C'+row].z='0.00%';
+    sheets.push({name,sheet});summary.push([index,String(q.text||''),Q_TYPES[q.type]||q.type,name,model.values.length,model.occurrences,model.base,model.percentBase,model.basis,model.answered]);
+  }
+  const info=[['PesquisaPro — respostas por pergunta'],['Pesquisa',String(survey.name||'')],['Tratamento',mode==='original'?'Respostas originais (uso interno)':'Categorias revisadas + textos não agrupados'],['Gerado em',generatedAt.toLocaleString('pt-BR')],['Escopo','Distribuições agregadas por pergunta; sem IDs de entrevistas, GPS, contatos de pesquisadores ou dados financeiros.'],['Integralidade','Todas as linhas retornadas pela consulta paginada completa. Não usa o limite de 100 resultados da tela.'],['Percentuais','São valores numéricos formatados como percentual. A base é informada em cada aba. Sem respostas válidas, o percentual é zero.'],['Múltiplas respostas','Múltipla escolha, ranking e duas respostas podem somar mais de 100% sobre a base válida.'],['Ausência de resposta','(sem resposta) é mantida quando retornada pelo servidor; em perguntas abertas com base de respondidas seu percentual fica vazio.'],['Tratamento parcial','Categorias substituem seus membros; textos não agrupados continuam separados. Não recategoriza rótulos já tratados.'],['Privacidade','Textos livres podem conter dados pessoais. Revise antes de compartilhar; exportação agregada não é anonimização.'],['Persistência','Exportar não salva, publica nem altera agrupamentos. O modo tratado usa a revisão atual carregada no aplicativo.']];
+  lib.utils.book_append_sheet(workbook,reportsExcelSheet(lib,info,[32,110]),'Informações');
+  const summarySheet=reportsExcelSheet(lib,summary,[14,80,26,22,22,18,18,22,42,28]);summarySheet['!autofilter']={ref:'A1:J'+summary.length};lib.utils.book_append_sheet(workbook,summarySheet,'Resumo');
+  for(const item of sheets)lib.utils.book_append_sheet(workbook,item.sheet,item.name);
+  return workbook;
+}
+async function reportsExportQuestionsExcel(qid=null){
+  if(!reportsOpenCanEdit()||RP_REPORT_EXPORT_BUSY)return;
+  const survey=reportsCurrentSurvey(),profile=CURRENT_PROFILE,mode=RP_REPORT_EXCEL_MODE==='original'?'original':'treated';if(!survey)return;
+  const questions=reportsQuestionsForSurvey(survey).filter(q=>qid==null||q.dbId===qid);if(!questions.length){reportsExcelFeedback('Selecione uma pergunta válida desta pesquisa.');return;}
+  const questionSnapshot=JSON.stringify(reportsQuestionsForSurvey(survey));let signature=null;
+  const verify=()=>{if(CURRENT_PROFILE!==profile||!reportsOpenCanEdit()||reportsCurrentSurvey()?.id!==survey.id||JSON.stringify(reportsQuestionsForSurvey(survey))!==questionSnapshot||signature!=null&&JSON.stringify(reportsOpenSerialize())!==signature)throw new Error('A pesquisa, a sessão ou os agrupamentos mudaram durante a exportação. Gere novamente para baixar os dados corretos.');};
+  RP_REPORT_EXPORT_BUSY=true;reportsExcelFeedback('Carregando todas as respostas e preparando o Excel…',true);
+  try{
+    if(mode==='treated')await reportsRequireDraft();verify();
+    const grouping=mode==='treated'?reportsOpenSerialize():{version:1,surveyId:survey.id,questions:{}};if(mode==='treated')signature=JSON.stringify(grouping);
+    await loadLocalAsset('xlsx');verify();const lib=window.XLSX;if(!lib?.utils?.aoa_to_sheet||!lib.writeFile)throw new Error('A biblioteca Excel não pôde ser carregada. Tente novamente.');
+    const result=await reportsFetchStaffGroupedOverview(survey.id,grouping);if(result.error)throw result.error;verify();
+    const now=new Date(),workbook=reportsExcelWorkbook(lib,survey,questions,result.data,grouping,mode,now);verify();
+    const suffix=qid==null?'todas-perguntas':'pergunta-'+String(reportsQuestionsForSurvey(survey).findIndex(q=>q.dbId===qid)+1).padStart(2,'0');
+    lib.writeFile(workbook,'respostas-'+reportsExcelSafeName(survey.name)+'-'+suffix+'-'+(mode==='original'?'originais':'tratadas')+'-'+now.toISOString().slice(0,10)+'.xlsx',{bookType:'xlsx',compression:true});
+    reportsExcelFeedback('Excel completo baixado: '+questions.length+' pergunta'+(questions.length===1?'':'s')+'. Nenhum dado ou agrupamento foi alterado.');
+  }catch(ex){if(CURRENT_PROFILE===profile&&reportsCurrentSurvey()?.id===survey.id)reportsExcelFeedback('Não foi possível gerar o Excel. '+(ex.message||String(ex)));}
+  finally{RP_REPORT_EXPORT_BUSY=false;if(CURRENT_PROFILE===profile&&reportsCurrentSurvey()?.id===survey.id)reportsExcelFeedback(document.getElementById('rp-excel-feedback')?.textContent||'',false);}
+}
+
 function reportsOpenExport(qid){
   if(!reportsOpenCanEdit())return;const data=reportsOpenQuestionData(qid),model=reportsOpenModel(data,reportsOpenConfig(qid),Number(data[0]?.valid_base)||reportsLocalValidBase(reportsCurrentSurvey()?.id)||0);
   const records=[['Categoria / texto','Ocorrências','% das respondidas','% da base válida','Base respondida','Base válida','Tipo','Textos originais']];
@@ -7332,7 +7407,7 @@ function renderReportsOverview(out,rows,qs){
     const data=reportRowsWithCounts([byQ[q.dbId],byPosition[q.position],byText[normalizeReportQuestionText(q.text)],byOrdinal[qi]]);const base=Number(data[0]?.valid_base)||localBase||0;const total=data.reduce((sum,r)=>sum+Number(r.cnt||0),0);const max=Math.max(1,...data.map(r=>Number(r.cnt||0)));
     if(q.type==='open')return reportsOpenCard(q,qi,data,base);
     const lines=data.length?data.map((r,i)=>{const cnt=Number(r.cnt||0),pct=reportPercent(cnt,base||total);return `<div class="reports-answer-row"><div class="reports-answer-head"><span>${esc(r.value_label||'(sem resposta)')}</span><strong>${cnt.toLocaleString('pt-BR')} · ${pct}%</strong></div><div class="reports-answer-bar"><i style="width:${Math.min(100,Math.round((cnt/max)*100))}%"></i></div></div>`;}).join(''):`<div class="empty" style="padding:16px 0">${base?'Nenhuma resposta foi registrada para esta pergunta na base válida.':'Ainda não há respostas válidas.'}</div>`;
-    return `<article class="card reports-question-card"><div class="reports-question-head"><div><span class="reports-question-number">${String(qi+1).padStart(2,'0')}</span><h3>${esc(q.text||'(pergunta sem texto)')}</h3></div><span class="pill pill-blue">${base.toLocaleString('pt-BR')} válidas</span></div><div class="reports-question-meta">${esc(Q_TYPES[q.type]||q.type||'Pergunta')}</div>${lines}</article>`;
+    return `<article class="card reports-question-card"><div class="reports-question-head"><div><span class="reports-question-number">${String(qi+1).padStart(2,'0')}</span><h3>${esc(q.text||'(pergunta sem texto)')}</h3></div><span class="pill pill-blue">${base.toLocaleString('pt-BR')} válidas</span></div><div class="reports-question-meta">${esc(Q_TYPES[q.type]||q.type||'Pergunta')}</div><div class="reports-excel-question-action">${reportsExcelQuestionButton(q.dbId)}</div>${lines}</article>`;
   }).join('');
   out.innerHTML=`<div class="reports-overview-head"><div><h2>Todas as perguntas</h2><p>Distribuição atualizada das respostas válidas, pergunta a pergunta.</p></div><span class="reports-count-pill">${qs.length} pergunta${qs.length===1?'':'s'}</span></div><div class="reports-question-list">${cards}</div>`;
 }

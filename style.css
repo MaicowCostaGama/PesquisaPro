@@ -2048,3 +2048,10 @@ body.acollect-notice-gate-open{overflow:hidden}
 .client-survey-details-actions{flex-wrap:wrap}
 .client-published-reports{scroll-margin-top:20px}
 @media(max-width:600px){.client-survey-filter-tabs{gap:6px}.client-survey-filter-tab{flex:1 1 125px;padding:10px 9px;font-size:12px}.client-survey-details-actions .btn{width:100%;justify-content:center;white-space:normal;text-align:center}.client-completed-notice{padding:12px}}
+
+/* v165 — exportação Excel por pergunta, com base completa */
+.reports-excel-tools{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:end;margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}
+.reports-excel-tools>div{min-width:0}.reports-excel-tools small{display:block;margin-top:7px;color:var(--ink3);line-height:1.6}.reports-excel-tools>button{white-space:normal;max-width:100%}
+#rp-excel-feedback{grid-column:1/-1;color:var(--ink2);font-size:13px;line-height:1.6;overflow-wrap:anywhere}
+.reports-excel-question-action{display:flex;flex-wrap:wrap;gap:10px;margin:8px 0 16px}
+@media(max-width:700px){.reports-excel-tools{grid-template-columns:minmax(0,1fr)}.reports-excel-tools>button{width:100%}.reports-excel-question-action .btn{width:100%;white-space:normal}}

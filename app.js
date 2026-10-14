@@ -51,7 +51,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261014145800';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261014182200';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -205,7 +205,7 @@ async function enableResearcherPush(){
   try{
     const permission=await Notification.requestPermission();
     if(permission!=='granted'){PUSH_STATUS='blocked';go('dashboard-pesq');return;}
-    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261014145800',{scope:'./'});
+    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261014182200',{scope:'./'});
     const subscription=await PUSH_SW_REGISTRATION.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:pushKeyToUint8Array(window.PP_PUSH_PUBLIC_KEY)});
     const json=subscription.toJSON();
     const {error}=await sb.from('push_subscriptions').upsert({user_id:CURRENT_PROFILE.id,endpoint:json.endpoint,subscription:json,user_agent:navigator.userAgent,updated_at:new Date().toISOString()},{onConflict:'endpoint'});
@@ -436,7 +436,7 @@ async function afterLogin(user){
   USERS=[];USERS_LOADED=false;USERS_LOADING=false;_usersLoadPromise=null;
   chatStopRealtime();CHAT_CHANNELS=[];CHAT_CHANNELS_LOADED=false;CHAT_CHANNELS_LOADING=false;CHAT_SCHEMA_MISSING=false;CHAT_ACTIVE_CHANNEL_ID=null;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=false;CHAT_MESSAGES_LOADING=false;CHAT_SUPPORT_CHANNEL_ID=null;CHAT_SUPPORT_READY=false;CHAT_SUPPORT_LOADING=false;
   PUSH_STATUS='unknown';PUSH_STATUS_LOADING=false;PUSH_SCHEMA_MISSING=false;PUSH_SW_REGISTRATION=null;RESEARCHER_ALERT_PREFS={email_enabled:false,push_enabled:false};RESEARCHER_ALERT_PREFS_LOADED=false;RESEARCHER_ALERT_PREFS_LOADING=false;RESEARCHER_ALERT_PREFS_SAVING=false;RESEARCHER_ALERT_PREFS_SCHEMA_MISSING=false;RESEARCHER_ALERT_PREFS_ERROR=false;MY_COMMUNICATIONS=[];MY_COMMUNICATIONS_LOADED=false;MY_COMMUNICATIONS_LOADING=false;MY_SURVEY_RESEARCHER_MESSAGES=[];MY_SURVEY_RESEARCHER_MESSAGES_LOADED=false;MY_SURVEY_RESEARCHER_MESSAGES_LOADING=false;MY_SURVEY_RESEARCHER_MESSAGES_SCHEMA_MISSING=false;MY_SURVEY_RESEARCHER_MESSAGES_LAST_LOADED=0;MY_SURVEY_RESEARCHER_MESSAGES_LOAD_ERROR=false;
-  ACTIVE_CAMPAIGN_ID=null;CLIENT_SURVEY_VIEW_ID=null;
+  ACTIVE_CAMPAIGN_ID=null;CLIENT_SURVEY_VIEW_ID=null;CLIENT_SURVEY_FILTER='all';
   PAYMENTS=[];PAYMENTS_LOADED=false;PAYMENTS_LOADING=false;PAYMENT_RECEIPTS=[];PAYMENT_RECEIPTS_LOADED=false;PAYMENT_RECEIPTS_LOADING=false;PAYMENT_RECEIPTS_SCHEMA_MISSING=false;PAYMENT_RECEIPTS_DELETE_SCHEMA_MISSING=false;
   const profileFields='id,name,email,phone,role,status,cpf,cpf_cnpj,pf_pj,birth,cidade,rua,numero,cep,contact_person,doc_url,doc_foto_url,doc_comprovante_url,pix_key,pix_doc,pix_bank,pix_ag,pix_acc,results_released,approved_at,commission_rate,commission_rate_with_indicator,recruiter_code,recruiter_capture_value,badge_public_token,badge_photo_path';
   let {data:profile,error}=await sb.from('profiles').select(profileFields).eq('id',user.id).single();
@@ -1554,6 +1554,7 @@ function clientSelf(){
 }
 let ACTIVE_CAMPAIGN_ID=null;
 let CLIENT_SURVEY_VIEW_ID=null;
+let CLIENT_SURVEY_FILTER='all';
 let CAMPAIGN_SWITCHER_VIEW_ID=null;
 function campaignSurveysForCurrentUser(){
   if(!CURRENT_PROFILE)return[];
@@ -1751,17 +1752,46 @@ async function clientProgressLoad(){
 }
 function clientProgressStartLive(){if(CLIENT_PROGRESS_TIMER)clearInterval(CLIENT_PROGRESS_TIMER);clientProgressLoad();CLIENT_PROGRESS_TIMER=setInterval(()=>{if(document.querySelector('.nav-item.on')?.dataset.key==='client-progress')clientProgressLoad();},20000);}
 function clientProgressStopLive(){if(CLIENT_PROGRESS_TIMER){clearInterval(CLIENT_PROGRESS_TIMER);CLIENT_PROGRESS_TIMER=null;}}
+function clientSurveyIsCompleted(survey){return survey?.status==='encerrada';}
+function clientSurveyFilteredList(available,filter=CLIENT_SURVEY_FILTER){
+  if(filter==='completed')return available.filter(clientSurveyIsCompleted);
+  if(filter==='ongoing')return available.filter(s=>!clientSurveyIsCompleted(s));
+  return available;
+}
+function clientSurveyFilterSet(filter){
+  if(CURRENT_PROFILE?.role!=='cliente'||!['all','ongoing','completed'].includes(filter))return;
+  CLIENT_SURVEY_FILTER=filter;CLIENT_SURVEY_VIEW_ID=null;go('client-surveys');
+}
+function clientSurveyFilterKeydown(event,key){
+  const keys=['all','ongoing','completed'];let next;
+  if(event.key==='ArrowRight')next=keys[(keys.indexOf(key)+1)%keys.length];
+  else if(event.key==='ArrowLeft')next=keys[(keys.indexOf(key)+keys.length-1)%keys.length];
+  else if(event.key==='Home')next=keys[0];else if(event.key==='End')next=keys[keys.length-1];else return;
+  event.preventDefault();clientSurveyFilterSet(next);document.getElementById('client-survey-tab-'+next)?.focus();
+}
+function clientSurveyFiltersMarkup(available){
+  const counts={all:available.length,ongoing:clientSurveyFilteredList(available,'ongoing').length,completed:clientSurveyFilteredList(available,'completed').length},labels={all:'Todas',ongoing:'Em acompanhamento',completed:'Concluídas'};
+  return `<div class="client-survey-filter-tabs" role="tablist" aria-label="Situação das minhas pesquisas">${Object.keys(labels).map(key=>`<button type="button" role="tab" id="client-survey-tab-${key}" aria-controls="client-survey-filter-panel" aria-selected="${CLIENT_SURVEY_FILTER===key}" tabindex="${CLIENT_SURVEY_FILTER===key?'0':'-1'}" class="client-survey-filter-tab ${CLIENT_SURVEY_FILTER===key?'is-active':''}" onclick="clientSurveyFilterSet('${key}')" onkeydown="clientSurveyFilterKeydown(event,'${key}')">${labels[key]} <b>${counts[key]}</b></button>`).join('')}</div>`;
+}
+function clientCompletedSurveyNotice(survey){
+  if(!clientSurveyIsCompleted(survey))return '';
+  return '<div class="callout mb client-completed-notice" role="note"><b>Pesquisa concluída — histórico disponível.</b> A coleta foi encerrada, mas os resultados, cruzamentos, mapas e relatórios já liberados continuam disponíveis para sua conta. Consultar esta pesquisa não reabre a coleta.</div>';
+}
+function clientOpenPublishedReports(surveyId){
+  clientSelectSurveyAndGo(surveyId,'client-results');
+  requestAnimationFrame(()=>{document.getElementById('client-published-reports')?.scrollIntoView({block:'start',behavior:'auto'});});
+}
 function clientSurveyListMarkup(available,active){
   return `<div class="client-survey-list">${available.map(s=>{
     const released=clientResultsReleasedForSurvey(clientSelf(),s);
-    return `<button type="button" class="client-survey-card ${active?.id===s.id?'is-active':''}" onclick="clientViewSurvey('${esc(s.id)}')"><span class="client-survey-card-icon">⌁</span><span class="client-survey-card-copy"><strong>${esc(s.name)}</strong><small>${esc(s.tipo||'Pesquisa de opinião')} · ${esc(STATUS_LABEL?.[s.status]||'Disponível')}</small><em>${esc(campaignLocationLabel(s))}</em></span><span class="client-survey-card-meta"><span class="pill ${released?'pill-green':'pill-gray'}">${released?'Resultados liberados':'Em acompanhamento'}</span><b>Ver informações&nbsp; →</b></span></button>`;
+    return `<button type="button" class="client-survey-card ${active?.id===s.id?'is-active':''}" onclick="clientViewSurvey('${esc(s.id)}')"><span class="client-survey-card-icon">⌁</span><span class="client-survey-card-copy"><strong>${esc(s.name)}</strong><small>${esc(s.tipo||'Pesquisa de opinião')} · ${esc(STATUS_LABEL?.[s.status]||'Disponível')}</small><em>${esc(campaignLocationLabel(s))}</em></span><span class="client-survey-card-meta"><span class="pill ${released?'pill-green':'pill-gray'}">${released?'Resultados liberados':clientSurveyIsCompleted(s)?'Aguardando liberação':'Em acompanhamento'}</span><b>Ver informações&nbsp; →</b></span></button>`;
   }).join('')}</div>`;
 }
 function clientSurveyDetailsMarkup(s,c,active){
   const released=clientResultsReleasedForSurvey(c,s);
   const sample=Number(surveySample(s)||0).toLocaleString('pt-BR');
   const margin=s.err?`± ${Math.round(Number(s.err)*100)}%`:'Não informado';
-  return `<div class="client-survey-details card"><button type="button" class="client-survey-back" onclick="clientBackToSurveyList()">← Voltar para minhas pesquisas</button><div class="client-survey-details-hero"><div class="client-survey-details-icon">⌁</div><div><span class="eyebrow">INFORMAÇÕES DA PESQUISA</span><h2>${esc(s.name)}</h2><p>${esc(s.tipo||'Pesquisa de opinião')} · <span class="pill ${s.status==='campo'?'pill-green':s.status==='encerrada'?'pill-blue':'pill-amber'}">${esc(STATUS_LABEL?.[s.status]||'Disponível')}</span></p></div></div><div class="client-survey-details-grid"><div><span>Período</span><strong>${campaignDateLabel(s.dataIni)} a ${campaignDateLabel(s.dataFim)}</strong></div><div><span>Amostra prevista</span><strong>${sample} entrevistas</strong></div><div><span>Margem de erro</span><strong>${margin}</strong></div><div><span>Nível de confiança</span><strong>${s.conf==='1.96'?'95%':esc(s.conf||'Não informado')}</strong></div><div class="client-survey-details-wide"><span>Abrangência</span><strong>${esc(campaignLocationLabel(s))}</strong></div><div><span>Questionário</span><strong>${(s.questions||[]).length} ${(s.questions||[]).length===1?'pergunta':'perguntas'}</strong></div><div><span>Resultados</span><strong>${released?'Liberados para visualização':'Ainda não liberados'}</strong></div></div><div class="client-survey-details-actions"><button type="button" class="btn btn-fill" onclick="clientSelectSurveyAndGo('${esc(s.id)}','client-progress')">${active?.id===s.id?'Abrir andamento':'Selecionar e acompanhar'}</button>${s.formApprovalRequired?`<button type="button" class="btn btn-out" onclick="clientSelectSurveyAndGo('${esc(s.id)}','form-approval')">Aprovar formulário</button>`:''}</div></div>`;
+  return `<div class="client-survey-details card"><button type="button" class="client-survey-back" onclick="clientBackToSurveyList()">← Voltar para minhas pesquisas</button><div class="client-survey-details-hero"><div class="client-survey-details-icon">⌁</div><div><span class="eyebrow">INFORMAÇÕES DA PESQUISA</span><h2>${esc(s.name)}</h2><p>${esc(s.tipo||'Pesquisa de opinião')} · <span class="pill ${s.status==='campo'?'pill-green':s.status==='encerrada'?'pill-blue':'pill-amber'}">${esc(STATUS_LABEL?.[s.status]||'Disponível')}</span></p></div></div><div class="client-survey-details-grid"><div><span>Período</span><strong>${campaignDateLabel(s.dataIni)} a ${campaignDateLabel(s.dataFim)}</strong></div><div><span>Amostra prevista</span><strong>${sample} entrevistas</strong></div><div><span>Margem de erro</span><strong>${margin}</strong></div><div><span>Nível de confiança</span><strong>${s.conf==='1.96'?'95%':esc(s.conf||'Não informado')}</strong></div><div class="client-survey-details-wide"><span>Abrangência</span><strong>${esc(campaignLocationLabel(s))}</strong></div><div><span>Questionário</span><strong>${(s.questions||[]).length} ${(s.questions||[]).length===1?'pergunta':'perguntas'}</strong></div><div><span>Resultados</span><strong>${released?'Liberados para visualização':'Ainda não liberados'}</strong></div></div>${clientCompletedSurveyNotice(s)}<div class="client-survey-details-actions"><button type="button" class="btn ${released?'btn-out':'btn-fill'}" onclick="clientSelectSurveyAndGo('${esc(s.id)}','client-progress')">${clientSurveyIsCompleted(s)?'Consultar coleta concluída':active?.id===s.id?'Abrir andamento':'Selecionar e acompanhar'}</button>${released?`<button type="button" class="btn btn-fill" onclick="clientSelectSurveyAndGo('${esc(s.id)}','client-results')">Resultados e relatórios</button><button type="button" class="btn btn-out" onclick="clientOpenPublishedReports('${esc(s.id)}')">Relatórios finais (PDF)</button>`:''}${s.formApprovalRequired?`<button type="button" class="btn btn-out" onclick="clientSelectSurveyAndGo('${esc(s.id)}','form-approval')">Aprovar formulário</button>`:''}</div></div>`;
 }
 function clientViewSurvey(surveyId){
   if(CURRENT_PROFILE?.role!=='cliente'||!campaignSurveysForCurrentUser().some(s=>s.id===surveyId))return;
@@ -1777,15 +1807,16 @@ PAGES['client-surveys']=()=>{
   const c=clientSelf(),available=campaignSurveysForCurrentUser(),active=activeCampaignSurvey();
   if(!c||!available.length)return head('Minhas pesquisas','Pesquisas disponibilizadas para sua empresa')+'<div class="card client-surveys-empty"><div class="empty"><strong>Nenhuma pesquisa disponibilizada no momento</strong><br><small>A equipe PesquisaPro mostrará aqui as pesquisas vinculadas à sua conta.</small></div></div>';
   const viewed=available.find(s=>s.id===CLIENT_SURVEY_VIEW_ID);
-  if(viewed)return head('Informações da pesquisa','Confira os detalhes antes de acompanhar a coleta')+clientSurveyDetailsMarkup(viewed,c,active);
-  return head('Minhas pesquisas','Pesquisas disponibilizadas para sua empresa')+`<section class="client-surveys-page"><div class="client-surveys-intro card"><div><span class="eyebrow">MINHAS PESQUISAS</span><h2>Pesquisas disponibilizadas para você</h2><p>Clique em uma pesquisa para consultar as informações, o período, a abrangência e o estado dos resultados.</p></div><span class="client-surveys-count">${available.length} ${available.length===1?'pesquisa':'pesquisas'}</span></div>${clientSurveyListMarkup(available,active)}</section>`;
+  if(viewed)return head('Informações da pesquisa',clientSurveyIsCompleted(viewed)?'Consulte resultados e relatórios da pesquisa concluída':'Confira os detalhes antes de acompanhar a coleta')+clientSurveyDetailsMarkup(viewed,c,active);
+  const visible=clientSurveyFilteredList(available);
+  return head('Minhas pesquisas','Pesquisas disponibilizadas para sua empresa')+`<section class="client-surveys-page"><div class="client-surveys-intro card"><div><span class="eyebrow">MINHAS PESQUISAS</span><h2>Pesquisas disponibilizadas para você</h2><p>Pesquisas em acompanhamento e concluídas ficam aqui. Clique para consultar informações, resultados e relatórios já liberados.</p></div><span class="client-surveys-count">${available.length} ${available.length===1?'pesquisa':'pesquisas'}</span></div>${clientSurveyFiltersMarkup(available)}<div id="client-survey-filter-panel" role="tabpanel" aria-labelledby="client-survey-tab-${CLIENT_SURVEY_FILTER}">${visible.length?clientSurveyListMarkup(visible,active):'<div class="card"><div class="empty">Nenhuma pesquisa nesta aba. Consulte as demais situações.</div></div>'}</div></section>`;
 };
 PAGES['client-progress']=()=>{
   if(!SURVEYS_LOADED)loadSurveysIfNeeded();
   const c=clientSelf(),s=clientSelfSurvey();
   if(!c||!s)return head('Andamento','Acompanhe o andamento da coleta')+`<div class="card"><div class="empty">Nenhuma pesquisa vinculada à sua conta no momento. <button class="btn btn-out" style="margin-top:16px" onclick="go('client-surveys')">Ver minhas pesquisas</button></div></div>`;
   if(!clientResultsReleasedForSurvey(c,s))return head(s.name,'Andamento da coleta · '+c.company)+`<div class="card" style="text-align:center;padding:44px 24px"><div style="font-weight:800;font-size:18px">Resultados e andamento detalhado ainda não liberados</div><p style="color:var(--ink3);font-size:13.5px;margin-top:8px;line-height:1.6">A equipe PesquisaPro libera os dados agregados nesta área após a validação da pesquisa.</p></div>`;
-  return head(s.name,'Andamento da coleta em tempo real · '+c.company,`<button class="btn btn-out" onclick="clientViewSurvey('${esc(s.id)}')">Informações da pesquisa</button>`)+`<section id="client-progress-live"><div class="card"><div class="empty" style="padding:28px 0">Carregando dados reais da coleta…</div></div></section>${clientResearcherProgressMarkup()}<div id="cr-client-report"><div class="empty" style="padding:28px 0">Carregando resultados agregados…</div></div>${clientHeatmapMarkup(s)}<section id="cr-client-geo" class="client-geo-section"><div class="card"><div class="empty" style="padding:28px 0">Carregando georreferenciamento…</div></div></section>${clientPublishedReportsMarkup()}<div class="callout mb" style="margin-top:16px">Resultados, mapa e indicadores exibidos nesta área são agregados e condicionados à liberação da pesquisa para o cliente.</div>`;
+  return head(s.name,(clientSurveyIsCompleted(s)?'Histórico da coleta concluída · ':'Andamento da coleta em tempo real · ')+c.company,`<button class="btn btn-out" onclick="clientViewSurvey('${esc(s.id)}')">Informações da pesquisa</button>`)+`${clientCompletedSurveyNotice(s)}<section id="client-progress-live"><div class="card"><div class="empty" style="padding:28px 0">Carregando dados reais da coleta…</div></div></section>${clientResearcherProgressMarkup()}<div id="cr-client-report"><div class="empty" style="padding:28px 0">Carregando resultados agregados…</div></div>${clientHeatmapMarkup(s)}<section id="cr-client-geo" class="client-geo-section"><div class="card"><div class="empty" style="padding:28px 0">Carregando georreferenciamento…</div></div></section>${clientPublishedReportsMarkup()}<div class="callout mb" style="margin-top:16px">Resultados, mapa e indicadores exibidos nesta área são agregados e condicionados à liberação da pesquisa para o cliente.</div>`;
 };
 
 const STATUS_LABEL={campo:'Em campo',rascunho:'Rascunho',encerrada:'Concluída'};
@@ -1839,7 +1870,7 @@ PAGES['client-results']=()=>{
     const sample=surveySample(s),pct=sample?Math.min(100,Math.round(s.collected/sample*100)):0;
     return head('Resultados',s.name)+`<div class="card" style="text-align:center;padding:52px 24px"><div style="width:56px;height:56px;border-radius:16px;background:var(--amber-l);color:var(--amber);font-size:26px;display:flex;align-items:center;justify-content:center;margin:0 auto 16px">🔒</div><div style="font-weight:800;font-size:18px">Resultados ainda não liberados</div><p style="color:var(--ink3);font-size:13.5px;margin-top:8px;max-width:440px;margin-left:auto;margin-right:auto;line-height:1.6">A coleta está em <b>${pct}%</b> da meta. Assim que os dados forem validados, a equipe do PesquisaPro libera o relatório nesta área.</p><button class="btn btn-out" style="margin-top:20px" onclick="go('client-progress')">← Ver andamento da coleta</button></div>`;
   }
-  const heatmapMarkup=clientHeatmapMarkup(s);return head('Resultados',s.name)+`<div id="cr-client-report"><div class="empty" style="padding:28px 0">Carregando relatório de resultados…</div></div>${heatmapMarkup}<section id="cr-client-geo" class="client-geo-section"><div class="card"><div class="empty" style="padding:28px 0">Carregando georreferenciamento…</div></div></section>${clientPublishedReportsMarkup()}<div class="callout mb" style="margin-top:16px">Os resultados são calculados sobre entrevistas válidas, excluindo coletas reprovadas e de calibração. O mapa mostra áreas aproximadas e dados agregados; ao passar o mouse ou tocar em um marcador, o nome do pesquisador responsável pela área é exibido, sem contatos ou coordenadas exatas.</div>`;
+  const heatmapMarkup=clientHeatmapMarkup(s);return head('Resultados',s.name,`<button type="button" class="btn btn-out" onclick="clientViewSurvey('${esc(s.id)}')">Informações da pesquisa</button><button type="button" class="btn btn-out" onclick="go('client-surveys')">Minhas pesquisas</button><button type="button" class="btn btn-fill" onclick="clientOpenPublishedReports('${esc(s.id)}')">Relatórios finais (PDF)</button>`)+`${clientCompletedSurveyNotice(s)}<div id="cr-client-report"><div class="empty" style="padding:28px 0">Carregando relatório de resultados…</div></div>${heatmapMarkup}<section id="cr-client-geo" class="client-geo-section"><div class="card"><div class="empty" style="padding:28px 0">Carregando georreferenciamento…</div></div></section>${clientPublishedReportsMarkup()}<div class="callout mb" style="margin-top:16px">Os resultados são calculados sobre entrevistas válidas, excluindo coletas reprovadas e de calibração. O mapa mostra áreas aproximadas e dados agregados; ao passar o mouse ou tocar em um marcador, o nome do pesquisador responsável pela área é exibido, sem contatos ou coordenadas exatas.</div>`;
 };
 function clientResultsPickQuestion(id){CR_QUESTION_DBID=id;clientResultsLoadAndRender();}
 function clientGeoNormalizePoint(row){return {lat:Number(row.lat),lng:Number(row.lng),pointCount:Number(row.point_count)||0,validCount:Number(row.valid_count)||0,rejectedCount:Number(row.rejected_count)||0,calibrationCount:Number(row.calibration_count)||0,lastAt:row.last_occurred_at||null,researcherNames:String(row.researcher_names||'Pesquisador não identificado')};}
@@ -1926,19 +1957,21 @@ async function clientLoadReportOverview(){
     out.innerHTML='<div class="callout warn"><b>Não foi possível carregar os resultados agregados agora.</b><br>O restante do monitoramento continua disponível. Verifique as migrations de resultados para clientes e os índices de monitoramento. Detalhe: '+esc(detail)+'</div>';
   }finally{CR_CLIENT_REPORT_LOADING=false;}
 }
-function clientRenderReportOverview(out,survey,qs,rows,document,crossings){const byQ={};(rows||[]).forEach(r=>(byQ[r.question_id]||(byQ[r.question_id]=[])).push(r));const cards=qs.map((q,qi)=>{const source=byQ[q.dbId]||[],validBase=Number(source[0]?.valid_base)||0,open=q.type==='open',data=open?source.filter(r=>r.value_label!=='(sem resposta)'):source,total=data.reduce((sum,r)=>sum+Number(r.cnt||0),0),base=open&&reportsOfficialConfig(document?.sections?.openAnswerGrouping,survey.id,q.dbId).denominator!=='valid'?total:validBase,max=Math.max(1,...data.map(r=>Number(r.cnt||0)));const lines=data.length?data.map(r=>{const cnt=Number(r.cnt||0),pct=open?reportsOpenPercentText(cnt,base):reportPercent(cnt,base||total)+'%';return `<div class="reports-answer-row"><div class="reports-answer-head"><span>${esc(r.value_label||'(sem resposta)')}</span><strong>${cnt.toLocaleString('pt-BR')} · ${pct}</strong></div><div class="reports-answer-bar"><i style="width:${Math.min(100,Math.round((cnt/max)*100))}%"></i></div></div>`;}).join(''):'<div class="empty" style="padding:16px 0">Ainda não há respostas válidas.</div>';return `<article class="card reports-question-card"><div class="reports-question-head"><div><span class="reports-question-number">${String(qi+1).padStart(2,'0')}</span><h3>${esc(q.text||'(pergunta sem texto)')}</h3></div><span class="pill pill-blue">${validBase.toLocaleString('pt-BR')} válidas</span></div><div class="reports-question-meta">${esc(Q_TYPES[q.type]||q.type||'Pergunta')}${open?' · categorias revisadas · base percentual: '+(reportsOfficialConfig(document?.sections?.openAnswerGrouping,survey.id,q.dbId).denominator==='valid'?'entrevistas válidas':'respostas preenchidas')+' ('+base+')':''}</div>${lines}</article>`;}).join('');let html=`<div class="reports-overview-head"><div><h2>${esc(document?.title||'Resultados da pesquisa')}</h2><p>${esc(document?.subtitle||'Distribuição atualizada das respostas válidas, pergunta a pergunta.')}</p></div><span class="reports-count-pill">${qs.length} pergunta${qs.length===1?'':'s'}</span></div>`;if(document?.presentation)html+=`<article class="card reports-client-intro"><div class="card-t">Apresentação</div><p>${esc(document.presentation)}</p></article>`;html+=`<div class="reports-question-list">${cards}</div>`;if(document?.executive_summary)html+=`<article class="card reports-client-summary"><div class="card-t">Síntese executiva</div><p>${esc(document.executive_summary)}</p></article>`;if(crossings.length){html+=`<div class="reports-overview-head" style="margin-top:24px"><div><h2>Cruzamentos do relatório</h2><p>Matrizes percentuais sobre a base total de entrevistas válidas.</p></div><span class="reports-count-pill">${crossings.length} análise${crossings.length===1?'':'s'}</span></div>`;crossings.forEach(c=>{const rowsFor=CR_CLIENT_REPORT_CACHE.crossRowsById[c.id]||[],ids=reportsCrossingQuestionIds(c),parts=reportsCrossPartitions(rowsFor,ids);html+=`<article class="card reports-client-crossing"><div class="card-t">${esc(c.title)}</div><div class="card-d">${ids.map((id,i)=>(i+1)+'. '+esc(clientReportQuestionLabel(reportsQuestionsForSurvey(survey),id))).join(' · ')}</div>${parts.map(part=>clientReportCrossMatrixMarkup(clientReportCrossMatrixModel(part.rows,ids,part.values,reportsQuestionsForSurvey(survey)),ids,reportsQuestionsForSurvey(survey),reportsCrossSliceTitle(ids,part.values,id=>clientReportQuestionLabel(reportsQuestionsForSurvey(survey),id)))).join('')}</article>`;});}out.innerHTML=html;}
+function clientRenderReportOverview(out,survey,qs,rows,document,crossings){const byQ={};(rows||[]).forEach(r=>(byQ[r.question_id]||(byQ[r.question_id]=[])).push(r));const cards=qs.map((q,qi)=>{const source=byQ[q.dbId]||[],validBase=Number(source[0]?.valid_base)||0,open=q.type==='open',data=open?source.filter(r=>r.value_label!=='(sem resposta)'):source,total=data.reduce((sum,r)=>sum+Number(r.cnt||0),0),base=open&&reportsOfficialConfig(document?.sections?.openAnswerGrouping,survey.id,q.dbId).denominator!=='valid'?total:validBase,max=Math.max(1,...data.map(r=>Number(r.cnt||0)));const lines=data.length?data.map(r=>{const cnt=Number(r.cnt||0),pct=open?reportsOpenPercentText(cnt,base):reportPercent(cnt,base||total)+'%';return `<div class="reports-answer-row"><div class="reports-answer-head"><span>${esc(r.value_label||'(sem resposta)')}</span><strong>${cnt.toLocaleString('pt-BR')} · ${pct}</strong></div><div class="reports-answer-bar"><i style="width:${Math.min(100,Math.round((cnt/max)*100))}%"></i></div></div>`;}).join(''):'<div class="empty" style="padding:16px 0">Ainda não há respostas válidas.</div>';return `<article class="card reports-question-card"><div class="reports-question-head"><div><span class="reports-question-number">${String(qi+1).padStart(2,'0')}</span><h3>${esc(q.text||'(pergunta sem texto)')}</h3></div><span class="pill pill-blue">${validBase.toLocaleString('pt-BR')} válidas</span></div><div class="reports-question-meta">${esc(Q_TYPES[q.type]||q.type||'Pergunta')}${open?' · categorias revisadas quando existentes; demais textos separados · base percentual: '+(reportsOfficialConfig(document?.sections?.openAnswerGrouping,survey.id,q.dbId).denominator==='valid'?'entrevistas válidas':'respostas preenchidas')+' ('+base+')':''}</div>${lines}</article>`;}).join('');let html=`<div class="reports-overview-head"><div><h2>${esc(document?.title||'Resultados da pesquisa')}</h2><p>${esc(document?.subtitle||'Distribuição atualizada das respostas válidas, pergunta a pergunta.')}</p></div><span class="reports-count-pill">${qs.length} pergunta${qs.length===1?'':'s'}</span></div>`;if(document?.presentation)html+=`<article class="card reports-client-intro"><div class="card-t">Apresentação</div><p>${esc(document.presentation)}</p></article>`;html+=`<div class="reports-question-list">${cards}</div>`;if(document?.executive_summary)html+=`<article class="card reports-client-summary"><div class="card-t">Síntese executiva</div><p>${esc(document.executive_summary)}</p></article>`;if(crossings.length){html+=`<div class="reports-overview-head" style="margin-top:24px"><div><h2>Cruzamentos do relatório</h2><p>Matrizes percentuais sobre a base total de entrevistas válidas.</p></div><span class="reports-count-pill">${crossings.length} análise${crossings.length===1?'':'s'}</span></div>`;crossings.forEach(c=>{const rowsFor=CR_CLIENT_REPORT_CACHE.crossRowsById[c.id]||[],ids=reportsCrossingQuestionIds(c),parts=reportsCrossPartitions(rowsFor,ids);html+=`<article class="card reports-client-crossing"><div class="card-t">${esc(c.title)}</div><div class="card-d">${ids.map((id,i)=>(i+1)+'. '+esc(clientReportQuestionLabel(reportsQuestionsForSurvey(survey),id))).join(' · ')}</div>${parts.map(part=>clientReportCrossMatrixMarkup(clientReportCrossMatrixModel(part.rows,ids,part.values,reportsQuestionsForSurvey(survey)),ids,reportsQuestionsForSurvey(survey),reportsCrossSliceTitle(ids,part.values,id=>clientReportQuestionLabel(reportsQuestionsForSurvey(survey),id)))).join('')}</article>`;});}out.innerHTML=html;}
 
 async function clientLoadPublishedReports(){
   const wrap=document.getElementById('client-published-reports-list');if(!wrap||!sb?.rpc)return;
-  const s=clientSelfSurvey();if(!s){wrap.innerHTML='<div class="empty" style="padding:14px 0">Nenhum relatório disponível.</div>';return;}
+  const s=clientSelfSurvey(),profile=CURRENT_PROFILE;if(!s){wrap.innerHTML='<div class="empty" style="padding:14px 0">Nenhum relatório disponível.</div>';return;}
   try{
     const {data,error}=await clientWithTimeout(sb.rpc('client_published_reports',{p_survey_id:s.id}),'os relatórios publicados');if(error)throw error;
+    if(CURRENT_PROFILE!==profile||!wrap.isConnected||clientSelfSurvey()?.id!==s.id)return;
     const reports=data||[];
     if(!reports.length){wrap.innerHTML='<div class="empty" style="padding:14px 0">A equipe ainda não publicou um relatório final para esta pesquisa.</div>';return;}
     const rows=[];
     for(const r of reports){let url='';try{url=(await sb.storage.from('client-reports').createSignedUrl(r.pdf_path,600)).data?.signedUrl||'';}catch(ex){}rows.push(`<div class="client-report-row"><div><b>${esc(r.title||'Relatório final')}</b><span>${esc(r.subtitle||'PesquisaPro')} · publicado em ${r.published_at?new Date(r.published_at).toLocaleDateString('pt-BR'):'—'}</span>${r.executive_summary?`<p>${esc(r.executive_summary).slice(0,220)}${r.executive_summary.length>220?'…':''}</p>`:''}</div>${url?`<a class="btn btn-fill" href="${esc(url)}" target="_blank" rel="noopener">Abrir PDF</a>`:'<span class="pill pill-amber">Preparando arquivo</span>'}</div>`);}
+    if(CURRENT_PROFILE!==profile||!wrap.isConnected||clientSelfSurvey()?.id!==s.id)return;
     wrap.innerHTML=rows.join('');
-  }catch(ex){wrap.innerHTML='<div class="callout warn">Não foi possível carregar os relatórios publicados agora.</div>';}
+  }catch(ex){if(CURRENT_PROFILE===profile&&wrap.isConnected&&clientSelfSurvey()?.id===s.id)wrap.innerHTML='<div class="callout warn">Não foi possível carregar os relatórios publicados agora.</div>';}
 }
 let _clientResultsChart;
 async function clientResultsLoadAndRender(){
@@ -3359,7 +3392,7 @@ async function surveyStart(idx){
 }
 async function surveyFinish(idx){
   const s=SURVEYS[idx];
-  if(!confirm('Concluir a pesquisa "'+s.name+'"? Ela vai para a aba Concluídas.'))return;
+  if(!confirm('Concluir a pesquisa "'+s.name+'"? Ela vai para a aba Concluídas. Os resultados e relatórios já liberados continuarão disponíveis aos clientes vinculados; a conclusão não publica rascunhos nem altera permissões.'))return;
   try{
     const {error}=await sb.from('surveys').update({status:'encerrada'}).eq('id',s.id);
     if(error)throw new Error(error.message);
@@ -6699,7 +6732,7 @@ function reportsDocumentEditorMarkup(survey){
   const title='Relatório de resultados — '+(survey?.name||'Pesquisa');
   const draftSections=RP_REPORT_DRAFT_SECTIONS||{};const sections=[['includeMethodology','Ficha técnica e metodologia',draftSections.includeMethodology??true],['includeOverview','Resultados de todas as perguntas',draftSections.includeOverview??(RP_REPORT_MODE==='overview')],['includeCross','Gráficos e tabelas de cruzamentos',draftSections.includeCross??(RP_REPORT_MODE==='builder')],['includeSummary','Síntese executiva',draftSections.includeSummary??true]];
   return `<section class="card reports-document-editor" id="reports-document-editor">
-    <div class="reports-document-head"><div><div class="reports-eyebrow">ENTREGA AO CLIENTE</div><h2>Estrutura do relatório final</h2><p>O PDF e os cruzamentos divulgam somente categorias revisadas nas respostas abertas. Pendências não exibem textos originais. Gere novamente e disponibilize após revisar.</p></div><span id="rp-document-status" class="reports-document-status draft">Rascunho</span></div>
+    <div class="reports-document-head"><div><div class="reports-eyebrow">ENTREGA AO CLIENTE</div><h2>Estrutura do relatório final</h2><p>O PDF e os cruzamentos usam as categorias revisadas para os textos vinculados e mantêm as demais respostas pelo texto original. Sem agrupamento, mostram os resultados originais. Revise os textos antes de disponibilizar ao cliente.</p></div><span id="rp-document-status" class="reports-document-status draft">Rascunho</span></div>
     <div class="reports-document-grid">
       <div><label class="lbl">Cliente destinatário</label><select class="inp" id="rp-doc-client" onchange="reportsDocClientChanged()"><option value="">${clients.length?'Selecione o cliente':'Nenhum cliente vinculado'}</option>${clients.map(c=>`<option value="${c.id}" ${c.id===defaultClient?'selected':''}>${esc(c.company||c.name||c.email||'Cliente')}</option>`).join('')}</select></div>
       <div><label class="lbl">Título do relatório</label><input class="inp" id="rp-doc-title" value="${esc(title)}"></div>
@@ -6909,7 +6942,7 @@ function reportsStopLive(){
   RP_REPORT_CHANNEL=null;
 }
 async function reportsLoadAndRender(isLive=false){
-  const out=document.getElementById('rp-output');if(!out||RP_REPORT_LOADING)return;
+  const out=document.getElementById('rp-output');if(!out||RP_REPORT_LOADING||RP_REPORT_EXPORT_BUSY)return;
   const survey=reportsCurrentSurvey(),profile=CURRENT_PROFILE;const qs=reportsCurrentQuestions();if(!survey||!qs.length)return;
   let reload=false;RP_REPORT_LOADING=true;if(!isLive)out.innerHTML='<div class="empty" style="padding:28px 0">Carregando resultados reais…</div>';reportsSetLiveStatus(isLive?'Atualizado agora':'Carregando dados…',isLive?'live':'loading');
   try{
@@ -7012,7 +7045,7 @@ function reportsOpenRefreshOverview(){
 function reportsOpenCard(q,qi,data,base){
   const config=reportsOpenConfig(q.dbId),saved=reportsOpenSerialize(),cache=typeof RP_REPORT_OFFICIAL_OVERVIEW==='undefined'?null:RP_REPORT_OFFICIAL_OVERVIEW,official=cache?.surveyId===saved.surveyId&&cache.profile===CURRENT_PROFILE&&cache.signature===JSON.stringify(saved),model=official?reportsOfficialMappedModel(cache.rows.filter(row=>row.question_id===q.dbId),config,base):reportsOfficialOpenModel(data,reportsOfficialConfig(saved,reportsCurrentSurvey()?.id,q.dbId),base),shown=model.rows.slice(0,100);
   const rows=shown.map(r=>`<li class="reports-open-answer"><div><p>${esc(r.value_label)}</p><small>${r.cnt.toLocaleString('pt-BR')} ocorrências · ${reportsOpenPercentText(r.cnt,model.answered)} das respondidas · ${reportsOpenPercentText(r.cnt,base)} da base válida</small></div><span class="pill pill-blue">${reportsOpenPercentText(r.cnt,model.percentBase)}</span></li>`).join('')||'<li class="empty">Nenhuma resposta preenchida na base válida.</li>';
-  return `<article class="card reports-question-card reports-open-question-card"><div class="reports-question-head"><div><span class="reports-question-number">${String(qi+1).padStart(2,'0')}</span><h3>${esc(q.text||'(pergunta sem texto)')}</h3></div><span class="pill pill-blue">${base.toLocaleString('pt-BR')} válidas</span></div><div class="reports-question-meta">Resposta aberta · categorias revisadas</div><div class="reports-open-tools"><div><strong>Base do percentual: ${config.denominator==='valid'?'entrevistas válidas':'respostas preenchidas desta pergunta'}</strong><small>${model.answered.toLocaleString('pt-BR')} respostas preenchidas. ${model.pending.toLocaleString('pt-BR')} ainda não categorizadas. Os textos originais ficam disponíveis somente no tratamento interno.</small></div>${reportsOpenCanEdit()?`<button class="btn btn-out" onclick="reportsOpenEdit(${jsArg(q.dbId)})">Agrupar respostas</button><button class="btn btn-out" onclick="reportsOpenExport(${jsArg(q.dbId)})">Exportar categorias (interno)</button>`:''}</div><ul class="reports-open-answer-list">${rows}</ul>${model.rows.length>100?'<div class="reports-open-more">Exibindo as primeiras 100 categorias. O PDF usa todas as categorias tratadas.</div>':''}</article>`;
+  return `<article class="card reports-question-card reports-open-question-card"><div class="reports-question-head"><div><span class="reports-question-number">${String(qi+1).padStart(2,'0')}</span><h3>${esc(q.text||'(pergunta sem texto)')}</h3></div><span class="pill pill-blue">${base.toLocaleString('pt-BR')} válidas</span></div><div class="reports-question-meta">Resposta aberta · categorias revisadas e textos não agrupados</div><div class="reports-open-tools"><div><strong>Base do percentual: ${config.denominator==='valid'?'entrevistas válidas':'respostas preenchidas desta pergunta'}</strong><small>${model.answered.toLocaleString('pt-BR')} respostas preenchidas. ${Number.isFinite(model.pending)?model.pending.toLocaleString('pt-BR')+' ainda não categorizadas. ':''}Textos vinculados aparecem na categoria; os demais permanecem separados pelo texto original.</small></div>${reportsOpenCanEdit()?`<button class="btn btn-out" onclick="reportsOpenEdit(${jsArg(q.dbId)})">Agrupar respostas</button><button class="btn btn-out" onclick="reportsOpenExport(${jsArg(q.dbId)})">Exportar categorias (interno)</button>`:''}</div><ul class="reports-open-answer-list">${rows}</ul>${model.rows.length>100?'<div class="reports-open-more">Exibindo os primeiros 100 resultados (categorias e textos). O PDF inclui todos os resultados.</div>':''}</article>`;
 }
 
 function reportsOpenCommit(qid,config){
@@ -7224,12 +7257,22 @@ function reportsOfficialConfig(grouping,surveyId,qid){
 function reportsOfficialOpenModel(data,config,validBase){
   const originals=reportsOpenRows(data),lookup=new Map(),counts=new Map();let pending=0;
   for(const group of config?.groups||[])for(const member of group.members||[])if(!lookup.has(member))lookup.set(member,group.label);
-  for(const row of originals){const label=lookup.get(row.value_label)||'(não categorizadas)';if(!lookup.has(row.value_label))pending+=row.cnt;counts.set(label,(counts.get(label)||0)+row.cnt);}
+  for(const row of originals){const label=lookup.get(row.value_label)||row.value_label;if(!lookup.has(row.value_label))pending+=row.cnt;counts.set(label,(counts.get(label)||0)+row.cnt);}
   const rows=[...counts].map(([value_label,cnt])=>({value_label,cnt})).sort((a,b)=>b.cnt-a.cnt||a.value_label.localeCompare(b.value_label,'pt-BR')),answered=originals.reduce((sum,r)=>sum+r.cnt,0),base=Number(validBase)||0,denominator=config?.denominator==='valid'?'valid':'answered';
   return {rows,answered,pending,validBase:base,denominator,percentBase:denominator==='valid'?base:answered};
 }
+// Compartilha somente consultas idênticas em andamento. Não guarda resultados antigos.
+let RP_REPORT_GROUPED_REQUESTS=[];
+function reportsReadGroupedOnce(key,read){
+  const profile=CURRENT_PROFILE,existing=RP_REPORT_GROUPED_REQUESTS.find(item=>item.profile===profile&&item.key===key);
+  if(existing)return existing.promise;
+  const operation={profile,key,promise:null};
+  operation.promise=Promise.resolve().then(read).finally(()=>{RP_REPORT_GROUPED_REQUESTS=RP_REPORT_GROUPED_REQUESTS.filter(item=>item!==operation);});
+  RP_REPORT_GROUPED_REQUESTS.push(operation);return operation.promise;
+}
 function reportsGroupingActivationError(error){
-  if(error?.code==='PGRST202'||error?.code==='42883'||/could not find the function|function .* does not exist/i.test(error?.message||''))return new Error('Ative os resultados tratados executando manualmente relatorios-categorias-oficiais-v161.sql no Supabase. As respostas originais não serão usadas como alternativa.');
+  if(error?.code==='57014'||/statement timeout|canceling statement due to statement timeout/i.test(error?.message||''))return new Error('O banco excedeu o prazo ao calcular o relatório categorizado. Nenhum PDF ou resultado parcial foi divulgado. Confira a execução manual de relatorios-categorias-e-respostas-v163.sql no Supabase e tente novamente. Seus agrupamentos salvos e respostas originais permanecem preservados.');
+  if(error?.code==='PGRST202'||error?.code==='42883'||/could not find the function|function .* does not exist/i.test(error?.message||''))return new Error('Ative os resultados tratados executando manualmente relatorios-categorias-e-respostas-v163.sql no Supabase, após os SQLs v161/v162. Uma consulta sem os agrupamentos salvos não será usada como alternativa.');
   return error;
 }
 function reportsValidateTreatedCross(rows,ids){
@@ -7238,14 +7281,20 @@ function reportsValidateTreatedCross(rows,ids){
 }
 async function reportsFetchTreatedCross(surveyId,ids,grouping){
   if(!reportsCurrentQuestions().some(q=>ids.includes(q.dbId)&&q.type==='open'))return reportsFetchCross(surveyId,ids);
-  try{const result=await reportsReadAllPages(()=>reportsCrossOrder(sb.rpc('survey_report_grouped_cross',{p_survey_id:surveyId,p_question_ids:ids,p_grouping:grouping},{count:'exact'}),6));reportsValidateTreatedCross(result.data,ids);return result;}catch(error){throw reportsGroupingActivationError(error);}
+  return reportsReadGroupedOnce(JSON.stringify(['staff-cross',surveyId,ids,grouping]),async()=>{
+    try{const result=await reportsReadAllPages(()=>reportsCrossOrder(sb.rpc('survey_report_grouped_cross',{p_survey_id:surveyId,p_question_ids:ids,p_grouping:grouping},{count:'exact'}),6));reportsValidateTreatedCross(result.data,ids);return result;}catch(error){throw reportsGroupingActivationError(error);}
+  });
 }
 async function reportsFetchStaffGroupedOverview(surveyId,grouping){
-  try{return await reportsReadAllPages(()=>reportsOverviewOrder(sb.rpc('survey_report_grouped_questions',{p_survey_id:surveyId,p_grouping:grouping},{count:'exact'})));}catch(error){throw reportsGroupingActivationError(error);}
+  return reportsReadGroupedOnce(JSON.stringify(['staff-overview',surveyId,grouping]),async()=>{
+    try{return await reportsReadAllPages(()=>reportsOverviewOrder(sb.rpc('survey_report_grouped_questions',{p_survey_id:surveyId,p_grouping:grouping},{count:'exact'})));}catch(error){throw reportsGroupingActivationError(error);}
+  });
 }
+// A consulta oficial já mapeou cada resposta; não recategorizar seus rótulos.
+// Não inferir pendências pelo rótulo: texto literal e categoria podem ter o mesmo nome.
 function reportsOfficialMappedModel(rows,config,base){
   const data=reportsOpenRows(rows),answered=data.reduce((sum,row)=>sum+row.cnt,0),denominator=config?.denominator==='valid'?'valid':'answered';
-  return {rows:data,answered,pending:data.filter(row=>row.value_label==='(não categorizadas)').reduce((sum,row)=>sum+row.cnt,0),validBase:Number(base)||0,denominator,percentBase:denominator==='valid'?Number(base)||0:answered};
+  return {rows:data,answered,pending:null,validBase:Number(base)||0,denominator,percentBase:denominator==='valid'?Number(base)||0:answered};
 }
 async function reportsRefreshOfficialOverview(grouping=reportsOpenSerialize()){
   const surveyId=reportsCurrentSurvey()?.id,profile=CURRENT_PROFILE,signature=JSON.stringify(grouping),result=await reportsFetchStaffGroupedOverview(surveyId,grouping);
@@ -7254,10 +7303,14 @@ async function reportsRefreshOfficialOverview(grouping=reportsOpenSerialize()){
   RP_REPORT_OFFICIAL_OVERVIEW={surveyId,profile,signature,rows:result.data||[]};return true;
 }
 async function reportsFetchClientGroupedOverview(surveyId,reportId){
-  try{return await reportsReadAllPages(()=>reportsOverviewOrder(sb.rpc('client_report_grouped_questions',{p_survey_id:surveyId,p_report_id:reportId},{count:'exact'})));}catch(error){throw reportsGroupingActivationError(error);}
+  return reportsReadGroupedOnce(JSON.stringify(['client-overview',surveyId,reportId]),async()=>{
+    try{return await reportsReadAllPages(()=>reportsOverviewOrder(sb.rpc('client_report_grouped_questions',{p_survey_id:surveyId,p_report_id:reportId},{count:'exact'})));}catch(error){throw reportsGroupingActivationError(error);}
+  });
 }
 async function reportsFetchClientGroupedCross(surveyId,reportId,ids){
-  try{const result=await reportsReadAllPages(()=>reportsCrossOrder(sb.rpc('client_report_grouped_cross',{p_survey_id:surveyId,p_report_id:reportId,p_question_ids:ids},{count:'exact'}),6));reportsValidateTreatedCross(result.data,ids);return result;}catch(error){throw reportsGroupingActivationError(error);}
+  return reportsReadGroupedOnce(JSON.stringify(['client-cross',surveyId,reportId,ids]),async()=>{
+    try{const result=await reportsReadAllPages(()=>reportsCrossOrder(sb.rpc('client_report_grouped_cross',{p_survey_id:surveyId,p_report_id:reportId,p_question_ids:ids},{count:'exact'}),6));reportsValidateTreatedCross(result.data,ids);return result;}catch(error){throw reportsGroupingActivationError(error);}
+  });
 }
 async function reportsRequireDraft(){
   reportsOpenEnsureScope();if(!RP_REPORT_DRAFT_HYDRATED&&!reportsOpenDirty())await reportsLoadDraft();
@@ -7266,7 +7319,9 @@ async function reportsRequireDraft(){
 function reportsOpenPdfRows(q,rows,payload,base){
   if(q.type!=='open')return {rows,base,note:''};
   const config=reportsOfficialConfig(payload.sections?.openAnswerGrouping,payload.surveyId,q.dbId),model=payload.officialGrouped===true?reportsOfficialMappedModel(rows,config,base):reportsOfficialOpenModel(rows,config,base);
-  return {rows:model.rows,base:model.percentBase,note:'Resposta aberta — somente categorias revisadas. Base percentual: '+(model.denominator==='valid'?'entrevistas válidas':'respostas preenchidas desta pergunta')+' ('+model.percentBase+'). Respostas preenchidas: '+model.answered+'; entrevistas válidas: '+model.validBase+'.'+(model.pending?' '+model.pending+' respostas ainda não categorizadas foram mantidas em uma linha de pendência, sem divulgar os textos originais.':'')};
+  const treatment=config.groups.length?'categorias revisadas e textos originais ainda não agrupados':'respostas originais, sem agrupamento';
+  const pending=Number.isFinite(model.pending)&&model.pending>0?' '+model.pending+' respostas ainda não categorizadas são exibidas pelos respectivos textos.':'';
+  return {rows:model.rows,base:model.percentBase,note:'Resposta aberta — '+treatment+'. Categorias substituem somente seus textos vinculados, sem duplicar ocorrências. Base percentual: '+(model.denominator==='valid'?'entrevistas válidas':'respostas preenchidas desta pergunta')+' ('+model.percentBase+'). Respostas preenchidas: '+model.answered+'; entrevistas válidas: '+model.validBase+'.'+pending};
 }
 
 function renderReportsOverview(out,rows,qs){
@@ -7294,7 +7349,7 @@ function reportsCrossPct(value,base){return base?((Number(value||0)/base)*100).t
 function reportsCrossMatrixModel(rows,ids,thirdValue=null){const base=Number(rows[0]?.valid_base)||0,filtered=reportsCrossSliceRows(rows,thirdValue),rowValues=reportsCrossOrderedValues(filtered,0,ids[0]),colValues=ids.length>1?reportsCrossOrderedValues(filtered,1,ids[1]):['% da base'],counts=new Map(),rowTotals=new Map(),colTotals=new Map();filtered.forEach(row=>{const rowValue=reportsCrossValue(row.variable_1),colValue=ids.length>1?reportsCrossValue(row.variable_2):'% da base',count=Number(row.cnt||0);counts.set(rowValue+'\u0000'+colValue,(counts.get(rowValue+'\u0000'+colValue)||0)+count);rowTotals.set(rowValue,(rowTotals.get(rowValue)||0)+count);colTotals.set(colValue,(colTotals.get(colValue)||0)+count);});const values=thirdValue==null?[]:Array.isArray(thirdValue)?thirdValue:[thirdValue];return {base,rowValues,colValues,counts,rowTotals,colTotals,title:reportsCrossSliceTitle(ids,values)};}
 function reportsCrossMatrixMarkup(model,ids){const rowLabel=reportsQuestionLabel(ids[0]),colLabel=ids.length>1?reportsQuestionLabel(ids[1]):'Percentual da base';const headers=model.colValues.map(value=>`<th>${esc(value)}</th>`).join('');const body=model.rowValues.map(rowValue=>{const cells=model.colValues.map(colValue=>`<td>${reportsCrossPct(model.counts.get(rowValue+'\u0000'+colValue)||0,model.base)}</td>`).join('');return `<tr><th scope="row">${esc(rowValue)}</th>${cells}<td class="cross-total-cell"><strong>${reportsCrossPct(model.rowTotals.get(rowValue)||0,model.base)}</strong></td></tr>`;}).join('');const totals=model.colValues.map(colValue=>`<td class="cross-total-cell"><strong>${reportsCrossPct(model.colTotals.get(colValue)||0,model.base)}</strong></td>`).join('');return `<div class="reports-cross-matrix-wrap">${model.title?`<h3>${esc(model.title)}</h3>`:''}<div class="reports-cross-scroll"><table class="reports-cross-matrix"><thead><tr><th>${esc(rowLabel)}</th>${headers}<th>TOTAL</th></tr></thead><tbody>${body||`<tr><td colspan="${model.colValues.length+2}" class="empty">Nenhuma combinação encontrada.</td></tr>`}<tr class="cross-total-row"><th>TOTAL</th>${totals}<td class="cross-total-cell"><strong>${reportsCrossPct([...model.rowTotals.values()].reduce((sum,value)=>sum+value,0),model.base)}</strong></td></tr></tbody></table></div></div>`;}
 function reportsCrossSliceContainer(title,amount,base,content,index,total){if(total<2)return content;return `<details class="reports-cross-slice" ${index===0?'open':''}><summary><span>Recorte ${index+1}: ${esc(title)}</span><b>${amount.toLocaleString('pt-BR')} entrevistas · ${reportsCrossPct(amount,base)}</b></summary>${content}</details>`;}
-function renderReportsCross(out,rows,ids,qs){const base=Number(rows[0]?.valid_base)||0,parts=reportsCrossPartitions(rows,ids),matrices=parts.map((part,index)=>{const model=reportsCrossMatrixModel(part.rows,ids,part.values),amount=[...model.rowTotals.values()].reduce((sum,value)=>sum+value,0);return reportsCrossSliceContainer(model.title,amount,base,reportsCrossMatrixMarkup(model,ids),index,parts.length);}).join('');out.innerHTML=`<div class="reports-cross-head"><div><h2>Relatório montado</h2><p>${ids.length} variáveis · ${parts.length} recorte${parts.length===1?'':'s'} observado${parts.length===1?'':'s'} · Matriz percentual sobre ${base.toLocaleString('pt-BR')} entrevistas válidas. Abertas usam somente categorias revisadas; pendências ficam em (não categorizadas). As células e os totais usam a base total da pesquisa.</p></div><button class="btn btn-out" onclick="reportsExportCurrent()">Exportar CSV completo</button></div><div class="reports-cross-matrices card">${matrices||'<div class="empty">Nenhuma combinação encontrada.</div>'}</div>`;}
+function renderReportsCross(out,rows,ids,qs){const base=Number(rows[0]?.valid_base)||0,parts=reportsCrossPartitions(rows,ids),matrices=parts.map((part,index)=>{const model=reportsCrossMatrixModel(part.rows,ids,part.values),amount=[...model.rowTotals.values()].reduce((sum,value)=>sum+value,0);return reportsCrossSliceContainer(model.title,amount,base,reportsCrossMatrixMarkup(model,ids),index,parts.length);}).join('');out.innerHTML=`<div class="reports-cross-head"><div><h2>Relatório montado</h2><p>${ids.length} variáveis · ${parts.length} recorte${parts.length===1?'':'s'} observado${parts.length===1?'':'s'} · Matriz percentual sobre ${base.toLocaleString('pt-BR')} entrevistas válidas. Nas abertas, categorias substituem seus textos vinculados e as respostas ainda não agrupadas permanecem separadas pelo texto original. As células e os totais usam a base total da pesquisa.</p></div><button class="btn btn-out" onclick="reportsExportCurrent()">Exportar CSV completo</button></div><div class="reports-cross-matrices card">${matrices||'<div class="empty">Nenhuma combinação encontrada.</div>'}</div>`;}
 function reportsDocValue(id){return (document.getElementById(id)?.value||'').trim();}
 function reportsDocChecked(id){return !!document.getElementById(id)?.checked;}
 function reportsDocPayload(){
@@ -7434,7 +7489,14 @@ async function reportsEnsurePdfData(payload){
   // Atualizar dados completos a cada geração; categorias aplicadas separadamente sobre o snapshot do documento.
   if(payload.sections.includeOverview){const {data,error}=await reportsFetchStaffGroupedOverview(survey.id,payload.sections.openAnswerGrouping);if(error)throw error;guard();payload.officialOverviewRows=data||[];payload.officialGrouped=true;}
   const crossings=payload.sections.includeCross?(payload.sections.crossings||[]).filter(crossing=>crossing.include!==false&&crossing.questionIds?.length):[];
-  for(const crossing of crossings){const ids=reportsCrossingQuestionIds(crossing);const {data,error}=await reportsFetchTreatedCross(survey.id,ids,payload.sections.openAnswerGrouping);if(error)throw error;guard();RP_REPORT_CROSS_ANALYSIS_CACHE[crossing.id]={surveyId:survey.id,ids,rows:data||[],grouping:JSON.stringify(payload.sections.openAnswerGrouping)};}
+  const currentExportResults=new Map();
+  for(const crossing of crossings){
+    guard();const ids=reportsCrossingQuestionIds(crossing),key=JSON.stringify(ids);
+    if(!currentExportResults.has(key)){
+      const {data,error}=await reportsFetchTreatedCross(survey.id,ids,payload.sections.openAnswerGrouping);if(error)throw error;guard();currentExportResults.set(key,data||[]);
+    }
+    RP_REPORT_CROSS_ANALYSIS_CACHE[crossing.id]={surveyId:survey.id,ids,rows:currentExportResults.get(key),grouping:JSON.stringify(payload.sections.openAnswerGrouping)};
+  }
 }
 
 function reportsPdfWriteCrossing(doc,crossing,payload,M,bodyW){

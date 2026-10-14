@@ -2007,3 +2007,17 @@ body.acollect-notice-gate-open{overflow:hidden}
 .reports-open-filter-hint{margin:0 0 12px;font-size:11px;line-height:1.6;color:#64748b}
 .reports-open-pending-empty{padding:16px;color:#475569;font-size:12px;line-height:1.7}
 @media(max-width:760px){.reports-open-filter-tab{flex-direction:column;align-items:flex-start;gap:5px;padding:8px;font-size:11px}.reports-open-manual-shortcut{width:100%}}
+
+/* v159 — união manual e revisável de categorias completas */
+.reports-open-merge-box{padding:14px;margin-bottom:14px;border:1px solid #c9daf1;border-radius:12px;background:#f5f9ff;min-width:0}
+.reports-open-merge-box h4{margin:0 0 8px;font-size:13px;color:#17345b}
+.reports-open-merge-box p{margin:8px 0;font-size:11px;line-height:1.7;color:#475569;overflow-wrap:anywhere}
+.reports-open-merge-preview{margin:12px 0;font-size:11px;line-height:1.7;color:#334155;overflow-wrap:anywhere}
+.reports-open-merge-preview b,.reports-open-merge-preview small{display:block}
+.reports-open-merge-preview ul{margin:8px 0;padding-left:18px}
+.reports-open-merge-actions{display:flex;gap:8px;flex-wrap:wrap}
+.reports-open-merge-actions .btn{white-space:normal;text-align:center;line-height:1.5}
+.reports-open-merge-pick{display:flex;align-items:center;gap:8px;padding:8px 10px;margin-bottom:10px;border:1px solid #d8e2f0;border-radius:8px;background:#f8fafc;font-size:11px;font-weight:700;color:#334155;cursor:pointer}
+.reports-open-merge-pick input{width:17px;height:17px;flex:none;accent-color:#2563eb}
+.reports-open-dialog #rp-open-merge-title{scroll-margin-block:12px}
+@media(max-width:760px){.reports-open-merge-actions{flex-direction:column}.reports-open-merge-actions .btn{width:100%}.reports-open-merge-box{padding:12px}}

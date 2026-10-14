@@ -88,10 +88,10 @@ function environment(rows,options={}){
   const limit=environment(Array.from({length:100001},()=>rows[0]));
   await assert.rejects(limit.context.reportsFetchOverview('survey-A'),/limite seguro/);
 
-  assert(app.includes("reportsReadAllPages(()=>reportsOverviewOrder(sb.rpc('client_report_all_questions'"),'cliente deve paginar sua própria RPC protegida');
-  assert(app.includes("reportsReadAllPages(()=>reportsCrossOrder(sb.rpc('client_report_cross_tab'"));
+  assert(app.includes("reportsReadAllPages(()=>reportsOverviewOrder(sb.rpc('client_report_grouped_questions'"),'cliente deve paginar sua própria RPC protegida');
+  assert(app.includes("reportsReadAllPages(()=>reportsCrossOrder(sb.rpc('client_report_grouped_cross'"));
   assert(app.includes("reportsReadAllPages(()=>reportsCrossOrder(sb.rpc('survey_report_cross_tab'"));
   const pdf=app.slice(app.indexOf('async function reportsEnsurePdfData('),app.indexOf('function reportsPdfWriteCrossing('));
-  assert(pdf.includes('reportsFetchOverview(survey.id)')&&pdf.includes('reportsFetchCross(survey.id,ids)'),'PDF deve usar carregamento completo');
+  assert(pdf.includes('reportsFetchStaffGroupedOverview(survey.id,payload.sections.openAnswerGrouping)')&&pdf.includes('reportsFetchTreatedCross(survey.id,ids,payload.sections.openAnswerGrouping)'),'PDF deve usar carregamento completo');
   console.log('reports-pagination-smoke-test: PASS — corte de 1.000 reproduzido, 22 perguntas restauradas, limites menores, erros, snapshot, fallback, cliente e PDF validados.');
 })().catch(error=>{console.error(error);process.exit(1);});

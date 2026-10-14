@@ -51,7 +51,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261013224500';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261014145800';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -205,7 +205,7 @@ async function enableResearcherPush(){
   try{
     const permission=await Notification.requestPermission();
     if(permission!=='granted'){PUSH_STATUS='blocked';go('dashboard-pesq');return;}
-    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261013224500',{scope:'./'});
+    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261014145800',{scope:'./'});
     const subscription=await PUSH_SW_REGISTRATION.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:pushKeyToUint8Array(window.PP_PUSH_PUBLIC_KEY)});
     const json=subscription.toJSON();
     const {error}=await sb.from('push_subscriptions').upsert({user_id:CURRENT_PROFILE.id,endpoint:json.endpoint,subscription:json,user_agent:navigator.userAgent,updated_at:new Date().toISOString()},{onConflict:'endpoint'});
@@ -1797,7 +1797,7 @@ function reportsQuestionsForSurvey(s){
   return (s.questions||[]).filter(q=>q.dbId);
 }
 function reportsQuestionsForClient(s){
-  return reportsQuestionsForSurvey(s).filter(q=>q.type!=='open');
+  return reportsQuestionsForSurvey(s);
 }
 function reportsCrossQuestionsForSurvey(s){
   return reportsQuestionsForSurvey(s).filter(q=>q.type!=='pair'&&q.type!=='ranking');
@@ -1884,9 +1884,9 @@ function heatmapQuestionOptions(qs,selected){return qs.map(q=>`<option value="${
 function heatmapValueOptions(rows,selected){return (rows||[]).map(r=>`<option value="${esc(r.value_label)}" ${r.value_label===selected?'selected':''}>${esc(r.value_label)} · ${Number(r.response_count||0).toLocaleString('pt-BR')} resposta${Number(r.response_count||0)===1?'':'s'}</option>`).join('');}
 function responseHeatmapPanelMarkup(prefix,qs,questionId,value,master=false){return `<section class="card response-heatmap-panel ${master?'reports-response-heatmap':'client-response-heatmap'}" id="${prefix}-response-heatmap"><div class="reports-heatmap-head"><div><div class="reports-eyebrow">MAPA DE CALOR POR RESPOSTA</div><h2>Onde essa resposta aconteceu?</h2><p>Escolha uma pergunta e depois uma resposta para visualizar sua concentração geográfica.</p></div><span class="pill pill-blue">Áreas aproximadas</span></div><div class="response-heatmap-controls"><div><label class="lbl">Pergunta</label><select class="inp" id="${prefix}-heatmap-question" onchange="${master?'reportsHeatmapPickQuestion':'clientHeatmapPickQuestion'}(this.value)">${heatmapQuestionOptions(qs,questionId)}</select></div><div><label class="lbl">Resposta selecionada</label><select class="inp" id="${prefix}-heatmap-value" onchange="${master?'reportsHeatmapPickValue':'clientHeatmapPickValue'}(this.value)"><option value="">Carregando respostas…</option></select></div></div><div id="${prefix}-heatmap-summary" class="response-heatmap-summary">Carregando respostas agregadas…</div><div class="map-canvas-wrap response-heatmap-map-wrap"><div id="${prefix}-heatmap-map" class="collect-map-canvas response-heatmap-map" role="application" aria-label="Mapa de calor por resposta"></div><div id="${prefix}-heatmap-map-loading" class="map-loading" aria-live="polite">Preparando mapa de calor…</div></div><div class="response-heatmap-legend"><span><i style="background:#22c55e"></i>Menor concentração</span><span><i style="background:#facc15"></i>Concentração média</span><span><i style="background:#dc2626"></i>Maior concentração</span><small>Localização arredondada para preservar privacidade.</small></div></section>`;}
 function reportsHeatmapMarkup(survey){const qs=heatmapQuestionsForSurvey(survey);if(!qs.length)return '';if(!RP_HEATMAP_QUESTION_ID||!qs.some(q=>q.dbId===RP_HEATMAP_QUESTION_ID))RP_HEATMAP_QUESTION_ID=qs[0].dbId;return responseHeatmapPanelMarkup('rp',qs,RP_HEATMAP_QUESTION_ID,RP_HEATMAP_VALUE,true);}
-function clientHeatmapMarkup(survey){const qs=heatmapQuestionsForSurvey(survey);if(!qs.length)return '';if(!CR_HEATMAP_QUESTION_ID||!qs.some(q=>q.dbId===CR_HEATMAP_QUESTION_ID))CR_HEATMAP_QUESTION_ID=qs[0].dbId;return responseHeatmapPanelMarkup('cr',qs,CR_HEATMAP_QUESTION_ID,CR_HEATMAP_VALUE,false);}
-async function loadResponseHeatmapRows(mode){const isMaster=mode==='master',survey=isMaster?reportsCurrentSurvey():clientSelfSurvey(),questionId=isMaster?RP_HEATMAP_QUESTION_ID:CR_HEATMAP_QUESTION_ID;if(!survey||!questionId)return[];const {data,error}=await clientWithTimeout(sb.rpc('survey_response_values',{p_survey_id:survey.id,p_question_id:questionId}),'as respostas do mapa de calor');if(error)throw error;return data||[];}
-async function loadResponseHeatmapPoints(mode,value){const isMaster=mode==='master',survey=isMaster?reportsCurrentSurvey():clientSelfSurvey(),questionId=isMaster?RP_HEATMAP_QUESTION_ID:CR_HEATMAP_QUESTION_ID;if(!survey||!questionId||!value)return[];const {data,error}=await clientWithTimeout(sb.rpc('survey_response_heatmap',{p_survey_id:survey.id,p_question_id:questionId,p_value_label:value}),'os pontos do mapa de calor');if(error)throw error;return data||[];}
+function clientHeatmapMarkup(survey){const qs=heatmapQuestionsForSurvey(survey).filter(q=>q.type!=='open');if(!qs.length)return '';if(!CR_HEATMAP_QUESTION_ID||!qs.some(q=>q.dbId===CR_HEATMAP_QUESTION_ID))CR_HEATMAP_QUESTION_ID=qs[0].dbId;return responseHeatmapPanelMarkup('cr',qs,CR_HEATMAP_QUESTION_ID,CR_HEATMAP_VALUE,false);}
+async function loadResponseHeatmapRows(mode){const isMaster=mode==='master',survey=isMaster?reportsCurrentSurvey():clientSelfSurvey(),questionId=isMaster?RP_HEATMAP_QUESTION_ID:CR_HEATMAP_QUESTION_ID;if(!survey||!questionId||!isMaster&&survey.questions?.some(q=>q.dbId===questionId&&q.type==='open'))return[];const {data,error}=await clientWithTimeout(sb.rpc('survey_response_values',{p_survey_id:survey.id,p_question_id:questionId}),'as respostas do mapa de calor');if(error)throw error;return data||[];}
+async function loadResponseHeatmapPoints(mode,value){const isMaster=mode==='master',survey=isMaster?reportsCurrentSurvey():clientSelfSurvey(),questionId=isMaster?RP_HEATMAP_QUESTION_ID:CR_HEATMAP_QUESTION_ID;if(!survey||!questionId||!value||!isMaster&&survey.questions?.some(q=>q.dbId===questionId&&q.type==='open'))return[];const {data,error}=await clientWithTimeout(sb.rpc('survey_response_heatmap',{p_survey_id:survey.id,p_question_id:questionId,p_value_label:value}),'os pontos do mapa de calor');if(error)throw error;return data||[];}
 function renderResponseHeatmapControls(mode){const prefix=mode==='master'?'rp':'cr',rows=mode==='master'?RP_HEATMAP_ROWS:CR_HEATMAP_ROWS,selected=mode==='master'?RP_HEATMAP_VALUE:CR_HEATMAP_VALUE,select=document.getElementById(prefix+'-heatmap-value'),summary=document.getElementById(prefix+'-heatmap-summary');if(select)select.innerHTML=rows.length?heatmapValueOptions(rows,selected):'<option value="">Nenhuma resposta encontrada</option>';if(summary)summary.textContent=rows.length?`${rows.length} resposta${rows.length===1?'':'s'} encontrada${rows.length===1?'':'s'} · selecione uma para desenhar o mapa de calor.`:'Nenhuma resposta agregada encontrada para esta pergunta.';}
 async function responseHeatmapLoad(mode){const isMaster=mode==='master',wrap=document.getElementById((isMaster?'rp':'cr')+'-response-heatmap');if(!wrap||((isMaster?RP_HEATMAP_LOADING:CR_HEATMAP_LOADING)))return;if(!isMaster&&!clientResultsReleasedForSurvey(clientSelf(),clientSelfSurvey()))return;if(isMaster)RP_HEATMAP_LOADING=true;else CR_HEATMAP_LOADING=true;try{const rows=await loadResponseHeatmapRows(mode);if(isMaster){RP_HEATMAP_ROWS=rows;if(!rows.some(r=>r.value_label===RP_HEATMAP_VALUE))RP_HEATMAP_VALUE=rows[0]?.value_label||'';}else{CR_HEATMAP_ROWS=rows;if(!rows.some(r=>r.value_label===CR_HEATMAP_VALUE))CR_HEATMAP_VALUE=rows[0]?.value_label||'';}renderResponseHeatmapControls(mode);const points=await loadResponseHeatmapPoints(mode,isMaster?RP_HEATMAP_VALUE:CR_HEATMAP_VALUE);renderResponseHeatmapMap(isMaster?'master-response-heatmap':'client-response-heatmap',isMaster?'rp-heatmap-map':'cr-heatmap-map',points);const summary=document.getElementById((isMaster?'rp':'cr')+'-heatmap-summary');if(summary)summary.textContent=(isMaster?RP_HEATMAP_VALUE:CR_HEATMAP_VALUE)?`${(isMaster?RP_HEATMAP_VALUE:CR_HEATMAP_VALUE)} · ${points.reduce((sum,p)=>sum+Number(p.point_count||0),0).toLocaleString('pt-BR')} entrevista${points.reduce((sum,p)=>sum+Number(p.point_count||0),0)===1?'':'s'} georreferenciada${points.length===1?'':'s'}`:'Selecione uma resposta para desenhar o mapa de calor.';}catch(ex){const summary=document.getElementById((isMaster?'rp':'cr')+'-heatmap-summary');if(summary)summary.textContent='Não foi possível carregar o mapa de calor: '+(ex?.message||ex);}finally{if(isMaster)RP_HEATMAP_LOADING=false;else CR_HEATMAP_LOADING=false;}}
 function reportsHeatmapPickQuestion(id){RP_HEATMAP_QUESTION_ID=id;RP_HEATMAP_VALUE='';go('reports');}
@@ -1901,7 +1901,7 @@ function clientReportCrossMatrixMarkup(model,ids,qs,title=''){const headers=mode
 function clientPublishedCrossings(document,qs){const sec=typeof document?.sections==='string'?JSON.parse(document.sections||'{}'):document?.sections||{};const valid=new Set(qs.map(q=>q.dbId));return reportsNormalizeCrossings(sec).filter(c=>c.include!==false&&reportsCrossingQuestionIds(c).length&&reportsCrossingQuestionIds(c).every(id=>valid.has(id)));}
 async function clientLoadReportOverview(){
   const out=document.getElementById('cr-client-report');if(!out||CR_CLIENT_REPORT_LOADING)return;
-  const c=clientSelf(),s=clientSelfSurvey(),qs=reportsQuestionsForClient(s||{}),crossQs=reportsCrossQuestionsForSurvey(s||{});if(!c||!s||!qs.length)return;
+  const c=clientSelf(),s=clientSelfSurvey(),profile=CURRENT_PROFILE,qs=reportsQuestionsForClient(s||{}),crossQs=reportsCrossQuestionsForSurvey(s||{});if(!c||!s||!qs.length)return;
   if(!clientResultsReleasedForSurvey(c,s)){out.innerHTML='<div class="card"><div class="empty">Os resultados ainda não foram liberados.</div></div>';return;}
   CR_CLIENT_REPORT_LOADING=true;out.innerHTML='<div class="empty" style="padding:28px 0">Carregando resultados agregados…</div>';
   try{
@@ -1911,12 +1911,14 @@ async function clientLoadReportOverview(){
       if(docError)throw docError;
       publishedDocument=docs?.[0]||null;
     }catch(ex){documentError=ex;}
-    const {data:overviewRows,error:overviewError}=await reportsReadAllPages(()=>reportsOverviewOrder(sb.rpc('client_report_all_questions',{p_survey_id:s.id},{count:'exact'})));
+    if(documentError)throw documentError;
+    if(!publishedDocument){CR_CLIENT_REPORT_CACHE={surveyId:s.id,overviewRows:[],crossRowsById:{},document:null};out.innerHTML='<div class="card"><div class="empty">A gestão ainda não publicou o relatório tratado desta pesquisa. As respostas originais não são divulgadas nesta área.</div></div>';return;}
+    const {data:overviewRows,error:overviewError}=await reportsFetchClientGroupedOverview(s.id,publishedDocument.id);
     if(overviewError)throw overviewError;
     const crossings=clientPublishedCrossings(publishedDocument,crossQs),crossRowsById={},crossErrors=[];
-    for(const crossing of crossings){const ids=reportsCrossingQuestionIds(crossing);try{const {data,error}=await reportsFetchCross(s.id,ids,'client');if(error)throw error;crossRowsById[crossing.id]=data||[];}catch(ex){crossErrors.push(ex);}}
+    for(const crossing of crossings){const ids=reportsCrossingQuestionIds(crossing);try{const {data,error}=await reportsFetchClientGroupedCross(s.id,publishedDocument.id,ids);if(error)throw error;crossRowsById[crossing.id]=data||[];}catch(ex){crossErrors.push(ex);}}
     if(crossErrors.length)throw crossErrors[0];
-    if(!out.isConnected||clientSelfSurvey()?.id!==s.id||!clientResultsReleasedForSurvey(c,s))return;
+    if(CURRENT_PROFILE!==profile||!out.isConnected||clientSelfSurvey()?.id!==s.id||!clientResultsReleasedForSurvey(c,s))return;
     CR_CLIENT_REPORT_CACHE={surveyId:s.id,overviewRows:overviewRows||[],crossRowsById,document:publishedDocument};
     clientRenderReportOverview(out,s,qs,overviewRows||[],publishedDocument,crossings);
   }catch(ex){
@@ -1924,7 +1926,7 @@ async function clientLoadReportOverview(){
     out.innerHTML='<div class="callout warn"><b>Não foi possível carregar os resultados agregados agora.</b><br>O restante do monitoramento continua disponível. Verifique as migrations de resultados para clientes e os índices de monitoramento. Detalhe: '+esc(detail)+'</div>';
   }finally{CR_CLIENT_REPORT_LOADING=false;}
 }
-function clientRenderReportOverview(out,survey,qs,rows,document,crossings){const byQ={};(rows||[]).forEach(r=>(byQ[r.question_id]||(byQ[r.question_id]=[])).push(r));const cards=qs.map((q,qi)=>{const data=byQ[q.dbId]||[],base=Number(data[0]?.valid_base)||0,total=data.reduce((sum,r)=>sum+Number(r.cnt||0),0),max=Math.max(1,...data.map(r=>Number(r.cnt||0)));const lines=data.length?data.map(r=>{const cnt=Number(r.cnt||0),pct=reportPercent(cnt,base||total);return `<div class="reports-answer-row"><div class="reports-answer-head"><span>${esc(r.value_label||'(sem resposta)')}</span><strong>${cnt.toLocaleString('pt-BR')} · ${pct}%</strong></div><div class="reports-answer-bar"><i style="width:${Math.min(100,Math.round((cnt/max)*100))}%"></i></div></div>`;}).join(''):'<div class="empty" style="padding:16px 0">Ainda não há respostas válidas.</div>';return `<article class="card reports-question-card"><div class="reports-question-head"><div><span class="reports-question-number">${String(qi+1).padStart(2,'0')}</span><h3>${esc(q.text||'(pergunta sem texto)')}</h3></div><span class="pill pill-blue">${base.toLocaleString('pt-BR')} válidas</span></div><div class="reports-question-meta">${esc(Q_TYPES[q.type]||q.type||'Pergunta')}</div>${lines}</article>`;}).join('');let html=`<div class="reports-overview-head"><div><h2>${esc(document?.title||'Resultados da pesquisa')}</h2><p>${esc(document?.subtitle||'Distribuição atualizada das respostas válidas, pergunta a pergunta.')}</p></div><span class="reports-count-pill">${qs.length} pergunta${qs.length===1?'':'s'}</span></div>`;if(document?.presentation)html+=`<article class="card reports-client-intro"><div class="card-t">Apresentação</div><p>${esc(document.presentation)}</p></article>`;html+=`<div class="reports-question-list">${cards}</div>`;if(document?.executive_summary)html+=`<article class="card reports-client-summary"><div class="card-t">Síntese executiva</div><p>${esc(document.executive_summary)}</p></article>`;if(crossings.length){html+=`<div class="reports-overview-head" style="margin-top:24px"><div><h2>Cruzamentos do relatório</h2><p>Matrizes percentuais sobre a base total de entrevistas válidas.</p></div><span class="reports-count-pill">${crossings.length} análise${crossings.length===1?'':'s'}</span></div>`;crossings.forEach(c=>{const rowsFor=CR_CLIENT_REPORT_CACHE.crossRowsById[c.id]||[],ids=reportsCrossingQuestionIds(c),parts=reportsCrossPartitions(rowsFor,ids);html+=`<article class="card reports-client-crossing"><div class="card-t">${esc(c.title)}</div><div class="card-d">${ids.map((id,i)=>(i+1)+'. '+esc(clientReportQuestionLabel(reportsQuestionsForSurvey(survey),id))).join(' · ')}</div>${parts.map(part=>clientReportCrossMatrixMarkup(clientReportCrossMatrixModel(part.rows,ids,part.values,reportsQuestionsForSurvey(survey)),ids,reportsQuestionsForSurvey(survey),reportsCrossSliceTitle(ids,part.values,id=>clientReportQuestionLabel(reportsQuestionsForSurvey(survey),id)))).join('')}</article>`;});}out.innerHTML=html;}
+function clientRenderReportOverview(out,survey,qs,rows,document,crossings){const byQ={};(rows||[]).forEach(r=>(byQ[r.question_id]||(byQ[r.question_id]=[])).push(r));const cards=qs.map((q,qi)=>{const source=byQ[q.dbId]||[],validBase=Number(source[0]?.valid_base)||0,open=q.type==='open',data=open?source.filter(r=>r.value_label!=='(sem resposta)'):source,total=data.reduce((sum,r)=>sum+Number(r.cnt||0),0),base=open&&reportsOfficialConfig(document?.sections?.openAnswerGrouping,survey.id,q.dbId).denominator!=='valid'?total:validBase,max=Math.max(1,...data.map(r=>Number(r.cnt||0)));const lines=data.length?data.map(r=>{const cnt=Number(r.cnt||0),pct=open?reportsOpenPercentText(cnt,base):reportPercent(cnt,base||total)+'%';return `<div class="reports-answer-row"><div class="reports-answer-head"><span>${esc(r.value_label||'(sem resposta)')}</span><strong>${cnt.toLocaleString('pt-BR')} · ${pct}</strong></div><div class="reports-answer-bar"><i style="width:${Math.min(100,Math.round((cnt/max)*100))}%"></i></div></div>`;}).join(''):'<div class="empty" style="padding:16px 0">Ainda não há respostas válidas.</div>';return `<article class="card reports-question-card"><div class="reports-question-head"><div><span class="reports-question-number">${String(qi+1).padStart(2,'0')}</span><h3>${esc(q.text||'(pergunta sem texto)')}</h3></div><span class="pill pill-blue">${validBase.toLocaleString('pt-BR')} válidas</span></div><div class="reports-question-meta">${esc(Q_TYPES[q.type]||q.type||'Pergunta')}${open?' · categorias revisadas · base percentual: '+(reportsOfficialConfig(document?.sections?.openAnswerGrouping,survey.id,q.dbId).denominator==='valid'?'entrevistas válidas':'respostas preenchidas')+' ('+base+')':''}</div>${lines}</article>`;}).join('');let html=`<div class="reports-overview-head"><div><h2>${esc(document?.title||'Resultados da pesquisa')}</h2><p>${esc(document?.subtitle||'Distribuição atualizada das respostas válidas, pergunta a pergunta.')}</p></div><span class="reports-count-pill">${qs.length} pergunta${qs.length===1?'':'s'}</span></div>`;if(document?.presentation)html+=`<article class="card reports-client-intro"><div class="card-t">Apresentação</div><p>${esc(document.presentation)}</p></article>`;html+=`<div class="reports-question-list">${cards}</div>`;if(document?.executive_summary)html+=`<article class="card reports-client-summary"><div class="card-t">Síntese executiva</div><p>${esc(document.executive_summary)}</p></article>`;if(crossings.length){html+=`<div class="reports-overview-head" style="margin-top:24px"><div><h2>Cruzamentos do relatório</h2><p>Matrizes percentuais sobre a base total de entrevistas válidas.</p></div><span class="reports-count-pill">${crossings.length} análise${crossings.length===1?'':'s'}</span></div>`;crossings.forEach(c=>{const rowsFor=CR_CLIENT_REPORT_CACHE.crossRowsById[c.id]||[],ids=reportsCrossingQuestionIds(c),parts=reportsCrossPartitions(rowsFor,ids);html+=`<article class="card reports-client-crossing"><div class="card-t">${esc(c.title)}</div><div class="card-d">${ids.map((id,i)=>(i+1)+'. '+esc(clientReportQuestionLabel(reportsQuestionsForSurvey(survey),id))).join(' · ')}</div>${parts.map(part=>clientReportCrossMatrixMarkup(clientReportCrossMatrixModel(part.rows,ids,part.values,reportsQuestionsForSurvey(survey)),ids,reportsQuestionsForSurvey(survey),reportsCrossSliceTitle(ids,part.values,id=>clientReportQuestionLabel(reportsQuestionsForSurvey(survey),id)))).join('')}</article>`;});}out.innerHTML=html;}
 
 async function clientLoadPublishedReports(){
   const wrap=document.getElementById('client-published-reports-list');if(!wrap||!sb?.rpc)return;
@@ -1948,9 +1950,9 @@ async function clientResultsLoadAndRender(){
   let rows;
   try{
     if(!clientResultsReleasedForSurvey(clientSelf(),s)){out.innerHTML='<div class="callout">Os resultados ainda não foram liberados para esta pesquisa.</div>';return;}
-    const {data,error}=await sb.rpc('survey_answer_distribution',{p_survey_id:s.id,p_question_id:CR_QUESTION_DBID});
-    if(error)throw new Error(error.message);
-    rows=data||[];
+    if(CR_CLIENT_REPORT_CACHE.surveyId!==s.id||!CR_CLIENT_REPORT_CACHE.document)await clientLoadReportOverview();
+    if(CR_CLIENT_REPORT_CACHE.surveyId!==s.id||!CR_CLIENT_REPORT_CACHE.document)throw new Error('Aguarde a publicação do relatório tratado.');
+    rows=(CR_CLIENT_REPORT_CACHE.overviewRows||[]).filter(row=>row.question_id===CR_QUESTION_DBID);
   }catch(ex){
     out.innerHTML='<div class="callout">Não foi possível carregar os resultados agora ('+esc(ex.message)+').</div>';
     return;
@@ -6560,10 +6562,12 @@ let RP_REPORT_CHANNEL=null;
 let RP_REPORT_LOADING=false;
 let RP_REPORT_ANALYSIS_CACHE={surveyId:null,overviewRows:[],crossRows:[],crossIds:[]};
 let RP_REPORT_CROSS_ANALYSIS_CACHE={};
+let RP_REPORT_OFFICIAL_OVERVIEW={surveyId:null,profile:null,signature:null,rows:[]};
 let RP_REPORT_DOCUMENT_ID=null;
 let RP_REPORT_DOCUMENT_STATUS='new';
 let RP_REPORT_CLIENTS=[];
 let RP_REPORT_DRAFT_HYDRATED=false;
+let RP_REPORT_DRAFT_OPERATION=null;
 let RP_REPORT_CROSSINGS=[];
 let RP_ACTIVE_CROSSING_ID=null;
 let RP_REPORT_DRAFT_SECTIONS=null;
@@ -6695,7 +6699,7 @@ function reportsDocumentEditorMarkup(survey){
   const title='Relatório de resultados — '+(survey?.name||'Pesquisa');
   const draftSections=RP_REPORT_DRAFT_SECTIONS||{};const sections=[['includeMethodology','Ficha técnica e metodologia',draftSections.includeMethodology??true],['includeOverview','Resultados de todas as perguntas',draftSections.includeOverview??(RP_REPORT_MODE==='overview')],['includeCross','Gráficos e tabelas de cruzamentos',draftSections.includeCross??(RP_REPORT_MODE==='builder')],['includeSummary','Síntese executiva',draftSections.includeSummary??true]];
   return `<section class="card reports-document-editor" id="reports-document-editor">
-    <div class="reports-document-head"><div><div class="reports-eyebrow">ENTREGA AO CLIENTE</div><h2>Estrutura do relatório final</h2><p>Monte a apresentação, escolha os blocos e disponibilize o PDF somente quando estiver revisado.</p></div><span id="rp-document-status" class="reports-document-status draft">Rascunho</span></div>
+    <div class="reports-document-head"><div><div class="reports-eyebrow">ENTREGA AO CLIENTE</div><h2>Estrutura do relatório final</h2><p>O PDF e os cruzamentos divulgam somente categorias revisadas nas respostas abertas. Pendências não exibem textos originais. Gere novamente e disponibilize após revisar.</p></div><span id="rp-document-status" class="reports-document-status draft">Rascunho</span></div>
     <div class="reports-document-grid">
       <div><label class="lbl">Cliente destinatário</label><select class="inp" id="rp-doc-client" onchange="reportsDocClientChanged()"><option value="">${clients.length?'Selecione o cliente':'Nenhum cliente vinculado'}</option>${clients.map(c=>`<option value="${c.id}" ${c.id===defaultClient?'selected':''}>${esc(c.company||c.name||c.email||'Cliente')}</option>`).join('')}</select></div>
       <div><label class="lbl">Título do relatório</label><input class="inp" id="rp-doc-title" value="${esc(title)}"></div>
@@ -6846,14 +6850,14 @@ PAGES.reports=()=>{
   <div class="callout reports-footnote"><b>Base de análise:</b> entrevistas válidas, excluindo coletas reprovadas e de calibração. Os dados são atualizados automaticamente enquanto esta aba estiver aberta.</div>`;
 };
 function reportsPickSurvey(id){if(!SURVEYS.some(s=>s.id===id))return;if(!reportsOpenConfirmDiscard()){const select=document.getElementById('rp-survey');if(select)select.value=RP_SURVEY_ID;return;}reportsOpenReset();RP_REPORT_SURVEY_MANUALLY_SELECTED=true;RP_SURVEY_ID=id;RP_CROSS_QUESTION_IDS=[];RP_REPORT_CROSSINGS=[];RP_ACTIVE_CROSSING_ID=null;RP_REPORT_DRAFT_SECTIONS=null;RP_REPORT_DOCUMENT_ID=null;RP_REPORT_DOCUMENT_STATUS='new';RP_REPORT_DRAFT_HYDRATED=false;RP_REPORT_ANALYSIS_CACHE={surveyId:null,overviewRows:[],crossRows:[],crossIds:[]};RP_REPORT_CROSS_ANALYSIS_CACHE={};RP_REPORT_DUPLICATE_DIAGNOSTIC_CACHE={key:'',matches:[],checked:false};go('reports');}
-function reportsSetMode(mode){reportsOpenClose();RP_REPORT_MODE=mode;RP_REPORT_DRAFT_HYDRATED=true;go('reports');}
-function reportsAddCrossing(){const crossing=reportsMakeCrossing([],RP_REPORT_CROSSINGS.length);RP_REPORT_CROSSINGS=[...RP_REPORT_CROSSINGS,crossing];RP_ACTIVE_CROSSING_ID=crossing.id;reportsSyncActiveCrossing();go('reports');}
+async function reportsSetMode(mode){try{await reportsRequireDraft();reportsOpenClose();RP_REPORT_MODE=mode;go('reports');}catch(ex){reportsDocFeedback(ex.message,'warn');}}
+async function reportsAddCrossing(){try{await reportsRequireDraft();}catch(ex){reportsDocFeedback(ex.message,'warn');return;}const crossing=reportsMakeCrossing([],RP_REPORT_CROSSINGS.length);RP_REPORT_CROSSINGS=[...RP_REPORT_CROSSINGS,crossing];RP_ACTIVE_CROSSING_ID=crossing.id;reportsSyncActiveCrossing();go('reports');}
 function reportsSetActiveCrossing(id){if(!RP_REPORT_CROSSINGS.some(crossing=>crossing.id===id))return;RP_ACTIVE_CROSSING_ID=id;reportsSyncActiveCrossing();go('reports');}
 function reportsUpdateCrossingTitle(id,title){const normalized=String(title||'').trim();RP_REPORT_CROSSINGS=RP_REPORT_CROSSINGS.map(crossing=>crossing.id===id?{...crossing,title:normalized||'Cruzamento'}:crossing);}
 function reportsToggleCrossingInclude(id,include){RP_REPORT_CROSSINGS=RP_REPORT_CROSSINGS.map(crossing=>crossing.id===id?{...crossing,include:!!include}:crossing);}
 function reportsRemoveCrossing(id){const remaining=RP_REPORT_CROSSINGS.filter(crossing=>crossing.id!==id);RP_REPORT_CROSSINGS=remaining;if(RP_ACTIVE_CROSSING_ID===id)RP_ACTIVE_CROSSING_ID=remaining[0]?.id||null;reportsSyncActiveCrossing();go('reports');}
 function reportsUpdateCrossControls(crossingId=null){document.querySelectorAll('[data-crossing-question]').forEach(el=>{if(crossingId&&el.dataset.crossingQuestion!==crossingId)return;const crossing=RP_REPORT_CROSSINGS.find(item=>item.id===el.dataset.crossingQuestion),ids=reportsCrossingQuestionIds(crossing),selected=ids[Number(el.dataset.crossingIndex)]||'';el.value=selected;for(const option of el.options||[])option.disabled=!!option.value&&ids.includes(option.value)&&option.value!==selected;});}
-function reportsPickCrossQuestion(crossingId,index,id){const crossing=RP_REPORT_CROSSINGS.find(item=>item.id===crossingId);if(!crossing||!Number.isInteger(index)||index<0||index>=6)return;const next=reportsCrossingQuestionIds(crossing);if(id&&(!reportsCrossQuestionsForSurvey(reportsCurrentSurvey()||{}).some(q=>q.dbId===id)||next.some((existing,slot)=>slot!==index&&existing===id))){reportsUpdateCrossControls(crossingId);return;}next[index]=id||null;const questionIds=next.filter(Boolean).slice(0,6);RP_REPORT_CROSSINGS=RP_REPORT_CROSSINGS.map(item=>item.id===crossingId?{...item,questionIds}:item);RP_ACTIVE_CROSSING_ID=crossingId;reportsSyncActiveCrossing();RP_REPORT_DRAFT_HYDRATED=true;reportsUpdateCrossControls(crossingId);reportsUpdateCrossSelectionSummary(crossingId);reportsLoadAndRender();}
+async function reportsPickCrossQuestion(crossingId,index,id){try{await reportsRequireDraft();}catch(ex){reportsDocFeedback(ex.message,'warn');reportsUpdateCrossControls(crossingId);return;}const crossing=RP_REPORT_CROSSINGS.find(item=>item.id===crossingId);if(!crossing||!Number.isInteger(index)||index<0||index>=6)return;const next=reportsCrossingQuestionIds(crossing);if(id&&(!reportsCrossQuestionsForSurvey(reportsCurrentSurvey()||{}).some(q=>q.dbId===id)||next.some((existing,slot)=>slot!==index&&existing===id))){reportsUpdateCrossControls(crossingId);return;}next[index]=id||null;const questionIds=next.filter(Boolean).slice(0,6);RP_REPORT_CROSSINGS=RP_REPORT_CROSSINGS.map(item=>item.id===crossingId?{...item,questionIds}:item);RP_ACTIVE_CROSSING_ID=crossingId;reportsSyncActiveCrossing();reportsUpdateCrossControls(crossingId);reportsUpdateCrossSelectionSummary(crossingId);reportsLoadAndRender();}
 function reportsCrossingPayloads(){return RP_REPORT_CROSSINGS.map((crossing,index)=>({id:crossing.id,title:String(crossing.title||'Cruzamento '+(index+1)).trim()||'Cruzamento '+(index+1),questionIds:reportsCrossingQuestionIds(crossing),include:crossing.include!==false})).filter(crossing=>crossing.questionIds.length);}
 function reportsCrossingForPayload(crossing){return reportsCrossingPayloads().find(item=>item.id===crossing.id)||null;}
 function reportsSetLiveStatus(text,kind='live'){
@@ -6909,12 +6913,15 @@ async function reportsLoadAndRender(isLive=false){
   const survey=reportsCurrentSurvey(),profile=CURRENT_PROFILE;const qs=reportsCurrentQuestions();if(!survey||!qs.length)return;
   let reload=false;RP_REPORT_LOADING=true;if(!isLive)out.innerHTML='<div class="empty" style="padding:28px 0">Carregando resultados reais…</div>';reportsSetLiveStatus(isLive?'Atualizado agora':'Carregando dados…',isLive?'live':'loading');
   try{
+    await reportsRequireDraft();
+    if(CURRENT_PROFILE!==profile||reportsCurrentSurvey()?.id!==survey.id||!out.isConnected)return;
     if(RP_REPORT_MODE==='overview'){
       const reportResult=await reportsFetchOverview(survey.id);
       const {data,error}=reportResult;
       if(error)throw error;
       if(CURRENT_PROFILE!==profile||reportsCurrentSurvey()?.id!==survey.id||!out.isConnected)return;
       RP_REPORT_ANALYSIS_CACHE={surveyId:survey.id,overviewRows:data||[],crossRows:RP_REPORT_ANALYSIS_CACHE.crossRows||[],crossIds:RP_REPORT_ANALYSIS_CACHE.crossIds||[]};
+      if(!await reportsRefreshOfficialOverview()){reload=true;return;}
       renderReportsOverview(out,data||[],qs);
       const duplicateMatches=await reportsCheckDuplicateSurveyCoverage(survey,qs,reportsAvailableSurveys());
       if(CURRENT_PROFILE!==profile||reportsCurrentSurvey()?.id!==survey.id||!out.isConnected)return;
@@ -6922,10 +6929,12 @@ async function reportsLoadAndRender(isLive=false){
     }else{
       const active=reportsActiveCrossing();const ids=reportsCrossingQuestionIds(active);
       if(!ids.length){out.innerHTML='<div class="card"><div class="empty">Escolha pelo menos uma variável no cruzamento ativo para montar a prévia.</div></div>';return;}
-      const {data,error}=await reportsFetchCross(survey.id,ids);
+      const grouping=reportsOpenSerialize(),signature=JSON.stringify(grouping);
+      const {data,error}=await reportsFetchTreatedCross(survey.id,ids,grouping);
       if(error)throw error;
+      if(signature!==JSON.stringify(reportsOpenSerialize())){reload=true;return;}
       if(CURRENT_PROFILE!==profile||reportsCurrentSurvey()?.id!==survey.id||!out.isConnected||RP_REPORT_MODE!=='builder'||JSON.stringify(reportsCrossingQuestionIds(reportsActiveCrossing()))!==JSON.stringify(ids)){reload=CURRENT_PROFILE===profile&&out.isConnected&&reportsCurrentSurvey()?.id===survey.id&&RP_REPORT_MODE==='builder';return;}
-      RP_REPORT_ANALYSIS_CACHE={surveyId:survey.id,overviewRows:RP_REPORT_ANALYSIS_CACHE.overviewRows||[],crossRows:data||[],crossIds:ids};
+      RP_REPORT_ANALYSIS_CACHE={surveyId:survey.id,overviewRows:RP_REPORT_ANALYSIS_CACHE.overviewRows||[],crossRows:data||[],crossIds:ids,crossGrouping:signature};
       renderReportsCross(out,data||[],ids,qs);
     }
     reportsSetLiveStatus(isLive?'Atualizado agora':'Atualização automática ativa','live');
@@ -6992,12 +7001,20 @@ function reportsOpenQuestionData(qid){
   const q=reportsCurrentQuestions().find(q=>q.dbId===qid&&q.type==='open');if(!q||RP_REPORT_ANALYSIS_CACHE.surveyId!==reportsCurrentSurvey()?.id)return [];
   return (RP_REPORT_ANALYSIS_CACHE.overviewRows||[]).filter(r=>r.question_id===qid);
 }
-function reportsOpenRefreshOverview(){const out=document.getElementById('rp-output');if(out&&RP_REPORT_MODE==='overview'&&RP_REPORT_ANALYSIS_CACHE.surveyId===reportsCurrentSurvey()?.id)renderReportsOverview(out,RP_REPORT_ANALYSIS_CACHE.overviewRows,reportsCurrentQuestions());}
-function reportsOpenCard(q,qi,data,base){
-  const config=reportsOpenConfig(q.dbId),model=reportsOpenModel(data,config,base),shown=model.rows.slice(0,100),grouped=model.rows.filter(r=>r.groupId).length;
-  const rows=shown.map(r=>`<li class="reports-open-answer"><div><p>${esc(r.value_label)}</p><small>${r.cnt.toLocaleString('pt-BR')} ocorrência${r.cnt===1?'':'s'} · ${reportsOpenPercentText(r.cnt,model.answered)} das respondidas · ${reportsOpenPercentText(r.cnt,base)} da base válida</small>${r.groupId?`<details class="reports-open-members"><summary>Ver ${r.originals.length} texto${r.originals.length===1?'':'s'} original${r.originals.length===1?'':'is'}</summary>${r.originals.map(o=>`<div>${esc(o.value_label)} <b>(${o.cnt})</b></div>`).join('')}</details>`:''}</div><span class="pill pill-blue">${reportsOpenPercentText(r.cnt,model.percentBase)}</span></li>`).join('')||`<li class="empty" style="padding:16px 0">${base?'Nenhuma resposta foi registrada para esta pergunta na base válida.':'Ainda não há respostas textuais válidas.'}</li>`;
-  return `<article class="card reports-question-card reports-open-question-card"><div class="reports-question-head"><div><span class="reports-question-number">${String(qi+1).padStart(2,'0')}</span><h3>${esc(q.text||'(pergunta sem texto)')}</h3></div><span class="pill pill-blue">${base.toLocaleString('pt-BR')} válidas</span></div><div class="reports-question-meta">Resposta aberta · ${model.originals.length} textos diferentes · ${grouped} categorias revisadas</div><div class="reports-open-tools"><div><strong>Base do percentual: ${config.denominator==='valid'?'entrevistas válidas':'respostas preenchidas desta pergunta'}</strong><small>${model.answered.toLocaleString('pt-BR')} respostas preenchidas / ${base.toLocaleString('pt-BR')} entrevistas válidas. Textos não agrupados permanecem separados. Percentuais arredondados podem não somar exatamente 100%.</small></div>${reportsOpenCanEdit()?`<button class="btn btn-out" onclick="reportsOpenEdit(${jsArg(q.dbId)})">Agrupar respostas</button><button class="btn btn-out" onclick="reportsOpenExport(${jsArg(q.dbId)})">Exportar categorias</button>`:''}</div><ul class="reports-open-answer-list">${rows}</ul>${model.rows.length>100?'<div class="reports-open-more">Exibindo as primeiras 100 categorias. O agrupador, o CSV e o PDF usam todas as respostas.</div>':''}</article>`;
+function reportsOpenRefreshOverview(){
+  const out=document.getElementById('rp-output');if(!out||RP_REPORT_ANALYSIS_CACHE.surveyId!==reportsCurrentSurvey()?.id)return;
+  if(RP_REPORT_MODE==='builder'){reportsLoadAndRender();return;}
+  if(RP_REPORT_MODE==='overview'){
+    renderReportsOverview(out,RP_REPORT_ANALYSIS_CACHE.overviewRows,reportsCurrentQuestions());
+    if(RP_REPORT_DRAFT_HYDRATED)reportsRefreshOfficialOverview().then(ok=>{if(ok&&out.isConnected&&RP_REPORT_MODE==='overview')renderReportsOverview(out,RP_REPORT_ANALYSIS_CACHE.overviewRows,reportsCurrentQuestions());}).catch(ex=>reportsDocFeedback(ex.message,'warn'));
+  }
 }
+function reportsOpenCard(q,qi,data,base){
+  const config=reportsOpenConfig(q.dbId),saved=reportsOpenSerialize(),cache=typeof RP_REPORT_OFFICIAL_OVERVIEW==='undefined'?null:RP_REPORT_OFFICIAL_OVERVIEW,official=cache?.surveyId===saved.surveyId&&cache.profile===CURRENT_PROFILE&&cache.signature===JSON.stringify(saved),model=official?reportsOfficialMappedModel(cache.rows.filter(row=>row.question_id===q.dbId),config,base):reportsOfficialOpenModel(data,reportsOfficialConfig(saved,reportsCurrentSurvey()?.id,q.dbId),base),shown=model.rows.slice(0,100);
+  const rows=shown.map(r=>`<li class="reports-open-answer"><div><p>${esc(r.value_label)}</p><small>${r.cnt.toLocaleString('pt-BR')} ocorrências · ${reportsOpenPercentText(r.cnt,model.answered)} das respondidas · ${reportsOpenPercentText(r.cnt,base)} da base válida</small></div><span class="pill pill-blue">${reportsOpenPercentText(r.cnt,model.percentBase)}</span></li>`).join('')||'<li class="empty">Nenhuma resposta preenchida na base válida.</li>';
+  return `<article class="card reports-question-card reports-open-question-card"><div class="reports-question-head"><div><span class="reports-question-number">${String(qi+1).padStart(2,'0')}</span><h3>${esc(q.text||'(pergunta sem texto)')}</h3></div><span class="pill pill-blue">${base.toLocaleString('pt-BR')} válidas</span></div><div class="reports-question-meta">Resposta aberta · categorias revisadas</div><div class="reports-open-tools"><div><strong>Base do percentual: ${config.denominator==='valid'?'entrevistas válidas':'respostas preenchidas desta pergunta'}</strong><small>${model.answered.toLocaleString('pt-BR')} respostas preenchidas. ${model.pending.toLocaleString('pt-BR')} ainda não categorizadas. Os textos originais ficam disponíveis somente no tratamento interno.</small></div>${reportsOpenCanEdit()?`<button class="btn btn-out" onclick="reportsOpenEdit(${jsArg(q.dbId)})">Agrupar respostas</button><button class="btn btn-out" onclick="reportsOpenExport(${jsArg(q.dbId)})">Exportar categorias (interno)</button>`:''}</div><ul class="reports-open-answer-list">${rows}</ul>${model.rows.length>100?'<div class="reports-open-more">Exibindo as primeiras 100 categorias. O PDF usa todas as categorias tratadas.</div>':''}</article>`;
+}
+
 function reportsOpenCommit(qid,config){
   if(!reportsOpenCanEdit()||!reportsCurrentQuestions().some(q=>q.dbId===qid&&q.type==='open'))return;
   const state=reportsOpenEnsureScope();state.questions[qid]=reportsOpenNormalizeQuestions({[qid]:config})[qid]||{denominator:'answered',groups:[]};state.revision++;reportsOpenRefreshOverview();
@@ -7199,10 +7216,57 @@ function reportsOpenExport(qid){
   const cell=value=>'"'+String(value).replace(/^[\s]*[=+@-]/,m=>"'"+m).replace(/"/g,'""')+'"';
   const url=URL.createObjectURL(new Blob(['\ufeff'+records.map(row=>row.map(cell).join(';')).join('\n')],{type:'text/csv;charset=utf-8'})),a=document.createElement('a');a.href=url;a.download='categorias-respostas-abertas-'+String(qid).replace(/[^a-zA-Z0-9-]/g,'')+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);
 }
+function reportsOfficialConfig(grouping,surveyId,qid){
+  const config=grouping?.surveyId===surveyId?grouping.questions?.[qid]:null,groups=[],used=new Set();
+  for(const item of Array.isArray(config?.groups)?config.groups:[]){const label=String(item?.label||'').trim().slice(0,160);if(!label||['(sem resposta)','(não categorizadas)'].includes(label))continue;const members=(Array.isArray(item?.members)?item.members:[]).filter(m=>typeof m==='string').map(m=>m.trim()).filter(m=>m&&m!=='(sem resposta)'&&!used.has(m));if(!members.length)continue;members.forEach(m=>used.add(m));groups.push({label,members});}
+  return {denominator:config?.denominator==='valid'?'valid':'answered',groups};
+}
+function reportsOfficialOpenModel(data,config,validBase){
+  const originals=reportsOpenRows(data),lookup=new Map(),counts=new Map();let pending=0;
+  for(const group of config?.groups||[])for(const member of group.members||[])if(!lookup.has(member))lookup.set(member,group.label);
+  for(const row of originals){const label=lookup.get(row.value_label)||'(não categorizadas)';if(!lookup.has(row.value_label))pending+=row.cnt;counts.set(label,(counts.get(label)||0)+row.cnt);}
+  const rows=[...counts].map(([value_label,cnt])=>({value_label,cnt})).sort((a,b)=>b.cnt-a.cnt||a.value_label.localeCompare(b.value_label,'pt-BR')),answered=originals.reduce((sum,r)=>sum+r.cnt,0),base=Number(validBase)||0,denominator=config?.denominator==='valid'?'valid':'answered';
+  return {rows,answered,pending,validBase:base,denominator,percentBase:denominator==='valid'?base:answered};
+}
+function reportsGroupingActivationError(error){
+  if(error?.code==='PGRST202'||error?.code==='42883'||/could not find the function|function .* does not exist/i.test(error?.message||''))return new Error('Ative os resultados tratados executando manualmente relatorios-categorias-oficiais-v161.sql no Supabase. As respostas originais não serão usadas como alternativa.');
+  return error;
+}
+function reportsValidateTreatedCross(rows,ids){
+  if(!Array.isArray(ids)||ids.length<1||ids.length>6||new Set(ids).size!==ids.length)throw new Error('Selecione de uma a seis variáveis diferentes.');
+  if((rows||[]).some(row=>ids.some((_,index)=>!Object.prototype.hasOwnProperty.call(row,'variable_'+(index+1)))))throw new Error('O servidor não retornou todas as variáveis do cruzamento tratado. Nenhum resultado parcial foi apresentado.');
+}
+async function reportsFetchTreatedCross(surveyId,ids,grouping){
+  if(!reportsCurrentQuestions().some(q=>ids.includes(q.dbId)&&q.type==='open'))return reportsFetchCross(surveyId,ids);
+  try{const result=await reportsReadAllPages(()=>reportsCrossOrder(sb.rpc('survey_report_grouped_cross',{p_survey_id:surveyId,p_question_ids:ids,p_grouping:grouping},{count:'exact'}),6));reportsValidateTreatedCross(result.data,ids);return result;}catch(error){throw reportsGroupingActivationError(error);}
+}
+async function reportsFetchStaffGroupedOverview(surveyId,grouping){
+  try{return await reportsReadAllPages(()=>reportsOverviewOrder(sb.rpc('survey_report_grouped_questions',{p_survey_id:surveyId,p_grouping:grouping},{count:'exact'})));}catch(error){throw reportsGroupingActivationError(error);}
+}
+function reportsOfficialMappedModel(rows,config,base){
+  const data=reportsOpenRows(rows),answered=data.reduce((sum,row)=>sum+row.cnt,0),denominator=config?.denominator==='valid'?'valid':'answered';
+  return {rows:data,answered,pending:data.filter(row=>row.value_label==='(não categorizadas)').reduce((sum,row)=>sum+row.cnt,0),validBase:Number(base)||0,denominator,percentBase:denominator==='valid'?Number(base)||0:answered};
+}
+async function reportsRefreshOfficialOverview(grouping=reportsOpenSerialize()){
+  const surveyId=reportsCurrentSurvey()?.id,profile=CURRENT_PROFILE,signature=JSON.stringify(grouping),result=await reportsFetchStaffGroupedOverview(surveyId,grouping);
+  if(result.error)throw result.error;
+  if(CURRENT_PROFILE!==profile||reportsCurrentSurvey()?.id!==surveyId||JSON.stringify(reportsOpenSerialize())!==signature)return false;
+  RP_REPORT_OFFICIAL_OVERVIEW={surveyId,profile,signature,rows:result.data||[]};return true;
+}
+async function reportsFetchClientGroupedOverview(surveyId,reportId){
+  try{return await reportsReadAllPages(()=>reportsOverviewOrder(sb.rpc('client_report_grouped_questions',{p_survey_id:surveyId,p_report_id:reportId},{count:'exact'})));}catch(error){throw reportsGroupingActivationError(error);}
+}
+async function reportsFetchClientGroupedCross(surveyId,reportId,ids){
+  try{const result=await reportsReadAllPages(()=>reportsCrossOrder(sb.rpc('client_report_grouped_cross',{p_survey_id:surveyId,p_report_id:reportId,p_question_ids:ids},{count:'exact'}),6));reportsValidateTreatedCross(result.data,ids);return result;}catch(error){throw reportsGroupingActivationError(error);}
+}
+async function reportsRequireDraft(){
+  reportsOpenEnsureScope();if(!RP_REPORT_DRAFT_HYDRATED&&!reportsOpenDirty())await reportsLoadDraft();
+  if(!RP_REPORT_DRAFT_HYDRATED&&!reportsOpenDirty())throw new Error('Não foi possível carregar os agrupamentos salvos. Tente novamente antes de gerar ou salvar o relatório.');
+}
 function reportsOpenPdfRows(q,rows,payload,base){
   if(q.type!=='open')return {rows,base,note:''};
-  const saved=payload.sections?.openAnswerGrouping,config=saved?.surveyId===payload.surveyId?saved.questions?.[q.dbId]:null,model=reportsOpenModel(rows,config||{denominator:'answered',groups:[]},base);
-  return {rows:model.rows,base:model.percentBase,note:'Resposta aberta — categorias revisadas e textos não agrupados. Base percentual: '+(model.denominator==='valid'?'entrevistas válidas':'respostas preenchidas desta pergunta')+' ('+model.percentBase+'). Respostas preenchidas: '+model.answered+'; entrevistas válidas: '+model.validBase+'.'};
+  const config=reportsOfficialConfig(payload.sections?.openAnswerGrouping,payload.surveyId,q.dbId),model=payload.officialGrouped===true?reportsOfficialMappedModel(rows,config,base):reportsOfficialOpenModel(rows,config,base);
+  return {rows:model.rows,base:model.percentBase,note:'Resposta aberta — somente categorias revisadas. Base percentual: '+(model.denominator==='valid'?'entrevistas válidas':'respostas preenchidas desta pergunta')+' ('+model.percentBase+'). Respostas preenchidas: '+model.answered+'; entrevistas válidas: '+model.validBase+'.'+(model.pending?' '+model.pending+' respostas ainda não categorizadas foram mantidas em uma linha de pendência, sem divulgar os textos originais.':'')};
 }
 
 function renderReportsOverview(out,rows,qs){
@@ -7230,7 +7294,7 @@ function reportsCrossPct(value,base){return base?((Number(value||0)/base)*100).t
 function reportsCrossMatrixModel(rows,ids,thirdValue=null){const base=Number(rows[0]?.valid_base)||0,filtered=reportsCrossSliceRows(rows,thirdValue),rowValues=reportsCrossOrderedValues(filtered,0,ids[0]),colValues=ids.length>1?reportsCrossOrderedValues(filtered,1,ids[1]):['% da base'],counts=new Map(),rowTotals=new Map(),colTotals=new Map();filtered.forEach(row=>{const rowValue=reportsCrossValue(row.variable_1),colValue=ids.length>1?reportsCrossValue(row.variable_2):'% da base',count=Number(row.cnt||0);counts.set(rowValue+'\u0000'+colValue,(counts.get(rowValue+'\u0000'+colValue)||0)+count);rowTotals.set(rowValue,(rowTotals.get(rowValue)||0)+count);colTotals.set(colValue,(colTotals.get(colValue)||0)+count);});const values=thirdValue==null?[]:Array.isArray(thirdValue)?thirdValue:[thirdValue];return {base,rowValues,colValues,counts,rowTotals,colTotals,title:reportsCrossSliceTitle(ids,values)};}
 function reportsCrossMatrixMarkup(model,ids){const rowLabel=reportsQuestionLabel(ids[0]),colLabel=ids.length>1?reportsQuestionLabel(ids[1]):'Percentual da base';const headers=model.colValues.map(value=>`<th>${esc(value)}</th>`).join('');const body=model.rowValues.map(rowValue=>{const cells=model.colValues.map(colValue=>`<td>${reportsCrossPct(model.counts.get(rowValue+'\u0000'+colValue)||0,model.base)}</td>`).join('');return `<tr><th scope="row">${esc(rowValue)}</th>${cells}<td class="cross-total-cell"><strong>${reportsCrossPct(model.rowTotals.get(rowValue)||0,model.base)}</strong></td></tr>`;}).join('');const totals=model.colValues.map(colValue=>`<td class="cross-total-cell"><strong>${reportsCrossPct(model.colTotals.get(colValue)||0,model.base)}</strong></td>`).join('');return `<div class="reports-cross-matrix-wrap">${model.title?`<h3>${esc(model.title)}</h3>`:''}<div class="reports-cross-scroll"><table class="reports-cross-matrix"><thead><tr><th>${esc(rowLabel)}</th>${headers}<th>TOTAL</th></tr></thead><tbody>${body||`<tr><td colspan="${model.colValues.length+2}" class="empty">Nenhuma combinação encontrada.</td></tr>`}<tr class="cross-total-row"><th>TOTAL</th>${totals}<td class="cross-total-cell"><strong>${reportsCrossPct([...model.rowTotals.values()].reduce((sum,value)=>sum+value,0),model.base)}</strong></td></tr></tbody></table></div></div>`;}
 function reportsCrossSliceContainer(title,amount,base,content,index,total){if(total<2)return content;return `<details class="reports-cross-slice" ${index===0?'open':''}><summary><span>Recorte ${index+1}: ${esc(title)}</span><b>${amount.toLocaleString('pt-BR')} entrevistas · ${reportsCrossPct(amount,base)}</b></summary>${content}</details>`;}
-function renderReportsCross(out,rows,ids,qs){const base=Number(rows[0]?.valid_base)||0,parts=reportsCrossPartitions(rows,ids),matrices=parts.map((part,index)=>{const model=reportsCrossMatrixModel(part.rows,ids,part.values),amount=[...model.rowTotals.values()].reduce((sum,value)=>sum+value,0);return reportsCrossSliceContainer(model.title,amount,base,reportsCrossMatrixMarkup(model,ids),index,parts.length);}).join('');out.innerHTML=`<div class="reports-cross-head"><div><h2>Relatório montado</h2><p>${ids.length} variáveis · ${parts.length} recorte${parts.length===1?'':'s'} observado${parts.length===1?'':'s'} · Matriz percentual sobre ${base.toLocaleString('pt-BR')} entrevistas válidas. As células e os totais usam a base total da pesquisa.</p></div><button class="btn btn-out" onclick="reportsExportCurrent()">Exportar CSV completo</button></div><div class="reports-cross-matrices card">${matrices||'<div class="empty">Nenhuma combinação encontrada.</div>'}</div>`;}
+function renderReportsCross(out,rows,ids,qs){const base=Number(rows[0]?.valid_base)||0,parts=reportsCrossPartitions(rows,ids),matrices=parts.map((part,index)=>{const model=reportsCrossMatrixModel(part.rows,ids,part.values),amount=[...model.rowTotals.values()].reduce((sum,value)=>sum+value,0);return reportsCrossSliceContainer(model.title,amount,base,reportsCrossMatrixMarkup(model,ids),index,parts.length);}).join('');out.innerHTML=`<div class="reports-cross-head"><div><h2>Relatório montado</h2><p>${ids.length} variáveis · ${parts.length} recorte${parts.length===1?'':'s'} observado${parts.length===1?'':'s'} · Matriz percentual sobre ${base.toLocaleString('pt-BR')} entrevistas válidas. Abertas usam somente categorias revisadas; pendências ficam em (não categorizadas). As células e os totais usam a base total da pesquisa.</p></div><button class="btn btn-out" onclick="reportsExportCurrent()">Exportar CSV completo</button></div><div class="reports-cross-matrices card">${matrices||'<div class="empty">Nenhuma combinação encontrada.</div>'}</div>`;}
 function reportsDocValue(id){return (document.getElementById(id)?.value||'').trim();}
 function reportsDocChecked(id){return !!document.getElementById(id)?.checked;}
 function reportsDocPayload(){
@@ -7256,12 +7320,20 @@ function reportsFillDraft(r){
 }
 async function reportsLoadDraft(){
   reportsOpenEnsureScope();if(RP_REPORT_DRAFT_HYDRATED||reportsOpenDirty())return;
-  const survey=reportsCurrentSurvey(),clientId=reportsDocValue('rp-doc-client'),profile=CURRENT_PROFILE,state=reportsOpenEnsureScope(),revision=state.revision;if(!survey||!clientId||!sb?.rpc){RP_REPORT_DRAFT_HYDRATED=true;return;}
-  try{const {data,error}=await sb.rpc('report_document_latest',{p_survey_id:survey.id,p_client_id:clientId});if(error)throw error;if(CURRENT_PROFILE!==profile||reportsCurrentSurvey()?.id!==survey.id||reportsDocValue('rp-doc-client')!==clientId||RP_OPEN_GROUPING!==state||state.revision!==revision)return;const draft=Array.isArray(data)?data[0]:data;if(draft)reportsFillDraft(draft);else reportsOpenHydrate({});}catch(ex){if(CURRENT_PROFILE===profile&&reportsCurrentSurvey()?.id===survey.id&&RP_OPEN_GROUPING===state)reportsDocFeedback('Não foi possível ler a estrutura salva. Abra o agrupador novamente para tentar carregar antes de editar.','warn');return;}
-  if(CURRENT_PROFILE===profile&&reportsCurrentSurvey()?.id===survey.id&&reportsDocValue('rp-doc-client')===clientId){RP_REPORT_DRAFT_HYDRATED=true;reportsUpdateCrossSelectionSummary();}
+  const survey=reportsCurrentSurvey(),clientId=reportsDocValue('rp-doc-client'),profile=CURRENT_PROFILE,state=reportsOpenEnsureScope(),revision=state.revision;
+  if(!survey||!clientId||!sb?.rpc){if(!survey||!clientId)RP_REPORT_DRAFT_HYDRATED=true;return;}
+  if(RP_REPORT_DRAFT_OPERATION?.state===state&&RP_REPORT_DRAFT_OPERATION.clientId===clientId)return RP_REPORT_DRAFT_OPERATION.promise;
+  const operation={state,clientId,promise:null};RP_REPORT_DRAFT_OPERATION=operation;
+  operation.promise=(async()=>{
+    try{const {data,error}=await sb.rpc('report_document_latest',{p_survey_id:survey.id,p_client_id:clientId});if(error)throw error;if(CURRENT_PROFILE!==profile||reportsCurrentSurvey()?.id!==survey.id||reportsDocValue('rp-doc-client')!==clientId||RP_OPEN_GROUPING!==state||state.revision!==revision)return;const draft=Array.isArray(data)?data[0]:data;if(draft)reportsFillDraft(draft);else reportsOpenHydrate({});}
+    catch(ex){if(CURRENT_PROFILE===profile&&reportsCurrentSurvey()?.id===survey.id&&RP_OPEN_GROUPING===state)reportsDocFeedback('Não foi possível ler a estrutura salva. Abra o agrupador novamente para tentar carregar antes de editar.','warn');return;}
+    if(CURRENT_PROFILE===profile&&reportsCurrentSurvey()?.id===survey.id&&reportsDocValue('rp-doc-client')===clientId){RP_REPORT_DRAFT_HYDRATED=true;reportsUpdateCrossSelectionSummary();}
+  })();
+  try{return await operation.promise;}finally{if(RP_REPORT_DRAFT_OPERATION===operation)RP_REPORT_DRAFT_OPERATION=null;}
 }
 function reportsDocClientChanged(){const select=document.getElementById('rp-doc-client'),previous=RP_OPEN_GROUPING.clientId;if(!reportsOpenConfirmDiscard()){if(select)select.value=previous||'';return;}const clientId=select?.value||'';reportsOpenReset();reportsOpenEnsureScope().clientId=clientId;reportsOpenRefreshOverview();RP_REPORT_DOCUMENT_ID=null;RP_CROSS_QUESTION_IDS=[];RP_REPORT_CROSSINGS=[];RP_ACTIVE_CROSSING_ID=null;RP_REPORT_DRAFT_SECTIONS=null;RP_REPORT_CROSS_ANALYSIS_CACHE={};RP_REPORT_DRAFT_HYDRATED=false;reportsSetDocumentStatus('new');reportsLoadDraft();}
 async function reportsSaveDraft(silent=false){
+  try{await reportsRequireDraft();}catch(ex){reportsDocFeedback(ex.message,'warn');return null;}
   const p=reportsDocPayload(),groupState=reportsOpenEnsureScope(),groupRevision=groupState.revision,profile=CURRENT_PROFILE;
   if(!p.surveyId||!p.clientId){if(!silent)reportsDocFeedback('Selecione o cliente vinculado à pesquisa antes de salvar.','warn');return null;}
   if(!p.title){if(!silent)reportsDocFeedback('Informe um título para o relatório.','warn');return null;}
@@ -7357,11 +7429,14 @@ async function surveyFormPdfDownload(index){
   }catch(ex){alert('Não foi possível gerar o PDF do formulário: '+(ex.message||String(ex)));console.error(ex);}
 }
 async function reportsEnsurePdfData(payload){
-  const survey=reportsCurrentSurvey();if(!survey)return;
-  if(payload.sections.includeOverview&&RP_REPORT_ANALYSIS_CACHE.surveyId!==survey.id||payload.sections.includeOverview&&!RP_REPORT_ANALYSIS_CACHE.overviewRows.length){const {data,error}=await reportsFetchOverview(survey.id);if(error)throw error;RP_REPORT_ANALYSIS_CACHE.overviewRows=data||[];RP_REPORT_ANALYSIS_CACHE.surveyId=survey.id;}
+  const survey=reportsCurrentSurvey(),profile=CURRENT_PROFILE;if(!survey||survey.id!==payload.surveyId)throw new Error('A pesquisa mudou durante a geração.');
+  const guard=()=>{if(CURRENT_PROFILE!==profile||reportsCurrentSurvey()?.id!==survey.id)throw new Error('A sessão ou pesquisa mudou durante a geração.');};
+  // Atualizar dados completos a cada geração; categorias aplicadas separadamente sobre o snapshot do documento.
+  if(payload.sections.includeOverview){const {data,error}=await reportsFetchStaffGroupedOverview(survey.id,payload.sections.openAnswerGrouping);if(error)throw error;guard();payload.officialOverviewRows=data||[];payload.officialGrouped=true;}
   const crossings=payload.sections.includeCross?(payload.sections.crossings||[]).filter(crossing=>crossing.include!==false&&crossing.questionIds?.length):[];
-  for(const crossing of crossings){const ids=reportsCrossingQuestionIds(crossing);const cached=RP_REPORT_CROSS_ANALYSIS_CACHE[crossing.id];if(!cached||cached.surveyId!==survey.id||JSON.stringify(cached.ids)!==JSON.stringify(ids)){const {data,error}=await reportsFetchCross(survey.id,ids);if(error)throw error;RP_REPORT_CROSS_ANALYSIS_CACHE[crossing.id]={surveyId:survey.id,ids,rows:data||[]};}}
+  for(const crossing of crossings){const ids=reportsCrossingQuestionIds(crossing);const {data,error}=await reportsFetchTreatedCross(survey.id,ids,payload.sections.openAnswerGrouping);if(error)throw error;guard();RP_REPORT_CROSS_ANALYSIS_CACHE[crossing.id]={surveyId:survey.id,ids,rows:data||[],grouping:JSON.stringify(payload.sections.openAnswerGrouping)};}
 }
+
 function reportsPdfWriteCrossing(doc,crossing,payload,M,bodyW){
   const ids=reportsCrossingQuestionIds(crossing),rows=RP_REPORT_CROSS_ANALYSIS_CACHE[crossing.id]?.rows||[],parts=reportsCrossPartitions(rows,ids);
   parts.forEach((part,partIndex)=>{
@@ -7412,7 +7487,7 @@ async function reportsCreateMultiCrossPdfBlob(payload){
   if(payload.sections.includeSummary&&payload.executiveSummary){doc.setFillColor(239,246,255);doc.roundedRect(M,y,bodyW,34,3,3,'F');doc.setTextColor(15,42,86);doc.setFont('helvetica','bold');doc.setFontSize(12);doc.text('Síntese executiva',M+6,y+9);doc.setFont('helvetica','normal');doc.setTextColor(51,65,85);doc.setFontSize(9.5);reportsPdfLines(doc,payload.executiveSummary,M+6,y+17,bodyW-12,4.8);y+=45;}
   if(payload.sections.includeOverview){
     doc.addPage();y=reportsPdfHeader(doc,'Resultados por pergunta',payload.title);
-    const byQ={};(RP_REPORT_ANALYSIS_CACHE.overviewRows||[]).forEach(row=>(byQ[row.question_id]||(byQ[row.question_id]=[])).push(row));
+    const byQ={};(payload.officialOverviewRows||RP_REPORT_ANALYSIS_CACHE.overviewRows||[]).forEach(row=>(byQ[row.question_id]||(byQ[row.question_id]=[])).push(row));
     for(const [qi,q] of reportsCurrentQuestions().entries()){
       const sourceRows=byQ[q.dbId]||[];if(!sourceRows.length)continue;
       const validBase=Number(sourceRows[0]?.valid_base)||0,model=reportsOpenPdfRows(q,sourceRows,payload,validBase),rows=model.rows,base=q.type==='open'?model.base:(validBase||sourceRows.reduce((sum,row)=>sum+Number(row.cnt||0),0));
@@ -7433,21 +7508,30 @@ async function reportsCreateMultiCrossPdfBlob(payload){
   }
   const crossings=payload.sections.includeCross?(payload.sections.crossings||[]).filter(crossing=>crossing.include!==false&&reportsCrossingQuestionIds(crossing).length):[];crossings.forEach(crossing=>reportsPdfWriteCrossing(doc,crossing,payload,M,bodyW));reportsPdfFooter(doc);return {blob:doc.output('blob'),payload};
 }
-async function reportsCreatePdfBlob(){
-  const payload=reportsDocPayload();if(!payload.surveyId)throw new Error('Selecione uma pesquisa válida.');
+async function reportsCreatePdfBlob(payload=reportsDocPayload()){
+  if(!payload.surveyId)throw new Error('Selecione uma pesquisa válida.');
   await reportsEnsurePdfData(payload);return reportsCreateMultiCrossPdfBlob(payload);
 }
+let RP_REPORT_EXPORT_BUSY=false;
+function reportsVerifyDocumentSnapshot(payload,profile){
+  if(CURRENT_PROFILE!==profile||reportsCurrentSurvey()?.id!==payload.surveyId||reportsDocValue('rp-doc-client')!==payload.clientId||JSON.stringify(reportsDocPayload())!==JSON.stringify(Object.fromEntries(Object.entries(payload).filter(([key])=>!['officialGrouped','officialOverviewRows'].includes(key)))))throw new Error('A estrutura ou os agrupamentos mudaram durante a geração. Gere novamente antes de divulgar.');
+}
 async function reportsGeneratePdf(){
-  reportsDocFeedback('Gerando PDF com os blocos selecionados…');try{const id=await reportsSaveDraft(true);if(!id)throw new Error('Salve uma estrutura com cliente e título antes de gerar.');const result=await reportsCreatePdfBlob();const url=URL.createObjectURL(result.blob);const a=document.createElement('a');a.href=url;a.download='relatorio-pesquisapro-'+new Date().toISOString().slice(0,10)+'.pdf';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);reportsDocFeedback('PDF gerado e baixado. Revise o arquivo antes de publicar ao cliente.','ok');}catch(ex){reportsDocFeedback(ex.message||String(ex),'warn');}}
+  if(RP_REPORT_EXPORT_BUSY)return;RP_REPORT_EXPORT_BUSY=true;reportsDocFeedback('Carregando agrupamentos e gerando PDF tratado…');
+  try{await reportsRequireDraft();const profile=CURRENT_PROFILE,payload=reportsDocPayload(),id=await reportsSaveDraft(true);if(!id)throw new Error('Salve uma estrutura com cliente e título antes de gerar.');const result=await reportsCreatePdfBlob(payload);reportsVerifyDocumentSnapshot(payload,profile);const url=URL.createObjectURL(result.blob),a=document.createElement('a');a.href=url;a.download='relatorio-pesquisapro-'+new Date().toISOString().slice(0,10)+'.pdf';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);reportsDocFeedback('PDF tratado gerado. Revise as categorias e pendências antes de disponibilizar ao cliente.','ok');}catch(ex){reportsDocFeedback(ex.message||String(ex),'warn');}finally{RP_REPORT_EXPORT_BUSY=false;}
+}
 async function reportsFinalizeAndPublish(){
-  reportsDocFeedback('Salvando, gerando e publicando o PDF…');try{const id=await reportsSaveDraft(true);if(!id)throw new Error('Salve uma estrutura com cliente e título antes de finalizar.');const result=await reportsCreatePdfBlob();const path='reports/'+id+'/'+Date.now()+'.pdf';const {error:uploadError}=await sb.storage.from('client-reports').upload(path,result.blob,{upsert:true,contentType:'application/pdf'});if(uploadError)throw uploadError;const {error:publishError}=await sb.rpc('report_document_publish',{p_report_id:id,p_pdf_path:path});if(publishError)throw publishError;reportsSetDocumentStatus('published');reportsDocFeedback('Relatório finalizado e disponibilizado ao cliente.','ok');}catch(ex){reportsDocFeedback(ex.message||String(ex),'warn');}}
+  if(RP_REPORT_EXPORT_BUSY)return;RP_REPORT_EXPORT_BUSY=true;reportsDocFeedback('Salvando agrupamentos, gerando e publicando o PDF tratado…');
+  try{await reportsRequireDraft();const profile=CURRENT_PROFILE,payload=reportsDocPayload(),id=await reportsSaveDraft(true);if(!id)throw new Error('Salve uma estrutura com cliente e título antes de finalizar.');const result=await reportsCreatePdfBlob(payload);reportsVerifyDocumentSnapshot(payload,profile);const path='reports/'+id+'/'+Date.now()+'.pdf';const {error:uploadError}=await sb.storage.from('client-reports').upload(path,result.blob,{upsert:true,contentType:'application/pdf'});if(uploadError)throw uploadError;reportsVerifyDocumentSnapshot(payload,profile);const {error:publishError}=await sb.rpc('report_document_publish',{p_report_id:id,p_pdf_path:path});if(publishError)throw publishError;reportsSetDocumentStatus('published');reportsDocFeedback('Relatório tratado finalizado e disponibilizado ao cliente.','ok');}catch(ex){reportsDocFeedback(ex.message||String(ex),'warn');}finally{RP_REPORT_EXPORT_BUSY=false;}
+}
+
 function reportsCrossCsvLines(rows,ids){
   const headers=[...ids.map((id,index)=>'Variável '+(index+1)+': '+reportsQuestionLabel(id)),'Quantidade de entrevistas','Base válida geral','Percentual da base válida geral'];
   const data=(rows||[]).map(row=>[...ids.map((_,index)=>reportsCrossValue(row['variable_'+(index+1)])),Number(row.cnt||0),Number(row.valid_base||0),reportsCrossPct(row.cnt,row.valid_base)]);
   const quote=value=>{const text=String(value??''),safe=typeof value==='string'&&/^[\s]*[=+@-]/.test(text)?"'"+text:text;return '"'+safe.replace(/"/g,'""')+'"';};return [headers,...data].map(values=>values.map(quote).join(';'));
 }
 function reportsExportCurrent(){
-  let lines;if(RP_REPORT_MODE==='builder'){const ids=reportsCrossingQuestionIds(reportsActiveCrossing()),cache=RP_REPORT_ANALYSIS_CACHE;if(cache.surveyId!==reportsCurrentSurvey()?.id||JSON.stringify(cache.crossIds)!==JSON.stringify(ids)){alert('Aguarde o carregamento completo deste cruzamento antes de exportar.');return;}lines=reportsCrossCsvLines(cache.crossRows,ids);}else{const table=document.querySelector('#rp-output table');if(!table){alert('Gere um relatório antes de exportar.');return;}lines=[...table.querySelectorAll('tr')].map(tr=>[...tr.children].map(cell=>'"'+String(cell.textContent||'').replace(/"/g,'""').trim()+'"').join(';'));}
+  let lines;if(RP_REPORT_MODE==='builder'){const ids=reportsCrossingQuestionIds(reportsActiveCrossing()),cache=RP_REPORT_ANALYSIS_CACHE;if(cache.surveyId!==reportsCurrentSurvey()?.id||JSON.stringify(cache.crossIds)!==JSON.stringify(ids)||cache.crossGrouping!==JSON.stringify(reportsOpenSerialize())){alert('Aguarde o carregamento completo deste cruzamento com os agrupamentos atuais antes de exportar.');return;}lines=reportsCrossCsvLines(cache.crossRows,ids);}else{const table=document.querySelector('#rp-output table');if(!table){alert('Gere um relatório antes de exportar.');return;}lines=[...table.querySelectorAll('tr')].map(tr=>[...tr.children].map(cell=>'"'+String(cell.textContent||'').replace(/"/g,'""').trim()+'"').join(';'));}
   const blob=new Blob(['\ufeff'+lines.join('\n')],{type:'text/csv;charset=utf-8'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='relatorio-pesquisa-'+new Date().toISOString().slice(0,10)+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 

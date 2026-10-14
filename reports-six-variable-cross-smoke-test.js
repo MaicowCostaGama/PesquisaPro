@@ -3,7 +3,7 @@ const app=fs.readFileSync(__dirname+'/app.js','utf8');
 const take=(start,end)=>app.slice(app.indexOf(start),app.indexOf(end,app.indexOf(start)));
 const qs=Array.from({length:7},(_,i)=>({dbId:'q'+(i+1),text:'Pergunta '+(i+1),type:'single',opts:i===0?['A','B']:[]}));
 const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
-const ctx={esc,jsArg:v=>esc(JSON.stringify(v)),reportsCurrentQuestions:()=>qs,reportsCurrentSurvey:()=>({id:'survey',questions:qs}),reportsCrossQuestionsForSurvey:s=>s.questions,document:{querySelectorAll:()=>[]},RP_REPORT_CROSSINGS:[],RP_ACTIVE_CROSSING_ID:null,RP_CROSS_QUESTION_IDS:[],RP_REPORT_DRAFT_HYDRATED:false,reportsLoadAndRender(){},AbortController,setTimeout,clearTimeout};
+const ctx={esc,jsArg:v=>esc(JSON.stringify(v)),reportsCurrentQuestions:()=>qs,reportsCurrentSurvey:()=>({id:'survey',questions:qs}),reportsCrossQuestionsForSurvey:s=>s.questions,document:{querySelectorAll:()=>[]},RP_REPORT_CROSSINGS:[],RP_ACTIVE_CROSSING_ID:null,RP_CROSS_QUESTION_IDS:[],RP_REPORT_DRAFT_HYDRATED:false,reportsLoadAndRender(){},reportsRequireDraft:async()=>{},AbortController,setTimeout,clearTimeout};
 vm.createContext(ctx);
 vm.runInContext(take('async function reportsReadAllPages(','function reportsAvailableSurveys(')+take('function reportsCrossingQuestionIds(','function reportsClientsForSurvey(')+take('function reportsUpdateCrossControls(','function reportsSetLiveStatus(')+take('function reportsCrossOptionLabels(','function reportsDocValue(')+take('function clientReportQuestionLabel(','function clientPublishedCrossings(')+take('function reportsCrossCsvLines(','function reportsExportCurrent('),ctx);
 const ids=qs.slice(0,6).map(q=>q.dbId);
@@ -58,12 +58,13 @@ ctx.RP_REPORT_CROSSINGS=[crossing];ctx.RP_ACTIVE_CROSSING_ID=crossing.id;
 const markup=ctx.reportsCrossingCardMarkup(crossing,0,qs);
 assert.equal((markup.match(/data-crossing-index=/g)||[]).length,6);
 assert(markup.includes('Recorte combinado da matriz'));
-ctx.reportsPickCrossQuestion(crossing.id,6,'q7');assert.equal(ctx.RP_REPORT_CROSSINGS[0].questionIds.length,6);
-ctx.reportsPickCrossQuestion(crossing.id,4,'q1');assert.equal(ctx.RP_REPORT_CROSSINGS[0].questionIds[4],'q5','Repetição não pode substituir a seleção');
-ctx.reportsPickCrossQuestion(crossing.id,5,'');assert.equal(ctx.RP_REPORT_CROSSINGS[0].questionIds.length,5);
-ctx.reportsPickCrossQuestion(crossing.id,5,'q6');assert.equal(ctx.reportsCrossingPayloads()[0].questionIds.length,6);
 function mock(reply){const calls=[];ctx.sb={rpc(name,args,config){const c={name,args,config,orders:[],from:0,to:0};calls.push(c);return {order(v){c.orders.push(v);return this;},range(from,to){c.from=from;c.to=to;return this;},abortSignal(){return this;},then(resolve,reject){return Promise.resolve(reply(c,calls)).then(resolve,reject);}};}};return calls;}
 (async()=>{
+await ctx.reportsPickCrossQuestion(crossing.id,6,'q7');assert.equal(ctx.RP_REPORT_CROSSINGS[0].questionIds.length,6);
+await ctx.reportsPickCrossQuestion(crossing.id,4,'q1');assert.equal(ctx.RP_REPORT_CROSSINGS[0].questionIds[4],'q5','Repetição não pode substituir a seleção');
+await ctx.reportsPickCrossQuestion(crossing.id,5,'');assert.equal(ctx.RP_REPORT_CROSSINGS[0].questionIds.length,5);
+await ctx.reportsPickCrossQuestion(crossing.id,5,'q6');assert.equal(ctx.reportsCrossingPayloads()[0].questionIds.length,6);
+
  let calls=mock(c=>({data:rows.slice(c.from,c.to+1),error:null,count:rows.length}));
  const result=await ctx.reportsFetchCross('survey',ids);
  assert.equal(result.data.length,6);assert.equal(calls[0].name,'survey_report_cross_tab_v2');

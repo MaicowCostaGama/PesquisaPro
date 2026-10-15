@@ -88,8 +88,8 @@ function environment(rows,options={}){
   const limit=environment(Array.from({length:100001},()=>rows[0]));
   await assert.rejects(limit.context.reportsFetchOverview('survey-A'),/limite seguro/);
 
-  assert(app.includes("reportsReadAllPages(()=>reportsOverviewOrder(sb.rpc('client_report_grouped_questions'"),'cliente deve paginar sua própria RPC protegida');
-  assert(app.includes("reportsReadAllPages(()=>reportsCrossOrder(sb.rpc('client_report_grouped_cross'"));
+  assert(app.includes('function reportsFetchClientGroupedOverview')&&app.includes("client_report_grouped_questions")&&app.includes("client_report_coded_questions")&&app.includes("reportsReadAllPages(()=>reportsOverviewOrder(sb.rpc(name"),'cliente deve paginar sua própria RPC protegida (v1/v2)');
+  assert(app.includes('function reportsFetchClientGroupedCross')&&app.includes("client_report_grouped_cross")&&app.includes("client_report_coded_cross")&&app.includes("reportsReadAllPages(()=>reportsCrossOrder(sb.rpc(name"));
   assert(app.includes("reportsReadAllPages(()=>reportsCrossOrder(sb.rpc('survey_report_cross_tab'"));
   const pdf=app.slice(app.indexOf('async function reportsEnsurePdfData('),app.indexOf('function reportsPdfWriteCrossing('));
   assert(pdf.includes('reportsFetchStaffGroupedOverview(survey.id,payload.sections.openAnswerGrouping)')&&pdf.includes('reportsFetchTreatedCross(survey.id,ids,payload.sections.openAnswerGrouping)'),'PDF deve usar carregamento completo');

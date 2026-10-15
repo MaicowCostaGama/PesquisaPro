@@ -4,6 +4,7 @@ const root=__dirname;
 const app=fs.readFileSync(path.join(root,'app.js'),'utf8');
 const schema=fs.readFileSync(path.join(root,'deploy','schema.sql'),'utf8');
 const clientSql=fs.readFileSync(path.join(root,'deploy','relatorios-categorias-oficiais-v161.sql'),'utf8');
+const codedSql=fs.readFileSync(path.join(root,'deploy','relatorios-codigos-contextuais-v166.sql'),'utf8');
 const css=fs.readFileSync(path.join(root,'style.css'),'utf8');
 const geoSql=fs.readFileSync(path.join(root,'deploy','georreferenciamento-clientes.sql'),'utf8');
 const geoResearcherSql=fs.readFileSync(path.join(root,'deploy','georreferenciamento-cliente-pesquisador.sql'),'utf8');
@@ -16,9 +17,10 @@ const checks=[
   ['cliente chama distribuição agregada',app.includes('reportsFetchClientGroupedOverview')&&app.includes('CR_CLIENT_REPORT_CACHE.overviewRows')],
   ['visão completa do relatório cliente',app.includes('clientLoadReportOverview')&&app.includes('clientRenderReportOverview')&&app.includes('reports-question-list')],
   ['matrizes publicadas no cliente',app.includes('clientPublishedCrossings')&&app.includes('clientReportCrossMatrixMarkup')&&app.includes('reports-client-crossing')],
-  ['RPC cliente para todas as perguntas',app.includes("sb.rpc('client_report_grouped_questions'")&&clientSql.includes('client_report_grouped_questions')],
-  ['RPC cliente para cruzamentos',app.includes("sb.rpc('client_report_grouped_cross'")&&clientSql.includes('client_report_grouped_cross')],
+  ['RPC cliente para todas as perguntas',app.includes('function reportsFetchClientGroupedOverview')&&app.includes("client_report_grouped_questions")&&app.includes("client_report_coded_questions")&&app.includes("reportsReadAllPages(()=>reportsOverviewOrder(sb.rpc(name")&&clientSql.includes('client_report_grouped_questions')&&codedSql.includes('client_report_coded_questions')],
+  ['RPC cliente para cruzamentos',app.includes('function reportsFetchClientGroupedCross')&&app.includes("client_report_grouped_cross")&&app.includes("client_report_coded_cross")&&app.includes("reportsReadAllPages(()=>reportsCrossOrder(sb.rpc(name")&&clientSql.includes('client_report_grouped_cross')&&codedSql.includes('client_report_coded_cross')],
   ['RPC exige liberação',clientSql.includes('client_results_released')&&clientSql.includes("raise exception 'results not released'")],
+  ['RPC contextual exige snapshot publicado',codedSql.includes('client_report_coded_questions')&&codedSql.includes("rd.status = 'published'")&&codedSql.includes('rd.id = p_report_id')&&codedSql.includes("raise exception 'results not released'")],
   ['estilos da visão cliente',css.includes('.reports-client-crossing')&&css.includes('.reports-client-intro')],
   ['mapa georreferenciado do cliente',app.includes('clientGeoStartLive')&&app.includes('clientGeoRenderMap')&&app.includes('clientGeoFilter')],
   ['feed agregado em tempo real',app.includes("sb.rpc('client_collection_geo_feed'")&&app.includes('client-geo-feed-row')],
@@ -37,7 +39,7 @@ const checks=[
   ['permissão de perguntas do cliente',schema.includes('cliente vê perguntas das suas pesquisas')&&schema.includes('survey_questions')],
   ['vínculo traz estado de liberação',app.includes('survey_clients(client_id, results_released)')],
   ['toggle do master grava vínculo da pesquisa',app.includes("from('survey_clients').update({results_released:next})")],
-  ['cache atualizado',html.includes('20261014192200')],
+  ['cache atualizado',html.includes('20261014204600')],
 ];
 let failed=0;for(const [label,ok] of checks){console.log(`${ok?'PASS':'FAIL'} — ${label}`);if(!ok)failed++;}
 if(failed)process.exit(1);

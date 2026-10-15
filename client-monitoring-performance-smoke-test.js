@@ -7,8 +7,13 @@ for(const token of [
   'const CLIENT_RPC_TIMEOUT_MS=30000',
   'Promise.allSettled([',
   'quotaError',
-  "reportsReadAllPages(()=>reportsOverviewOrder(sb.rpc('client_report_grouped_questions'",
-  "reportsReadAllPages(()=>reportsCrossOrder(sb.rpc('client_report_grouped_cross'",
+  'function reportsFetchClientGroupedOverview',
+  "const coded=grouping?.version===2,name=coded?'client_report_coded_questions':'client_report_grouped_questions';",
+  "reportsReadAllPages(()=>reportsOverviewOrder(sb.rpc(name",
+  'function reportsFetchClientGroupedCross',
+  "const coded=grouping?.version===2,name=coded?'client_report_coded_cross':'client_report_grouped_cross';",
+  "reportsReadAllPages(()=>reportsCrossOrder(sb.rpc(name",
+  'range(offset,offset+pageSize-1)',
   'const deadline=Date.now()+120000',
   'controller.abort(),Math.min(20000,deadline-Date.now())',
   '.abortSignal(controller.signal)',
@@ -25,5 +30,5 @@ for(const token of [
   'idx_report_documents_client_survey_status'
 ])assert(sql.includes(token),`migration sem ${token}`);
 assert(!/drop table|drop column|truncate|delete from/i.test(sql),'migration contém operação destrutiva');
-assert(html.includes('app.js?v=20261014192200'),'cache não atualizado');
+assert(html.includes('app.js?v=20261014204600'),'cache não atualizado');
 console.log('Client monitoring performance smoke test: PASS — consultas parciais, timeouts e índices verificados.');

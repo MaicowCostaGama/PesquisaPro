@@ -32,6 +32,7 @@ function harness(documentOverride){
   vm.createContext(c);
   vm.runInContext(section('const ROLES={','const CLIENT_SELF_IDX='),c);
   vm.runInContext(section('const ROLE_NAV={','function initialsOf'),c);
+  vm.runInContext(section('function jsArg(value){','function fmtDataBR('),c);
   vm.runInContext(section('function collectOpenCompletedSurvey(','let COLLECT_ORIENTATION_COUNTS='),c);
   vm.runInContext(section('function collectList(){','function collectQuotaProgressRows('),c);
   vm.runInContext(section('function surveyRow(','PAGES.surveys='),c);

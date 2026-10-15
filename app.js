@@ -51,7 +51,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261015173500';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261015182500';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -205,7 +205,7 @@ async function enableResearcherPush(){
   try{
     const permission=await Notification.requestPermission();
     if(permission!=='granted'){PUSH_STATUS='blocked';go('dashboard-pesq');return;}
-    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261015173500',{scope:'./'});
+    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261015182500',{scope:'./'});
     const subscription=await PUSH_SW_REGISTRATION.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:pushKeyToUint8Array(window.PP_PUSH_PUBLIC_KEY)});
     const json=subscription.toJSON();
     const {error}=await sb.from('push_subscriptions').upsert({user_id:CURRENT_PROFILE.id,endpoint:json.endpoint,subscription:json,user_agent:navigator.userAgent,updated_at:new Date().toISOString()},{onConflict:'endpoint'});
@@ -6789,6 +6789,7 @@ function reportsDocumentEditorMarkup(survey){
       <div><label class="lbl">Síntese executiva</label><textarea class="inp" id="rp-doc-summary-text" rows="4" placeholder="Registre aqui a leitura executiva dos resultados."></textarea></div>
     </div>
     <div class="reports-section-picker"><div class="lbl">Blocos incluídos no PDF</div><div class="reports-section-options">${sections.map(([id,label,checked])=>`<label class="reports-section-option"><input type="checkbox" id="rp-doc-${id.replace('include','').toLowerCase()}" ${checked?'checked':''}> <span>${label}</span></label>`).join('')}</div></div>
+    ${typeof reportsOpenTreatmentMarkup==='function'?reportsOpenTreatmentMarkup():''}
     <div class="reports-document-actions"><button class="btn btn-out" onclick="reportsSaveDraft()">Salvar estrutura</button><button class="btn btn-fill" onclick="reportsGeneratePdf()">Gerar PDF</button><button class="btn btn-fill reports-publish-btn" onclick="reportsFinalizeAndPublish()">Finalizar e disponibilizar ao cliente</button></div>
     <div id="rp-document-feedback" class="reports-document-feedback" role="status"></div>
   </section>`;
@@ -7099,8 +7100,62 @@ function reportsOpenCard(q,qi,data,base){
 
 function reportsOpenCommit(qid,config){
   if(!reportsOpenCanEdit()||!reportsCurrentQuestions().some(q=>q.dbId===qid&&q.type==='open'))return;
-  const state=reportsOpenEnsureScope();state.questions[qid]=reportsOpenNormalizeQuestions({[qid]:config})[qid]||{denominator:'answered',groups:[]};state.revision++;reportsOpenRefreshOverview();
+  const state=reportsOpenEnsureScope();state.questions[qid]=reportsOpenNormalizeQuestions({[qid]:config})[qid]||{denominator:'answered',groups:[]};state.revision++;reportsOpenRefreshOverview();if(typeof reportsOpenTreatmentRender==='function')reportsOpenTreatmentRender();
 }
+// Limpeza do tratamento é restrita ao rascunho selecionado; nunca grava ou apaga respostas.
+let RP_OPEN_TREATMENT=null,RP_OPEN_TREATMENT_SAVING=0;
+function reportsOpenTreatmentState(){
+  if(!reportsOpenCanEdit()||!reportsCurrentSurvey())return null;
+  const scope=reportsOpenEnsureScope(),clientId=reportsDocValue('rp-doc-client');
+  if(RP_OPEN_TREATMENT?.scope!==scope||RP_OPEN_TREATMENT.clientId!==clientId)RP_OPEN_TREATMENT={scope,clientId,busy:false,undo:null,message:''};
+  return RP_OPEN_TREATMENT;
+}
+function reportsOpenTreatmentStats(questions){
+  const configs=Object.values(questions||{});return {questions:configs.length,categories:configs.reduce((n,c)=>n+(c.groups||[]).length,0),links:configs.reduce((n,c)=>n+new Set((c.groups||[]).flatMap(g=>g.members||[])).size,0)};
+}
+function reportsOpenTreatmentBlocked(){return RP_OPEN_TREATMENT_SAVING>0||(typeof RP_REPORT_EXPORT_BUSY!=='undefined'&&RP_REPORT_EXPORT_BUSY);}
+function reportsOpenTreatmentSaving(delta){RP_OPEN_TREATMENT_SAVING=Math.max(0,RP_OPEN_TREATMENT_SAVING+delta);reportsOpenTreatmentRender();}
+function reportsOpenTreatmentMarkup(){
+  const state=reportsOpenTreatmentState();if(!state)return '';
+  const stats=reportsOpenTreatmentStats(state.scope.questions),blocked=state.busy||reportsOpenTreatmentBlocked(),undo=state.undo&&state.undo.revision===state.scope.revision&&state.undo.signature===JSON.stringify(state.scope.questions);
+  return `<section id="rp-open-treatment-reset" class="reports-treatment-reset" aria-label="Limpar o tratamento das perguntas abertas"><div><strong>Recomeçar a organização das perguntas abertas</strong><p>Remove categorias, vínculos, códigos, definições e critérios manuais ou de IA de todas as perguntas abertas deste rascunho. As respostas e os dados originais da coleta são preservados.</p><small>${stats.questions} perguntas com configuração · ${stats.categories} categorias · ${stats.links} vínculos de textos por pergunta. Somente a pesquisa e o cliente selecionados; PDFs já publicados não são alterados.</small></div><div class="reports-treatment-reset-actions"><button type="button" class="btn btn-out reports-treatment-reset-button" id="rp-open-treatment-clear" onclick="reportsOpenTreatmentClear()" ${blocked?'disabled':''}>Limpar todos os agrupamentos da pesquisa</button><button type="button" class="btn btn-out" id="rp-open-treatment-undo" onclick="reportsOpenTreatmentUndo()" ${blocked||!undo?'disabled':''}>Desfazer limpeza</button></div><p class="reports-treatment-reset-status" role="status">${esc(state.message||'A limpeza exige confirmação. Depois, use Salvar estrutura para manter a mudança.')}</p></section>`;
+}
+function reportsOpenTreatmentRender(){const host=document.getElementById('rp-open-treatment-reset');if(host?.id==='rp-open-treatment-reset')host.outerHTML=reportsOpenTreatmentMarkup();}
+function reportsOpenTreatmentInvalidate(){
+  reportsOpenClose();RP_REPORT_OFFICIAL_OVERVIEW={surveyId:null,profile:null,signature:null,rows:[]};RP_REPORT_CROSS_ANALYSIS_CACHE={};
+  // Mantém a distribuição original; apenas invalida matrizes já calculadas com o tratamento anterior.
+  RP_REPORT_ANALYSIS_CACHE={...RP_REPORT_ANALYSIS_CACHE,crossRows:[],crossIds:[],crossGrouping:null};
+  reportsOpenRefreshOverview();reportsOpenTreatmentRender();
+}
+async function reportsOpenTreatmentClear(){
+  const state=reportsOpenTreatmentState();if(!state||state.busy)return;
+  if(reportsOpenTreatmentBlocked()){state.message='Aguarde o salvamento ou a exportação terminar antes de limpar.';reportsOpenTreatmentRender();return;}
+  const survey=reportsCurrentSurvey(),profile=CURRENT_PROFILE,scope=state.scope,clientId=state.clientId;
+  const valid=()=>CURRENT_PROFILE===profile&&reportsOpenCanEdit()&&reportsCurrentSurvey()?.id===survey.id&&RP_OPEN_GROUPING===scope&&reportsDocValue('rp-doc-client')===clientId&&reportsOpenTreatmentState()===state;
+  state.busy=true;reportsOpenTreatmentRender();
+  try{
+    await reportsRequireDraft();if(!valid())return;
+    if(!RP_REPORT_DRAFT_HYDRATED)throw new Error('Não foi possível ler o rascunho salvo. Nenhum agrupamento foi removido.');
+    if(reportsOpenTreatmentBlocked()){state.message='Aguarde o salvamento ou a exportação terminar antes de limpar.';return;}
+    const stats=reportsOpenTreatmentStats(scope.questions);if(!stats.questions){state.message='Este rascunho já está sem tratamento. As respostas originais continuam disponíveis.';return;}
+    const revision=scope.revision,signature=JSON.stringify(scope.questions),previous=JSON.parse(signature),client=reportsClientsForSurvey(survey).find(c=>c.id===clientId);
+    const message='Limpar TODO o tratamento das perguntas abertas?\n\nPesquisa: '+survey.name+'\nCliente/rascunho: '+(client?.company||client?.name||clientId||'ainda sem cliente')+'\n\n'+stats.questions+' perguntas com configuração; '+stats.categories+' categorias; '+stats.links+' vínculos de textos por pergunta.\n\nSerão removidos todos os agrupamentos, códigos, nomes de categorias, definições, exclusões e critérios de IA ou manuais deste rascunho. A base percentual das abertas voltará ao padrão de respostas preenchidas. As sugestões em andamento serão canceladas.\n\nNENHUMA resposta, entrevista, áudio, localização ou dado financeiro será apagado ou modificado. Perguntas fechadas, títulos e seleção de cruzamentos permanecem. Outros clientes, pesquisas e PDFs publicados não serão alterados.\n\nA limpeza é apenas na prévia até você clicar em Salvar estrutura. Você pode desfazer nesta sessão enquanto não houver edições posteriores nos agrupamentos. Confirmar?';
+    if(!confirm(message)||!valid()||reportsOpenTreatmentBlocked()||scope.revision!==revision||JSON.stringify(scope.questions)!==signature)return;
+    scope.questions={};scope.revision++;state.undo={questions:previous,revision:scope.revision,signature:JSON.stringify(scope.questions)};
+    state.message='Tratamento de todas as perguntas abertas removido da prévia. As respostas originais estão preservadas. Clique em Salvar estrutura para manter a limpeza.';
+    reportsOpenTreatmentInvalidate();reportsDocFeedback(state.message,'ok');
+  }catch(ex){if(valid()){state.message=ex.message||'Não foi possível preparar a limpeza. Tente novamente.';reportsDocFeedback(state.message,'warn');}}
+  finally{state.busy=false;if(valid()){reportsOpenTreatmentRender();const undo=document.getElementById('rp-open-treatment-undo');(undo&&!undo.disabled?undo:document.getElementById('rp-open-treatment-clear'))?.focus({preventScroll:true});}}
+}
+function reportsOpenTreatmentUndo(){
+  const state=reportsOpenTreatmentState();if(!state?.undo||state.busy)return;
+  if(reportsOpenTreatmentBlocked()){state.message='Aguarde o salvamento ou a exportação terminar antes de desfazer.';reportsOpenTreatmentRender();return;}
+  const scope=state.scope;if(scope.revision!==state.undo.revision||JSON.stringify(scope.questions)!==state.undo.signature){state.message='Há edições posteriores nos agrupamentos. A limpeza não pode ser desfeita sem sobrescrevê-las.';reportsOpenTreatmentRender();return;}
+  scope.questions=JSON.parse(JSON.stringify(state.undo.questions));scope.revision++;state.undo=null;
+  state.message='Limpeza desfeita: categorias e critérios anteriores foram restaurados na prévia. Clique em Salvar estrutura para persistir a restauração.';
+  reportsOpenTreatmentInvalidate();reportsDocFeedback(state.message,'ok');document.getElementById('rp-open-treatment-clear')?.focus({preventScroll:true});
+}
+
 // Desagrupa todos os vínculos da pergunta atual; nunca altera collection_answers.
 function reportsOpenUngroupPlan(config){
   return {...config,groups:(config?.groups||[]).map(group=>({...group,members:[]}))};
@@ -7420,7 +7475,7 @@ async function reportsExportQuestionsExcel(qid=null){
     lib.writeFile(workbook,'respostas-'+reportsExcelSafeName(survey.name)+'-'+suffix+'-'+(mode==='original'?'originais':'tratadas')+'-'+now.toISOString().slice(0,10)+'.xlsx',{bookType:'xlsx',compression:true});
     reportsExcelFeedback('Excel completo baixado: '+questions.length+' pergunta'+(questions.length===1?'':'s')+'. Nenhum dado ou agrupamento foi alterado.');
   }catch(ex){if(CURRENT_PROFILE===profile&&reportsCurrentSurvey()?.id===survey.id)reportsExcelFeedback('Não foi possível gerar o Excel. '+(ex.message||String(ex)));}
-  finally{RP_REPORT_EXPORT_BUSY=false;if(CURRENT_PROFILE===profile&&reportsCurrentSurvey()?.id===survey.id)reportsExcelFeedback(document.getElementById('rp-excel-feedback')?.textContent||'',false);}
+  finally{RP_REPORT_EXPORT_BUSY=false;if(typeof reportsOpenTreatmentRender==='function')reportsOpenTreatmentRender();if(CURRENT_PROFILE===profile&&reportsCurrentSurvey()?.id===survey.id)reportsExcelFeedback(document.getElementById('rp-excel-feedback')?.textContent||'',false);}
 }
 
 function reportsOpenExport(qid){
@@ -7579,12 +7634,14 @@ async function reportsLoadDraft(){
   operation.promise=(async()=>{
     try{const {data,error}=await sb.rpc('report_document_latest',{p_survey_id:survey.id,p_client_id:clientId});if(error)throw error;if(CURRENT_PROFILE!==profile||reportsCurrentSurvey()?.id!==survey.id||reportsDocValue('rp-doc-client')!==clientId||RP_OPEN_GROUPING!==state||state.revision!==revision)return;const draft=Array.isArray(data)?data[0]:data;if(draft)reportsFillDraft(draft);else reportsOpenHydrate({});}
     catch(ex){if(CURRENT_PROFILE===profile&&reportsCurrentSurvey()?.id===survey.id&&RP_OPEN_GROUPING===state)reportsDocFeedback('Não foi possível ler a estrutura salva. Abra o agrupador novamente para tentar carregar antes de editar.','warn');return;}
-    if(CURRENT_PROFILE===profile&&reportsCurrentSurvey()?.id===survey.id&&reportsDocValue('rp-doc-client')===clientId){RP_REPORT_DRAFT_HYDRATED=true;reportsUpdateCrossSelectionSummary();}
+    if(CURRENT_PROFILE===profile&&reportsCurrentSurvey()?.id===survey.id&&reportsDocValue('rp-doc-client')===clientId){RP_REPORT_DRAFT_HYDRATED=true;reportsUpdateCrossSelectionSummary();if(typeof reportsOpenTreatmentRender==='function')reportsOpenTreatmentRender();}
   })();
   try{return await operation.promise;}finally{if(RP_REPORT_DRAFT_OPERATION===operation)RP_REPORT_DRAFT_OPERATION=null;}
 }
 function reportsDocClientChanged(){const select=document.getElementById('rp-doc-client'),previous=RP_OPEN_GROUPING.clientId;if(!reportsOpenConfirmDiscard()){if(select)select.value=previous||'';return;}const clientId=select?.value||'';reportsOpenReset();reportsOpenEnsureScope().clientId=clientId;reportsOpenRefreshOverview();RP_REPORT_DOCUMENT_ID=null;RP_CROSS_QUESTION_IDS=[];RP_REPORT_CROSSINGS=[];RP_ACTIVE_CROSSING_ID=null;RP_REPORT_DRAFT_SECTIONS=null;RP_REPORT_CROSS_ANALYSIS_CACHE={};RP_REPORT_DRAFT_HYDRATED=false;reportsSetDocumentStatus('new');reportsLoadDraft();}
 async function reportsSaveDraft(silent=false){
+  if(typeof reportsOpenTreatmentSaving==='function')reportsOpenTreatmentSaving(1);
+  try{
   try{await reportsRequireDraft();}catch(ex){reportsDocFeedback(ex.message,'warn');return null;}
   const p=reportsDocPayload(),groupState=reportsOpenEnsureScope(),groupRevision=groupState.revision,profile=CURRENT_PROFILE;
   if(!p.surveyId||!p.clientId){if(!silent)reportsDocFeedback('Selecione o cliente vinculado à pesquisa antes de salvar.','warn');return null;}
@@ -7593,6 +7650,8 @@ async function reportsSaveDraft(silent=false){
     const {data,error}=await sb.rpc('report_document_save',{p_report_id:RP_REPORT_DOCUMENT_ID,p_survey_id:p.surveyId,p_client_id:p.clientId,p_title:p.title,p_subtitle:p.subtitle,p_presentation:p.presentation,p_methodology:p.methodology,p_executive_summary:p.executiveSummary,p_sections:p.sections});
     if(error)throw error;if(!data)throw new Error('O banco não confirmou o salvamento da estrutura.');if(CURRENT_PROFILE!==profile||reportsCurrentSurvey()?.id!==p.surveyId||reportsDocValue('rp-doc-client')!==p.clientId||RP_OPEN_GROUPING!==groupState)return null;groupState.savedRevision=groupRevision;groupState.clientId=p.clientId;RP_REPORT_DOCUMENT_ID=data;RP_REPORT_DRAFT_SECTIONS=p.sections;RP_REPORT_DRAFT_HYDRATED=true;reportsSetDocumentStatus('draft');if(!silent)reportsDocFeedback('Estrutura e agrupamentos salvos como rascunho.','ok');return data;
   }catch(ex){if(!silent)reportsDocFeedback('Não foi possível salvar. Execute a migration relatorios-pdf-clientes.sql. '+(ex.message||ex),'warn');return null;}
+
+  }finally{if(typeof reportsOpenTreatmentSaving==='function')reportsOpenTreatmentSaving(-1);}
 }
 function reportsPdfLines(doc,text,x,y,width,lineHeight=5){const lines=doc.splitTextToSize(String(text||''),width);doc.text(lines,x,y);return y+lines.length*lineHeight;}
 function reportsPdfHeader(doc,title,subtitle){const W=doc.internal.pageSize.getWidth();doc.setFillColor(15,42,86);doc.rect(0,0,W,18,'F');doc.setTextColor(255,255,255);doc.setFont('helvetica','bold');doc.setFontSize(12);doc.text('PesquisaPro',16,11);doc.setFont('helvetica','normal');doc.setFontSize(8);doc.text(subtitle||'Relatório de pesquisa',W-16,11,{align:'right'});doc.setTextColor(15,42,86);doc.setFont('helvetica','bold');doc.setFontSize(17);doc.text(title||'Relatório de resultados',16,31);return 42;}
@@ -7777,11 +7836,11 @@ function reportsVerifyDocumentSnapshot(payload,profile){
 }
 async function reportsGeneratePdf(){
   if(RP_REPORT_EXPORT_BUSY)return;RP_REPORT_EXPORT_BUSY=true;reportsDocFeedback('Carregando agrupamentos e gerando PDF tratado…');
-  try{await reportsRequireDraft();const profile=CURRENT_PROFILE,payload=reportsDocPayload(),id=await reportsSaveDraft(true);if(!id)throw new Error('Salve uma estrutura com cliente e título antes de gerar.');const result=await reportsCreatePdfBlob(payload);reportsVerifyDocumentSnapshot(payload,profile);const url=URL.createObjectURL(result.blob),a=document.createElement('a');a.href=url;a.download='relatorio-pesquisapro-'+new Date().toISOString().slice(0,10)+'.pdf';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);reportsDocFeedback('PDF tratado gerado. Revise as categorias e pendências antes de disponibilizar ao cliente.','ok');}catch(ex){reportsDocFeedback(ex.message||String(ex),'warn');}finally{RP_REPORT_EXPORT_BUSY=false;}
+  try{await reportsRequireDraft();const profile=CURRENT_PROFILE,payload=reportsDocPayload(),id=await reportsSaveDraft(true);if(!id)throw new Error('Salve uma estrutura com cliente e título antes de gerar.');const result=await reportsCreatePdfBlob(payload);reportsVerifyDocumentSnapshot(payload,profile);const url=URL.createObjectURL(result.blob),a=document.createElement('a');a.href=url;a.download='relatorio-pesquisapro-'+new Date().toISOString().slice(0,10)+'.pdf';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);reportsDocFeedback('PDF tratado gerado. Revise as categorias e pendências antes de disponibilizar ao cliente.','ok');}catch(ex){reportsDocFeedback(ex.message||String(ex),'warn');}finally{RP_REPORT_EXPORT_BUSY=false;if(typeof reportsOpenTreatmentRender==='function')reportsOpenTreatmentRender();}
 }
 async function reportsFinalizeAndPublish(){
   if(RP_REPORT_EXPORT_BUSY)return;RP_REPORT_EXPORT_BUSY=true;reportsDocFeedback('Salvando agrupamentos, gerando e publicando o PDF tratado…');
-  try{await reportsRequireDraft();const profile=CURRENT_PROFILE,payload=reportsDocPayload(),id=await reportsSaveDraft(true);if(!id)throw new Error('Salve uma estrutura com cliente e título antes de finalizar.');const result=await reportsCreatePdfBlob(payload);reportsVerifyDocumentSnapshot(payload,profile);const path='reports/'+id+'/'+Date.now()+'.pdf';const {error:uploadError}=await sb.storage.from('client-reports').upload(path,result.blob,{upsert:true,contentType:'application/pdf'});if(uploadError)throw uploadError;reportsVerifyDocumentSnapshot(payload,profile);const {error:publishError}=await sb.rpc('report_document_publish',{p_report_id:id,p_pdf_path:path});if(publishError)throw publishError;reportsSetDocumentStatus('published');reportsDocFeedback('Relatório tratado finalizado e disponibilizado ao cliente.','ok');}catch(ex){reportsDocFeedback(ex.message||String(ex),'warn');}finally{RP_REPORT_EXPORT_BUSY=false;}
+  try{await reportsRequireDraft();const profile=CURRENT_PROFILE,payload=reportsDocPayload(),id=await reportsSaveDraft(true);if(!id)throw new Error('Salve uma estrutura com cliente e título antes de finalizar.');const result=await reportsCreatePdfBlob(payload);reportsVerifyDocumentSnapshot(payload,profile);const path='reports/'+id+'/'+Date.now()+'.pdf';const {error:uploadError}=await sb.storage.from('client-reports').upload(path,result.blob,{upsert:true,contentType:'application/pdf'});if(uploadError)throw uploadError;reportsVerifyDocumentSnapshot(payload,profile);const {error:publishError}=await sb.rpc('report_document_publish',{p_report_id:id,p_pdf_path:path});if(publishError)throw publishError;reportsSetDocumentStatus('published');reportsDocFeedback('Relatório tratado finalizado e disponibilizado ao cliente.','ok');}catch(ex){reportsDocFeedback(ex.message||String(ex),'warn');}finally{RP_REPORT_EXPORT_BUSY=false;if(typeof reportsOpenTreatmentRender==='function')reportsOpenTreatmentRender();}
 }
 
 function reportsCrossCsvLines(rows,ids){
@@ -11383,5 +11442,3 @@ function reportsValidateCodedCross(rows,ids){
   reportsValidateTreatedCross(rows,ids);
   for(const row of rows||[]){if(!Array.isArray(row.variable_keys)||row.variable_keys.length!==ids.length||row.variable_keys.some(key=>typeof key!=='string'||!key)||!Array.isArray(row.source_kinds)||row.source_kinds.length!==ids.length||row.measure_semantics!=='incidence')throw new Error('O servidor não retornou os códigos completos do cruzamento. Nenhum resultado parcial foi apresentado.');for(const name of ['cnt','valid_base','row_total','column_total','slice_total'])if(!Number.isSafeInteger(Number(row[name]))||Number(row[name])<0||Number(row[name])>Number(row.valid_base))throw new Error('Contagem inválida no cruzamento por categoria. Nenhum resultado parcial foi apresentado.');}
 }
-
-

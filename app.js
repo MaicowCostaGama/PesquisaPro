@@ -51,7 +51,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261014204600';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261014211800';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -205,7 +205,7 @@ async function enableResearcherPush(){
   try{
     const permission=await Notification.requestPermission();
     if(permission!=='granted'){PUSH_STATUS='blocked';go('dashboard-pesq');return;}
-    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261014204600',{scope:'./'});
+    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261014211800',{scope:'./'});
     const subscription=await PUSH_SW_REGISTRATION.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:pushKeyToUint8Array(window.PP_PUSH_PUBLIC_KEY)});
     const json=subscription.toJSON();
     const {error}=await sb.from('push_subscriptions').upsert({user_id:CURRENT_PROFILE.id,endpoint:json.endpoint,subscription:json,user_agent:navigator.userAgent,updated_at:new Date().toISOString()},{onConflict:'endpoint'});
@@ -7069,6 +7069,54 @@ function reportsOpenCommit(qid,config){
   if(!reportsOpenCanEdit()||!reportsCurrentQuestions().some(q=>q.dbId===qid&&q.type==='open'))return;
   const state=reportsOpenEnsureScope();state.questions[qid]=reportsOpenNormalizeQuestions({[qid]:config})[qid]||{denominator:'answered',groups:[]};state.revision++;reportsOpenRefreshOverview();
 }
+// Desagrupa todos os vínculos da pergunta atual; nunca altera collection_answers.
+function reportsOpenUngroupPlan(config){
+  return {...config,groups:(config?.groups||[]).map(group=>({...group,members:[]}))};
+}
+function reportsOpenUngroupState(){
+  if(!reportsOpenEditorValid())return null;
+  if(!RP_OPEN_EDITOR.ungroup)RP_OPEN_EDITOR.ungroup={undo:null,message:''};
+  return RP_OPEN_EDITOR.ungroup;
+}
+function reportsOpenUngroupRender(){
+  const state=reportsOpenUngroupState(),host=document.getElementById('rp-open-ungroup');if(!state||!host)return;
+  const config=reportsOpenConfig(RP_OPEN_EDITOR.qid),members=new Set(config.groups.flatMap(group=>group.members)),canUndo=state.undo&&state.undo.revision===reportsOpenEnsureScope().revision;
+  host.innerHTML=`<div class="reports-open-ungroup-copy"><strong>Recomeçar o tratamento desta pergunta</strong><p>Desvincula todas as respostas, inclusive fora da busca ou da página atual. O dicionário contextual e os textos originais são preservados. Não afeta outras perguntas.</p></div><div class="reports-open-ungroup-actions"><button type="button" class="btn btn-out reports-open-ungroup-button" id="rp-open-ungroup-all" onclick="reportsOpenUngroupAll()" ${!members.size?'disabled':''}>Desagrupar todas as respostas</button><button type="button" class="btn btn-out" id="rp-open-ungroup-undo" onclick="reportsOpenUngroupUndo()" ${!canUndo?'disabled':''}>Desfazer desagrupamento</button></div><p id="rp-open-ungroup-status" role="status">${esc(state.message||'A mudança só é persistida ao salvar os agrupamentos na estrutura.')}</p>`;
+}
+function reportsOpenUngroupResetReview(editor){
+  // Troca o estado efêmero: requisições antigas continuam ligadas ao objeto antigo.
+  // A revisão incrementada também impede qualquer aplicação de resultados tardios.
+  const revision=reportsOpenEnsureScope().revision;
+  if(editor.ai){editor.ai.controller?.abort();editor.ai={...editor.ai,busy:false,controller:null,groups:[],done:new Set(),undo:null,revision,message:'Agrupamentos alterados. Gere novas sugestões antes de aplicar.'};}
+  if(editor.context){editor.context.controller?.abort();editor.context={...editor.context,busy:false,controller:null,discovery:[],classification:[],lastBatchIndices:[],cursor:0,undo:null,resultRevision:revision,resultModel:'',message:'Vínculos alterados. Gere uma nova classificação; nada é reaplicado automaticamente.'};}
+  if(editor.merge)editor.merge={selected:new Set(),label:'',labelEdited:false,undo:null,message:''};
+  editor.selected.clear();editor.filter='pending';editor.search='';editor.page=0;
+}
+function reportsOpenUngroupAll(){
+  const state=reportsOpenUngroupState();if(!state)return;
+  const editor=RP_OPEN_EDITOR,scope=reportsOpenEnsureScope(),config=reportsOpenConfig(editor.qid),revision=scope.revision;
+  const count=new Set(config.groups.flatMap(group=>group.members)).size;
+  if(!count){state.message='Não há respostas vinculadas a categorias nesta pergunta.';reportsOpenUngroupRender();return;}
+  const contextual=config.coding==='contextual';
+  const message='Desagrupar todas as respostas desta pergunta?\n\n'+count+' textos vinculados voltarão a ficar não categorizados, inclusive fora da busca e da página atual.\n'+(contextual?'Os códigos, nomes, definições e critérios das categorias contextuais serão mantidos para você refazer o tratamento.':'Os agrupamentos manuais desta pergunta serão removidos.')+'\n\nAs respostas originais e suas contagens não serão apagadas. Outras perguntas não serão alteradas. As sugestões atuais serão descartadas e uma análise em andamento será cancelada.\n\nVocê poderá desfazer enquanto esta janela estiver aberta e não houver edições posteriores. Para persistir, será necessário salvar os agrupamentos na estrutura. PDFs já publicados não mudam automaticamente.';
+  if(!confirm(message))return;
+  if(RP_OPEN_EDITOR!==editor||!reportsOpenEditorValid()||reportsOpenEnsureScope()!==scope||scope.revision!==revision)return;
+  const previous=JSON.parse(JSON.stringify(config));
+  reportsOpenCommit(editor.qid,reportsOpenUngroupPlan(config));
+  state.undo={config:previous,revision:scope.revision};
+  reportsOpenUngroupResetReview(editor);
+  state.message='Todas as respostas desta pergunta foram desagrupadas na prévia. Salve os agrupamentos na estrutura para manter a mudança; gere novamente o PDF quando necessário.';
+  reportsOpenEditorRender();document.getElementById('rp-open-ungroup-undo')?.focus({preventScroll:true});
+}
+function reportsOpenUngroupUndo(){
+  const state=reportsOpenUngroupState();if(!state?.undo)return;
+  if(state.undo.revision!==reportsOpenEnsureScope().revision){state.message='Há edições posteriores. O desagrupamento não pode ser desfeito sem sobrescrevê-las.';reportsOpenUngroupRender();return;}
+  const editor=RP_OPEN_EDITOR,config=JSON.parse(JSON.stringify(state.undo.config));
+  reportsOpenCommit(editor.qid,config);state.undo=null;reportsOpenUngroupResetReview(editor);
+  state.message='Desagrupamento desfeito: os vínculos anteriores desta pergunta foram restaurados. Salve os agrupamentos na estrutura para persistir a restauração.';
+  reportsOpenEditorRender();document.getElementById('rp-open-ungroup-all')?.focus({preventScroll:true});
+}
+
 async function reportsOpenEdit(qid){
   if(!reportsOpenCanEdit())return;const surveyId=reportsCurrentSurvey()?.id,profile=CURRENT_PROFILE;reportsOpenEnsureScope();
   if(typeof reportsLoadDraft==='function'&&!RP_REPORT_DRAFT_HYDRATED&&!reportsOpenDirty()){await reportsLoadDraft();if(CURRENT_PROFILE!==profile||reportsCurrentSurvey()?.id!==surveyId)return;if(!RP_REPORT_DRAFT_HYDRATED){reportsDocFeedback('Não foi possível ler a estrutura salva. Tente abrir o agrupador novamente antes de editar, para não sobrescrever categorias anteriores.','warn');return;}}
@@ -7076,7 +7124,7 @@ async function reportsOpenEdit(qid){
   reportsOpenClose();const data=reportsOpenQuestionData(qid),base=Number(data[0]?.valid_base)||reportsLocalValidBase(reportsCurrentSurvey()?.id)||0;
   const model=reportsOpenModel(data,reportsOpenConfig(qid),base);
   RP_OPEN_EDITOR={qid,surveyId:reportsCurrentSurvey().id,profile:CURRENT_PROFILE,originals:model.originals,base,selected:new Set(),search:'',filter:'pending',page:0,focus:document.activeElement};
-  const overlay=document.createElement('div');overlay.id='rp-open-dialog';overlay.className='reports-open-overlay';overlay.innerHTML=`<section class="reports-open-dialog" role="dialog" aria-modal="true" aria-labelledby="rp-open-title"><header><div><h2 id="rp-open-title">Agrupar respostas abertas</h2><p>${esc(q.text)}</p></div><button class="btn btn-out" onclick="reportsOpenClose()" aria-label="Fechar agrupador">Fechar</button></header><div id="rp-open-scroll" class="reports-open-body" tabindex="0" role="region" aria-label="Sugestões e agrupamento de respostas"><div class="reports-open-guidance">Selecione textos que expressem a mesma resposta e dê um nome à categoria. Nenhum agrupamento semântico é aplicado automaticamente. Não una opiniões opostas ou assuntos apenas parecidos. Os textos originais são preservados. Use a IA abaixo para sugerir equivalências com revisão.<button class="btn btn-out reports-open-manual-shortcut" onclick="reportsOpenShowPending()">Ir para não categorizadas</button><button class="btn btn-out reports-open-manual-shortcut" onclick="reportsOpenShowMerge()">Juntar categorias já criadas</button></div><div id="rp-open-ai" class="reports-ai-panel"></div><div id="rp-open-content"></div></div><footer><span id="rp-open-save-status" role="status">${reportsOpenDirty()?'Há agrupamentos não salvos.':'Nenhuma alteração pendente.'}</span><button class="btn btn-fill" id="rp-open-save" onclick="reportsOpenSave()">Salvar agrupamentos na estrutura</button></footer></section>`;
+  const overlay=document.createElement('div');overlay.id='rp-open-dialog';overlay.className='reports-open-overlay';overlay.innerHTML=`<section class="reports-open-dialog" role="dialog" aria-modal="true" aria-labelledby="rp-open-title"><header><div><h2 id="rp-open-title">Agrupar respostas abertas</h2><p>${esc(q.text)}</p></div><button class="btn btn-out" onclick="reportsOpenClose()" aria-label="Fechar agrupador">Fechar</button></header><div id="rp-open-scroll" class="reports-open-body" tabindex="0" role="region" aria-label="Sugestões e agrupamento de respostas"><div class="reports-open-guidance">Selecione textos que expressem a mesma resposta e dê um nome à categoria. Nenhum agrupamento semântico é aplicado automaticamente. Não una opiniões opostas ou assuntos apenas parecidos. Os textos originais são preservados. Use a IA abaixo para sugerir equivalências com revisão.<button class="btn btn-out reports-open-manual-shortcut" onclick="reportsOpenShowPending()">Ir para não categorizadas</button><button class="btn btn-out reports-open-manual-shortcut" onclick="reportsOpenShowMerge()">Juntar categorias já criadas</button></div><section id="rp-open-ungroup" class="reports-open-ungroup" aria-label="Desagrupar todas as respostas da pergunta"></section><div id="rp-open-ai" class="reports-ai-panel"></div><div id="rp-open-content"></div></div><footer><span id="rp-open-save-status" role="status">${reportsOpenDirty()?'Há agrupamentos não salvos.':'Nenhuma alteração pendente.'}</span><button class="btn btn-fill" id="rp-open-save" onclick="reportsOpenSave()">Salvar agrupamentos na estrutura</button></footer></section>`;
   document.body.appendChild(overlay);document.addEventListener('keydown',reportsOpenKeydown);reportsOpenEditorRender();overlay.querySelector('[aria-label="Fechar agrupador"]')?.focus({preventScroll:true});
 }
 function reportsOpenEditorValid(){return RP_OPEN_EDITOR&&RP_OPEN_EDITOR.profile===CURRENT_PROFILE&&RP_OPEN_EDITOR.surveyId===reportsCurrentSurvey()?.id&&reportsOpenCanEdit();}
@@ -7091,7 +7139,7 @@ function reportsOpenEditorRender(){
   const scope=reportsOpenChoicesModel(editor.originals,config,editor.filter||'pending','');for(const index of editor.selected){if(!scope.indexes.includes(index))editor.selected.delete(index);}
   const selectedCount=editor.originals.reduce((sum,r,index)=>sum+(editor.selected.has(index)?r.cnt:0),0);
   document.getElementById('rp-open-content').innerHTML=`<div class="reports-open-summary"><b>${editor.originals.length} textos diferentes · ${model.answered} respostas preenchidas · ${editor.base} entrevistas válidas</b><label>Calcular percentual principal sobre <select class="inp" id="rp-open-denominator" onchange="reportsOpenDenominator(this.value)"><option value="answered" ${config.denominator==='answered'?'selected':''}>Respostas preenchidas desta pergunta</option><option value="valid" ${config.denominator==='valid'?'selected':''}>Todas as entrevistas válidas</option></select></label></div><div class="reports-open-columns"><section id="rp-open-manual"><h3>Textos originais</h3><div id="rp-open-tabs"></div><p class="reports-open-filter-hint">Comece pelas não categorizadas. Selecione um ou mais textos para criar ou completar uma categoria. Ao trocar de aba, a seleção é limpa.</p><label class="lbl" for="rp-open-search">Buscar texto (sem alterar seleção)</label><input class="inp" id="rp-open-search" value="${esc(editor.search)}" oninput="reportsOpenSearch(this.value)" placeholder="Buscar nas respostas…"><div id="rp-open-choices"></div></section><section><h3>Criar ou completar categoria</h3><div class="reports-open-assignment"><label class="lbl" for="rp-open-target">Categoria existente</label><select class="inp" id="rp-open-target"><option value="">Criar nova categoria</option>${config.groups.map(g=>`<option value="${esc(g.id)}">${esc(g.label)}</option>`).join('')}</select><label class="lbl" for="rp-open-label">Nome da nova categoria</label><input class="inp" id="rp-open-label" maxlength="160" placeholder="Ex.: Preço elevado"><div id="rp-open-selected">${editor.selected.size} textos selecionados · ${selectedCount} ocorrências</div><button class="btn btn-fill" onclick="reportsOpenAssign()">Aplicar aos textos selecionados</button><button class="btn btn-out" onclick="reportsOpenClearSelection()">Limpar seleção</button><p id="rp-open-feedback" role="status"></p></div><h3 id="rp-open-merge-title">Categorias revisadas</h3><div id="rp-open-merge"></div><div class="reports-open-groups">${config.groups.map(g=>{const bucket=model.rows.find(r=>r.groupId===g.id);return `<article><label class="reports-open-merge-pick"><input type="checkbox" data-merge-group="${esc(g.id)}" onchange="reportsOpenMergeSelect(${jsArg(g.id)},this.checked)" ${reportsOpenMergeState().selected.has(g.id)?'checked':''}><span>Selecionar para juntar</span></label><label class="lbl">Nome da categoria <input class="inp" maxlength="160" value="${esc(g.label)}" onchange="reportsOpenRename(${jsArg(g.id)},this.value)"></label><b>${bucket?.cnt||0} ocorrências${config.coding==='contextual'?' estimadas na prévia; o relatório deduplica por entrevista':''} · ${reportsOpenPercentText(bucket?.cnt||0,model.percentBase)}</b><details><summary>Ver textos vinculados (${g.members.length})</summary>${g.members.map(m=>`<div>${esc(m)}</div>`).join('')}</details><button class="btn btn-out" onclick="reportsOpenRemove(${jsArg(g.id)})">Desfazer agrupamento</button></article>`;}).join('')||'<p>Nenhuma categoria criada. As respostas permanecem separadas.</p>'}</div></section></div>`;
-  reportsOpenChoicesRender();reportsOpenAiRender();reportsOpenMergeRender();
+  reportsOpenChoicesRender();reportsOpenAiRender();reportsOpenMergeRender();if(typeof reportsOpenUngroupRender==='function')reportsOpenUngroupRender();
 }
 // Abas filtram apenas a lista de revisão: nenhuma resposta ou frequência é alterada.
 function reportsOpenChoicesModel(originals,config,filter='pending',search=''){

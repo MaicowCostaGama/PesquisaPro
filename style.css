@@ -2105,3 +2105,14 @@ body.acollect-notice-gate-open{overflow:hidden}
 }
 
 .reports-context-suggested{padding:9px;border-left:3px solid #2563eb;background:#eff6ff;color:#173a6a;font-size:12px;line-height:1.5}
+
+/* v167 — desagrupamento por pergunta, com reversão explícita. */
+.reports-open-dialog .reports-open-ungroup{margin:18px 24px;padding:16px 18px;border:1px solid #e5d3c0;border-radius:14px;background:#fffaf4;color:#263c59;display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px;}
+.reports-open-dialog .reports-open-ungroup-copy{flex:1 1 340px;min-width:0;}
+.reports-open-dialog .reports-open-ungroup-copy strong{font-size:15px;}
+.reports-open-dialog .reports-open-ungroup-copy p{margin:6px 0 0;font-size:13px;line-height:1.5;}
+.reports-open-dialog .reports-open-ungroup-actions{display:flex;flex-wrap:wrap;gap:8px;}
+.reports-open-dialog .reports-open-ungroup-button{color:#933316;border-color:#d5a18c;background:#fff;}
+.reports-open-dialog .reports-open-ungroup-button:not(:disabled):hover{background:#fff0e8;border-color:#a14223;}
+.reports-open-dialog #rp-open-ungroup-status{width:100%;margin:0;font-size:13px;line-height:1.5;}
+@media(max-width:600px){.reports-open-dialog .reports-open-ungroup{margin:12px;padding:14px;}.reports-open-dialog .reports-open-ungroup-actions{width:100%;}.reports-open-dialog .reports-open-ungroup-actions .btn{width:100%;white-space:normal;min-height:44px;}}

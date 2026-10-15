@@ -51,7 +51,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261015190500';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261015204000';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -205,7 +205,7 @@ async function enableResearcherPush(){
   try{
     const permission=await Notification.requestPermission();
     if(permission!=='granted'){PUSH_STATUS='blocked';go('dashboard-pesq');return;}
-    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261015190500',{scope:'./'});
+    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261015204000',{scope:'./'});
     const subscription=await PUSH_SW_REGISTRATION.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:pushKeyToUint8Array(window.PP_PUSH_PUBLIC_KEY)});
     const json=subscription.toJSON();
     const {error}=await sb.from('push_subscriptions').upsert({user_id:CURRENT_PROFILE.id,endpoint:json.endpoint,subscription:json,user_agent:navigator.userAgent,updated_at:new Date().toISOString()},{onConflict:'endpoint'});
@@ -460,6 +460,7 @@ async function afterLogin(user){
   }
   CURRENT_PROFILE={...profile,commissionRate:Number(profile.commission_rate)||0,commissionRateWithIndicator:Number(profile.commission_rate_with_indicator)||0,recruiterCode:profile.recruiter_code||'',recruiterCaptureValue:Number(profile.recruiter_capture_value)||0};
   reportsOpenReset();
+  if(window.PP_TABULATION)window.PP_TABULATION.reset();
   selectedRole=CURRENT_PROFILE.role;
   document.getElementById('login').style.display='none';
   document.getElementById('app').classList.add('show');
@@ -492,6 +493,7 @@ async function logout(){
   PAYMENTS=[];PAYMENTS_LOADED=false;PAYMENTS_LOADING=false;PAYMENT_RECEIPTS=[];PAYMENT_RECEIPTS_LOADED=false;PAYMENT_RECEIPTS_LOADING=false;PAYMENT_RECEIPTS_SCHEMA_MISSING=false;PAYMENT_RECEIPTS_DELETE_SCHEMA_MISSING=false;
   COLLECT_INAPP_ORIENTATION_COUNTS={};COLLECT_INAPP_ORIENTATION_STATUS='idle';COLLECT_INAPP_ORIENTATION_LOADING=false;COLLECT_BATCH_ORIENTATION_SENDING=false;COLLECT_IDX=null;COLLECT_RETURN_PAGE='collect';closeSurveyResearcherMessageModal();reportsOpenReset();
   CURRENT_PROFILE=null;
+  if(window.PP_TABULATION)window.PP_TABULATION.reset();
   RESEARCHER_PROFILE_SAVING=false;RESEARCHER_PROFILE_SAVE_OPERATION=null;RESEARCHER_PROFILE_FORM_DRAFT=null;RESEARCHER_PIX_FORM_DRAFT=null;
   USERS=[];USERS_LOADED=false;USERS_LOADING=false;_usersLoadPromise=null;
   ACTIVE_CAMPAIGN_ID=null;CLIENT_SURVEY_VIEW_ID=null;
@@ -634,6 +636,7 @@ function openResearcherSupport(){
 function go(key){
   if(staffNavPendingEnabled())refreshStaffNavPendingCounts();
   const previousKey=document.querySelector('.nav-item.on')?.dataset.key;
+  if(previousKey==='reports'&&key!=='reports'&&window.PP_TABULATION){if(!window.PP_TABULATION.canLeave())return;window.PP_TABULATION.reset();}
   document.querySelectorAll('.nav-item').forEach(n=>{
     const active=n.dataset.key===key;
     n.classList.toggle('on',active);
@@ -6918,6 +6921,7 @@ PAGES.reports=()=>{
     ${reportsExcelToolbar()}
     ${RP_REPORT_MODE==='builder'?`<div class="reports-builder-note">Cada cartão abaixo representa um cruzamento independente. Cada cruzamento aceita de uma a seis variáveis e pode ser incluído ou retirado do PDF separadamente. As duas primeiras formam linhas e colunas; as demais criam recortes combinados, sem misturar suas bases. Ranking e “Duas respostas” aparecem no resultado geral, mas não são escolhidos como uma única variável de cruzamento.</div>${reportsCrossingsBuilderMarkup(crossQs)}`:''}
   </div>
+  ${reportsOpenCanEdit()&&typeof window!=='undefined'&&window.PP_TABULATION?window.PP_TABULATION.markup():''}
   ${reportsHeatmapMarkup(survey)}
   ${reportsGeoMarkup(survey)}
   <div id="rp-duplicate-diagnostic"></div><div id="rp-output"><div class="empty" style="padding:28px 0">Carregando resultados reais…</div></div>
@@ -7035,7 +7039,7 @@ function reportsOpenEnsureScope(){
 }
 function reportsOpenCanEdit(){return ['admin','admpro','coord','gerente'].includes(CURRENT_PROFILE?.role);}
 function reportsOpenDirty(){return reportsGroupingEnabled()&&RP_OPEN_GROUPING.profile===CURRENT_PROFILE&&RP_OPEN_GROUPING.revision!==RP_OPEN_GROUPING.savedRevision;}
-function reportsOpenConfirmDiscard(){return !reportsOpenDirty()||confirm('Há agrupamentos ainda não salvos na estrutura do relatório. Deseja sair sem salvar esses agrupamentos?');}
+function reportsOpenConfirmDiscard(){if(typeof window!=='undefined'&&window.PP_TABULATION&&!window.PP_TABULATION.canLeave())return false;return !reportsOpenDirty()||confirm('Há agrupamentos ainda não salvos na estrutura do relatório. Deseja sair sem salvar esses agrupamentos?');}
 if(typeof window!=='undefined')window.addEventListener('beforeunload',event=>{if(reportsOpenDirty()){event.preventDefault();event.returnValue='';}});
 function reportsOpenNormalizeQuestions(input){
   const result={};if(!input||typeof input!=='object'||Array.isArray(input))return result;
@@ -11169,7 +11173,7 @@ window._afterRender=function(key){
   if(key==='app-collect'&&MY_CONTRACT)initGeoCollect(); /* só inicia GPS/coleta se o contrato já estiver assinado — ver PAGES['app-collect'] */
   if(key==='client-progress'){clientProgressStartLive();clientResearcherProgressLoad();clientLoadReportOverview();clientLoadPublishedReports();clientGeoStartLive();responseHeatmapLoad('client');}
   if(key==='client-results'){clientLoadReportOverview();clientLoadPublishedReports();clientGeoStartLive();responseHeatmapLoad('client');}
-  if(key==='reports'){reportsLoadAndRender();reportsStartLive();reportsLoadDraft();responseHeatmapLoad('master');reportsGeoLoad();if(!USERS_LOADED)loadUsersIfNeeded().then(()=>reportsGeoRender());}
+  if(key==='reports'){if(window.PP_TABULATION)window.PP_TABULATION.mount({profile:CURRENT_PROFILE,sb,readPages:reportsReadAllPages,getContext:()=>({profile:CURRENT_PROFILE,survey:reportsCurrentSurvey()}),showCurrent:()=>{document.getElementById('rp-output')?.scrollIntoView({behavior:'smooth',block:'start'});}});reportsLoadAndRender();reportsStartLive();reportsLoadDraft();responseHeatmapLoad('master');reportsGeoLoad();if(!USERS_LOADED)loadUsersIfNeeded().then(()=>reportsGeoRender());}
   if(key==='my-earnings')renderMyRejected();
   if(key==='researcher-profile'||key==='my-earnings')researcherSetSaveBusy(RESEARCHER_PROFILE_SAVING);
   if(key==='sample'){calcSample();}

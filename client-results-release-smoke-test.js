@@ -13,7 +13,7 @@ const checks=[
   ['cliente localiza pesquisa pelo vínculo real',app.includes('campaignSurveysForCurrentUser')&&app.includes("(s.clientIds||[]).includes(CURRENT_PROFILE.id)")&&app.includes('ACTIVE_CAMPAIGN_ID')],
   ['snapshot carrega liberação por pesquisa',app.includes('clientReleaseById:Object.fromEntries')&&app.includes('results_released')],
   ['cliente considera liberação global ou por pesquisa',app.includes('function clientResultsReleasedForSurvey')&&app.includes('client.resultsReleased')&&app.includes('bySurvey[clientId]===true')],
-  ['resultados bloqueados antes da liberação',app.includes('Resultados ainda não liberados')&&app.includes('!clientResultsReleasedForSurvey(c,s)')],
+  ['resultados bloqueados antes da liberação',app.includes('Acesso aos resultados ainda não liberado')&&app.includes('!clientReportsFullAllowed(s)')],
   ['cliente chama distribuição agregada',app.includes('reportsFetchClientGroupedOverview')&&app.includes('CR_CLIENT_REPORT_CACHE.overviewRows')],
   ['visão completa do relatório cliente',app.includes('clientLoadReportOverview')&&app.includes('clientRenderReportOverview')&&app.includes('reports-question-list')],
   ['matrizes publicadas no cliente',app.includes('clientPublishedCrossings')&&app.includes('clientReportCrossMatrixMarkup')&&app.includes('reports-client-crossing')],
@@ -39,7 +39,7 @@ const checks=[
   ['permissão de perguntas do cliente',schema.includes('cliente vê perguntas das suas pesquisas')&&schema.includes('survey_questions')],
   ['vínculo traz estado de liberação',app.includes('survey_clients(client_id, results_released)')],
   ['toggle do master grava vínculo da pesquisa',app.includes("from('survey_clients').update({results_released:next})")],
-  ['cache atualizado',html.includes('20261015204000')],
+  ['cache atualizado',html.includes('20261015213500')],
 ];
 let failed=0;for(const [label,ok] of checks){console.log(`${ok?'PASS':'FAIL'} — ${label}`);if(!ok)failed++;}
 if(failed)process.exit(1);

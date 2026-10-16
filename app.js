@@ -51,7 +51,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261015204000';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261015213500';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -205,7 +205,7 @@ async function enableResearcherPush(){
   try{
     const permission=await Notification.requestPermission();
     if(permission!=='granted'){PUSH_STATUS='blocked';go('dashboard-pesq');return;}
-    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261015204000',{scope:'./'});
+    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261015213500',{scope:'./'});
     const subscription=await PUSH_SW_REGISTRATION.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:pushKeyToUint8Array(window.PP_PUSH_PUBLIC_KEY)});
     const json=subscription.toJSON();
     const {error}=await sb.from('push_subscriptions').upsert({user_id:CURRENT_PROFILE.id,endpoint:json.endpoint,subscription:json,user_agent:navigator.userAgent,updated_at:new Date().toISOString()},{onConflict:'endpoint'});
@@ -461,6 +461,7 @@ async function afterLogin(user){
   CURRENT_PROFILE={...profile,commissionRate:Number(profile.commission_rate)||0,commissionRateWithIndicator:Number(profile.commission_rate_with_indicator)||0,recruiterCode:profile.recruiter_code||'',recruiterCaptureValue:Number(profile.recruiter_capture_value)||0};
   reportsOpenReset();
   if(window.PP_TABULATION)window.PP_TABULATION.reset();
+  if(window.PP_CLIENT_REPORTS)window.PP_CLIENT_REPORTS.reset();
   selectedRole=CURRENT_PROFILE.role;
   document.getElementById('login').style.display='none';
   document.getElementById('app').classList.add('show');
@@ -494,6 +495,7 @@ async function logout(){
   COLLECT_INAPP_ORIENTATION_COUNTS={};COLLECT_INAPP_ORIENTATION_STATUS='idle';COLLECT_INAPP_ORIENTATION_LOADING=false;COLLECT_BATCH_ORIENTATION_SENDING=false;COLLECT_IDX=null;COLLECT_RETURN_PAGE='collect';closeSurveyResearcherMessageModal();reportsOpenReset();
   CURRENT_PROFILE=null;
   if(window.PP_TABULATION)window.PP_TABULATION.reset();
+  if(window.PP_CLIENT_REPORTS)window.PP_CLIENT_REPORTS.reset();
   RESEARCHER_PROFILE_SAVING=false;RESEARCHER_PROFILE_SAVE_OPERATION=null;RESEARCHER_PROFILE_FORM_DRAFT=null;RESEARCHER_PIX_FORM_DRAFT=null;
   USERS=[];USERS_LOADED=false;USERS_LOADING=false;_usersLoadPromise=null;
   ACTIVE_CAMPAIGN_ID=null;CLIENT_SURVEY_VIEW_ID=null;
@@ -636,6 +638,7 @@ function openResearcherSupport(){
 function go(key){
   if(staffNavPendingEnabled())refreshStaffNavPendingCounts();
   const previousKey=document.querySelector('.nav-item.on')?.dataset.key;
+  if(previousKey==='client-results'&&key!=='client-results'){window.PP_CLIENT_REPORTS?.reset();window.PP_TABULATION?.reset();}
   if(previousKey==='reports'&&key!=='reports'&&window.PP_TABULATION){if(!window.PP_TABULATION.canLeave())return;window.PP_TABULATION.reset();}
   document.querySelectorAll('.nav-item').forEach(n=>{
     const active=n.dataset.key===key;
@@ -1563,7 +1566,7 @@ function campaignSurveysForCurrentUser(){
   if(!CURRENT_PROFILE)return[];
   if(CURRENT_PROFILE.role==='cliente'){
     const client=clientSelf();
-    return SURVEYS.filter(s=>!s.archivedAt&&((s.clientIds||[]).includes(CURRENT_PROFILE.id)||(client?.surveys||[]).includes(s.name)));
+    return SURVEYS.filter(s=>!s.archivedAt&&(s.clientIds||[]).includes(CURRENT_PROFILE.id));
   }
   if(CURRENT_PROFILE.role==='pesq')return typeof acollectMySurveys==='function'?acollectMySurveys():[];
   return SURVEYS.filter(s=>!s.archivedAt&&s.status!=='encerrada');
@@ -1866,15 +1869,24 @@ let CR_CLIENT_GEO_TIMER=null;
 let _clientGeoMap=null,_clientGeoTileLayer=null,_clientGeoMarkerLayer=[],_clientGeoInfoWindow=null,_clientGeoDidFit=false;
 let CR_CLIENT_GEO_FILTER='all';
 PAGES['client-results']=()=>{
-  if(!SURVEYS_LOADED)loadSurveysIfNeeded();
+  if(!SURVEYS_LOADED){loadSurveysIfNeeded();return head('Relatórios','Resultados e análises')+'<div class="card"><div class="empty">Carregando pesquisas…</div></div>';}
   const c=clientSelf(),s=clientSelfSurvey();
-  if(!c||!s)return head('Resultados','Resultados da sua pesquisa')+`<div class="card"><div class="empty">Nenhuma pesquisa vinculada à sua conta no momento.</div></div>`;
-  if(!clientResultsReleasedForSurvey(c,s)){
-    const sample=surveySample(s),pct=sample?Math.min(100,Math.round(s.collected/sample*100)):0;
-    return head('Resultados',s.name)+`<div class="card" style="text-align:center;padding:52px 24px"><div style="width:56px;height:56px;border-radius:16px;background:var(--amber-l);color:var(--amber);font-size:26px;display:flex;align-items:center;justify-content:center;margin:0 auto 16px">🔒</div><div style="font-weight:800;font-size:18px">Resultados ainda não liberados</div><p style="color:var(--ink3);font-size:13.5px;margin-top:8px;max-width:440px;margin-left:auto;margin-right:auto;line-height:1.6">A coleta está em <b>${pct}%</b> da meta. Assim que os dados forem validados, a equipe do PesquisaPro libera o relatório nesta área.</p><button class="btn btn-out" style="margin-top:20px" onclick="go('client-progress')">← Ver andamento da coleta</button></div>`;
-  }
-  const heatmapMarkup=clientHeatmapMarkup(s);return head('Resultados',s.name,`<button type="button" class="btn btn-out" onclick="clientViewSurvey('${esc(s.id)}')">Informações da pesquisa</button><button type="button" class="btn btn-out" onclick="go('client-surveys')">Minhas pesquisas</button><button type="button" class="btn btn-fill" onclick="clientOpenPublishedReports('${esc(s.id)}')">Relatórios finais (PDF)</button>`)+`${clientCompletedSurveyNotice(s)}<div id="cr-client-report"><div class="empty" style="padding:28px 0">Carregando relatório de resultados…</div></div>${heatmapMarkup}<section id="cr-client-geo" class="client-geo-section"><div class="card"><div class="empty" style="padding:28px 0">Carregando georreferenciamento…</div></div></section>${clientPublishedReportsMarkup()}<div class="callout mb" style="margin-top:16px">Os resultados são calculados sobre entrevistas válidas, excluindo coletas reprovadas e de calibração. O mapa mostra áreas aproximadas e dados agregados; ao passar o mouse ou tocar em um marcador, o nome do pesquisador responsável pela área é exibido, sem contatos ou coordenadas exatas.</div>`;
+  if(!s||!c)return head('Relatórios','Resultados e análises')+'<div class="card"><div class="empty">Nenhuma pesquisa vinculada à sua conta.</div></div>';
+  if(!clientReportsFullAllowed(s))return head('Relatórios',s.name)+'<div class="card"><div class="empty">Acesso aos resultados ainda não liberado para sua conta. <button class="btn btn-out" onclick="go(\'client-surveys\')">Minhas pesquisas</button></div></div>';
+  return head('Relatórios',s.name,`<button type="button" class="btn btn-out" onclick="clientViewSurvey('${esc(s.id)}')">Informações da pesquisa</button><button type="button" class="btn btn-out" onclick="go('client-surveys')">Minhas pesquisas</button><button type="button" class="btn btn-fill" onclick="clientOpenPublishedReports('${esc(s.id)}')">Relatórios finais (PDF)</button>`)+clientCompletedSurveyNotice(s)+window.PP_CLIENT_REPORTS.markup()+window.PP_TABULATION.markup(true)+clientHeatmapMarkup(s)+reportsGeoMarkup(s)+clientPublishedReportsMarkup();
 };
+function clientReportsFullAllowed(s=clientSelfSurvey()){
+  const p=CURRENT_PROFILE;return Boolean(p?.id&&p.role==='cliente'&&p.status==='ativo'&&s&&!s.archivedAt&&(s.clientIds||[]).includes(p.id)&&clientResultsReleasedForSurvey(clientSelf(),s));
+}
+function clientReportsViewSurvey(){return CURRENT_PROFILE?.role==='cliente'?(window.PP_CLIENT_REPORTS?.getState()?.survey||clientSelfSurvey()):reportsCurrentSurvey();}
+function clientReportsMount(){
+  if(!clientReportsFullAllowed())return;
+  window.PP_CLIENT_REPORTS?.mount({sb,getContext:()=>({profile:CURRENT_PROFILE,survey:clientSelfSurvey(),released:clientReportsFullAllowed()}),readPages:reportsReadAllPages,overviewOrder:reportsOverviewOrder,crossOrder:reportsCrossOrder,types:Q_TYPES,questionModel:reportsExcelQuestionRows,excelWorkbook:reportsExcelWorkbook,excelSheet:reportsExcelSheet,safeName:reportsExcelSafeName,loadExcel:()=>loadLocalAsset('xlsx'),partitions:reportsCrossPartitions,matrixModel:clientReportCrossMatrixModel,matrixMarkup:clientReportCrossMatrixMarkup,sliceContainer:reportsCrossSliceContainer,onDenied:()=>{reportsGeoReset();destroyResponseHeatmapMap('client-response-heatmap');window.PP_TABULATION?.reset();for(const id of ['rp-tabulation','rp-georeferencing','cr-response-heatmap']){const el=document.getElementById(id);if(el){el.dataset.denied='1';el.innerHTML='<div class="callout warn">Consulta indisponível até confirmar o acesso e carregar os dados completos.</div>';}}},onLoaded:survey=>{
+    const lab=document.getElementById('rp-tabulation');if(lab?.dataset.denied)lab.outerHTML=window.PP_TABULATION.markup(true);
+    const geo=document.getElementById('rp-georeferencing');if(geo?.dataset.denied)geo.outerHTML=reportsGeoMarkup(survey);const heatmap=document.getElementById('cr-response-heatmap');if(heatmap?.dataset.denied)heatmap.outerHTML=clientHeatmapMarkup(survey);reportsGeoLoad(true);responseHeatmapLoad('client');
+    window.PP_TABULATION?.mount({profile:CURRENT_PROFILE,sb,readOnly:true,canRead:clientReportsFullAllowed,readPages:reportsReadAllPages,loadExcel:()=>loadLocalAsset('xlsx'),excelSheet:reportsExcelSheet,getContext:()=>({profile:CURRENT_PROFILE,survey:clientSelfSurvey()}),showCurrent:()=>document.getElementById('client-reports-workspace')?.scrollIntoView({block:'start',behavior:'auto'})});
+  }});
+}
 function clientResultsPickQuestion(id){CR_QUESTION_DBID=id;clientResultsLoadAndRender();}
 function clientGeoNormalizePoint(row){return {lat:Number(row.lat),lng:Number(row.lng),pointCount:Number(row.point_count)||0,validCount:Number(row.valid_count)||0,rejectedCount:Number(row.rejected_count)||0,calibrationCount:Number(row.calibration_count)||0,lastAt:row.last_occurred_at||null,researcherNames:String(row.researcher_names||'Pesquisador não identificado')};}
 function clientGeoFilteredPoints(){return CR_CLIENT_GEO_CACHE.points.filter(p=>{if(CR_CLIENT_GEO_FILTER==='valid')return p.validCount>0;if(CR_CLIENT_GEO_FILTER==='rejected')return p.rejectedCount>0;if(CR_CLIENT_GEO_FILTER==='calibration')return p.calibrationCount>0;return true;});}
@@ -1918,11 +1930,32 @@ function heatmapQuestionOptions(qs,selected){return qs.map(q=>`<option value="${
 function heatmapValueOptions(rows,selected){return (rows||[]).map(r=>`<option value="${esc(r.value_label)}" ${r.value_label===selected?'selected':''}>${esc(r.value_label)} · ${Number(r.response_count||0).toLocaleString('pt-BR')} resposta${Number(r.response_count||0)===1?'':'s'}</option>`).join('');}
 function responseHeatmapPanelMarkup(prefix,qs,questionId,value,master=false){return `<section class="card response-heatmap-panel ${master?'reports-response-heatmap':'client-response-heatmap'}" id="${prefix}-response-heatmap"><div class="reports-heatmap-head"><div><div class="reports-eyebrow">MAPA DE CALOR POR RESPOSTA</div><h2>Onde essa resposta aconteceu?</h2><p>Escolha uma pergunta e depois uma resposta para visualizar sua concentração geográfica.</p></div><span class="pill pill-blue">Áreas aproximadas</span></div><div class="response-heatmap-controls"><div><label class="lbl">Pergunta</label><select class="inp" id="${prefix}-heatmap-question" onchange="${master?'reportsHeatmapPickQuestion':'clientHeatmapPickQuestion'}(this.value)">${heatmapQuestionOptions(qs,questionId)}</select></div><div><label class="lbl">Resposta selecionada</label><select class="inp" id="${prefix}-heatmap-value" onchange="${master?'reportsHeatmapPickValue':'clientHeatmapPickValue'}(this.value)"><option value="">Carregando respostas…</option></select></div></div><div id="${prefix}-heatmap-summary" class="response-heatmap-summary">Carregando respostas agregadas…</div><div class="map-canvas-wrap response-heatmap-map-wrap"><div id="${prefix}-heatmap-map" class="collect-map-canvas response-heatmap-map" role="application" aria-label="Mapa de calor por resposta"></div><div id="${prefix}-heatmap-map-loading" class="map-loading" aria-live="polite">Preparando mapa de calor…</div></div><div class="response-heatmap-legend"><span><i style="background:#22c55e"></i>Menor concentração</span><span><i style="background:#facc15"></i>Concentração média</span><span><i style="background:#dc2626"></i>Maior concentração</span><small>Localização arredondada para preservar privacidade.</small></div></section>`;}
 function reportsHeatmapMarkup(survey){const qs=heatmapQuestionsForSurvey(survey);if(!qs.length)return '';if(!RP_HEATMAP_QUESTION_ID||!qs.some(q=>q.dbId===RP_HEATMAP_QUESTION_ID))RP_HEATMAP_QUESTION_ID=qs[0].dbId;return responseHeatmapPanelMarkup('rp',qs,RP_HEATMAP_QUESTION_ID,RP_HEATMAP_VALUE,true);}
-function clientHeatmapMarkup(survey){const qs=heatmapQuestionsForSurvey(survey).filter(q=>q.type!=='open');if(!qs.length)return '';if(!CR_HEATMAP_QUESTION_ID||!qs.some(q=>q.dbId===CR_HEATMAP_QUESTION_ID))CR_HEATMAP_QUESTION_ID=qs[0].dbId;return responseHeatmapPanelMarkup('cr',qs,CR_HEATMAP_QUESTION_ID,CR_HEATMAP_VALUE,false);}
-async function loadResponseHeatmapRows(mode){const isMaster=mode==='master',survey=isMaster?reportsCurrentSurvey():clientSelfSurvey(),questionId=isMaster?RP_HEATMAP_QUESTION_ID:CR_HEATMAP_QUESTION_ID;if(!survey||!questionId||!isMaster&&survey.questions?.some(q=>q.dbId===questionId&&q.type==='open'))return[];const {data,error}=await clientWithTimeout(sb.rpc('survey_response_values',{p_survey_id:survey.id,p_question_id:questionId}),'as respostas do mapa de calor');if(error)throw error;return data||[];}
-async function loadResponseHeatmapPoints(mode,value){const isMaster=mode==='master',survey=isMaster?reportsCurrentSurvey():clientSelfSurvey(),questionId=isMaster?RP_HEATMAP_QUESTION_ID:CR_HEATMAP_QUESTION_ID;if(!survey||!questionId||!value||!isMaster&&survey.questions?.some(q=>q.dbId===questionId&&q.type==='open'))return[];const {data,error}=await clientWithTimeout(sb.rpc('survey_response_heatmap',{p_survey_id:survey.id,p_question_id:questionId,p_value_label:value}),'os pontos do mapa de calor');if(error)throw error;return data||[];}
-function renderResponseHeatmapControls(mode){const prefix=mode==='master'?'rp':'cr',rows=mode==='master'?RP_HEATMAP_ROWS:CR_HEATMAP_ROWS,selected=mode==='master'?RP_HEATMAP_VALUE:CR_HEATMAP_VALUE,select=document.getElementById(prefix+'-heatmap-value'),summary=document.getElementById(prefix+'-heatmap-summary');if(select)select.innerHTML=rows.length?heatmapValueOptions(rows,selected):'<option value="">Nenhuma resposta encontrada</option>';if(summary)summary.textContent=rows.length?`${rows.length} resposta${rows.length===1?'':'s'} encontrada${rows.length===1?'':'s'} · selecione uma para desenhar o mapa de calor.`:'Nenhuma resposta agregada encontrada para esta pergunta.';}
-async function responseHeatmapLoad(mode){const isMaster=mode==='master',wrap=document.getElementById((isMaster?'rp':'cr')+'-response-heatmap');if(!wrap||((isMaster?RP_HEATMAP_LOADING:CR_HEATMAP_LOADING)))return;if(!isMaster&&!clientResultsReleasedForSurvey(clientSelf(),clientSelfSurvey()))return;if(isMaster)RP_HEATMAP_LOADING=true;else CR_HEATMAP_LOADING=true;try{const rows=await loadResponseHeatmapRows(mode);if(isMaster){RP_HEATMAP_ROWS=rows;if(!rows.some(r=>r.value_label===RP_HEATMAP_VALUE))RP_HEATMAP_VALUE=rows[0]?.value_label||'';}else{CR_HEATMAP_ROWS=rows;if(!rows.some(r=>r.value_label===CR_HEATMAP_VALUE))CR_HEATMAP_VALUE=rows[0]?.value_label||'';}renderResponseHeatmapControls(mode);const points=await loadResponseHeatmapPoints(mode,isMaster?RP_HEATMAP_VALUE:CR_HEATMAP_VALUE);renderResponseHeatmapMap(isMaster?'master-response-heatmap':'client-response-heatmap',isMaster?'rp-heatmap-map':'cr-heatmap-map',points);const summary=document.getElementById((isMaster?'rp':'cr')+'-heatmap-summary');if(summary)summary.textContent=(isMaster?RP_HEATMAP_VALUE:CR_HEATMAP_VALUE)?`${(isMaster?RP_HEATMAP_VALUE:CR_HEATMAP_VALUE)} · ${points.reduce((sum,p)=>sum+Number(p.point_count||0),0).toLocaleString('pt-BR')} entrevista${points.reduce((sum,p)=>sum+Number(p.point_count||0),0)===1?'':'s'} georreferenciada${points.length===1?'':'s'}`:'Selecione uma resposta para desenhar o mapa de calor.';}catch(ex){const summary=document.getElementById((isMaster?'rp':'cr')+'-heatmap-summary');if(summary)summary.textContent='Não foi possível carregar o mapa de calor: '+(ex?.message||ex);}finally{if(isMaster)RP_HEATMAP_LOADING=false;else CR_HEATMAP_LOADING=false;}}
+function clientHeatmapMarkup(survey){const qs=heatmapQuestionsForSurvey(survey);if(!qs.length)return '';if(!CR_HEATMAP_QUESTION_ID||!qs.some(q=>q.dbId===CR_HEATMAP_QUESTION_ID))CR_HEATMAP_QUESTION_ID=qs[0].dbId;return responseHeatmapPanelMarkup('cr',qs,CR_HEATMAP_QUESTION_ID,CR_HEATMAP_VALUE,false);}
+let RESPONSE_HEATMAP_OPERATIONS={};
+async function loadResponseHeatmapRows(mode){
+  const master=mode==='master',survey=master?reportsCurrentSurvey():clientSelfSurvey(),id=master?RP_HEATMAP_QUESTION_ID:CR_HEATMAP_QUESTION_ID;
+  if(!survey||!id||!master&&!clientReportsFullAllowed(survey))return [];
+  if(master){const result=await clientWithTimeout(sb.rpc('survey_response_values',{p_survey_id:survey.id,p_question_id:id}),'respostas do mapa');if(result.error)throw result.error;return result.data||[];}
+  const result=await reportsReadAllPages(()=>sb.rpc('client_response_values_v172',{p_survey_id:survey.id,p_question_id:id},{count:'exact'}).order('response_count',{ascending:false}).order('value_label'));if(result.error)throw result.error;return result.data||[];
+}
+async function loadResponseHeatmapPoints(mode,value){
+  const master=mode==='master',survey=master?reportsCurrentSurvey():clientSelfSurvey(),id=master?RP_HEATMAP_QUESTION_ID:CR_HEATMAP_QUESTION_ID;
+  if(!survey||!id||!value||!master&&!clientReportsFullAllowed(survey))return [];
+  const args={p_survey_id:survey.id,p_question_id:id,p_value_label:value};
+  if(master){const result=await clientWithTimeout(sb.rpc('survey_response_heatmap',args),'pontos do mapa');if(result.error)throw result.error;return result.data||[];}
+  const result=await reportsReadAllPages(()=>sb.rpc('client_response_heatmap_v172',args,{count:'exact'}).order('lat').order('lng'));if(result.error)throw result.error;return result.data||[];
+}
+function renderResponseHeatmapControls(mode){const prefix=mode==='master'?'rp':'cr',rows=mode==='master'?RP_HEATMAP_ROWS:CR_HEATMAP_ROWS,selected=mode==='master'?RP_HEATMAP_VALUE:CR_HEATMAP_VALUE,select=document.getElementById(prefix+'-heatmap-value'),summary=document.getElementById(prefix+'-heatmap-summary');if(select)select.innerHTML=rows.length?heatmapValueOptions(rows,selected):'<option value="">Nenhuma resposta encontrada</option>';if(summary)summary.textContent=rows.length?`${rows.length} respostas encontradas · selecione uma para desenhar o mapa de calor.`:'Nenhuma resposta agregada encontrada para esta pergunta.';}
+async function responseHeatmapLoad(mode){
+  const master=mode==='master',prefix=master?'rp':'cr',wrap=document.getElementById(prefix+'-response-heatmap'),profile=CURRENT_PROFILE,survey=master?reportsCurrentSurvey():clientSelfSurvey(),qid=master?RP_HEATMAP_QUESTION_ID:CR_HEATMAP_QUESTION_ID;
+  if(!wrap||!survey||!master&&!clientReportsFullAllowed(survey))return;
+  const op={wrap,profile,surveyId:survey.id,qid};RESPONSE_HEATMAP_OPERATIONS[mode]=op;
+  const active=()=>RESPONSE_HEATMAP_OPERATIONS[mode]===op&&CURRENT_PROFILE===profile&&document.getElementById(prefix+'-response-heatmap')===wrap&&(master?reportsCurrentSurvey():clientSelfSurvey())?.id===survey.id&&(master?RP_HEATMAP_QUESTION_ID:CR_HEATMAP_QUESTION_ID)===qid&&(master||clientReportsFullAllowed(survey));
+  try{const rows=await loadResponseHeatmapRows(mode);if(!active())return;if(master){RP_HEATMAP_ROWS=rows;if(!rows.some(r=>r.value_label===RP_HEATMAP_VALUE))RP_HEATMAP_VALUE=rows[0]?.value_label||'';}else{CR_HEATMAP_ROWS=rows;if(!rows.some(r=>r.value_label===CR_HEATMAP_VALUE))CR_HEATMAP_VALUE=rows[0]?.value_label||'';}
+    renderResponseHeatmapControls(mode);const value=master?RP_HEATMAP_VALUE:CR_HEATMAP_VALUE,points=await loadResponseHeatmapPoints(mode,value);if(!active()||value!==(master?RP_HEATMAP_VALUE:CR_HEATMAP_VALUE))return;
+    renderResponseHeatmapMap(master?'master-response-heatmap':'client-response-heatmap',prefix+'-heatmap-map',points);const summary=document.getElementById(prefix+'-heatmap-summary');if(summary)summary.textContent=value?`${value} · ${points.reduce((n,p)=>n+Number(p.point_count||0),0).toLocaleString('pt-BR')} entrevistas georreferenciadas`:'Selecione uma resposta.';
+  }catch(ex){if(active()){destroyResponseHeatmapMap(master?'master-response-heatmap':'client-response-heatmap');const select=document.getElementById(prefix+'-heatmap-value');if(select)select.innerHTML='<option value="">Mapa indisponível</option>';const summary=document.getElementById(prefix+'-heatmap-summary');if(summary)summary.textContent='Não foi possível carregar o mapa completo: '+(ex.message||ex);}}
+}
 function reportsHeatmapPickQuestion(id){RP_HEATMAP_QUESTION_ID=id;RP_HEATMAP_VALUE='';go('reports');}
 function reportsHeatmapPickValue(value){RP_HEATMAP_VALUE=value;responseHeatmapLoad('master');}
 function clientHeatmapPickQuestion(id){CR_HEATMAP_QUESTION_ID=id;CR_HEATMAP_VALUE='';const key=document.querySelector('.nav-item.on')?.dataset.key;go(key==='client-progress'?'client-progress':'client-results');}
@@ -1942,32 +1975,19 @@ function clientReportCrossMatrixMarkup(model,ids,qs,title=''){
 }
 function clientPublishedCrossings(document,qs){const sec=typeof document?.sections==='string'?JSON.parse(document.sections||'{}'):document?.sections||{};const valid=new Set(qs.map(q=>q.dbId));return reportsNormalizeCrossings(sec).filter(c=>c.include!==false&&reportsCrossingQuestionIds(c).length&&reportsCrossingQuestionIds(c).every(id=>valid.has(id)));}
 async function clientLoadReportOverview(){
-  const out=document.getElementById('cr-client-report');if(!out||CR_CLIENT_REPORT_LOADING)return;
-  const c=clientSelf(),s=clientSelfSurvey(),profile=CURRENT_PROFILE,qs=reportsQuestionsForClient(s||{}),crossQs=reportsCrossQuestionsForSurvey(s||{});if(!c||!s||!qs.length)return;
-  if(!clientResultsReleasedForSurvey(c,s)){out.innerHTML='<div class="card"><div class="empty">Os resultados ainda não foram liberados.</div></div>';return;}
-  CR_CLIENT_REPORT_LOADING=true;out.innerHTML='<div class="empty" style="padding:28px 0">Carregando resultados agregados…</div>';
+  const out=document.getElementById('cr-client-report'),survey=clientSelfSurvey(),profile=CURRENT_PROFILE;
+  if(!out||!clientReportsFullAllowed(survey))return;
+  const operation={out,surveyId:survey.id,profile};CR_CLIENT_REPORT_OPERATION=operation;
+  out.innerHTML='<div class="empty">Carregando todas as perguntas…</div>';
+  const active=()=>CR_CLIENT_REPORT_OPERATION===operation&&CURRENT_PROFILE===profile&&clientSelfSurvey()?.id===survey.id&&document.getElementById('cr-client-report')===out&&clientReportsFullAllowed(survey);
   try{
-    let publishedDocument=null,documentError=null;
-    try{
-      const {data:docs,error:docError}=await clientWithTimeout(sb.from('report_documents').select('id,title,subtitle,presentation,methodology,executive_summary,sections,status,published_at').eq('survey_id',s.id).eq('client_id',CURRENT_PROFILE?.id||c.id).eq('status','published').order('published_at',{ascending:false}).limit(1),'o relatório publicado');
-      if(docError)throw docError;
-      publishedDocument=docs?.[0]||null;
-    }catch(ex){documentError=ex;}
-    if(documentError)throw documentError;
-    if(!publishedDocument){CR_CLIENT_REPORT_CACHE={surveyId:s.id,overviewRows:[],crossRowsById:{},document:null};out.innerHTML='<div class="card"><div class="empty">A gestão ainda não publicou o relatório desta pesquisa. Os resultados serão exibidos após a publicação e a liberação de acesso.</div></div>';return;}
-    const {data:overviewRows,error:overviewError}=await reportsFetchClientGroupedOverview(s.id,publishedDocument.id,publishedDocument.sections?.openAnswerGrouping);
-    if(overviewError)throw overviewError;
-    const crossings=clientPublishedCrossings(publishedDocument,crossQs),crossRowsById={},crossErrors=[];
-    for(const crossing of crossings){const ids=reportsCrossingQuestionIds(crossing);try{const {data,error}=await reportsFetchClientGroupedCross(s.id,publishedDocument.id,ids,publishedDocument.sections?.openAnswerGrouping);if(error)throw error;crossRowsById[crossing.id]=data||[];}catch(ex){crossErrors.push(ex);}}
-    if(crossErrors.length)throw crossErrors[0];
-    if(CURRENT_PROFILE!==profile||!out.isConnected||clientSelfSurvey()?.id!==s.id||!clientResultsReleasedForSurvey(c,s))return;
-    CR_CLIENT_REPORT_CACHE={surveyId:s.id,overviewRows:overviewRows||[],crossRowsById,document:publishedDocument};
-    clientRenderReportOverview(out,s,qs,overviewRows||[],publishedDocument,crossings);
-  }catch(ex){
-    const detail=String(ex?.message||ex||'');
-    out.innerHTML='<div class="callout warn"><b>Não foi possível carregar os resultados agregados agora.</b><br>O restante do monitoramento continua disponível. Verifique as migrations de resultados para clientes e os índices de monitoramento. Detalhe: '+esc(detail)+'</div>';
-  }finally{CR_CLIENT_REPORT_LOADING=false;}
+    const result=await reportsReadAllPages(()=>reportsOverviewOrder(sb.rpc('client_report_overview_v172',{p_survey_id:survey.id},{count:'exact'})));
+    if(result.error)throw result.error;if(!active())return;
+    CR_CLIENT_REPORT_CACHE={surveyId:survey.id,overviewRows:result.data||[],crossRowsById:{},document:null};
+    clientRenderReportOverview(out,survey,reportsQuestionsForClient(survey),result.data||[],null,[]);
+  }catch(ex){if(active()){CR_CLIENT_REPORT_CACHE={surveyId:null,overviewRows:[],crossRowsById:{},document:null};out.innerHTML='<div class="callout warn">Não foi possível carregar os resultados completos. A gestão deve conferir a ativação do SQL relatorios-clientes-leitura-completa-v172.sql. '+esc(ex.message||ex)+'</div>';}}
 }
+let CR_CLIENT_REPORT_OPERATION=null;
 function clientRenderReportOverview(out,survey,qs,rows,document,crossings){const byQ={};(rows||[]).forEach(r=>(byQ[r.question_id]||(byQ[r.question_id]=[])).push(r));const cards=qs.map((q,qi)=>{const source=byQ[q.dbId]||[],validBase=Number(source[0]?.valid_base)||0,open=q.type==='open',data=reportsCodedDisplayRows(open?source.filter(r=>r.value_kind!=='missing'&&(r.value_kind||r.value_label!=='(sem resposta)')):source),total=data.reduce((sum,r)=>sum+Number(r.cnt||0),0),answered=source[0]?.answered_base!=null?Number(source[0].answered_base):total,base=open&&reportsOfficialConfig(document?.sections?.openAnswerGrouping,survey.id,q.dbId).denominator!=='valid'?answered:validBase,max=Math.max(1,...data.map(r=>Number(r.cnt||0)));const lines=data.length?data.map(r=>{const cnt=Number(r.cnt||0),pct=open?reportsOpenPercentText(cnt,base):reportPercent(cnt,base||total)+'%';return `<div class="reports-answer-row"><div class="reports-answer-head"><span>${esc(r.value_label||'(sem resposta)')}</span><strong>${cnt.toLocaleString('pt-BR')} · ${pct}</strong></div><div class="reports-answer-bar"><i style="width:${Math.min(100,Math.round((cnt/max)*100))}%"></i></div></div>`;}).join(''):'<div class="empty" style="padding:16px 0">Ainda não há respostas válidas.</div>';return `<article class="card reports-question-card"><div class="reports-question-head"><div><span class="reports-question-number">${String(qi+1).padStart(2,'0')}</span><h3>${esc(q.text||'(pergunta sem texto)')}</h3></div><span class="pill pill-blue">${validBase.toLocaleString('pt-BR')} válidas</span></div><div class="reports-question-meta">${esc(Q_TYPES[q.type]||q.type||'Pergunta')}${open?' · respostas originais da coleta · base percentual: '+(reportsOfficialConfig(document?.sections?.openAnswerGrouping,survey.id,q.dbId).denominator==='valid'?'entrevistas válidas':'respostas preenchidas')+' ('+base+')':''}</div>${lines}</article>`;}).join('');let html=`<div class="reports-overview-head"><div><h2>${esc(document?.title||'Resultados da pesquisa')}</h2><p>${esc(document?.subtitle||'Distribuição atualizada das respostas válidas, pergunta a pergunta.')}</p></div><span class="reports-count-pill">${qs.length} pergunta${qs.length===1?'':'s'}</span></div>`;if(document?.presentation)html+=`<article class="card reports-client-intro"><div class="card-t">Apresentação</div><p>${esc(document.presentation)}</p></article>`;html+=`<div class="reports-question-list">${cards}</div>`;if(document?.executive_summary)html+=`<article class="card reports-client-summary"><div class="card-t">Síntese executiva</div><p>${esc(document.executive_summary)}</p></article>`;if(crossings.length){html+=`<div class="reports-overview-head" style="margin-top:24px"><div><h2>Cruzamentos do relatório</h2><p>Matrizes percentuais sobre a base total de entrevistas válidas.</p></div><span class="reports-count-pill">${crossings.length} análise${crossings.length===1?'':'s'}</span></div>`;crossings.forEach(c=>{const rowsFor=CR_CLIENT_REPORT_CACHE.crossRowsById[c.id]||[],ids=reportsCrossingQuestionIds(c),parts=reportsCrossPartitions(rowsFor,ids);html+=`<article class="card reports-client-crossing"><div class="card-t">${esc(c.title)}</div><div class="card-d">${ids.map((id,i)=>(i+1)+'. '+esc(clientReportQuestionLabel(reportsQuestionsForSurvey(survey),id))).join(' · ')}</div>${parts.map(part=>clientReportCrossMatrixMarkup(clientReportCrossMatrixModel(part.rows,ids,part.values,reportsQuestionsForSurvey(survey)),ids,reportsQuestionsForSurvey(survey),reportsCrossSliceTitle(ids,part.values,id=>clientReportQuestionLabel(reportsQuestionsForSurvey(survey),id),rowsFor))).join('')}</article>`;});}out.innerHTML=html;}
 
 async function clientLoadPublishedReports(){
@@ -6798,7 +6818,7 @@ function reportsDocumentEditorMarkup(survey){
 let RP_GEO_CACHE={surveyId:null,profile:null,events:[],loaded:false,updatedAt:null,error:''};
 let RP_GEO_FILTERS={surveyId:null,researcher:'all',status:'valid'};
 let RP_GEO_OPERATION=null,RP_GEO_MAP_STATE=null;
-function reportsGeoAllowed(){return Boolean(CURRENT_PROFILE?.id&&['admin','admpro','coord','gerente'].includes(CURRENT_PROFILE.role));}
+function reportsGeoAllowed(){return CURRENT_PROFILE?.role==='cliente'?clientReportsFullAllowed():Boolean(CURRENT_PROFILE?.id&&['admin','admpro','coord','gerente'].includes(CURRENT_PROFILE.role));}
 function reportsGeoDisposeMap(){
   const state=RP_GEO_MAP_STATE;
   if(state){state.markers.forEach(marker=>{google.maps.event.clearInstanceListeners(marker);marker.setMap(null);});state.info.close();google.maps.event.clearInstanceListeners(state.map);}
@@ -6813,7 +6833,7 @@ function reportsGeoNormalizeRows(rows){
     const present=value=>value!=null&&String(value).trim()!=='';
     const lat=Number(row.lat),lng=Number(row.lng);
     const hasGps=present(row.lat)&&present(row.lng)&&Number.isFinite(lat)&&Number.isFinite(lng)&&Math.abs(lat)<=90&&Math.abs(lng)<=180&&!(lat===0&&lng===0);
-    return {id:row.id,researcherId:row.researcher_id||'',status:row.status||'valid',calibration:row.is_calibration===true,hasGps,lat:hasGps?Number(lat.toFixed(3)):null,lng:hasGps?Number(lng.toFixed(3)):null,occurredAt:row.occurred_at||null};
+    return {id:row.id,researcherId:row.researcher_id||'',researcherName:row.researcher_name||'',status:row.status||'valid',calibration:row.is_calibration===true,hasGps,lat:hasGps?Number(lat.toFixed(3)):null,lng:hasGps?Number(lng.toFixed(3)):null,occurredAt:row.occurred_at||null};
   });
 }
 function reportsGeoModel(events,filters){
@@ -6843,22 +6863,23 @@ function reportsGeoMarkup(survey){
   </section>`;
 }
 async function reportsGeoLoad(force=false){
-  const survey=reportsCurrentSurvey(),profile=CURRENT_PROFILE,wrap=document.getElementById('rp-georeferencing');
+  const survey=clientReportsViewSurvey(),profile=CURRENT_PROFILE,wrap=document.getElementById('rp-georeferencing');
   if(!reportsGeoAllowed()||!survey||!wrap||wrap.dataset.surveyId!==survey.id)return;
   if(RP_GEO_OPERATION?.surveyId===survey.id&&RP_GEO_OPERATION.profile===profile&&RP_GEO_OPERATION.wrap===wrap)return;
   if(!force&&RP_GEO_CACHE.loaded&&RP_GEO_CACHE.surveyId===survey.id&&RP_GEO_CACHE.profile===profile){reportsGeoRender();return;}
   const operation={surveyId:survey.id,profile,wrap};RP_GEO_OPERATION=operation;
-  const active=()=>RP_GEO_OPERATION===operation&&CURRENT_PROFILE===profile&&reportsGeoAllowed()&&reportsCurrentSurvey()?.id===survey.id&&document.getElementById('rp-georeferencing')===wrap;
+  const active=()=>RP_GEO_OPERATION===operation&&CURRENT_PROFILE===profile&&reportsGeoAllowed()&&clientReportsViewSurvey()?.id===survey.id&&document.getElementById('rp-georeferencing')===wrap;
   const button=document.getElementById('rp-geo-refresh');if(button){button.disabled=true;button.textContent='Atualizando…';}
   try{
-    const {data,error}=await fetchCollectionEvents({surveyId:survey.id});
+    const {data,error}=CURRENT_PROFILE?.role==='cliente'?await reportsReadAllPages(()=>sb.rpc('client_report_geo_v172',{p_survey_id:survey.id},{count:'exact'}).order('occurred_at',{ascending:false}).order('id')):await fetchCollectionEvents({surveyId:survey.id});
     if(!active())return;
     if(error)throw error;
     RP_GEO_CACHE={surveyId:survey.id,profile,events:reportsGeoNormalizeRows(data||[]),loaded:true,updatedAt:new Date(),error:''};
     reportsGeoRender();
   }catch(error){
     if(!active())return;
-    const hasPrevious=RP_GEO_CACHE.loaded&&RP_GEO_CACHE.surveyId===survey.id&&RP_GEO_CACHE.profile===profile;
+    const hasPrevious=CURRENT_PROFILE?.role!=='cliente'&&RP_GEO_CACHE.loaded&&RP_GEO_CACHE.surveyId===survey.id&&RP_GEO_CACHE.profile===profile;
+    if(CURRENT_PROFILE?.role==='cliente')reportsGeoDisposeMap();
     if(!hasPrevious)RP_GEO_CACHE={surveyId:survey.id,profile,events:[],loaded:false,updatedAt:null,error:''};
     RP_GEO_CACHE.error=hasPrevious?'Não foi possível atualizar. Mantido o último histórico completo; os dados podem estar desatualizados.':'Não foi possível carregar o histórico completo. Nenhum mapa parcial foi apresentado. Use Atualizar mapa para tentar novamente.';
     reportsGeoRender();
@@ -6871,10 +6892,10 @@ function reportsGeoApplyFilters(){
   if(RP_GEO_MAP_STATE)RP_GEO_MAP_STATE.didFit=false;
   reportsGeoRender();
 }
-function reportsGeoResearcherName(id){return USERS.find(user=>user.id===id)?.name||'Pesquisador não identificado';}
+function reportsGeoResearcherName(id){return CURRENT_PROFILE?.role==='cliente'?(RP_GEO_CACHE.events.find(event=>event.researcherId===id)?.researcherName||'Pesquisador não identificado'):(USERS.find(user=>user.id===id)?.name||'Pesquisador não identificado');}
 function reportsGeoRender(){
   const wrap=document.getElementById('rp-georeferencing'),cache=RP_GEO_CACHE;
-  if(!reportsGeoAllowed()||!wrap||cache.profile!==CURRENT_PROFILE||cache.surveyId!==reportsCurrentSurvey()?.id||wrap.dataset.surveyId!==cache.surveyId)return;
+  if(!reportsGeoAllowed()||!wrap||cache.profile!==CURRENT_PROFILE||cache.surveyId!==clientReportsViewSurvey()?.id||wrap.dataset.surveyId!==cache.surveyId)return;
   const error=document.getElementById('rp-geo-error');if(error){error.hidden=!cache.error;error.textContent=cache.error;}
   if(!cache.loaded){const loading=document.getElementById('rp-geo-map-loading');if(loading){loading.style.display='flex';loading.textContent='Mapa indisponível até carregar o histórico completo.';}const summary=document.getElementById('rp-geo-summary');if(summary)summary.textContent='Histórico não carregado.';return;}
   const selector=document.getElementById('rp-geo-researcher'),ids=[...new Set(cache.events.map(event=>event.researcherId))];
@@ -6904,6 +6925,7 @@ function reportsGeoRenderMap(areas){
 }
 
 PAGES.reports=()=>{
+  if(!reportsOpenCanEdit())return CURRENT_PROFILE?.role==='cliente'?PAGES['client-results']():head('Relatórios','Acesso restrito')+'<div class="callout warn">Acesso restrito à gestão.</div>';
   if(!SURVEYS_LOADED)loadSurveysIfNeeded();
   if(!COLLECT_EVENTS_LOADED)loadCollectEventsIfNeeded();
   const surveys=reportsAvailableSurveys();
@@ -7558,6 +7580,7 @@ async function reportsFetchClientGroupedCross(surveyId,reportId,ids,grouping=nul
   return reportsReadGroupedOnce(JSON.stringify([name,surveyId,reportId,ids]),async()=>{try{const result=await reportsReadAllPages(()=>reportsCrossOrder(sb.rpc(name,{p_survey_id:surveyId,p_report_id:reportId,p_question_ids:ids},{count:'exact'}),6));coded?reportsValidateCodedCross(result.data,ids):reportsValidateTreatedCross(result.data,ids);return result;}catch(error){throw reportsGroupingActivationError(error);}});
 }
 async function reportsRequireDraft(){
+  if(!reportsOpenCanEdit())throw new Error('A estrutura é somente leitura para este perfil.');
   reportsOpenEnsureScope();if(!RP_REPORT_DRAFT_HYDRATED&&!reportsOpenDirty())await reportsLoadDraft();
   if(!RP_REPORT_DRAFT_HYDRATED&&!reportsOpenDirty())throw new Error('Não foi possível carregar a estrutura salva. Tente novamente antes de gerar ou salvar o relatório.');
 }
@@ -7639,6 +7662,7 @@ function reportsFillDraft(r){
   reportsUpdateCrossControls();reportsUpdateCrossSelectionSummary();
 }
 async function reportsLoadDraft(){
+  if(!reportsOpenCanEdit())return;
   reportsOpenEnsureScope();if(RP_REPORT_DRAFT_HYDRATED||reportsOpenDirty())return;
   const survey=reportsCurrentSurvey(),clientId=reportsDocValue('rp-doc-client'),profile=CURRENT_PROFILE,state=reportsOpenEnsureScope(),revision=state.revision;
   if(!survey||!clientId||!sb?.rpc){if(!survey||!clientId)RP_REPORT_DRAFT_HYDRATED=true;return;}
@@ -11155,7 +11179,7 @@ window._beforeRender=function(key){
 };
 
 window._afterRender=function(key){
-  if(key!=='collect'){stopCollectLive();disposeCollectEvolutionChart();}if(key!=='client-results'&&key!=='client-progress'){clientGeoStopLive();}if(key!=='client-progress'){clientProgressStopLive();}
+  if(key!=='collect'){stopCollectLive();disposeCollectEvolutionChart();}if(key!=='client-results'&&window.PP_CLIENT_REPORTS)window.PP_CLIENT_REPORTS.reset();if(key!=='client-results'&&key!=='client-progress'){clientGeoStopLive();}if(key!=='client-progress'){clientProgressStopLive();}
   if(key!=='app-collect'){stopAcollectQuotaLive();}
   if(key!=='reports'){reportsStopLive();reportsOpenClose();}
   if(key!=='communication'){chatStopRealtime();}
@@ -11172,8 +11196,8 @@ window._afterRender=function(key){
   if(key==='dashboard')drawDash();
   if(key==='app-collect'&&MY_CONTRACT)initGeoCollect(); /* só inicia GPS/coleta se o contrato já estiver assinado — ver PAGES['app-collect'] */
   if(key==='client-progress'){clientProgressStartLive();clientResearcherProgressLoad();clientLoadReportOverview();clientLoadPublishedReports();clientGeoStartLive();responseHeatmapLoad('client');}
-  if(key==='client-results'){clientLoadReportOverview();clientLoadPublishedReports();clientGeoStartLive();responseHeatmapLoad('client');}
-  if(key==='reports'){if(window.PP_TABULATION)window.PP_TABULATION.mount({profile:CURRENT_PROFILE,sb,readPages:reportsReadAllPages,getContext:()=>({profile:CURRENT_PROFILE,survey:reportsCurrentSurvey()}),showCurrent:()=>{document.getElementById('rp-output')?.scrollIntoView({behavior:'smooth',block:'start'});}});reportsLoadAndRender();reportsStartLive();reportsLoadDraft();responseHeatmapLoad('master');reportsGeoLoad();if(!USERS_LOADED)loadUsersIfNeeded().then(()=>reportsGeoRender());}
+  if(key==='client-results'){clientGeoStopLive();reportsGeoReset();clientReportsMount();clientLoadPublishedReports();reportsGeoLoad();responseHeatmapLoad('client');}
+  if(key==='reports'){if(window.PP_TABULATION)window.PP_TABULATION.mount({profile:CURRENT_PROFILE,sb,readPages:reportsReadAllPages,loadExcel:()=>loadLocalAsset('xlsx'),excelSheet:reportsExcelSheet,getContext:()=>({profile:CURRENT_PROFILE,survey:reportsCurrentSurvey()}),showCurrent:()=>{document.getElementById('rp-output')?.scrollIntoView({behavior:'smooth',block:'start'});}});reportsLoadAndRender();reportsStartLive();reportsLoadDraft();responseHeatmapLoad('master');reportsGeoLoad();if(!USERS_LOADED)loadUsersIfNeeded().then(()=>reportsGeoRender());}
   if(key==='my-earnings')renderMyRejected();
   if(key==='researcher-profile'||key==='my-earnings')researcherSetSaveBusy(RESEARCHER_PROFILE_SAVING);
   if(key==='sample'){calcSample();}

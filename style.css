@@ -2171,3 +2171,21 @@ body.acollect-notice-gate-open{overflow:hidden}
 .tabulation-cross-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.tabulation-cross-grid label{min-width:0}.tabulation-version{border-top:1px solid var(--line,#dde5ef);margin-top:24px;padding-top:12px}.tabulation-version textarea{resize:vertical;line-height:1.6;min-height:100px}
 @media(max-width:1050px){.tabulation-heading,.tabulation-create{display:flex;flex-direction:column;align-items:stretch}.tabulation-cross-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:560px){.tabulation-cross-grid{grid-template-columns:minmax(0,1fr)}.tabulation-actions .btn{flex:1 1 140px}.tabulation-heading h2{font-size:18px}.tabulation-table td,.tabulation-table th{padding:9px;font-size:12px}}
+
+/* v172 — central de relatórios do cliente, consulta sem edição. */
+.client-reports-workspace{min-width:0;color:var(--ink,#14233c)}
+.client-reports-workspace .reports-mode-switch,.client-reports-actions,.client-report-pagination{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:14px 0}
+.client-reports-workspace .reports-mode-btn{min-height:44px}
+.client-reports-cross p,.client-report-structure p{line-height:1.65;color:var(--ink2,#384860)}
+.client-report-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin:22px 0}
+.client-report-facts>div{padding:14px;background:var(--surface2,#f5f8fc);border-radius:12px;min-width:0}
+.client-report-facts dt{font-size:12px;color:var(--ink3,#5c6d84);margin-bottom:6px}
+.client-report-facts dd{font-weight:650;margin:0;overflow-wrap:anywhere}
+.client-report-text{margin:22px 0}
+.client-report-text p,.client-reports-workspace .reports-answer-head span{white-space:pre-wrap;overflow-wrap:anywhere}
+.client-report-structure .reports-cross-slice summary{overflow-wrap:anywhere;white-space:normal}
+.client-report-pagination>span{flex:1;min-width:160px;font-size:12px;color:var(--ink3,#5c6d84)}
+.client-reports-cross .reports-builder-grid{margin:20px 0}
+.client-reports-workspace .reports-question-list,.client-reports-workspace [data-client-cross-output]{min-width:0}
+.client-reports-workspace button:focus-visible{outline:3px solid #609bff;outline-offset:3px}
+@media(max-width:600px){.client-report-facts{grid-template-columns:1fr}.client-reports-actions .btn{width:100%}.client-reports-workspace .reports-mode-switch{display:grid;grid-template-columns:1fr;width:100%}.client-reports-workspace .reports-mode-btn{justify-content:center}.client-report-pagination{align-items:stretch}.client-report-pagination>span{flex-basis:100%}.client-reports-workspace .reports-answer-head{align-items:flex-start;flex-wrap:wrap}.client-reports-workspace .reports-answer-head strong{white-space:normal}}

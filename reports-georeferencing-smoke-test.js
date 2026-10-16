@@ -24,7 +24,7 @@ class MarkerStub{constructor(options){this.options=options;this.listeners={};mar
 class InfoStub{setContent(value){this.content=value;}open(){}close(){this.closed=true;}}
 class BoundsStub{extend(){}getCenter(){return {lat:-23,lng:-46};}}
 const google={maps:{Map:MapStub,Marker:MarkerStub,InfoWindow:InfoStub,LatLngBounds:BoundsStub,event:{clearInstanceListeners(){}}}};
-const context={CURRENT_PROFILE:{id:'staff',role:'admin'},USERS:[{id:'r1',name:'Pesquisador <Teste>'}],document:{getElementById:id=>elements[id]||null},window:{google},google,Date,console,esc:value=>String(value).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char])),googleBalloonIcon:color=>({color}),googleMapErrorText:()=> 'Não foi possível carregar Google Maps.',reportsCurrentSurvey:()=>survey,fetchCollectionEvents:async options=>{request=options;return result;},loadGoogleMaps:async()=>{}};
+const context={clientReportsViewSurvey:()=>survey,clientReportsFullAllowed:()=>false,CURRENT_PROFILE:{id:'staff',role:'admin'},USERS:[{id:'r1',name:'Pesquisador <Teste>'}],document:{getElementById:id=>elements[id]||null},window:{google},google,Date,console,esc:value=>String(value).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char])),googleBalloonIcon:color=>({color}),googleMapErrorText:()=> 'Não foi possível carregar Google Maps.',reportsCurrentSurvey:()=>survey,fetchCollectionEvents:async options=>{request=options;return result;},loadGoogleMaps:async()=>{}};
 vm.createContext(context);
 vm.runInContext(geoModule+'\nthis.geo={allowed:reportsGeoAllowed,normalize:reportsGeoNormalizeRows,model:reportsGeoModel,markup:reportsGeoMarkup,load:reportsGeoLoad,render:reportsGeoRender,filters:reportsGeoApplyFilters,reset:reportsGeoReset,stop:reportsGeoStop,map:reportsGeoRenderMap};',context);
 const run=code=>vm.runInContext(code,context),geo=context.geo;
@@ -59,7 +59,7 @@ const row=(id,overrides={})=>({id,survey_id:'survey-a',researcher_id:'r1',status
   let resolve;context.fetchCollectionEvents=()=>new Promise(r=>resolve=r);
   const oldLoad=geo.load(true);survey={id:'survey-b',name:'Outra pesquisa',status:'active'};elements['rp-georeferencing'].dataset.surveyId='survey-b';
   resolve({data:[row('stale')],error:null});await oldLoad;assert.strictEqual(run('RP_GEO_CACHE.events'),previous);
-  // O reset remove dados e marcadores; nenhum cliente/pesquisador recebe este mapa da gestão.
+  // O reset remove dados e marcadores; perfis sem liberação não recebem dados da gestão.
   geo.reset();assert.equal(run('RP_GEO_CACHE.events.length'),0);assert.equal(run('RP_GEO_MAP_STATE'),null);
   survey={id:'survey-a',name:'Teste'};elements['rp-georeferencing'].dataset.surveyId='survey-a';context.fetchCollectionEvents=async()=>({data:[row('partial')],error:{message:'timeout'}});
   await geo.load();assert.equal(run('RP_GEO_CACHE.loaded'),false);assert.equal(run('RP_GEO_CACHE.events.length'),0);assert(run('RP_GEO_CACHE.error').includes('Nenhum mapa parcial'));

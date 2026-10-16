@@ -2189,3 +2189,24 @@ body.acollect-notice-gate-open{overflow:hidden}
 .client-reports-workspace .reports-question-list,.client-reports-workspace [data-client-cross-output]{min-width:0}
 .client-reports-workspace button:focus-visible{outline:3px solid #609bff;outline-offset:3px}
 @media(max-width:600px){.client-report-facts{grid-template-columns:1fr}.client-reports-actions .btn{width:100%}.client-reports-workspace .reports-mode-switch{display:grid;grid-template-columns:1fr;width:100%}.client-reports-workspace .reports-mode-btn{justify-content:center}.client-report-pagination{align-items:stretch}.client-report-pagination>span{flex-basis:100%}.client-reports-workspace .reports-answer-head{align-items:flex-start;flex-wrap:wrap}.client-reports-workspace .reports-answer-head strong{white-space:normal}}
+
+/* v174 — tabelas de cruzamento: quantidade e percentual, totais e paginação. */
+.reports-cross-matrix-wrap[data-cross-table]{min-width:0;max-width:100%;}
+.reports-cross-matrix-wrap .cross-table-legend{font-size:12px;line-height:1.6;color:var(--ink2,#334155);margin:8px 0 12px;overflow-wrap:anywhere;}
+.reports-cross-matrix-wrap .reports-cross-scroll{max-width:100%;overflow:auto;overscroll-behavior-x:contain;border-radius:10px;border:1px solid #cbd5e1;background:#fff;}
+.reports-cross-scroll:focus-visible{outline:3px solid var(--brand,#2563eb);outline-offset:2px;}
+.reports-cross-two-way{table-layout:auto;min-width:640px;width:100%;font-size:12px;}
+.reports-cross-two-way caption{caption-side:top;text-align:left;padding:13px 14px;background:#eef4fc;color:#0f2a56;font-size:13px;font-weight:700;overflow-wrap:anywhere;}
+.reports-cross-two-way th,.reports-cross-two-way td{padding:12px 10px;min-width:100px;max-width:260px;overflow-wrap:anywhere;}
+.reports-cross-two-way thead th{background:#0f2a56;color:#fff;border-color:#476184;}
+.reports-cross-two-way thead tr:first-child>th:first-child,.reports-cross-two-way th[scope="row"]{min-width:180px;max-width:300px;}
+.reports-cross-two-way tbody tr:nth-child(even)>th,.reports-cross-two-way tbody tr:nth-child(even)>td:not(.cross-total-cell){background:#f8fafc;}
+.reports-cross-two-way .cross-cell-count{display:block;font-size:13px;font-weight:800;color:#172b4d;font-variant-numeric:tabular-nums;white-space:nowrap;}
+.reports-cross-two-way .cross-cell-percent{display:block;font-size:11px;margin-top:5px;font-weight:500;color:#475569;font-variant-numeric:tabular-nums;white-space:nowrap;}
+.reports-cross-two-way .cross-total-row th,.reports-cross-two-way .cross-total-row td,.reports-cross-two-way .cross-total-cell{background:#e7eef8;color:#0f2a56;}
+.cross-table-pagination{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:flex-end;margin:12px 0;font-size:12px;color:var(--ink2,#334155);}
+.cross-table-pagination span{margin-right:auto;}
+.cross-table-pagination .btn{min-height:40px;}
+.tabulation-result .reports-cross-matrix-wrap{margin-top:16px;}
+@media(max-width:760px){.reports-cross-two-way{font-size:11px;}.reports-cross-two-way th,.reports-cross-two-way td{padding:10px 8px;min-width:96px;}.reports-cross-two-way .cross-cell-count{font-size:12px;}.cross-table-pagination span{flex:1 0 100%;}.reports-cross-two-way caption{padding:11px 12px;font-size:12px;}}
+.reports-cross-two-way th{text-transform:none;letter-spacing:0;}

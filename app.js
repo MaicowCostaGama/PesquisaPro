@@ -51,7 +51,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261015213500';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261016085500';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -205,7 +205,7 @@ async function enableResearcherPush(){
   try{
     const permission=await Notification.requestPermission();
     if(permission!=='granted'){PUSH_STATUS='blocked';go('dashboard-pesq');return;}
-    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261015213500',{scope:'./'});
+    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261016085500',{scope:'./'});
     const subscription=await PUSH_SW_REGISTRATION.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:pushKeyToUint8Array(window.PP_PUSH_PUBLIC_KEY)});
     const json=subscription.toJSON();
     const {error}=await sb.from('push_subscriptions').upsert({user_id:CURRENT_PROFILE.id,endpoint:json.endpoint,subscription:json,user_agent:navigator.userAgent,updated_at:new Date().toISOString()},{onConflict:'endpoint'});
@@ -1973,7 +1973,7 @@ function clientReportCrossMatrixMarkup(model,ids,qs,title=''){
   const headers=model.colValues.map(value=>`<th>${esc(model.colLabels?.get(value)||value)}</th>`).join(''),body=model.rowValues.map(r=>`<tr><th scope="row">${esc(model.rowLabels?.get(r)||r)}</th>${model.colValues.map(c=>`<td>${reportsCrossPct(model.counts.get(r+'\u0000'+c)||0,model.base)}</td>`).join('')}<td><strong>${reportsCrossPct(model.rowTotals.get(r)||0,model.base)}</strong></td></tr>`).join(''),totals=model.colValues.map(c=>`<td><strong>${reportsCrossPct(model.colTotals.get(c)||0,model.base)}</strong></td>`).join('');
   return `<div class="reports-cross-matrix-wrap">${model.title||title?`<h3>${esc(model.title||title)}</h3>`:''}${model.incidence?'<p>Presença de cada categoria por entrevista. Totais únicos; células podem se sobrepor.</p>':''}<div class="reports-cross-scroll"><table class="reports-cross-matrix"><thead><tr><th>${esc(names[0])}</th>${headers}<th>TOTAL${model.incidence?' único':''}</th></tr></thead><tbody>${body}<tr class="cross-total-row"><th>TOTAL${model.incidence?' único':''}</th>${totals}<td><strong>${reportsCrossPct(model.uniqueTotal,model.base)}</strong></td></tr></tbody></table></div></div>`;
 }
-function clientPublishedCrossings(document,qs){const sec=typeof document?.sections==='string'?JSON.parse(document.sections||'{}'):document?.sections||{};const valid=new Set(qs.map(q=>q.dbId));return reportsNormalizeCrossings(sec).filter(c=>c.include!==false&&reportsCrossingQuestionIds(c).length&&reportsCrossingQuestionIds(c).every(id=>valid.has(id)));}
+function clientPublishedCrossings(document,qs){const sec=typeof document?.sections==='string'?JSON.parse(document.sections||'{}'):document?.sections||{};const valid=new Set(qs.map(q=>q.dbId));return reportsNormalizeCrossings(sec).filter(c=>c.include!==false&&reportsCrossingQuestionIds(c).length&&reportsCrossingQuestionIds(c).length<=3&&reportsCrossingQuestionIds(c).every(id=>valid.has(id)));}
 async function clientLoadReportOverview(){
   const out=document.getElementById('cr-client-report'),survey=clientSelfSurvey(),profile=CURRENT_PROFILE;
   if(!out||!clientReportsFullAllowed(survey))return;
@@ -6718,15 +6718,14 @@ async function reportsFetchOverview(surveyId){
   }
 }
 async function reportsFetchCross(surveyId,ids,mode='staff'){
-  if(!Array.isArray(ids)||ids.length<1||ids.length>6||new Set(ids).size!==ids.length)throw new Error('Selecione de uma a seis variáveis diferentes.');
+  if(!Array.isArray(ids)||ids.length<1||ids.length>3||new Set(ids).size!==ids.length)throw new Error('Selecione de uma a três variáveis diferentes.');
   const name=mode==='client'?'client_report_cross_tab_v2':'survey_report_cross_tab_v2';
   try{
-    const result=await reportsReadAllPages(()=>reportsCrossOrder(sb.rpc(name,{p_survey_id:surveyId,p_question_ids:ids},{count:'exact'}),6));
+    const result=await reportsReadAllPages(()=>reportsCrossOrder(sb.rpc(name,{p_survey_id:surveyId,p_question_ids:ids},{count:'exact'}),3));
     if(result.data.some(row=>ids.some((_,index)=>!Object.prototype.hasOwnProperty.call(row,'variable_'+(index+1)))))throw new Error('O servidor não retornou todas as variáveis deste cruzamento. Nenhum resultado parcial foi apresentado.');
     return result;
   }catch(error){
     if(error?.code!=='PGRST202'&&error?.code!=='42883'&&!/could not find the function|function .* does not exist/i.test(error?.message||''))throw error;
-    if(ids.length>3)throw new Error('Ative os cruzamentos de até seis variáveis executando manualmente o SQL relatorios-cruzamentos-seis-variaveis-v160.sql no Supabase.');
     return mode==='client'?reportsReadAllPages(()=>reportsCrossOrder(sb.rpc('client_report_cross_tab',{p_survey_id:surveyId,p_question_ids:ids},{count:'exact'}))):reportsReadAllPages(()=>reportsCrossOrder(sb.rpc('survey_report_cross_tab',{p_survey_id:surveyId,p_question_ids:ids},{count:'exact'})));
   }
 }
@@ -6762,7 +6761,7 @@ function reportsSurveyOptionLabel(s,surveys){
   return `${s.name||'Pesquisa sem nome'} · ${date} · ID ${String(s.id||'').slice(0,8)}${base!=null?` · ${base.toLocaleString('pt-BR')} válidas`:''}`;
 }
 function reportsDuplicateSurveyCandidates(s,surveys){return (surveys||[]).filter(item=>reportsSurveyLooksLikeSameCampaign(s,item));}
-function reportsCrossingQuestionIds(crossing){const ids=crossing?.questionIds||crossing?.crossQuestionIds||[];return Array.isArray(ids)?[...new Set(ids.filter(id=>typeof id==='string'&&id))].slice(0,6):[];}
+function reportsCrossingQuestionIds(crossing){const ids=crossing?.questionIds||crossing?.crossQuestionIds||[];return Array.isArray(ids)?[...new Set(ids.filter(id=>typeof id==='string'&&id))]:[];}
 function reportsMakeCrossing(questionIds=[],index=RP_REPORT_CROSSINGS.length){return {id:'cross-'+Date.now()+'-'+Math.random().toString(36).slice(2,7),title:'Cruzamento '+(index+1),questionIds:reportsCrossingQuestionIds({questionIds}),include:true};}
 function reportsNormalizeCrossings(sections){
   const legacyIds=Array.isArray(sections?.crossQuestionIds)?sections.crossQuestionIds:[];
@@ -6774,7 +6773,7 @@ function reportsActiveCrossing(){return RP_REPORT_CROSSINGS.find(crossing=>cross
 function reportsSyncActiveCrossing(){const crossing=reportsActiveCrossing();if(crossing){RP_ACTIVE_CROSSING_ID=crossing.id;RP_CROSS_QUESTION_IDS=reportsCrossingQuestionIds(crossing);}else{RP_ACTIVE_CROSSING_ID=null;RP_CROSS_QUESTION_IDS=[];}}
 function reportsEnsureCrossings(qs){
   const valid=new Set(qs.map(q=>q.dbId));
-  RP_REPORT_CROSSINGS=RP_REPORT_CROSSINGS.map(crossing=>({...crossing,questionIds:reportsCrossingQuestionIds(crossing).filter(id=>valid.has(id)).slice(0,6)})).filter(crossing=>crossing.questionIds.length||crossing.title);
+  RP_REPORT_CROSSINGS=RP_REPORT_CROSSINGS.map(crossing=>({...crossing,questionIds:reportsCrossingQuestionIds(crossing)})).filter(crossing=>crossing.questionIds.length||crossing.title);
   if(!RP_REPORT_CROSSINGS.length&&!RP_REPORT_DRAFT_HYDRATED&&qs[0])RP_REPORT_CROSSINGS=[reportsMakeCrossing([qs[0].dbId])];
   if(!RP_ACTIVE_CROSSING_ID||!RP_REPORT_CROSSINGS.some(crossing=>crossing.id===RP_ACTIVE_CROSSING_ID))RP_ACTIVE_CROSSING_ID=RP_REPORT_CROSSINGS[0]?.id||null;
   reportsSyncActiveCrossing();
@@ -6784,8 +6783,8 @@ function reportsCrossSelectionSummary(crossing=reportsActiveCrossing()){const la
 function reportsUpdateCrossSelectionSummary(crossingId=null){document.querySelectorAll('[data-crossing-summary]').forEach(el=>{if(!crossingId||el.dataset.crossingSummary===crossingId){const crossing=RP_REPORT_CROSSINGS.find(item=>item.id===el.dataset.crossingSummary);el.textContent=reportsCrossSelectionSummary(crossing);}});}
 function reportsQuestionLabel(id){return reportsCurrentQuestions().find(q=>q.dbId===id)?.text||'(variável sem texto)';}
 function reportsModeButton(mode,label,icon){return `<button class="reports-mode-btn ${RP_REPORT_MODE===mode?'on':''}" onclick="reportsSetMode('${mode}')"><span>${icon}</span>${label}</button>`;}
-function reportsCrossQuestionSelect(crossingId,index,qs){const crossing=RP_REPORT_CROSSINGS.find(item=>item.id===crossingId),ids=reportsCrossingQuestionIds(crossing),selected=ids[index]||'';return `<div class="reports-variable-control"><label class="lbl" for="${esc(crossingId)}-var-${index}">Variável ${index+1}${index===0?'':' (opcional)'}</label><select class="inp" id="${esc(crossingId)}-var-${index}" data-crossing-question="${esc(crossingId)}" data-crossing-index="${index}" onchange="reportsPickCrossQuestion(${jsArg(crossingId)},${index},this.value)"><option value="">${index===0?'Escolha uma pergunta':'Não usar'}</option>${qs.map(q=>`<option value="${esc(q.dbId)}" ${q.dbId===selected?'selected':''} ${ids.includes(q.dbId)&&q.dbId!==selected?'disabled':''}>${esc(q.text||'(pergunta sem texto)')}</option>`).join('')}</select><small>${index===0?'Linhas da matriz':index===1?'Colunas da matriz':'Recorte combinado da matriz'}</small></div>`;}
-function reportsCrossingCardMarkup(crossing,index,qs){const safeId=jsArg(crossing.id);return `<article class="reports-crossing-card ${crossing.id===RP_ACTIVE_CROSSING_ID?'is-active':''}" data-crossing-card="${esc(crossing.id)}"><div class="reports-crossing-card-head"><div><div class="reports-crossing-kicker">CRUZAMENTO ${index+1}</div><input class="inp reports-crossing-title" data-crossing-title="${esc(crossing.id)}" value="${esc(crossing.title)}" aria-label="Título do cruzamento ${index+1}" oninput="reportsUpdateCrossingTitle(${safeId},this.value)"></div><div class="reports-crossing-actions"><button class="btn btn-out" onclick="reportsSetActiveCrossing(${safeId})">${crossing.id===RP_ACTIVE_CROSSING_ID?'Visualizando':'Visualizar'}</button><button class="btn btn-out reports-crossing-remove" onclick="reportsRemoveCrossing(${safeId})">Remover</button></div></div><div class="reports-builder-grid">${[0,1,2,3,4,5].map(i=>reportsCrossQuestionSelect(crossing.id,i,qs)).join('')}</div><div class="reports-crossing-card-foot"><label class="reports-section-option"><input type="checkbox" data-crossing-include="${esc(crossing.id)}" ${crossing.include!==false?'checked':''} onchange="reportsToggleCrossingInclude(${safeId},this.checked)"> Incluir este cruzamento no PDF</label><span data-crossing-summary="${esc(crossing.id)}">${esc(reportsCrossSelectionSummary(crossing))}</span></div></article>`;}
+function reportsCrossQuestionSelect(crossingId,index,qs){const crossing=RP_REPORT_CROSSINGS.find(item=>item.id===crossingId),ids=reportsCrossingQuestionIds(crossing),selected=ids[index]||'';return `<div class="reports-variable-control"><label class="lbl" for="${esc(crossingId)}-var-${index}">Variável ${index+1}${index===0?'':' (opcional)'}</label><select class="inp" id="${esc(crossingId)}-var-${index}" data-crossing-question="${esc(crossingId)}" data-crossing-index="${index}" onchange="reportsPickCrossQuestion(${jsArg(crossingId)},${index},this.value)" ${ids.length>3?'disabled':''}><option value="">${index===0?'Escolha uma pergunta':'Não usar'}</option>${qs.map(q=>`<option value="${esc(q.dbId)}" ${q.dbId===selected?'selected':''} ${ids.includes(q.dbId)&&q.dbId!==selected?'disabled':''}>${esc(q.text||'(pergunta sem texto)')}</option>`).join('')}</select><small>${index===0?'Linhas da matriz':index===1?'Colunas da matriz':'Recorte da matriz'}</small></div>`;}
+function reportsCrossingCardMarkup(crossing,index,qs){const safeId=jsArg(crossing.id),overLimit=reportsCrossingQuestionIds(crossing).length>3;return `<article class="reports-crossing-card ${crossing.id===RP_ACTIVE_CROSSING_ID?'is-active':''}" data-crossing-card="${esc(crossing.id)}"><div class="reports-crossing-card-head"><div><div class="reports-crossing-kicker">CRUZAMENTO ${index+1}</div><input class="inp reports-crossing-title" data-crossing-title="${esc(crossing.id)}" value="${esc(crossing.title)}" aria-label="Título do cruzamento ${index+1}" oninput="reportsUpdateCrossingTitle(${safeId},this.value)"></div><div class="reports-crossing-actions"><button class="btn btn-out" onclick="reportsSetActiveCrossing(${safeId})">${crossing.id===RP_ACTIVE_CROSSING_ID?'Visualizando':'Visualizar'}</button><button class="btn btn-out reports-crossing-remove" onclick="reportsRemoveCrossing(${safeId})">Remover</button></div></div>${overLimit?`<div class="callout warn"><b>Este cruzamento antigo excede o limite de três variáveis.</b><p>Sua definição foi preservada, mas o cálculo e a inclusão em um novo PDF ficam bloqueados. Ajuste explicitamente ou desmarque a inclusão no PDF. PDFs já publicados não mudam.</p><button class="btn btn-out" type="button" onclick="reportsReduceCrossing(${safeId})">Usar as três primeiras variáveis e revisar</button></div>`:''}<div class="reports-builder-grid">${[0,1,2].map(i=>reportsCrossQuestionSelect(crossing.id,i,qs)).join('')}</div><div class="reports-crossing-card-foot"><label class="reports-section-option"><input type="checkbox" data-crossing-include="${esc(crossing.id)}" ${crossing.include!==false?'checked':''} onchange="reportsToggleCrossingInclude(${safeId},this.checked)"> Incluir este cruzamento no PDF</label><span data-crossing-summary="${esc(crossing.id)}">${esc(reportsCrossSelectionSummary(crossing))}</span></div></article>`;}
 function reportsCrossingsBuilderMarkup(qs){const cards=RP_REPORT_CROSSINGS.map((crossing,index)=>reportsCrossingCardMarkup(crossing,index,qs)).join('');return `<div class="reports-crossings-builder">${cards||'<div class="reports-crossings-empty">Nenhum cruzamento salvo nesta estrutura. Adicione o primeiro cruzamento para começar.</div>'}<div class="reports-crossings-builder-actions"><button class="btn btn-out" onclick="reportsAddCrossing()">+ Adicionar outro cruzamento</button><button class="btn btn-out" onclick="reportsSaveDraft()">Salvar cruzamentos na estrutura</button></div></div>`;}
 function reportsClientsForSurvey(survey){
   return (survey?.clientIds||[]).map(id=>USERS.find(u=>u.id===id)).filter(Boolean);
@@ -6938,10 +6937,10 @@ PAGES.reports=()=>{
   reportsEnsureCrossSelection(crossQs);
   return head('Relatórios','Resultados em tempo real e análises cruzadas')+`
   <div class="card reports-toolbar mb">
-    <div class="reports-toolbar-top"><div><div class="reports-eyebrow">CENTRAL DE ANÁLISE</div><h2>Resultados da pesquisa</h2><p>Veja todas as perguntas e monte cruzamentos com até seis variáveis.</p></div><span id="rp-live-status" class="reports-live-badge"><i></i>Atualizando automaticamente</span></div>
+    <div class="reports-toolbar-top"><div><div class="reports-eyebrow">CENTRAL DE ANÁLISE</div><h2>Resultados da pesquisa</h2><p>Veja todas as perguntas e monte cruzamentos com até três variáveis.</p></div><span id="rp-live-status" class="reports-live-badge"><i></i>Atualizando automaticamente</span></div>
     <div class="reports-toolbar-grid"><div><label class="lbl">Pesquisa</label><select class="inp" id="rp-survey" onchange="reportsPickSurvey(this.value)">${surveys.map(s=>`<option value="${s.id}" ${s.id===RP_SURVEY_ID?'selected':''}>${esc(reportsSurveyOptionLabel(s,surveys))}</option>`).join('')}</select>${reportsDuplicateSurveyCandidates(survey,surveys).length?'<small class="reports-survey-helper">Existem versões com o mesmo nome; confira data, ID curto e base válida antes de escolher.</small>':''}</div><div class="reports-mode-switch" role="tablist" aria-label="Modo de relatório">${reportsModeButton('overview','Todas as perguntas','▦')}${reportsModeButton('builder','Montar relatório','⚒')}</div></div>
     ${reportsExcelToolbar()}
-    ${RP_REPORT_MODE==='builder'?`<div class="reports-builder-note">Cada cartão abaixo representa um cruzamento independente. Cada cruzamento aceita de uma a seis variáveis e pode ser incluído ou retirado do PDF separadamente. As duas primeiras formam linhas e colunas; as demais criam recortes combinados, sem misturar suas bases. Ranking e “Duas respostas” aparecem no resultado geral, mas não são escolhidos como uma única variável de cruzamento.</div>${reportsCrossingsBuilderMarkup(crossQs)}`:''}
+    ${RP_REPORT_MODE==='builder'?`<div class="reports-builder-note">Cada cartão abaixo representa um cruzamento independente. Cada cruzamento aceita de uma a três variáveis e pode ser incluído ou retirado do PDF separadamente. As duas primeiras formam linhas e colunas; a terceira define o recorte, sem misturar as bases. Ranking e “Duas respostas” aparecem no resultado geral, mas não são escolhidos como uma única variável de cruzamento.</div>${reportsCrossingsBuilderMarkup(crossQs)}`:''}
   </div>
   ${reportsOpenCanEdit()&&typeof window!=='undefined'&&window.PP_TABULATION?window.PP_TABULATION.markup():''}
   ${reportsHeatmapMarkup(survey)}
@@ -6957,8 +6956,9 @@ function reportsSetActiveCrossing(id){if(!RP_REPORT_CROSSINGS.some(crossing=>cro
 function reportsUpdateCrossingTitle(id,title){const normalized=String(title||'').trim();RP_REPORT_CROSSINGS=RP_REPORT_CROSSINGS.map(crossing=>crossing.id===id?{...crossing,title:normalized||'Cruzamento'}:crossing);}
 function reportsToggleCrossingInclude(id,include){RP_REPORT_CROSSINGS=RP_REPORT_CROSSINGS.map(crossing=>crossing.id===id?{...crossing,include:!!include}:crossing);}
 function reportsRemoveCrossing(id){const remaining=RP_REPORT_CROSSINGS.filter(crossing=>crossing.id!==id);RP_REPORT_CROSSINGS=remaining;if(RP_ACTIVE_CROSSING_ID===id)RP_ACTIVE_CROSSING_ID=remaining[0]?.id||null;reportsSyncActiveCrossing();go('reports');}
-function reportsUpdateCrossControls(crossingId=null){document.querySelectorAll('[data-crossing-question]').forEach(el=>{if(crossingId&&el.dataset.crossingQuestion!==crossingId)return;const crossing=RP_REPORT_CROSSINGS.find(item=>item.id===el.dataset.crossingQuestion),ids=reportsCrossingQuestionIds(crossing),selected=ids[Number(el.dataset.crossingIndex)]||'';el.value=selected;for(const option of el.options||[])option.disabled=!!option.value&&ids.includes(option.value)&&option.value!==selected;});}
-async function reportsPickCrossQuestion(crossingId,index,id){try{await reportsRequireDraft();}catch(ex){reportsDocFeedback(ex.message,'warn');reportsUpdateCrossControls(crossingId);return;}const crossing=RP_REPORT_CROSSINGS.find(item=>item.id===crossingId);if(!crossing||!Number.isInteger(index)||index<0||index>=6)return;const next=reportsCrossingQuestionIds(crossing);if(id&&(!reportsCrossQuestionsForSurvey(reportsCurrentSurvey()||{}).some(q=>q.dbId===id)||next.some((existing,slot)=>slot!==index&&existing===id))){reportsUpdateCrossControls(crossingId);return;}next[index]=id||null;const questionIds=next.filter(Boolean).slice(0,6);RP_REPORT_CROSSINGS=RP_REPORT_CROSSINGS.map(item=>item.id===crossingId?{...item,questionIds}:item);RP_ACTIVE_CROSSING_ID=crossingId;reportsSyncActiveCrossing();reportsUpdateCrossControls(crossingId);reportsUpdateCrossSelectionSummary(crossingId);reportsLoadAndRender();}
+function reportsUpdateCrossControls(crossingId=null){document.querySelectorAll('[data-crossing-question]').forEach(el=>{if(crossingId&&el.dataset.crossingQuestion!==crossingId)return;const crossing=RP_REPORT_CROSSINGS.find(item=>item.id===el.dataset.crossingQuestion),ids=reportsCrossingQuestionIds(crossing),selected=ids[Number(el.dataset.crossingIndex)]||'';el.value=selected;el.disabled=ids.length>3;for(const option of el.options||[])option.disabled=!!option.value&&ids.includes(option.value)&&option.value!==selected;});}
+async function reportsPickCrossQuestion(crossingId,index,id){try{await reportsRequireDraft();}catch(ex){reportsDocFeedback(ex.message,'warn');reportsUpdateCrossControls(crossingId);return;}const crossing=RP_REPORT_CROSSINGS.find(item=>item.id===crossingId);if(!crossing||!Number.isInteger(index)||index<0||index>=3)return;const next=reportsCrossingQuestionIds(crossing);if(next.length>3){reportsDocFeedback('Ajuste explicitamente o cruzamento antigo antes de escolher novas variáveis.','warn');return;}if(id&&(!reportsCrossQuestionsForSurvey(reportsCurrentSurvey()||{}).some(q=>q.dbId===id)||next.some((existing,slot)=>slot!==index&&existing===id))){reportsUpdateCrossControls(crossingId);return;}next[index]=id||null;const questionIds=next.filter(Boolean);RP_REPORT_CROSSINGS=RP_REPORT_CROSSINGS.map(item=>item.id===crossingId?{...item,questionIds}:item);RP_ACTIVE_CROSSING_ID=crossingId;reportsSyncActiveCrossing();reportsUpdateCrossControls(crossingId);reportsUpdateCrossSelectionSummary(crossingId);reportsLoadAndRender();}
+async function reportsReduceCrossing(id){if(!reportsOpenCanEdit()||RP_REPORT_EXPORT_BUSY)return;try{await reportsRequireDraft();}catch(ex){reportsDocFeedback(ex.message,'warn');return;}const crossing=RP_REPORT_CROSSINGS.find(item=>item.id===id);if(!crossing||reportsCrossingQuestionIds(crossing).length<=3)return;RP_REPORT_CROSSINGS=RP_REPORT_CROSSINGS.map(item=>item.id===id?{...item,questionIds:reportsCrossingQuestionIds(item).slice(0,3)}:item);RP_ACTIVE_CROSSING_ID=id;RP_REPORT_CROSS_ANALYSIS_CACHE={};RP_REPORT_ANALYSIS_CACHE={surveyId:null,overviewRows:[],crossRows:[],crossIds:[]};reportsSyncActiveCrossing();go('reports');reportsDocFeedback('Cruzamento ajustado para as três primeiras variáveis. Revise suas escolhas e use Salvar estrutura para persistir.','ok');}
 function reportsCrossingPayloads(){return RP_REPORT_CROSSINGS.map((crossing,index)=>({id:crossing.id,title:String(crossing.title||'Cruzamento '+(index+1)).trim()||'Cruzamento '+(index+1),questionIds:reportsCrossingQuestionIds(crossing),include:crossing.include!==false})).filter(crossing=>crossing.questionIds.length);}
 function reportsCrossingForPayload(crossing){return reportsCrossingPayloads().find(item=>item.id===crossing.id)||null;}
 function reportsSetLiveStatus(text,kind='live'){
@@ -7028,6 +7028,7 @@ async function reportsLoadAndRender(isLive=false){
       reportsRenderDuplicateNotice(survey,qs,data||[],duplicateMatches);
     }else{
       const active=reportsActiveCrossing();const ids=reportsCrossingQuestionIds(active);
+      if(ids.length>3){RP_REPORT_ANALYSIS_CACHE={surveyId:survey.id,overviewRows:RP_REPORT_ANALYSIS_CACHE.overviewRows||[],crossRows:[],crossIds:[]};out.innerHTML='<div class="callout warn">Este cruzamento antigo tem mais de três variáveis. Ajuste-o no cartão acima para calcular; sua definição permanece preservada.</div>';reportsSetLiveStatus('Ajuste necessário','warn');return;}
       if(!ids.length){out.innerHTML='<div class="card"><div class="empty">Escolha pelo menos uma variável no cruzamento ativo para montar a prévia.</div></div>';return;}
       const grouping=reportsOpenSerialize(),signature=JSON.stringify(grouping);
       const {data,error}=await reportsFetchTreatedCross(survey.id,ids,grouping);
@@ -7542,14 +7543,15 @@ function reportsGroupingActivationError(error){
   return error;
 }
 function reportsValidateTreatedCross(rows,ids){
-  if(!Array.isArray(ids)||ids.length<1||ids.length>6||new Set(ids).size!==ids.length)throw new Error('Selecione de uma a seis variáveis diferentes.');
+  if(!Array.isArray(ids)||ids.length<1||ids.length>3||new Set(ids).size!==ids.length)throw new Error('Selecione de uma a três variáveis diferentes.');
   if((rows||[]).some(row=>ids.some((_,index)=>!Object.prototype.hasOwnProperty.call(row,'variable_'+(index+1)))))throw new Error('O servidor não retornou todas as variáveis do cruzamento tratado. Nenhum resultado parcial foi apresentado.');
 }
 async function reportsFetchTreatedCross(surveyId,ids,grouping){
+  reportsValidateTreatedCross([],ids);
   if(!reportsGroupingEnabled())return reportsFetchCross(surveyId,ids);
   if(grouping?.version!==2&&!reportsCurrentQuestions().some(q=>ids.includes(q.dbId)&&q.type==='open'))return reportsFetchCross(surveyId,ids);
   const coded=grouping?.version===2,name=coded?'survey_report_coded_cross':'survey_report_grouped_cross';
-  return reportsReadGroupedOnce(JSON.stringify([name,surveyId,ids,grouping]),async()=>{try{const result=await reportsReadAllPages(()=>reportsCrossOrder(sb.rpc(name,{p_survey_id:surveyId,p_question_ids:ids,p_grouping:grouping},{count:'exact'}),6));coded?reportsValidateCodedCross(result.data,ids):reportsValidateTreatedCross(result.data,ids);return result;}catch(error){throw reportsGroupingActivationError(error);}});
+  return reportsReadGroupedOnce(JSON.stringify([name,surveyId,ids,grouping]),async()=>{try{const result=await reportsReadAllPages(()=>reportsCrossOrder(sb.rpc(name,{p_survey_id:surveyId,p_question_ids:ids,p_grouping:grouping},{count:'exact'}),3));coded?reportsValidateCodedCross(result.data,ids):reportsValidateTreatedCross(result.data,ids);return result;}catch(error){throw reportsGroupingActivationError(error);}});
 }
 async function reportsFetchStaffGroupedOverview(surveyId,grouping){
   if(!reportsGroupingEnabled())return reportsFetchOverview(surveyId);
@@ -7575,9 +7577,10 @@ async function reportsFetchClientGroupedOverview(surveyId,reportId,grouping=null
   return reportsReadGroupedOnce(JSON.stringify([name,surveyId,reportId]),async()=>{try{const result=await reportsReadAllPages(()=>reportsOverviewOrder(sb.rpc(name,{p_survey_id:surveyId,p_report_id:reportId},{count:'exact'})));if(coded)reportsValidateCodedOverview(result.data);return result;}catch(error){throw reportsGroupingActivationError(error);}});
 }
 async function reportsFetchClientGroupedCross(surveyId,reportId,ids,grouping=null){
+  reportsValidateTreatedCross([],ids);
   if(!reportsGroupingEnabled())return reportsFetchCross(surveyId,ids,'client');
   const coded=grouping?.version===2,name=coded?'client_report_coded_cross':'client_report_grouped_cross';
-  return reportsReadGroupedOnce(JSON.stringify([name,surveyId,reportId,ids]),async()=>{try{const result=await reportsReadAllPages(()=>reportsCrossOrder(sb.rpc(name,{p_survey_id:surveyId,p_report_id:reportId,p_question_ids:ids},{count:'exact'}),6));coded?reportsValidateCodedCross(result.data,ids):reportsValidateTreatedCross(result.data,ids);return result;}catch(error){throw reportsGroupingActivationError(error);}});
+  return reportsReadGroupedOnce(JSON.stringify([name,surveyId,reportId,ids]),async()=>{try{const result=await reportsReadAllPages(()=>reportsCrossOrder(sb.rpc(name,{p_survey_id:surveyId,p_report_id:reportId,p_question_ids:ids},{count:'exact'}),3));coded?reportsValidateCodedCross(result.data,ids):reportsValidateTreatedCross(result.data,ids);return result;}catch(error){throw reportsGroupingActivationError(error);}});
 }
 async function reportsRequireDraft(){
   if(!reportsOpenCanEdit())throw new Error('A estrutura é somente leitura para este perfil.');
@@ -7615,6 +7618,7 @@ function reportsCrossOrderedValues(rows,index,qid){
   return [...values.filter(value=>preferred.includes(labels.get(value))).sort((a,b)=>preferred.indexOf(labels.get(a))-preferred.indexOf(labels.get(b))),...values.filter(value=>!preferred.includes(labels.get(value)))];
 }
 function reportsCrossPartitions(rows,ids){
+  if(!Array.isArray(ids)||ids.length>3)throw new Error('O cruzamento permite no máximo três variáveis. Ajuste a definição antiga sem truncamento automático.');
   if(ids.length<3)return [{values:[],rows:rows||[]}];
   const parts=new Map();for(const row of rows||[]){const values=ids.slice(2).map((_,index)=>reportsCrossRowKey(row,index+2)),key=JSON.stringify(values);if(!parts.has(key))parts.set(key,{values,rows:[]});parts.get(key).rows.push(row);}return [...parts.values()];
 }
@@ -7659,6 +7663,7 @@ function reportsFillDraft(r){
   const checks={methodology:sec.includeMethodology,overview:sec.includeOverview,cross:sec.includeCross,summary:sec.includeSummary};
   Object.entries(checks).forEach(([k,value])=>{const el=document.getElementById('rp-doc-'+k);if(el&&value!=null)el.checked=!!value;});
   const period=document.getElementById('rp-doc-period');if(period&&sec.period!=null)period.value=sec.period;
+  const builder=document.querySelector?.('.reports-crossings-builder');if(builder)builder.outerHTML=reportsCrossingsBuilderMarkup(reportsCrossQuestionsForSurvey(reportsCurrentSurvey()||{}));
   reportsUpdateCrossControls();reportsUpdateCrossSelectionSummary();
 }
 async function reportsLoadDraft(){
@@ -7776,10 +7781,12 @@ async function surveyFormPdfDownload(index){
     const url=URL.createObjectURL(doc.output('blob'));const a=document.createElement('a');a.href=url;a.download='formulario-pesquisapro-'+safe+'.pdf';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);
   }catch(ex){alert('Não foi possível gerar o PDF do formulário: '+(ex.message||String(ex)));console.error(ex);}
 }
+function reportsValidatePdfCrossings(payload){const invalid=payload?.sections?.includeCross?(payload.sections.crossings||[]).find(c=>c.include!==false&&reportsCrossingQuestionIds(c).length>3):null;if(invalid)throw new Error('O cruzamento “'+(invalid.title||'Sem título')+'” excede três variáveis. Ajuste-o ou retire sua inclusão antes de gerar um novo PDF. A definição antiga foi preservada.');}
 async function reportsEnsurePdfData(payload){
   const survey=reportsCurrentSurvey(),profile=CURRENT_PROFILE;if(!survey||survey.id!==payload.surveyId)throw new Error('A pesquisa mudou durante a geração.');
   const guard=()=>{if(CURRENT_PROFILE!==profile||reportsCurrentSurvey()?.id!==survey.id)throw new Error('A sessão ou pesquisa mudou durante a geração.');};
-  // Atualizar dados completos a cada geração; categorias aplicadas separadamente sobre o snapshot do documento.
+  reportsValidatePdfCrossings(payload);
+  // Atualizar dados completos a cada geração; respostas originais preservadas.
   if(payload.sections.includeOverview){const {data,error}=await reportsFetchStaffGroupedOverview(survey.id,payload.sections.openAnswerGrouping);if(error)throw error;guard();payload.officialOverviewRows=data||[];payload.officialGrouped=true;}
   const crossings=payload.sections.includeCross?(payload.sections.crossings||[]).filter(crossing=>crossing.include!==false&&crossing.questionIds?.length):[];
   const currentExportResults=new Map();
@@ -7873,20 +7880,21 @@ function reportsVerifyDocumentSnapshot(payload,profile){
 }
 async function reportsGeneratePdf(){
   if(RP_REPORT_EXPORT_BUSY)return;RP_REPORT_EXPORT_BUSY=true;reportsDocFeedback('Carregando respostas originais e gerando PDF…');
-  try{await reportsRequireDraft();const profile=CURRENT_PROFILE,payload=reportsDocPayload(),id=await reportsSaveDraft(true);if(!id)throw new Error('Salve uma estrutura com cliente e título antes de gerar.');const result=await reportsCreatePdfBlob(payload);reportsVerifyDocumentSnapshot(payload,profile);const url=URL.createObjectURL(result.blob),a=document.createElement('a');a.href=url;a.download='relatorio-pesquisapro-'+new Date().toISOString().slice(0,10)+'.pdf';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);reportsDocFeedback('PDF gerado com as respostas originais. Revise antes de disponibilizar ao cliente.','ok');}catch(ex){reportsDocFeedback(ex.message||String(ex),'warn');}finally{RP_REPORT_EXPORT_BUSY=false;if(typeof reportsOpenTreatmentRender==='function')reportsOpenTreatmentRender();}
+  try{await reportsRequireDraft();const profile=CURRENT_PROFILE,payload=reportsDocPayload();reportsValidatePdfCrossings(payload);const id=await reportsSaveDraft(true);if(!id)throw new Error('Salve uma estrutura com cliente e título antes de gerar.');const result=await reportsCreatePdfBlob(payload);reportsVerifyDocumentSnapshot(payload,profile);const url=URL.createObjectURL(result.blob),a=document.createElement('a');a.href=url;a.download='relatorio-pesquisapro-'+new Date().toISOString().slice(0,10)+'.pdf';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);reportsDocFeedback('PDF gerado com as respostas originais. Revise antes de disponibilizar ao cliente.','ok');}catch(ex){reportsDocFeedback(ex.message||String(ex),'warn');}finally{RP_REPORT_EXPORT_BUSY=false;if(typeof reportsOpenTreatmentRender==='function')reportsOpenTreatmentRender();}
 }
 async function reportsFinalizeAndPublish(){
   if(RP_REPORT_EXPORT_BUSY)return;RP_REPORT_EXPORT_BUSY=true;reportsDocFeedback('Salvando a estrutura, gerando e publicando o PDF…');
-  try{await reportsRequireDraft();const profile=CURRENT_PROFILE,payload=reportsDocPayload(),id=await reportsSaveDraft(true);if(!id)throw new Error('Salve uma estrutura com cliente e título antes de finalizar.');const result=await reportsCreatePdfBlob(payload);reportsVerifyDocumentSnapshot(payload,profile);const path='reports/'+id+'/'+Date.now()+'.pdf';const {error:uploadError}=await sb.storage.from('client-reports').upload(path,result.blob,{upsert:true,contentType:'application/pdf'});if(uploadError)throw uploadError;reportsVerifyDocumentSnapshot(payload,profile);const {error:publishError}=await sb.rpc('report_document_publish',{p_report_id:id,p_pdf_path:path});if(publishError)throw publishError;reportsSetDocumentStatus('published');reportsDocFeedback('Relatório finalizado e disponibilizado ao cliente.','ok');}catch(ex){reportsDocFeedback(ex.message||String(ex),'warn');}finally{RP_REPORT_EXPORT_BUSY=false;if(typeof reportsOpenTreatmentRender==='function')reportsOpenTreatmentRender();}
+  try{await reportsRequireDraft();const profile=CURRENT_PROFILE,payload=reportsDocPayload();reportsValidatePdfCrossings(payload);const id=await reportsSaveDraft(true);if(!id)throw new Error('Salve uma estrutura com cliente e título antes de finalizar.');const result=await reportsCreatePdfBlob(payload);reportsVerifyDocumentSnapshot(payload,profile);const path='reports/'+id+'/'+Date.now()+'.pdf';const {error:uploadError}=await sb.storage.from('client-reports').upload(path,result.blob,{upsert:true,contentType:'application/pdf'});if(uploadError)throw uploadError;reportsVerifyDocumentSnapshot(payload,profile);const {error:publishError}=await sb.rpc('report_document_publish',{p_report_id:id,p_pdf_path:path});if(publishError)throw publishError;reportsSetDocumentStatus('published');reportsDocFeedback('Relatório finalizado e disponibilizado ao cliente.','ok');}catch(ex){reportsDocFeedback(ex.message||String(ex),'warn');}finally{RP_REPORT_EXPORT_BUSY=false;if(typeof reportsOpenTreatmentRender==='function')reportsOpenTreatmentRender();}
 }
 
 function reportsCrossCsvLines(rows,ids){
+  if(!Array.isArray(ids)||ids.length<1||ids.length>3)throw new Error('O cruzamento permite de uma a três variáveis.');
   const coded=(rows||[]).some(row=>Array.isArray(row.variable_keys)),headers=[...ids.map((id,index)=>'Variável '+(index+1)+': '+reportsQuestionLabel(id)),'Quantidade de entrevistas','Base válida geral','Percentual da base válida geral',...(coded?[...ids.map((_,index)=>'Código da variável '+(index+1)),'Total único linha','Total único coluna','Total único recorte','Métrica']:[])];
   const labels=ids.map((_,index)=>reportsCrossLabels(rows,index)),data=(rows||[]).map(row=>[...ids.map((_,index)=>labels[index].get(reportsCrossRowKey(row,index))||reportsCrossValue(row['variable_'+(index+1)])),Number(row.cnt||0),Number(row.valid_base||0),reportsCrossPct(row.cnt,row.valid_base),...(coded?[...row.variable_keys,Number(row.row_total),Number(row.column_total),Number(row.slice_total),'Presença por categoria; totais únicos']:[])]);
   const quote=value=>{const text=String(value??''),safe=typeof value==='string'&&/^[\s]*[=+@-]/.test(text)?"'"+text:text;return '"'+safe.replace(/"/g,'""')+'"';};return [headers,...data].map(values=>values.map(quote).join(';'));
 }
 function reportsExportCurrent(){
-  let lines;if(RP_REPORT_MODE==='builder'){const ids=reportsCrossingQuestionIds(reportsActiveCrossing()),cache=RP_REPORT_ANALYSIS_CACHE;if(cache.surveyId!==reportsCurrentSurvey()?.id||JSON.stringify(cache.crossIds)!==JSON.stringify(ids)||cache.crossGrouping!==JSON.stringify(reportsOpenSerialize())){alert('Aguarde o carregamento completo deste cruzamento com os agrupamentos atuais antes de exportar.');return;}lines=reportsCrossCsvLines(cache.crossRows,ids);}else{const table=document.querySelector('#rp-output table');if(!table){alert('Gere um relatório antes de exportar.');return;}lines=[...table.querySelectorAll('tr')].map(tr=>[...tr.children].map(cell=>'"'+String(cell.textContent||'').replace(/"/g,'""').trim()+'"').join(';'));}
+  let lines;if(RP_REPORT_MODE==='builder'){const ids=reportsCrossingQuestionIds(reportsActiveCrossing()),cache=RP_REPORT_ANALYSIS_CACHE;if(ids.length>3){alert('Ajuste o cruzamento antigo para no máximo três variáveis antes de exportar.');return;}if(cache.surveyId!==reportsCurrentSurvey()?.id||JSON.stringify(cache.crossIds)!==JSON.stringify(ids)||cache.crossGrouping!==JSON.stringify(reportsOpenSerialize())){alert('Aguarde o carregamento completo deste cruzamento antes de exportar.');return;}lines=reportsCrossCsvLines(cache.crossRows,ids);}else{const table=document.querySelector('#rp-output table');if(!table){alert('Gere um relatório antes de exportar.');return;}lines=[...table.querySelectorAll('tr')].map(tr=>[...tr.children].map(cell=>'"'+String(cell.textContent||'').replace(/"/g,'""').trim()+'"').join(';'));}
   const blob=new Blob(['\ufeff'+lines.join('\n')],{type:'text/csv;charset=utf-8'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='relatorio-pesquisa-'+new Date().toISOString().slice(0,10)+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 

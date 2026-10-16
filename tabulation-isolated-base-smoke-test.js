@@ -1,6 +1,6 @@
 const fs=require('fs'),vm=require('vm'),assert=require('node:assert/strict');
 const source=fs.readFileSync('reports-tabulation.js','utf8'),app=fs.readFileSync('app.js','utf8'),html=fs.readFileSync('app.html','utf8');
-assert(html.includes('reports-tabulation.js?v=20261015213500'));assert(app.includes('PP_TABULATION.mount'));assert(app.includes('function reportsGroupingEnabled(){return false;}'));
+assert(html.includes('reports-tabulation.js?v=20261016085500'));assert(app.includes('PP_TABULATION.mount'));assert(app.includes('function reportsGroupingEnabled(){return false;}'));
 assert(!/sb\.from\(|report_document_save|report_document_publish|collection_answers.*(update|insert|delete)/.test(source));
 let profile={id:'admin',role:'admin',status:'ativo'},survey={id:'s1',name:'Pesquisa fictícia'},accept=true,calls=[],delay=null,fail=null;
 const questions=Array.from({length:6},(_,i)=>({id:'q'+i,position:i,text:'Pergunta '+i,type:i===0?'open':'single',fields:[],options:[]}));
@@ -17,7 +17,7 @@ await api.create('Base de teste');assert.equal(bases.length,1);assert.equal(api.
 await api.setView('answers');assert.equal(api.getState().answerTotal,1252);assert.equal(api.getState().answers.length,100);assert.equal(api.getState().answers[0].value_text,'Resposta original 0');
 api.getState().offset=1200;await api.setView('distribution');assert.equal(api.getState().offset,0);
 await api.check();assert.equal(api.getState().check.unchanged,false);assert.equal(api.getState().base.event_count,1252);
-api.getState().crossIds=questions.map(q=>q.id);await api.cross();assert.equal(api.getState().rows[0].variable_6,'Valor q5');
+api.getState().crossIds=questions.slice(0,3).map(q=>q.id);await api.cross();assert.equal(api.getState().rows[0].variable_3,'Valor q2');for(const count of [4,5,6]){const before=calls.length;api.getState().crossIds=questions.slice(0,count).map(q=>q.id);await api.cross();assert.equal(calls.length,before);assert.equal(api.getState().rows.length,0);assert.match(api.getState().error,/três/);}
 api.getState().crossIds=['q0','q0'];const before=calls.length;await api.cross();assert.equal(calls.length,before);assert.match(api.getState().error,/diferentes/);
 await api.newVersion('Planejamento');assert.equal(api.getState().version.revision,1);await api.saveVersion('Planejamento editado','Notas sem tratamento');assert.equal(api.getState().version.revision,2);assert.equal(api.getState().version.notes,'Notas sem tratamento');
 versions[0]={...versions[0],revision:3};api.getState().dirty=true;api.getState().editDraft={name:'Meu texto',notes:'Não perder'};await api.saveVersion('Meu texto','Não perder');assert.equal(api.getState().dirty,true);assert.match(api.getState().error,/outro gestor/);assert.equal(api.getState().editDraft.notes,'Não perder');
@@ -28,5 +28,5 @@ let release;delay={name:'tabulation_base_create',promise:new Promise(r=>release=
 profile={id:'cliente',role:'cliente',status:'ativo'};api.mount({...env,profile});assert.equal(api.getState(),null);profile={id:'pesq',role:'pesq',status:'ativo'};api.mount({...env,profile});assert.equal(api.getState(),null);profile={id:'admin',role:'admin',status:'encerrado'};api.mount({...env,profile});assert.equal(api.getState(),null);
 assert.equal(api.escape('<script>"&'),'&lt;script&gt;&quot;&amp;');assert(api.markup().includes('Os resultados oficiais continuam usando a coleta original'));
 assert.equal(JSON.stringify(origin),preserved);assert(calls.every(c=>c.name.startsWith('tabulation_base_')));
-console.log('PASS v171: criação, cancelamento, 1252 respostas, seis variáveis, isolamento, IA retirada, originais preservados, retentativa idempotente, conflito de revisão, arquivo e retorno seguro.');
+console.log('PASS v171: criação, cancelamento, 1252 respostas, três variáveis; 4, 5 e 6 bloqueadas, isolamento, IA retirada, originais preservados, retentativa idempotente, conflito de revisão, arquivo e retorno seguro.');
 })().catch(e=>{console.error(e);process.exitCode=1;});

@@ -15,7 +15,7 @@ const checks=[
   ['adicionar e remover cruzamentos',app.includes('Adicionar outro cruzamento')&&app.includes('reportsAddCrossing')&&app.includes('reportsRemoveCrossing')],
   ['salvar vários cruzamentos',app.includes('Salvar cruzamentos na estrutura')&&app.includes('reportsCrossingPayloads')],
   ['inclusão individual no PDF',app.includes('reportsToggleCrossingInclude')&&app.includes('data-crossing-include')],
-  ['limite de seis variáveis por cruzamento',app.includes('reportsCrossingQuestionIds')&&app.includes('.slice(0,6)')],
+  ['limite de três variáveis por cruzamento',app.includes('reportsCrossingQuestionIds')&&app.includes('ids.length>3')&&app.includes('reportsValidatePdfCrossings')],
   ['payload lista cruzamentos',app.includes('crossings}}')&&app.includes('questionIds:reportsCrossingQuestionIds')],
   ['reidratação completa',app.includes('reportsNormalizeCrossings')&&app.includes('reportsFillDraft')&&app.includes('reportsLoadDraft')&&app.includes('data-crossing-question')],
   ['geração local PDF',app.includes('loadLocalAsset(\'jspdf\')')&&app.includes('reportsCreatePdfBlob')],
@@ -31,7 +31,7 @@ const checks=[
   ['RLS de gestão',sql.includes('public.is_staff()')&&sql.includes('staff manages report documents')],
   ['RLS do cliente',sql.includes('client sees published report documents')&&sql.includes('rd.client_id = auth.uid()')],
   ['cliente recebe apenas publicados',sql.includes("rd.status='published'")&&sql.includes('client_published_reports')],
-  ['cache atualizado',html.includes('20261015213500')],
+  ['cache atualizado',html.includes('20261016085500')],
   ['estilos responsivos',css.includes('.reports-document-editor')&&css.includes('.reports-crossing-card')&&css.includes('.reports-cross-matrix')&&css.includes('@media(max-width:760px)')],
   ['jsPDF local',fs.existsSync(jspdf)&&fs.statSync(jspdf).size>100000],
 ];

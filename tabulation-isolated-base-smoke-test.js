@@ -1,6 +1,6 @@
 const fs=require('fs'),vm=require('vm'),assert=require('node:assert/strict');
 const source=fs.readFileSync('reports-tabulation.js','utf8'),app=fs.readFileSync('app.js','utf8'),html=fs.readFileSync('app.html','utf8');
-assert(html.includes('reports-tabulation.js?v=20261016141000'));assert(app.includes('PP_TABULATION.mount'));assert(app.includes('function reportsGroupingEnabled(){return false;}'));
+assert(html.includes('reports-tabulation.js?v=20261016174500'));assert(app.includes('PP_TABULATION.mount'));assert(app.includes('function reportsGroupingEnabled(){return false;}'));
 assert(!/sb\.from\(|report_document_save|report_document_publish|collection_answers.*(update|insert|delete)/.test(source));
 let profile={id:'admin',role:'admin',status:'ativo'},survey={id:'s1',name:'Pesquisa fictícia'},accept=true,calls=[],delay=null,fail=null;
 const questions=Array.from({length:6},(_,i)=>({id:'q'+i,position:i,text:'Pergunta '+i,type:i===0?'open':'single',fields:[],options:[]}));
@@ -26,7 +26,7 @@ await api.newVersion('Outra versão');await api.saveVersion('Outra versão','Arq
 fail='tabulation_base_create';await api.create('Falha segura');assert.match(api.getState().error,/Execute manualmente/);const request=api.getState().createRetry.id;fail=null;await api.create('Falha segura');assert.equal(calls.filter(x=>x.name==='tabulation_base_create').at(-1).args.p_request_id,request);assert.equal(bases.length,2);
 let release;delay={name:'tabulation_base_create',promise:new Promise(r=>release=r)};const pending=api.create('Requisição tardia');await new Promise(r=>setTimeout(r,5));survey={id:'s2',name:'Outra pesquisa'};api.mount(env);release();await pending;assert.equal(api.getState().surveyId,'s2');assert.equal(api.getState().base,null);delay=null;
 profile={id:'cliente',role:'cliente',status:'ativo'};api.mount({...env,profile});assert.equal(api.getState(),null);profile={id:'pesq',role:'pesq',status:'ativo'};api.mount({...env,profile});assert.equal(api.getState(),null);profile={id:'admin',role:'admin',status:'encerrado'};api.mount({...env,profile});assert.equal(api.getState(),null);
-assert.equal(api.escape('<script>"&'),'&lt;script&gt;&quot;&amp;');assert(api.markup().includes('Os resultados oficiais continuam usando a coleta original'));
+assert.equal(api.escape('<script>"&'),'&lt;script&gt;&quot;&amp;');assert(api.markup().includes('O relatório usa a coleta original até você selecionar e salvar explicitamente'));
 assert.equal(JSON.stringify(origin),preserved);assert(calls.every(c=>c.name.startsWith('tabulation_base_')));
 console.log('PASS v171: criação, cancelamento, 1252 respostas, três variáveis; 4, 5 e 6 bloqueadas, isolamento, IA retirada, originais preservados, retentativa idempotente, conflito de revisão, arquivo e retorno seguro.');
 })().catch(e=>{console.error(e);process.exitCode=1;});

@@ -30,7 +30,7 @@ function environment(rows,options={}){
   context.document={getElementById:()=>null,removeEventListener(){}};
   context.jsArg=value=>esc(JSON.stringify(value));
   context.reportsCurrentQuestions=()=>fixture().qs;
-  vm.createContext(context);vm.runInContext(helper+'\n'+render,context);
+  vm.createContext(context);vm.runInContext(fs.readFileSync('app.js','utf8').slice(fs.readFileSync('app.js','utf8').indexOf('let RP_TAB_SOURCE='),fs.readFileSync('app.js','utf8').indexOf('let RP_REPORT_DUPLICATE_DIAGNOSTIC_CACHE=')),context);vm.runInContext(helper+'\n'+render,context);
   return {context,calls};
 }
 (async()=>{

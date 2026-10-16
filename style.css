@@ -2210,3 +2210,15 @@ body.acollect-notice-gate-open{overflow:hidden}
 .tabulation-result .reports-cross-matrix-wrap{margin-top:16px;}
 @media(max-width:760px){.reports-cross-two-way{font-size:11px;}.reports-cross-two-way th,.reports-cross-two-way td{padding:10px 8px;min-width:96px;}.reports-cross-two-way .cross-cell-count{font-size:12px;}.cross-table-pagination span{flex:1 0 100%;}.reports-cross-two-way caption{padding:11px 12px;font-size:12px;}}
 .reports-cross-two-way th{text-transform:none;letter-spacing:0;}
+
+/* v175 — Excel de tratamento externo: patch aditivo */
+.tabulation-excel-treatment{margin-top:24px;padding:20px;border:1px solid var(--line);border-radius:16px;background:#f8fafc;min-width:0;color:var(--ink)}
+.tabulation-excel-treatment h3{margin:6px 0 10px;font-size:19px}
+.tabulation-excel-treatment .tabulation-actions{align-items:flex-end;gap:12px;margin:14px 0;flex-wrap:wrap}
+.tabulation-excel-treatment .tabulation-actions label{display:grid;gap:7px;flex:1 1 260px;min-width:0}
+.tabulation-excel-treatment input[type=file]{width:100%;max-width:100%;white-space:normal}
+.treatment-preview-scroll{max-height:360px;overflow:auto;border-radius:10px;background:#fff;margin:12px 0}
+.treatment-preview-scroll td{min-width:150px;max-width:380px;white-space:pre-wrap;overflow-wrap:anywhere}
+#rp-doc-tab-source{margin:16px 0;overflow-wrap:anywhere}
+#rp-doc-tab-source p{margin:8px 0}
+@media(max-width:600px){.tabulation-excel-treatment{padding:14px}.tabulation-excel-treatment .tabulation-actions .btn{width:100%}.tabulation-excel-treatment .tabulation-actions label{flex-basis:100%}.treatment-preview-scroll td{min-width:140px}}

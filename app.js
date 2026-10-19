@@ -51,7 +51,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261016174500';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261019144500';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -205,7 +205,7 @@ async function enableResearcherPush(){
   try{
     const permission=await Notification.requestPermission();
     if(permission!=='granted'){PUSH_STATUS='blocked';go('dashboard-pesq');return;}
-    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261016174500',{scope:'./'});
+    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261019144500',{scope:'./'});
     const subscription=await PUSH_SW_REGISTRATION.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:pushKeyToUint8Array(window.PP_PUSH_PUBLIC_KEY)});
     const json=subscription.toJSON();
     const {error}=await sb.from('push_subscriptions').upsert({user_id:CURRENT_PROFILE.id,endpoint:json.endpoint,subscription:json,user_agent:navigator.userAgent,updated_at:new Date().toISOString()},{onConflict:'endpoint'});
@@ -460,6 +460,8 @@ async function afterLogin(user){
   }
   CURRENT_PROFILE={...profile,commissionRate:Number(profile.commission_rate)||0,commissionRateWithIndicator:Number(profile.commission_rate_with_indicator)||0,recruiterCode:profile.recruiter_code||'',recruiterCaptureValue:Number(profile.recruiter_capture_value)||0};
   reportsOpenReset();
+  window.PP_SIMPLE_TABULATION?.reset();
+  RP_SIMPLE_TAB_STATE=null;RP_SIMPLE_TAB_PROFILE=null;RP_SIMPLE_REPORT_RELOAD=false;
   if(window.PP_TABULATION)window.PP_TABULATION.reset();
   if(window.PP_CLIENT_REPORTS)window.PP_CLIENT_REPORTS.reset();
   selectedRole=CURRENT_PROFILE.role;
@@ -494,6 +496,8 @@ async function logout(){
   PAYMENTS=[];PAYMENTS_LOADED=false;PAYMENTS_LOADING=false;PAYMENT_RECEIPTS=[];PAYMENT_RECEIPTS_LOADED=false;PAYMENT_RECEIPTS_LOADING=false;PAYMENT_RECEIPTS_SCHEMA_MISSING=false;PAYMENT_RECEIPTS_DELETE_SCHEMA_MISSING=false;
   COLLECT_INAPP_ORIENTATION_COUNTS={};COLLECT_INAPP_ORIENTATION_STATUS='idle';COLLECT_INAPP_ORIENTATION_LOADING=false;COLLECT_BATCH_ORIENTATION_SENDING=false;COLLECT_IDX=null;COLLECT_RETURN_PAGE='collect';closeSurveyResearcherMessageModal();reportsOpenReset();
   CURRENT_PROFILE=null;
+  window.PP_SIMPLE_TABULATION?.reset();
+  RP_SIMPLE_TAB_STATE=null;RP_SIMPLE_TAB_PROFILE=null;RP_SIMPLE_REPORT_RELOAD=false;
   if(window.PP_TABULATION)window.PP_TABULATION.reset();
   if(window.PP_CLIENT_REPORTS)window.PP_CLIENT_REPORTS.reset();
   RESEARCHER_PROFILE_SAVING=false;RESEARCHER_PROFILE_SAVE_OPERATION=null;RESEARCHER_PROFILE_FORM_DRAFT=null;RESEARCHER_PIX_FORM_DRAFT=null;
@@ -639,6 +643,7 @@ function go(key){
   if(staffNavPendingEnabled())refreshStaffNavPendingCounts();
   const previousKey=document.querySelector('.nav-item.on')?.dataset.key;
   if(previousKey==='client-results'&&key!=='client-results'){window.PP_CLIENT_REPORTS?.reset();window.PP_TABULATION?.reset();}
+  if(key!=='reports'&&window.PP_SIMPLE_TABULATION){if(!window.PP_SIMPLE_TABULATION.canLeave())return;window.PP_SIMPLE_TABULATION.reset();}
   if(previousKey==='reports'&&key!=='reports'&&window.PP_TABULATION){if(!window.PP_TABULATION.canLeave())return;window.PP_TABULATION.reset();}
   document.querySelectorAll('.nav-item').forEach(n=>{
     const active=n.dataset.key===key;
@@ -6665,11 +6670,17 @@ let RP_REPORT_CROSSINGS=[];
 let RP_ACTIVE_CROSSING_ID=null;
 let RP_REPORT_DRAFT_SECTIONS=null;
 let RP_TAB_SOURCE=null,RP_TAB_META=null,RP_TAB_SOURCE_REVISION=0,RP_TAB_SOURCE_SAVED=0,RP_TAB_SOURCE_SELECTING=false,RP_TAB_SOURCE_SAVING=0;
+let RP_SIMPLE_TAB_STATE=null,RP_SIMPLE_TAB_PROFILE=null,RP_SIMPLE_REPORT_RELOAD=false;
+function reportsSimpleManaged(){return !!RP_SIMPLE_TAB_STATE?.managed&&RP_SIMPLE_TAB_PROFILE===CURRENT_PROFILE&&RP_SIMPLE_TAB_STATE.survey_id===reportsCurrentSurvey()?.id;}
+function reportsSimpleBusy(){return typeof window!=='undefined'&&!!window.PP_SIMPLE_TABULATION?.busy();}
+function reportsSimpleAccept(snapshot){if(!snapshot||snapshot.survey_id!==reportsCurrentSurvey()?.id||!reportsOpenCanEdit())return false;if(RP_SIMPLE_TAB_PROFILE===CURRENT_PROFILE&&RP_SIMPLE_TAB_STATE?.survey_id===snapshot.survey_id&&snapshot.revision<RP_SIMPLE_TAB_STATE.revision)return false;RP_SIMPLE_TAB_STATE=snapshot;RP_SIMPLE_TAB_PROFILE=CURRENT_PROFILE;if(!snapshot.managed)return false;const source=snapshot.source==null?null:window.PP_TREATMENT.normalizeSource(snapshot.source),changed=JSON.stringify(source)!==reportsTabSourceSignature();RP_TAB_SOURCE=source;if(changed){RP_TAB_META=null;RP_TAB_SOURCE_REVISION++;RP_TAB_SOURCE_SAVED=RP_TAB_SOURCE_REVISION;reportsTabSourceInvalidate();}reportsTabSourceRender();return changed;}
+async function reportsSimpleRefresh(){if(typeof window==='undefined'||!window.PP_SIMPLE_TABULATION)return;const survey=reportsCurrentSurvey(),profile=CURRENT_PROFILE;if(!survey||!reportsOpenCanEdit())return;try{const snapshot=await window.PP_SIMPLE_TABULATION.readState(sb,survey.id);if(CURRENT_PROFILE!==profile||reportsCurrentSurvey()?.id!==survey.id)throw new Error('A pesquisa ou sessão mudou durante a leitura da tabulação.');reportsSimpleAccept(snapshot);}catch(ex){if(window.PP_TREATMENT?.missing(ex))return;throw ex;}}
+async function reportsSimpleChanged(snapshot){const changed=reportsSimpleAccept(snapshot);if(changed){if(RP_REPORT_LOADING)RP_SIMPLE_REPORT_RELOAD=true;else reportsLoadAndRender();}}
 function reportsTabSourceSignature(){return JSON.stringify(RP_TAB_SOURCE);}
-function reportsTabSourceLabel(){return RP_TAB_SOURCE!=null?"Base congelada · versão tratada "+(RP_TAB_META?.name||String(RP_TAB_SOURCE.versionId||"inválida").slice(0,8)):"Coleta original atual";}
-function reportsHydrateTabSource(sec){RP_TAB_SOURCE=sec?.tabulationSource==null?null:JSON.parse(JSON.stringify(sec.tabulationSource));RP_TAB_META=null;RP_TAB_SOURCE_REVISION=0;RP_TAB_SOURCE_SAVED=0;reportsTabSourceRender();}
-function reportsTabSourceRender(){const el=document.getElementById("rp-doc-tab-source");if(el)el.innerHTML=`<b>Fonte dos resultados e cruzamentos:</b> ${esc(reportsTabSourceLabel())}${RP_TAB_SOURCE!=null?`<p>A base é congelada. Perguntas não tratadas e variáveis fechadas usam os registros originais da mesma cópia. Mapas continuam mostrando a coleta atual, não esta tabulação.</p><button class="btn btn-out" type="button" onclick="reportsUseOriginalSource()" ${RP_REPORT_EXPORT_BUSY||RP_TAB_SOURCE_SAVING||RP_TAB_SOURCE_SELECTING?"disabled":""}>Voltar à coleta original no relatório</button>`:`<p>Para usar o tratamento feito no Excel, selecione uma versão no laboratório e clique em Usar esta versão no rascunho do relatório.</p>`}${RP_TAB_SOURCE_REVISION!==RP_TAB_SOURCE_SAVED?"<p>Troca de fonte ainda não salva. Clique em Salvar estrutura.</p>":""}`;}
-async function reportsEnsureTabSource(){if(RP_TAB_SOURCE==null)return null;if(!window.PP_TREATMENT)throw new Error("Atualize o aplicativo para ler a fonte tratada; a coleta original não será usada como substituta silenciosa.");const source=JSON.parse(JSON.stringify(RP_TAB_SOURCE)),signature=reportsTabSourceSignature(),profile=CURRENT_PROFILE,surveyId=reportsCurrentSurvey()?.id,client=reportsDocValue("rp-doc-client"),info=await window.PP_TREATMENT.resolve(sb,surveyId,source);if(CURRENT_PROFILE!==profile||reportsCurrentSurvey()?.id!==surveyId||reportsDocValue("rp-doc-client")!==client||reportsTabSourceSignature()!==signature)throw new Error("A pesquisa, o cliente ou a fonte mudou durante a consulta.");RP_TAB_META=info;reportsTabSourceRender();return info;}
+function reportsTabSourceLabel(){if(typeof window!=="undefined"&&window.PP_SIMPLE_TABULATION&&reportsSimpleManaged())return RP_TAB_SOURCE?"Excel tratado · "+(RP_SIMPLE_TAB_STATE.file_name||"tabulação da pesquisa"):"Coleta original atual";return RP_TAB_SOURCE!=null?"Base congelada · versão tratada "+(RP_TAB_META?.name||String(RP_TAB_SOURCE.versionId||"inválida").slice(0,8)):"Coleta original atual";}
+function reportsHydrateTabSource(sec){const managed=typeof window!=="undefined"&&window.PP_SIMPLE_TABULATION&&reportsSimpleManaged();RP_TAB_SOURCE=managed?(RP_SIMPLE_TAB_STATE.source==null?null:JSON.parse(JSON.stringify(RP_SIMPLE_TAB_STATE.source))):(sec?.tabulationSource==null?null:JSON.parse(JSON.stringify(sec.tabulationSource)));RP_TAB_META=null;RP_TAB_SOURCE_REVISION=0;RP_TAB_SOURCE_SAVED=0;reportsTabSourceRender();}
+function reportsTabSourceRender(){const el=document.getElementById("rp-doc-tab-source");if(el&&typeof window!=="undefined"&&window.PP_SIMPLE_TABULATION){el.innerHTML=`<b>Fonte dos resultados e cruzamentos:</b> ${esc(reportsTabSourceLabel())}<p>No novo fluxo, basta enviar o Excel no painel de tabulação para aplicar e salvar o tratamento da pesquisa. Para retirar qualquer fonte de tratamento ativa, use Restaurar respostas originais. PDFs já publicados não são alterados.</p>`;return;}if(el)el.innerHTML=`<b>Fonte dos resultados e cruzamentos:</b> ${esc(reportsTabSourceLabel())}${RP_TAB_SOURCE!=null?`<p>A base é congelada. Perguntas não tratadas e variáveis fechadas usam os registros originais da mesma cópia. Mapas continuam mostrando a coleta atual, não esta tabulação.</p><button class="btn btn-out" type="button" onclick="reportsUseOriginalSource()" ${RP_REPORT_EXPORT_BUSY||RP_TAB_SOURCE_SAVING||RP_TAB_SOURCE_SELECTING?"disabled":""}>Voltar à coleta original no relatório</button>`:`<p>Para usar o tratamento feito no Excel, selecione uma versão no laboratório e clique em Usar esta versão no rascunho do relatório.</p>`}${RP_TAB_SOURCE_REVISION!==RP_TAB_SOURCE_SAVED?"<p>Troca de fonte ainda não salva. Clique em Salvar estrutura.</p>":""}`;}
+async function reportsEnsureTabSource(){if(typeof window!=="undefined"&&window.PP_SIMPLE_TABULATION)await reportsSimpleRefresh();if(RP_TAB_SOURCE==null)return null;if(!window.PP_TREATMENT)throw new Error("Atualize o aplicativo para ler a fonte tratada; a coleta original não será usada como substituta silenciosa.");const source=JSON.parse(JSON.stringify(RP_TAB_SOURCE)),signature=reportsTabSourceSignature(),profile=CURRENT_PROFILE,surveyId=reportsCurrentSurvey()?.id,client=reportsDocValue("rp-doc-client"),info=await window.PP_TREATMENT.resolve(sb,surveyId,source);if(CURRENT_PROFILE!==profile||reportsCurrentSurvey()?.id!==surveyId||reportsDocValue("rp-doc-client")!==client||reportsTabSourceSignature()!==signature)throw new Error("A pesquisa, o cliente ou a fonte mudou durante a consulta.");RP_TAB_META=info;reportsTabSourceRender();return info;}
 async function reportsUseTabulationVersion(base,version){if(!reportsOpenCanEdit()||RP_REPORT_EXPORT_BUSY||RP_TAB_SOURCE_SELECTING||RP_TAB_SOURCE_SAVING)return false;try{await reportsRequireDraft();}catch(ex){reportsDocFeedback(ex.message,'warn');return false;}if(!reportsDocValue("rp-doc-client")){reportsDocFeedback("Selecione o cliente destinatário antes de escolher a fonte.","warn");return false;}const survey=reportsCurrentSurvey(),profile=CURRENT_PROFILE,client=reportsDocValue("rp-doc-client");if(!base||base.survey_id!==survey?.id||!version||version.base_id!==base.id||version.survey_id!==survey.id)return false;RP_TAB_SOURCE_SELECTING=true;try{const source={baseId:base.id,versionId:version.id,fingerprint:base.source_fingerprint},info=await window.PP_TREATMENT.resolve(sb,survey.id,source);if(CURRENT_PROFILE!==profile||reportsCurrentSurvey()?.id!==survey.id||reportsDocValue("rp-doc-client")!==client)return false;const name=document.getElementById("rp-doc-client")?.selectedOptions?.[0]?.textContent||client;if(!confirm(`Usar a versão “${version.name}” da base “${base.name}” no rascunho destinado a “${name}”, da pesquisa “${survey.name}”?\n\n${Number(info.event_count).toLocaleString("pt-BR")} entrevistas congeladas. Os relatórios, Excel e cruzamentos passarão a usar essa versão; a coleta original e os PDFs já publicados permanecem intactos. Salve a estrutura para persistir a escolha.`))return false;RP_TAB_SOURCE=source;RP_TAB_META=info;RP_TAB_SOURCE_REVISION++;reportsTabSourceInvalidate();reportsTabSourceRender();reportsDocFeedback("Versão tratada selecionada. Clique em Salvar estrutura para persistir.","ok");reportsLoadAndRender();return true;}catch(ex){reportsDocFeedback(window.PP_TREATMENT?.safeError(ex)||ex.message,"warn");return false;}finally{RP_TAB_SOURCE_SELECTING=false;reportsTabSourceRender();}}
 async function reportsUseOriginalSource(){if(!reportsOpenCanEdit()||RP_REPORT_EXPORT_BUSY||RP_TAB_SOURCE_SELECTING||RP_TAB_SOURCE_SAVING)return false;try{await reportsRequireDraft();}catch(ex){reportsDocFeedback(ex.message,'warn');return false;}if(RP_TAB_SOURCE==null)return true;if(!confirm("Voltar à coleta original atual neste rascunho? A versão tratada fica preservada na base isolada. Clique em Salvar estrutura para persistir a troca."))return false;RP_TAB_SOURCE=null;RP_TAB_META=null;RP_TAB_SOURCE_REVISION++;reportsTabSourceInvalidate();reportsTabSourceRender();reportsDocFeedback("Coleta original selecionada. Salve a estrutura para persistir.","ok");reportsLoadAndRender();return true;}
 function reportsTabSourceInvalidate(){RP_REPORT_ANALYSIS_CACHE={surveyId:null,overviewRows:[],crossRows:[],crossIds:[]};RP_REPORT_CROSS_ANALYSIS_CACHE={};RP_REPORT_OFFICIAL_OVERVIEW={surveyId:null,profile:null,signature:null,rows:[]};const out=document.getElementById("rp-output");if(out)out.innerHTML="<div class=\"empty\">Atualizando a fonte da tabulação…</div>";}
@@ -6716,6 +6727,7 @@ async function reportsReadAllPages(makeQuery){
 function reportsOverviewOrder(query){return query.order('question_id',{ascending:true}).order('cnt',{ascending:false}).order('value_label',{ascending:true});}
 function reportsCrossOrder(query,maxVariables=3){for(let index=1;index<=maxVariables;index++)query=query.order('variable_'+index,{ascending:true});return query;}
 async function reportsFetchOverview(surveyId){
+  if(typeof window!=="undefined"&&window.PP_SIMPLE_TABULATION&&surveyId===reportsCurrentSurvey()?.id)await reportsEnsureTabSource();
   if(surveyId===reportsCurrentSurvey()?.id&&RP_TAB_SOURCE!=null){await reportsEnsureTabSource();return window.PP_TREATMENT.sourceOverview(sb,reportsReadAllPages,surveyId,RP_TAB_SOURCE);}
   // v170: distribuição original, sem consultar funções de categorização.
   try{return await reportsReadAllPages(()=>reportsOverviewOrder(sb.rpc('survey_report_all_questions_v2',{p_survey_id:surveyId},{count:'exact'})));}
@@ -6725,6 +6737,7 @@ async function reportsFetchOverview(surveyId){
   }
 }
 async function reportsFetchCross(surveyId,ids,mode='staff'){
+  if(typeof window!=="undefined"&&window.PP_SIMPLE_TABULATION&&mode==='staff'&&surveyId===reportsCurrentSurvey()?.id)await reportsEnsureTabSource();
   if(!Array.isArray(ids)||ids.length<1||ids.length>3||new Set(ids).size!==ids.length)throw new Error('Selecione de uma a três variáveis diferentes.');
   if(mode==='staff'&&surveyId===reportsCurrentSurvey()?.id&&RP_TAB_SOURCE!=null){await reportsEnsureTabSource();return window.PP_TREATMENT.sourceCross(sb,reportsReadAllPages,surveyId,RP_TAB_SOURCE,ids);}
   const name=mode==='client'?'client_report_cross_tab_v2':'survey_report_cross_tab_v2';
@@ -6951,7 +6964,7 @@ PAGES.reports=()=>{
     ${reportsExcelToolbar()}
     ${RP_REPORT_MODE==='builder'?`<div class="reports-builder-note">Cada cartão abaixo representa um cruzamento independente. Cada cruzamento aceita de uma a três variáveis e pode ser incluído ou retirado do PDF separadamente. As duas primeiras formam linhas e colunas; a terceira define o recorte, sem misturar as bases. Ranking e “Duas respostas” aparecem no resultado geral, mas não são escolhidos como uma única variável de cruzamento.</div>${reportsCrossingsBuilderMarkup(crossQs)}`:''}
   </div>
-  ${reportsOpenCanEdit()&&typeof window!=='undefined'&&window.PP_TABULATION?window.PP_TABULATION.markup():''}
+  ${reportsOpenCanEdit()&&typeof window!=='undefined'&&window.PP_SIMPLE_TABULATION?window.PP_SIMPLE_TABULATION.markup():''}
   ${reportsHeatmapMarkup(survey)}
   ${reportsGeoMarkup(survey)}
   <div id="rp-duplicate-diagnostic"></div><div id="rp-output"><div class="empty" style="padding:28px 0">Carregando resultados reais…</div></div>
@@ -7052,7 +7065,7 @@ async function reportsLoadAndRender(isLive=false){
   }catch(ex){
     const msg=String(ex?.message||ex);
     if(CURRENT_PROFILE===profile&&out.isConnected&&reportsCurrentSurvey()?.id===survey.id){out.innerHTML=`<div class="callout warn"><b>Não foi possível carregar o relatório completo.</b><br>Nenhum resultado parcial foi apresentado como completo. Tente novamente na próxima atualização. Detalhe técnico: ${esc(msg)}</div>`;reportsSetLiveStatus('Falha no carregamento','warn');}
-  }finally{RP_REPORT_LOADING=false;if(reload)reportsLoadAndRender();}
+  }finally{RP_REPORT_LOADING=false;if(reload||RP_SIMPLE_REPORT_RELOAD){RP_SIMPLE_REPORT_RELOAD=false;reportsLoadAndRender();}}
 }
 function reportPercent(cnt,total){return total?Math.round((Number(cnt)/Number(total))*100):0;}
 function reportsLocalValidBase(surveyId){
@@ -7072,7 +7085,7 @@ function reportsOpenEnsureScope(){
 }
 function reportsOpenCanEdit(){return ['admin','admpro','coord','gerente'].includes(CURRENT_PROFILE?.role);}
 function reportsOpenDirty(){return RP_TAB_SOURCE_REVISION!==RP_TAB_SOURCE_SAVED||reportsGroupingEnabled()&&RP_OPEN_GROUPING.profile===CURRENT_PROFILE&&RP_OPEN_GROUPING.revision!==RP_OPEN_GROUPING.savedRevision;}
-function reportsOpenConfirmDiscard(){if(typeof window!=='undefined'&&window.PP_TABULATION&&!window.PP_TABULATION.canLeave())return false;return !reportsOpenDirty()||confirm('Há uma troca de fonte ou tratamento ainda não salvo na estrutura. Deseja sair sem salvar?');}
+function reportsOpenConfirmDiscard(){if(typeof window!=='undefined'&&window.PP_SIMPLE_TABULATION&&!window.PP_SIMPLE_TABULATION.canLeave())return false;if(typeof window!=='undefined'&&window.PP_TABULATION&&!window.PP_TABULATION.canLeave())return false;return !reportsOpenDirty()||confirm('Há uma troca de fonte ou tratamento ainda não salvo na estrutura. Deseja sair sem salvar?');}
 if(typeof window!=='undefined')window.addEventListener('beforeunload',event=>{if(reportsOpenDirty()){event.preventDefault();event.returnValue='';}});
 function reportsOpenNormalizeQuestions(input){
   const result={};if(!input||typeof input!=='object'||Array.isArray(input))return result;
@@ -7499,6 +7512,7 @@ function reportsExcelWorkbook(lib,survey,questions,rows,grouping,mode,generatedA
   return workbook;
 }
 async function reportsExportQuestionsExcel(qid=null){
+  if(typeof reportsSimpleBusy==='function'&&reportsSimpleBusy()){reportsDocFeedback('Aguarde a conclusão do envio ou restauração do Excel.','warn');return;}
   if(!reportsOpenCanEdit()||RP_REPORT_EXPORT_BUSY)return;const originalSurvey=reportsCurrentSurvey(),profile=CURRENT_PROFILE;if(!originalSurvey)return;
   RP_REPORT_EXPORT_BUSY=true;reportsExcelFeedback('Carregando todas as respostas e preparando o Excel…',true);
   let signature=null,client=null;
@@ -7714,6 +7728,7 @@ async function reportsLoadDraft(){
 }
 function reportsDocClientChanged(){const select=document.getElementById('rp-doc-client'),previous=RP_OPEN_GROUPING.clientId;if(!reportsOpenConfirmDiscard()){if(select)select.value=previous||'';return;}const clientId=select?.value||'';reportsOpenReset();reportsOpenEnsureScope().clientId=clientId;reportsOpenRefreshOverview();RP_REPORT_DOCUMENT_ID=null;RP_CROSS_QUESTION_IDS=[];RP_REPORT_CROSSINGS=[];RP_ACTIVE_CROSSING_ID=null;RP_REPORT_DRAFT_SECTIONS=null;RP_REPORT_CROSS_ANALYSIS_CACHE={};RP_REPORT_DRAFT_HYDRATED=false;reportsSetDocumentStatus('new');reportsLoadDraft();}
 async function reportsSaveDraft(silent=false){
+  if(typeof reportsSimpleBusy==='function'&&reportsSimpleBusy()){if(!silent)reportsDocFeedback('Aguarde a conclusão do envio ou restauração do Excel.','warn');return null;}
   if(RP_TAB_SOURCE_SELECTING){if(!silent)reportsDocFeedback('Aguarde a consulta da versão antes de salvar a estrutura.','warn');return null;}
   RP_TAB_SOURCE_SAVING++;
   if(typeof reportsOpenTreatmentSaving==='function')reportsOpenTreatmentSaving(1);
@@ -7915,10 +7930,12 @@ function reportsVerifyDocumentSnapshot(payload,profile){
   if(CURRENT_PROFILE!==profile||reportsCurrentSurvey()?.id!==payload.surveyId||reportsDocValue('rp-doc-client')!==payload.clientId||JSON.stringify(reportsDocPayload())!==JSON.stringify(Object.fromEntries(Object.entries(payload).filter(([key])=>!['officialGrouped','officialOverviewRows','tabulationSourceLabel'].includes(key)))))throw new Error('A estrutura mudou durante a geração. Gere novamente antes de divulgar.');
 }
 async function reportsGeneratePdf(){
+  if(typeof reportsSimpleBusy==='function'&&reportsSimpleBusy()){reportsDocFeedback('Aguarde a conclusão do envio ou restauração do Excel.','warn');return;}
   if(RP_REPORT_EXPORT_BUSY)return;RP_REPORT_EXPORT_BUSY=true;reportsDocFeedback('Carregando a fonte selecionada e gerando PDF…');
   try{await reportsRequireDraft();const profile=CURRENT_PROFILE,payload=reportsDocPayload();reportsValidatePdfCrossings(payload);const id=await reportsSaveDraft(true);if(!id)throw new Error('Salve uma estrutura com cliente e título antes de gerar.');const result=await reportsCreatePdfBlob(payload);reportsVerifyDocumentSnapshot(payload,profile);const url=URL.createObjectURL(result.blob),a=document.createElement('a');a.href=url;a.download='relatorio-pesquisapro-'+new Date().toISOString().slice(0,10)+'.pdf';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);reportsDocFeedback('PDF gerado com a fonte selecionada. Revise antes de disponibilizar ao cliente.','ok');}catch(ex){reportsDocFeedback(ex.message||String(ex),'warn');}finally{RP_REPORT_EXPORT_BUSY=false;if(typeof reportsOpenTreatmentRender==='function')reportsOpenTreatmentRender();}
 }
 async function reportsFinalizeAndPublish(){
+  if(typeof reportsSimpleBusy==='function'&&reportsSimpleBusy()){reportsDocFeedback('Aguarde a conclusão do envio ou restauração do Excel.','warn');return;}
   if(RP_REPORT_EXPORT_BUSY)return;RP_REPORT_EXPORT_BUSY=true;reportsDocFeedback('Salvando a estrutura, gerando e publicando o PDF…');
   try{await reportsRequireDraft();const profile=CURRENT_PROFILE,payload=reportsDocPayload();reportsValidatePdfCrossings(payload);const id=await reportsSaveDraft(true);if(!id)throw new Error('Salve uma estrutura com cliente e título antes de finalizar.');const result=await reportsCreatePdfBlob(payload);reportsVerifyDocumentSnapshot(payload,profile);const path='reports/'+id+'/'+Date.now()+'.pdf';const {error:uploadError}=await sb.storage.from('client-reports').upload(path,result.blob,{upsert:true,contentType:'application/pdf'});if(uploadError)throw uploadError;reportsVerifyDocumentSnapshot(payload,profile);const {error:publishError}=await sb.rpc('report_document_publish',{p_report_id:id,p_pdf_path:path});if(publishError)throw publishError;reportsSetDocumentStatus('published');reportsDocFeedback('Relatório finalizado e disponibilizado ao cliente.','ok');}catch(ex){reportsDocFeedback(ex.message||String(ex),'warn');}finally{RP_REPORT_EXPORT_BUSY=false;if(typeof reportsOpenTreatmentRender==='function')reportsOpenTreatmentRender();}
 }
@@ -7930,6 +7947,7 @@ function reportsCrossCsvLines(rows,ids){
   const quote=value=>{const text=String(value??''),safe=typeof value==='string'&&/^[\s]*[=+@-]/.test(text)?"'"+text:text;return '"'+safe.replace(/"/g,'""')+'"';};return [headers,...data].map(values=>values.map(quote).join(';'));
 }
 function reportsExportCurrent(){
+  if(typeof reportsSimpleBusy==='function'&&reportsSimpleBusy()){reportsDocFeedback('Aguarde a conclusão do envio ou restauração do Excel.','warn');return;}
   let lines;if(RP_REPORT_MODE==='builder'){const ids=reportsCrossingQuestionIds(reportsActiveCrossing()),cache=RP_REPORT_ANALYSIS_CACHE;if(ids.length>3){alert('Ajuste o cruzamento antigo para no máximo três variáveis antes de exportar.');return;}if(cache.surveyId!==reportsCurrentSurvey()?.id||JSON.stringify(cache.crossIds)!==JSON.stringify(ids)||cache.crossGrouping!==JSON.stringify(reportsOpenSerialize())){alert('Aguarde o carregamento completo deste cruzamento antes de exportar.');return;}lines=reportsCrossCsvLines(cache.crossRows,ids);}else{const table=document.querySelector('#rp-output table');if(!table){alert('Gere um relatório antes de exportar.');return;}lines=[...table.querySelectorAll('tr')].map(tr=>[...tr.children].map(cell=>'"'+String(cell.textContent||'').replace(/"/g,'""').trim()+'"').join(';'));}
   const blob=new Blob(['\ufeff'+lines.join('\n')],{type:'text/csv;charset=utf-8'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='relatorio-pesquisa-'+new Date().toISOString().slice(0,10)+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
@@ -11241,7 +11259,7 @@ window._afterRender=function(key){
   if(key==='app-collect'&&MY_CONTRACT)initGeoCollect(); /* só inicia GPS/coleta se o contrato já estiver assinado — ver PAGES['app-collect'] */
   if(key==='client-progress'){clientProgressStartLive();clientResearcherProgressLoad();clientLoadReportOverview();clientLoadPublishedReports();clientGeoStartLive();responseHeatmapLoad('client');}
   if(key==='client-results'){clientGeoStopLive();reportsGeoReset();clientReportsMount();clientLoadPublishedReports();reportsGeoLoad();responseHeatmapLoad('client');}
-  if(key==='reports'){if(window.PP_TABULATION)window.PP_TABULATION.mount({profile:CURRENT_PROFILE,sb,useForReport:reportsUseTabulationVersion,readPages:reportsReadAllPages,loadExcel:()=>loadLocalAsset('xlsx'),excelSheet:reportsExcelSheet,partitions:reportsCrossPartitions,matrixModel:clientReportCrossMatrixModel,matrixMarkup:clientReportCrossMatrixMarkup,getContext:()=>({profile:CURRENT_PROFILE,survey:reportsCurrentSurvey()}),showCurrent:()=>{document.getElementById('rp-output')?.scrollIntoView({behavior:'smooth',block:'start'});}});reportsLoadAndRender();reportsStartLive();reportsLoadDraft();responseHeatmapLoad('master');reportsGeoLoad();if(!USERS_LOADED)loadUsersIfNeeded().then(()=>reportsGeoRender());}
+  if(key==='reports'){if(window.PP_SIMPLE_TABULATION)window.PP_SIMPLE_TABULATION.mount({host:document.getElementById('rp-simple-tabulation'),sb,loadExcel:()=>loadLocalAsset('xlsx'),getBusy:()=>RP_REPORT_EXPORT_BUSY||RP_TAB_SOURCE_SAVING>0||RP_TAB_SOURCE_SELECTING,getContext:()=>({profile:CURRENT_PROFILE,survey:reportsCurrentSurvey()}),onChange:reportsSimpleChanged});reportsLoadAndRender();reportsStartLive();reportsLoadDraft();responseHeatmapLoad('master');reportsGeoLoad();if(!USERS_LOADED)loadUsersIfNeeded().then(()=>reportsGeoRender());}
   if(key==='my-earnings')renderMyRejected();
   if(key==='researcher-profile'||key==='my-earnings')researcherSetSaveBusy(RESEARCHER_PROFILE_SAVING);
   if(key==='sample'){calcSample();}

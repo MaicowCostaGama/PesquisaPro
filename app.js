@@ -51,7 +51,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261019144500';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261019155000';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -205,7 +205,7 @@ async function enableResearcherPush(){
   try{
     const permission=await Notification.requestPermission();
     if(permission!=='granted'){PUSH_STATUS='blocked';go('dashboard-pesq');return;}
-    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261019144500',{scope:'./'});
+    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261019155000',{scope:'./'});
     const subscription=await PUSH_SW_REGISTRATION.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:pushKeyToUint8Array(window.PP_PUSH_PUBLIC_KEY)});
     const json=subscription.toJSON();
     const {error}=await sb.from('push_subscriptions').upsert({user_id:CURRENT_PROFILE.id,endpoint:json.endpoint,subscription:json,user_agent:navigator.userAgent,updated_at:new Date().toISOString()},{onConflict:'endpoint'});
@@ -486,6 +486,7 @@ async function afterLogin(user){
 
 async function logout(){
   resetCollectionEventCache();
+  if(window.PP_CLIENT_ORIGINAL_EXCEL)window.PP_CLIENT_ORIGINAL_EXCEL.reset();
   stopResearcherVersionMonitor();
   stopStaffNavPendingMonitor();
   if(typeof acollectCloseNoticeGate==='function')acollectCloseNoticeGate(true);
@@ -1792,6 +1793,14 @@ function clientOpenPublishedReports(surveyId){
   clientSelectSurveyAndGo(surveyId,'client-results');
   requestAnimationFrame(()=>{document.getElementById('client-published-reports')?.scrollIntoView({block:'start',behavior:'auto'});});
 }
+function clientOpenOriginalExcel(surveyId){
+  const survey=campaignSurveysForCurrentUser().find(s=>s.id===surveyId);if(!survey||!clientReportsFullAllowed(survey))return;
+  clientSelectSurveyAndGo(surveyId,'client-progress');requestAnimationFrame(()=>{const panel=document.getElementById('client-original-excel');panel?.scrollIntoView({block:'start',behavior:'auto'});panel?.querySelector('[data-original-action="download"]')?.focus({preventScroll:true});});
+}
+function clientOriginalExcelMount(){
+  if(!clientReportsFullAllowed())return;
+  window.PP_CLIENT_ORIGINAL_EXCEL?.mount({sb,getContext:()=>({profile:CURRENT_PROFILE,survey:clientSelfSurvey(),released:clientReportsFullAllowed()}),readPages:reportsReadAllPages,overviewOrder:reportsOverviewOrder,excelWorkbook:reportsExcelWorkbook,safeName:reportsExcelSafeName,loadExcel:()=>loadLocalAsset('xlsx')});
+}
 function clientSurveyListMarkup(available,active){
   return `<div class="client-survey-list">${available.map(s=>{
     const released=clientResultsReleasedForSurvey(clientSelf(),s);
@@ -1802,7 +1811,7 @@ function clientSurveyDetailsMarkup(s,c,active){
   const released=clientResultsReleasedForSurvey(c,s);
   const sample=Number(surveySample(s)||0).toLocaleString('pt-BR');
   const margin=s.err?`± ${Math.round(Number(s.err)*100)}%`:'Não informado';
-  return `<div class="client-survey-details card"><button type="button" class="client-survey-back" onclick="clientBackToSurveyList()">← Voltar para minhas pesquisas</button><div class="client-survey-details-hero"><div class="client-survey-details-icon">⌁</div><div><span class="eyebrow">INFORMAÇÕES DA PESQUISA</span><h2>${esc(s.name)}</h2><p>${esc(s.tipo||'Pesquisa de opinião')} · <span class="pill ${s.status==='campo'?'pill-green':s.status==='encerrada'?'pill-blue':'pill-amber'}">${esc(STATUS_LABEL?.[s.status]||'Disponível')}</span></p></div></div><div class="client-survey-details-grid"><div><span>Período</span><strong>${campaignDateLabel(s.dataIni)} a ${campaignDateLabel(s.dataFim)}</strong></div><div><span>Amostra prevista</span><strong>${sample} entrevistas</strong></div><div><span>Margem de erro</span><strong>${margin}</strong></div><div><span>Nível de confiança</span><strong>${s.conf==='1.96'?'95%':esc(s.conf||'Não informado')}</strong></div><div class="client-survey-details-wide"><span>Abrangência</span><strong>${esc(campaignLocationLabel(s))}</strong></div><div><span>Questionário</span><strong>${(s.questions||[]).length} ${(s.questions||[]).length===1?'pergunta':'perguntas'}</strong></div><div><span>Resultados</span><strong>${released?'Liberados para visualização':'Ainda não liberados'}</strong></div></div>${clientCompletedSurveyNotice(s)}<div class="client-survey-details-actions"><button type="button" class="btn ${released?'btn-out':'btn-fill'}" onclick="clientSelectSurveyAndGo('${esc(s.id)}','client-progress')">${clientSurveyIsCompleted(s)?'Consultar coleta concluída':active?.id===s.id?'Abrir andamento':'Selecionar e acompanhar'}</button>${released?`<button type="button" class="btn btn-fill" onclick="clientSelectSurveyAndGo('${esc(s.id)}','client-results')">Resultados e relatórios</button><button type="button" class="btn btn-out" onclick="clientOpenPublishedReports('${esc(s.id)}')">Relatórios finais (PDF)</button>`:''}${s.formApprovalRequired?`<button type="button" class="btn btn-out" onclick="clientSelectSurveyAndGo('${esc(s.id)}','form-approval')">Aprovar formulário</button>`:''}</div></div>`;
+  return `<div class="client-survey-details card"><button type="button" class="client-survey-back" onclick="clientBackToSurveyList()">← Voltar para minhas pesquisas</button><div class="client-survey-details-hero"><div class="client-survey-details-icon">⌁</div><div><span class="eyebrow">INFORMAÇÕES DA PESQUISA</span><h2>${esc(s.name)}</h2><p>${esc(s.tipo||'Pesquisa de opinião')} · <span class="pill ${s.status==='campo'?'pill-green':s.status==='encerrada'?'pill-blue':'pill-amber'}">${esc(STATUS_LABEL?.[s.status]||'Disponível')}</span></p></div></div><div class="client-survey-details-grid"><div><span>Período</span><strong>${campaignDateLabel(s.dataIni)} a ${campaignDateLabel(s.dataFim)}</strong></div><div><span>Amostra prevista</span><strong>${sample} entrevistas</strong></div><div><span>Margem de erro</span><strong>${margin}</strong></div><div><span>Nível de confiança</span><strong>${s.conf==='1.96'?'95%':esc(s.conf||'Não informado')}</strong></div><div class="client-survey-details-wide"><span>Abrangência</span><strong>${esc(campaignLocationLabel(s))}</strong></div><div><span>Questionário</span><strong>${(s.questions||[]).length} ${(s.questions||[]).length===1?'pergunta':'perguntas'}</strong></div><div><span>Resultados</span><strong>${released?'Liberados para visualização':'Ainda não liberados'}</strong></div></div>${clientCompletedSurveyNotice(s)}<div class="client-survey-details-actions"><button type="button" class="btn ${released?'btn-out':'btn-fill'}" onclick="clientSelectSurveyAndGo('${esc(s.id)}','client-progress')">${clientSurveyIsCompleted(s)?'Consultar coleta concluída':active?.id===s.id?'Abrir andamento':'Selecionar e acompanhar'}</button>${released?`<button type="button" class="btn btn-fill" onclick="clientSelectSurveyAndGo('${esc(s.id)}','client-results')">Resultados e relatórios</button><button type="button" class="btn btn-out" onclick="clientOpenOriginalExcel('${esc(s.id)}')">Respostas originais (Excel)</button><button type="button" class="btn btn-out" onclick="clientOpenPublishedReports('${esc(s.id)}')">Relatórios finais (PDF)</button>`:''}${s.formApprovalRequired?`<button type="button" class="btn btn-out" onclick="clientSelectSurveyAndGo('${esc(s.id)}','form-approval')">Aprovar formulário</button>`:''}</div></div>`;
 }
 function clientViewSurvey(surveyId){
   if(CURRENT_PROFILE?.role!=='cliente'||!campaignSurveysForCurrentUser().some(s=>s.id===surveyId))return;
@@ -1827,7 +1836,7 @@ PAGES['client-progress']=()=>{
   const c=clientSelf(),s=clientSelfSurvey();
   if(!c||!s)return head('Andamento','Acompanhe o andamento da coleta')+`<div class="card"><div class="empty">Nenhuma pesquisa vinculada à sua conta no momento. <button class="btn btn-out" style="margin-top:16px" onclick="go('client-surveys')">Ver minhas pesquisas</button></div></div>`;
   if(!clientResultsReleasedForSurvey(c,s))return head(s.name,'Andamento da coleta · '+c.company)+`<div class="card" style="text-align:center;padding:44px 24px"><div style="font-weight:800;font-size:18px">Resultados e andamento detalhado ainda não liberados</div><p style="color:var(--ink3);font-size:13.5px;margin-top:8px;line-height:1.6">A equipe PesquisaPro libera os dados agregados nesta área após a validação da pesquisa.</p></div>`;
-  return head(s.name,(clientSurveyIsCompleted(s)?'Histórico da coleta concluída · ':'Andamento da coleta em tempo real · ')+c.company,`<button class="btn btn-out" onclick="clientViewSurvey('${esc(s.id)}')">Informações da pesquisa</button>`)+`${clientCompletedSurveyNotice(s)}<section id="client-progress-live"><div class="card"><div class="empty" style="padding:28px 0">Carregando dados reais da coleta…</div></div></section>${clientResearcherProgressMarkup()}<div id="cr-client-report"><div class="empty" style="padding:28px 0">Carregando resultados agregados…</div></div>${clientHeatmapMarkup(s)}<section id="cr-client-geo" class="client-geo-section"><div class="card"><div class="empty" style="padding:28px 0">Carregando georreferenciamento…</div></div></section>${clientPublishedReportsMarkup()}<div class="callout mb" style="margin-top:16px">Resultados, mapa e indicadores exibidos nesta área são agregados e condicionados à liberação da pesquisa para o cliente.</div>`;
+  return head(s.name,(clientSurveyIsCompleted(s)?'Histórico da coleta concluída · ':'Andamento da coleta em tempo real · ')+c.company,`<button class="btn btn-out" onclick="clientViewSurvey('${esc(s.id)}')">Informações da pesquisa</button>`)+`${clientCompletedSurveyNotice(s)}${window.PP_CLIENT_ORIGINAL_EXCEL?.markup()||''}<section id="client-progress-live"><div class="card"><div class="empty" style="padding:28px 0">Carregando dados reais da coleta…</div></div></section>${clientResearcherProgressMarkup()}<div id="cr-client-report"><div class="empty" style="padding:28px 0">Carregando resultados agregados…</div></div>${clientHeatmapMarkup(s)}<section id="cr-client-geo" class="client-geo-section"><div class="card"><div class="empty" style="padding:28px 0">Carregando georreferenciamento…</div></div></section>${clientPublishedReportsMarkup()}<div class="callout mb" style="margin-top:16px">Resultados, mapa e indicadores exibidos nesta área são agregados e condicionados à liberação da pesquisa para o cliente.</div>`;
 };
 
 const STATUS_LABEL={campo:'Em campo',rascunho:'Rascunho',encerrada:'Concluída'};
@@ -1878,7 +1887,7 @@ PAGES['client-results']=()=>{
   const c=clientSelf(),s=clientSelfSurvey();
   if(!s||!c)return head('Relatórios','Resultados e análises')+'<div class="card"><div class="empty">Nenhuma pesquisa vinculada à sua conta.</div></div>';
   if(!clientReportsFullAllowed(s))return head('Relatórios',s.name)+'<div class="card"><div class="empty">Acesso aos resultados ainda não liberado para sua conta. <button class="btn btn-out" onclick="go(\'client-surveys\')">Minhas pesquisas</button></div></div>';
-  return head('Relatórios',s.name,`<button type="button" class="btn btn-out" onclick="clientViewSurvey('${esc(s.id)}')">Informações da pesquisa</button><button type="button" class="btn btn-out" onclick="go('client-surveys')">Minhas pesquisas</button><button type="button" class="btn btn-fill" onclick="clientOpenPublishedReports('${esc(s.id)}')">Relatórios finais (PDF)</button>`)+clientCompletedSurveyNotice(s)+window.PP_CLIENT_REPORTS.markup()+window.PP_TABULATION.markup(true)+clientHeatmapMarkup(s)+reportsGeoMarkup(s)+clientPublishedReportsMarkup();
+  return head('Relatórios',s.name,`<button type="button" class="btn btn-out" onclick="clientViewSurvey('${esc(s.id)}')">Informações da pesquisa</button><button type="button" class="btn btn-out" onclick="go('client-surveys')">Minhas pesquisas</button><button type="button" class="btn btn-fill" onclick="clientOpenPublishedReports('${esc(s.id)}')">Relatórios finais (PDF)</button>`)+clientCompletedSurveyNotice(s)+(window.PP_CLIENT_ORIGINAL_EXCEL?.markup()||'')+window.PP_CLIENT_REPORTS.markup()+window.PP_TABULATION.markup(true)+clientHeatmapMarkup(s)+reportsGeoMarkup(s)+clientPublishedReportsMarkup();
 };
 function clientReportsFullAllowed(s=clientSelfSurvey()){
   const p=CURRENT_PROFILE;return Boolean(p?.id&&p.role==='cliente'&&p.status==='ativo'&&s&&!s.archivedAt&&(s.clientIds||[]).includes(p.id)&&clientResultsReleasedForSurvey(clientSelf(),s));
@@ -11241,6 +11250,7 @@ window._beforeRender=function(key){
 };
 
 window._afterRender=function(key){
+  if(window.PP_CLIENT_ORIGINAL_EXCEL)window.PP_CLIENT_ORIGINAL_EXCEL.reset();
   if(key!=='collect'){stopCollectLive();disposeCollectEvolutionChart();}if(key!=='client-results'&&window.PP_CLIENT_REPORTS)window.PP_CLIENT_REPORTS.reset();if(key!=='client-results'&&key!=='client-progress'){clientGeoStopLive();}if(key!=='client-progress'){clientProgressStopLive();}
   if(key!=='app-collect'){stopAcollectQuotaLive();}
   if(key!=='reports'){reportsStopLive();reportsOpenClose();}
@@ -11259,6 +11269,7 @@ window._afterRender=function(key){
   if(key==='app-collect'&&MY_CONTRACT)initGeoCollect(); /* só inicia GPS/coleta se o contrato já estiver assinado — ver PAGES['app-collect'] */
   if(key==='client-progress'){clientProgressStartLive();clientResearcherProgressLoad();clientLoadReportOverview();clientLoadPublishedReports();clientGeoStartLive();responseHeatmapLoad('client');}
   if(key==='client-results'){clientGeoStopLive();reportsGeoReset();clientReportsMount();clientLoadPublishedReports();reportsGeoLoad();responseHeatmapLoad('client');}
+  if(key==='client-results'||key==='client-progress')clientOriginalExcelMount();
   if(key==='reports'){if(window.PP_SIMPLE_TABULATION)window.PP_SIMPLE_TABULATION.mount({host:document.getElementById('rp-simple-tabulation'),sb,loadExcel:()=>loadLocalAsset('xlsx'),getBusy:()=>RP_REPORT_EXPORT_BUSY||RP_TAB_SOURCE_SAVING>0||RP_TAB_SOURCE_SELECTING,getContext:()=>({profile:CURRENT_PROFILE,survey:reportsCurrentSurvey()}),onChange:reportsSimpleChanged});reportsLoadAndRender();reportsStartLive();reportsLoadDraft();responseHeatmapLoad('master');reportsGeoLoad();if(!USERS_LOADED)loadUsersIfNeeded().then(()=>reportsGeoRender());}
   if(key==='my-earnings')renderMyRejected();
   if(key==='researcher-profile'||key==='my-earnings')researcherSetSaveBusy(RESEARCHER_PROFILE_SAVING);

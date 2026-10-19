@@ -2233,3 +2233,14 @@ body.acollect-notice-gate-open{overflow:hidden}
 #rp-simple-tabulation .simple-tab-note{color:var(--muted);font-size:13px;line-height:1.6}
 #rp-simple-tabulation .btn{white-space:normal;min-height:44px}
 @media(max-width:700px){#rp-simple-tabulation h2{font-size:20px}#rp-simple-tabulation .simple-tab-actions,#rp-simple-tabulation .tabulation-actions{display:grid;grid-template-columns:minmax(0,1fr)}#rp-simple-tabulation .btn{width:100%}}
+
+/* v177 — Excel original do cliente: somente acréscimo */
+.client-original-excel{min-width:0;border-left:4px solid #2563eb;overflow-wrap:anywhere;scroll-margin-top:24px}
+.client-original-excel h2{margin:8px 0;font-size:23px}
+.client-original-excel p{line-height:1.6}
+.client-original-excel-actions{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin:18px 0}
+.client-original-excel-actions label{display:grid;gap:8px;flex:1 1 300px;min-width:0;margin:0}
+.client-original-excel-actions select{min-width:0;width:100%;max-width:100%}
+.client-original-excel-actions .btn{min-height:44px;white-space:normal}
+.client-original-excel-note{font-size:13px;color:var(--muted);margin-bottom:0}
+@media(max-width:700px){.client-original-excel h2{font-size:20px}.client-original-excel-actions{display:grid;grid-template-columns:minmax(0,1fr)}.client-original-excel-actions .btn{width:100%}.client-original-excel .reports-toolbar-top{flex-wrap:wrap}}

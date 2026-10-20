@@ -4,7 +4,8 @@ const root=__dirname;
 const app=fs.readFileSync(path.join(root,'app.js'),'utf8');
 const html=fs.readFileSync(path.join(root,'app.html'),'utf8');
 const css=fs.readFileSync(path.join(root,'style.css'),'utf8');
-const sql=fs.readFileSync(path.join(root,'deploy','relatorios-pdf-clientes.sql'),'utf8');
+const baseSql=fs.readFileSync(path.join(root,'deploy','relatorios-pdf-clientes.sql'),'utf8');
+const sql=fs.readFileSync(path.join(root,'deploy','relatorios-pdf-compartilhados-clientes-v178.sql'),'utf8');
 const jspdf=path.join(root,'vendor','jspdf.umd.min.js');
 const officialLogo=path.join(root,'assets','logo-wide.png');
 const checks=[
@@ -27,11 +28,11 @@ const checks=[
   ['cabeçalho completo da matriz',app.includes('const drawHeaders=()=>')&&app.includes("doc.setFillColor(15,42,86);doc.setTextColor(255,255,255);doc.rect(x,y,widths[index],headerH,'F')")],
   ['finalização e publicação',app.includes('reportsFinalizeAndPublish')&&app.includes('report_document_publish')],
   ['biblioteca do cliente',app.includes('clientPublishedReportsMarkup')&&app.includes('client_published_reports')],
-  ['bucket privado',sql.includes("'client-reports'")&&sql.includes('public = false')],
-  ['RLS de gestão',sql.includes('public.is_staff()')&&sql.includes('staff manages report documents')],
-  ['RLS do cliente',sql.includes('client sees published report documents')&&sql.includes('rd.client_id = auth.uid()')],
-  ['cliente recebe apenas publicados',sql.includes("rd.status='published'")&&sql.includes('client_published_reports')],
-  ['cache atualizado',html.includes('20261019155000')],
+  ['bucket privado',baseSql.includes("'client-reports'")&&baseSql.includes('public = false')],
+  ['RLS de gestão',baseSql.includes('public.is_staff()')&&baseSql.includes('staff manages report documents')],
+  ['RLS compartilhada do cliente',sql.includes('client sees published report documents')&&sql.includes('_client_reports_v178_can_access_survey(survey_id)')&&!sql.includes('rd.client_id = auth.uid()')],
+  ['cliente recebe apenas publicados',sql.includes("rd.status = 'published'")&&sql.includes('client_published_reports')],
+  ['cache atualizado',html.includes('20261020174000')],
   ['estilos responsivos',css.includes('.reports-document-editor')&&css.includes('.reports-crossing-card')&&css.includes('.reports-cross-matrix')&&css.includes('@media(max-width:760px)')],
   ['jsPDF local',fs.existsSync(jspdf)&&fs.statSync(jspdf).size>100000],
 ];

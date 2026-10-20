@@ -51,7 +51,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261019155000';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261020174000';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -205,7 +205,7 @@ async function enableResearcherPush(){
   try{
     const permission=await Notification.requestPermission();
     if(permission!=='granted'){PUSH_STATUS='blocked';go('dashboard-pesq');return;}
-    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261019155000',{scope:'./'});
+    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261020174000',{scope:'./'});
     const subscription=await PUSH_SW_REGISTRATION.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:pushKeyToUint8Array(window.PP_PUSH_PUBLIC_KEY)});
     const json=subscription.toJSON();
     const {error}=await sb.from('push_subscriptions').upsert({user_id:CURRENT_PROFILE.id,endpoint:json.endpoint,subscription:json,user_agent:navigator.userAgent,updated_at:new Date().toISOString()},{onConflict:'endpoint'});
@@ -1873,7 +1873,7 @@ function renderResponseHeatmapMap(owner,elementId,points){
   setTimeout(()=>{try{google.maps.event.trigger(state.map,'resize');}catch(e){}},40);
 }
 
-function clientPublishedReportsMarkup(){return `<div class="card mb client-published-reports" id="client-published-reports"><div class="card-t">Relatórios finais</div><div class="card-d">Documentos revisados e disponibilizados pela equipe PesquisaPro.</div><div id="client-published-reports-list"><div class="empty" style="padding:16px 0">Carregando relatórios…</div></div></div>`;}
+function clientPublishedReportsMarkup(){return `<div class="card mb client-published-reports" id="client-published-reports"><div class="card-t">Relatórios finais</div><div class="card-d">PDFs publicados desta pesquisa, disponíveis para todos os clientes vinculados com acesso total. Somente leitura e download.</div><button type="button" class="btn btn-out" onclick="clientLoadPublishedReports()">Atualizar relatórios finais</button><div id="client-published-reports-list" role="status" aria-live="polite"><div class="empty" style="padding:16px 0">Carregando relatórios…</div></div></div>`;}
 let CR_QUESTION_DBID=null;
 let CR_CLIENT_REPORT_CACHE={surveyId:null,overviewRows:[],crossRowsById:{},document:null};
 let CR_CLIENT_REPORT_LOADING=false;
@@ -2001,20 +2001,36 @@ async function clientLoadReportOverview(){
 let CR_CLIENT_REPORT_OPERATION=null;
 function clientRenderReportOverview(out,survey,qs,rows,document,crossings){const byQ={};(rows||[]).forEach(r=>(byQ[r.question_id]||(byQ[r.question_id]=[])).push(r));const cards=qs.map((q,qi)=>{const source=byQ[q.dbId]||[],validBase=Number(source[0]?.valid_base)||0,open=q.type==='open',data=reportsCodedDisplayRows(open?source.filter(r=>r.value_kind!=='missing'&&(r.value_kind||r.value_label!=='(sem resposta)')):source),total=data.reduce((sum,r)=>sum+Number(r.cnt||0),0),answered=source[0]?.answered_base!=null?Number(source[0].answered_base):total,base=open&&reportsOfficialConfig(document?.sections?.openAnswerGrouping,survey.id,q.dbId).denominator!=='valid'?answered:validBase,max=Math.max(1,...data.map(r=>Number(r.cnt||0)));const lines=data.length?data.map(r=>{const cnt=Number(r.cnt||0),pct=open?reportsOpenPercentText(cnt,base):reportPercent(cnt,base||total)+'%';return `<div class="reports-answer-row"><div class="reports-answer-head"><span>${esc(r.value_label||'(sem resposta)')}</span><strong>${cnt.toLocaleString('pt-BR')} · ${pct}</strong></div><div class="reports-answer-bar"><i style="width:${Math.min(100,Math.round((cnt/max)*100))}%"></i></div></div>`;}).join(''):'<div class="empty" style="padding:16px 0">Ainda não há respostas válidas.</div>';return `<article class="card reports-question-card"><div class="reports-question-head"><div><span class="reports-question-number">${String(qi+1).padStart(2,'0')}</span><h3>${esc(q.text||'(pergunta sem texto)')}</h3></div><span class="pill pill-blue">${validBase.toLocaleString('pt-BR')} válidas</span></div><div class="reports-question-meta">${esc(Q_TYPES[q.type]||q.type||'Pergunta')}${open?' · respostas originais da coleta · base percentual: '+(reportsOfficialConfig(document?.sections?.openAnswerGrouping,survey.id,q.dbId).denominator==='valid'?'entrevistas válidas':'respostas preenchidas')+' ('+base+')':''}</div>${lines}</article>`;}).join('');let html=`<div class="reports-overview-head"><div><h2>${esc(document?.title||'Resultados da pesquisa')}</h2><p>${esc(document?.subtitle||'Distribuição atualizada das respostas válidas, pergunta a pergunta.')}</p></div><span class="reports-count-pill">${qs.length} pergunta${qs.length===1?'':'s'}</span></div>`;if(document?.presentation)html+=`<article class="card reports-client-intro"><div class="card-t">Apresentação</div><p>${esc(document.presentation)}</p></article>`;html+=`<div class="reports-question-list">${cards}</div>`;if(document?.executive_summary)html+=`<article class="card reports-client-summary"><div class="card-t">Síntese executiva</div><p>${esc(document.executive_summary)}</p></article>`;if(crossings.length){html+=`<div class="reports-overview-head" style="margin-top:24px"><div><h2>Cruzamentos do relatório</h2><p>Matrizes percentuais sobre a base total de entrevistas válidas.</p></div><span class="reports-count-pill">${crossings.length} análise${crossings.length===1?'':'s'}</span></div>`;crossings.forEach(c=>{const rowsFor=CR_CLIENT_REPORT_CACHE.crossRowsById[c.id]||[],ids=reportsCrossingQuestionIds(c),parts=reportsCrossPartitions(rowsFor,ids);html+=`<article class="card reports-client-crossing"><div class="card-t">${esc(c.title)}</div><div class="card-d">${ids.map((id,i)=>(i+1)+'. '+esc(clientReportQuestionLabel(reportsQuestionsForSurvey(survey),id))).join(' · ')}</div>${parts.map(part=>clientReportCrossMatrixMarkup(clientReportCrossMatrixModel(part.rows,ids,part.values,reportsQuestionsForSurvey(survey)),ids,reportsQuestionsForSurvey(survey),reportsCrossSliceTitle(ids,part.values,id=>clientReportQuestionLabel(reportsQuestionsForSurvey(survey),id),rowsFor))).join('')}</article>`;});}out.innerHTML=html;}
 
+let CR_PUBLISHED_REPORT_OPERATION=null;
 async function clientLoadPublishedReports(){
   const wrap=document.getElementById('client-published-reports-list');if(!wrap||!sb?.rpc)return;
-  const s=clientSelfSurvey(),profile=CURRENT_PROFILE;if(!s){wrap.innerHTML='<div class="empty" style="padding:14px 0">Nenhum relatório disponível.</div>';return;}
+  const s=clientSelfSurvey(),profile=CURRENT_PROFILE;
+  const operation={wrap,profile,surveyId:s?.id};CR_PUBLISHED_REPORT_OPERATION=operation;
+  const active=()=>CR_PUBLISHED_REPORT_OPERATION===operation&&CURRENT_PROFILE===profile&&wrap.isConnected&&document.getElementById('client-published-reports-list')===wrap&&clientSelfSurvey()?.id===s?.id&&clientReportsFullAllowed(s);
+  if(!s||!clientReportsFullAllowed(s)){wrap.innerHTML='<div class="empty" style="padding:14px 0">Acesso aos relatórios finais não liberado para esta conta.</div>';return;}
   try{
     const {data,error}=await clientWithTimeout(sb.rpc('client_published_reports',{p_survey_id:s.id}),'os relatórios publicados');if(error)throw error;
-    if(CURRENT_PROFILE!==profile||!wrap.isConnected||clientSelfSurvey()?.id!==s.id)return;
+    if(!active())return;
     const reports=data||[];
     if(!reports.length){wrap.innerHTML='<div class="empty" style="padding:14px 0">A equipe ainda não publicou um relatório final para esta pesquisa.</div>';return;}
     const rows=[];
-    for(const r of reports){let url='';try{url=(await sb.storage.from('client-reports').createSignedUrl(r.pdf_path,600)).data?.signedUrl||'';}catch(ex){}rows.push(`<div class="client-report-row"><div><b>${esc(r.title||'Relatório final')}</b><span>${esc(r.subtitle||'PesquisaPro')} · publicado em ${r.published_at?new Date(r.published_at).toLocaleDateString('pt-BR'):'—'}</span>${r.executive_summary?`<p>${esc(r.executive_summary).slice(0,220)}${r.executive_summary.length>220?'…':''}</p>`:''}</div>${url?`<a class="btn btn-fill" href="${esc(url)}" target="_blank" rel="noopener">Abrir PDF</a>`:'<span class="pill pill-amber">Preparando arquivo</span>'}</div>`);}
-    if(CURRENT_PROFILE!==profile||!wrap.isConnected||clientSelfSurvey()?.id!==s.id)return;
-    wrap.innerHTML=rows.join('');
-  }catch(ex){if(CURRENT_PROFILE===profile&&wrap.isConnected&&clientSelfSurvey()?.id===s.id)wrap.innerHTML='<div class="callout warn">Não foi possível carregar os relatórios publicados agora.</div>';}
+    for(const r of reports){
+      if(!active())return;
+      let url='',download='',fileError=false;
+      try{
+        const signed=await clientWithTimeout(sb.storage.from('client-reports').createSignedUrl(r.pdf_path,600),'o arquivo PDF');
+        if(signed.error||!signed.data?.signedUrl)throw signed.error||new Error('Arquivo indisponível');
+        if(!active())return;url=signed.data.signedUrl;
+        const file=await clientWithTimeout(sb.storage.from('client-reports').createSignedUrl(r.pdf_path,600,{download:'relatorio-pesquisapro.pdf'}),'o download do PDF');
+        if(!active())return;if(!file.error)download=file.data?.signedUrl||'';
+      }catch(ex){fileError=!url;}
+      if(!active())return;
+      rows.push(`<div class="client-report-row"><div><b>${esc(r.title||'Relatório final')}</b><span>${esc(r.subtitle||'PesquisaPro')} · publicado em ${r.published_at?new Date(r.published_at).toLocaleDateString('pt-BR'):'—'}</span>${r.executive_summary?`<p>${esc(r.executive_summary.slice(0,220))}${r.executive_summary.length>220?'…':''}</p>`:''}${fileError?'<p>Não foi possível acessar este arquivo. Atualize a lista; se persistir, avise a gestão para verificar a permissão do PDF.</p>':''}</div>${url?`<a class="btn btn-fill" href="${esc(url)}" target="_blank" rel="noopener noreferrer">Abrir PDF</a>${download?`<a class="btn btn-out" href="${esc(download)}" target="_blank" rel="noopener noreferrer">Baixar PDF</a>`:''}`:'<span class="pill pill-amber">Arquivo indisponível</span>'}</div>`);
+    }
+    if(active())wrap.innerHTML=rows.join('');
+  }catch(ex){if(active())wrap.innerHTML='<div class="callout warn">Não foi possível carregar os relatórios publicados. Use Atualizar relatórios finais para tentar novamente. Se persistir, a gestão deve conferir a migration de compartilhamento v178.</div>';}
 }
+
 let _clientResultsChart;
 async function clientResultsLoadAndRender(){
   const out=document.getElementById('cr-output');
@@ -6828,7 +6844,7 @@ function reportsDocumentEditorMarkup(survey){
     <div class="reports-document-head"><div><div class="reports-eyebrow">ENTREGA AO CLIENTE</div><h2>Estrutura do relatório final</h2><p>O PDF e os cruzamentos usam a fonte selecionada abaixo. A coleta original fica preservada. Confira a estrutura e os resultados antes de disponibilizar ao cliente.</p></div><span id="rp-document-status" class="reports-document-status draft">Rascunho</span></div>
     <div class="callout" id="rp-doc-tab-source"><b>Fonte dos resultados:</b> ${esc(reportsTabSourceLabel())}</div>
     <div class="reports-document-grid">
-      <div><label class="lbl">Cliente destinatário</label><select class="inp" id="rp-doc-client" onchange="reportsDocClientChanged()"><option value="">${clients.length?'Selecione o cliente':'Nenhum cliente vinculado'}</option>${clients.map(c=>`<option value="${c.id}" ${c.id===defaultClient?'selected':''}>${esc(c.company||c.name||c.email||'Cliente')}</option>`).join('')}</select></div>
+      <div><label class="lbl">Cliente responsável pela estrutura</label><p class="card-d">Este cliente identifica a estrutura e a capa. Ao publicar, o PDF fica disponível para todos os clientes vinculados com acesso total nesta pesquisa. Rascunhos permanecem privados da gestão.</p><select class="inp" id="rp-doc-client" onchange="reportsDocClientChanged()"><option value="">${clients.length?'Selecione o cliente':'Nenhum cliente vinculado'}</option>${clients.map(c=>`<option value="${c.id}" ${c.id===defaultClient?'selected':''}>${esc(c.company||c.name||c.email||'Cliente')}</option>`).join('')}</select></div>
       <div><label class="lbl">Título do relatório</label><input class="inp" id="rp-doc-title" value="${esc(title)}"></div>
       <div><label class="lbl">Subtítulo</label><input class="inp" id="rp-doc-subtitle" value="PesquisaPro · Resultados e análise"></div>
       <div><label class="lbl">Período / identificação</label><input class="inp" id="rp-doc-period" value="${esc(survey?.dataIni||'')} ${survey?.dataFim?'— '+esc(survey.dataFim):''}"></div>
@@ -7946,7 +7962,7 @@ async function reportsGeneratePdf(){
 async function reportsFinalizeAndPublish(){
   if(typeof reportsSimpleBusy==='function'&&reportsSimpleBusy()){reportsDocFeedback('Aguarde a conclusão do envio ou restauração do Excel.','warn');return;}
   if(RP_REPORT_EXPORT_BUSY)return;RP_REPORT_EXPORT_BUSY=true;reportsDocFeedback('Salvando a estrutura, gerando e publicando o PDF…');
-  try{await reportsRequireDraft();const profile=CURRENT_PROFILE,payload=reportsDocPayload();reportsValidatePdfCrossings(payload);const id=await reportsSaveDraft(true);if(!id)throw new Error('Salve uma estrutura com cliente e título antes de finalizar.');const result=await reportsCreatePdfBlob(payload);reportsVerifyDocumentSnapshot(payload,profile);const path='reports/'+id+'/'+Date.now()+'.pdf';const {error:uploadError}=await sb.storage.from('client-reports').upload(path,result.blob,{upsert:true,contentType:'application/pdf'});if(uploadError)throw uploadError;reportsVerifyDocumentSnapshot(payload,profile);const {error:publishError}=await sb.rpc('report_document_publish',{p_report_id:id,p_pdf_path:path});if(publishError)throw publishError;reportsSetDocumentStatus('published');reportsDocFeedback('Relatório finalizado e disponibilizado ao cliente.','ok');}catch(ex){reportsDocFeedback(ex.message||String(ex),'warn');}finally{RP_REPORT_EXPORT_BUSY=false;if(typeof reportsOpenTreatmentRender==='function')reportsOpenTreatmentRender();}
+  try{await reportsRequireDraft();const profile=CURRENT_PROFILE,payload=reportsDocPayload();reportsValidatePdfCrossings(payload);const id=await reportsSaveDraft(true);if(!id)throw new Error('Salve uma estrutura com cliente e título antes de finalizar.');const result=await reportsCreatePdfBlob(payload);reportsVerifyDocumentSnapshot(payload,profile);const path='reports/'+id+'/'+Date.now()+'.pdf';const {error:uploadError}=await sb.storage.from('client-reports').upload(path,result.blob,{upsert:true,contentType:'application/pdf'});if(uploadError)throw uploadError;reportsVerifyDocumentSnapshot(payload,profile);const {error:publishError}=await sb.rpc('report_document_publish',{p_report_id:id,p_pdf_path:path});if(publishError)throw publishError;reportsSetDocumentStatus('published');reportsDocFeedback('Relatório finalizado. Com a migration v178 ativa, o PDF fica disponível para todos os clientes vinculados com acesso total nesta pesquisa.','ok');}catch(ex){reportsDocFeedback(ex.message||String(ex),'warn');}finally{RP_REPORT_EXPORT_BUSY=false;if(typeof reportsOpenTreatmentRender==='function')reportsOpenTreatmentRender();}
 }
 
 function reportsCrossCsvLines(rows,ids){

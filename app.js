@@ -648,6 +648,7 @@ function go(key){
   if(previousKey==='client-results'&&key!=='client-results'){window.PP_CLIENT_REPORTS?.reset();window.PP_TABULATION?.reset();}
   if(key!=='reports'&&window.PP_SIMPLE_TABULATION){if(!window.PP_SIMPLE_TABULATION.canLeave())return;window.PP_SIMPLE_TABULATION.reset();}
   if(key!=='reports'&&window.PP_REPORT_WHATSAPP)window.PP_REPORT_WHATSAPP.reset();
+  if(key!=='users'&&window.PP_USERS_PUSH)window.PP_USERS_PUSH.reset();
   if(previousKey==='reports'&&key!=='reports'&&window.PP_TABULATION){if(!window.PP_TABULATION.canLeave())return;window.PP_TABULATION.reset();}
   document.querySelectorAll('.nav-item').forEach(n=>{
     const active=n.dataset.key===key;
@@ -8594,6 +8595,7 @@ function userTableRows(tab){
         <td class="user-actions-cell" onclick="event.stopPropagation()">
           ${conversationButton(u.phone,'Olá '+u.name+'! Podemos conversar sobre seu cadastro e as próximas coletas?')}
           ${userActivationButton(u)}
+          ${window.PP_USERS_PUSH?.rowButton?.(u)||''}
           <button class="btn-ghost" onclick="userShow(${i})">Ver dados</button>
           <button class="btn-ghost" onclick="userOpen(${i})">Editar</button>
           ${userPasswordResetButton(u,i)}
@@ -8611,6 +8613,7 @@ function userTableRows(tab){
       <td class="user-actions-cell" onclick="event.stopPropagation()">
         ${conversationButton(u.phone,'Olá '+(u.contact||u.name)+'! Podemos conversar sobre sua pesquisa?')}
         ${userActivationButton(u)}
+        ${window.PP_USERS_PUSH?.rowButton?.(u)||''}
         <button class="btn-ghost" onclick="userShow(${i})">Abrir</button>
         <button class="btn-ghost" onclick="userOpen(${i})">Editar</button>
         ${userPasswordResetButton(u,i)}
@@ -8633,6 +8636,7 @@ function userTableRows(tab){
       <td class="user-actions-cell" onclick="event.stopPropagation()">
         ${conversationButton(u.phone,'Olá '+u.name+'! Podemos conversar sobre suas atividades no PesquisaPro?')}
         ${userActivationButton(u)}
+        ${window.PP_USERS_PUSH?.rowButton?.(u)||''}
         <button class="btn-ghost" onclick="userShow(${i})">Ver dados</button>
         <button class="btn-ghost" onclick="userOpen(${i})">Editar</button>
         ${userPasswordResetButton(u,i)}
@@ -8679,12 +8683,15 @@ function userList(){
   const generalFilters=userGeneralFiltersMarkup(tab);
   const researcherFilters=tab==='pesq'?userResearcherFiltersMarkup(usersInTab('pesq')):'';
   const researcherQueue=tab==='pesq'?researcherApprovalQueueMarkup():'';
+  const pushButton=window.PP_USERS_PUSH?.headerButton?.()||'';
+  const pushPanel=window.PP_USERS_PUSH?.panel?.(usersInTab(tab).map(({u})=>u))||'';
   const newButton=tab==='pesq_inativos'?'':`<button class="btn btn-fill" onclick="userOpen('new')">＋ Novo ${USER_TAB_NEW_LABEL[tab]||'usuário'}</button>`;
   return `<div class="users-page"><div class="users-context"><div><span class="eyebrow">${tabInfo[0]}</span><p>${tabInfo[1]}</p></div><span class="users-count-chip">${currentCount} ${currentCount===1?'perfil':'perfis'}</span></div>`+
-  head('Usuários','Cadastre e gerencie os diferentes perfis de usuário do sistema',profilesRefreshButton()+
+  head('Usuários','Cadastre e gerencie os diferentes perfis de usuário do sistema',profilesRefreshButton()+pushButton+
     newButton)+
   userTabBar()+
   userTabStats(tab)+
+  pushPanel+
   researcherQueue+
   searchBar+generalFilters+researcherFilters+
   `<div class="card user-table-card" ${tab==='pesq'?'id="researcher-table"':''}><div class="user-table-heading"><div><div class="card-t">${USER_TAB_NEW_LABEL[tab]||'Usuários'} encontrados</div><div class="card-d">${currentCount?`Mostrando ${currentCount} ${currentCount===1?'registro':'registros'} com os filtros atuais.`:'Nenhum registro corresponde aos filtros atuais.'}</div></div><span class="users-table-count" aria-label="Quantidade encontrada">${currentCount}</span></div>${tableContent}

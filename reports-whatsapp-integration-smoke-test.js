@@ -2,7 +2,7 @@
 const fs=require('fs'),assert=require('assert'),vm=require('vm');
 const app=fs.readFileSync(__dirname+'/app.js','utf8'),html=fs.readFileSync(__dirname+'/app.html','utf8');
 function fn(n){const a=app.search(new RegExp('^(?:async )?function '+n+'\\(','m'));assert(a>=0,n);const e=app.indexOf('\n',a);return app.slice(a,e).trim().endsWith('}')?app.slice(a,e):app.slice(a,app.indexOf('\n}',a)+2);}
-assert(html.includes('reports-whatsapp.js?v=20261020184500'));assert(html.indexOf('reports-whatsapp.js?')<html.indexOf('src="app.js?'));
+assert(html.includes('reports-whatsapp.js?v=20261020191000'));assert(html.indexOf('reports-whatsapp.js?')<html.indexOf('src="app.js?'));
 const ctx=vm.createContext({calls:[],statusEl:{},button:{disabled:true},console});
 vm.runInContext(`let RP_REPORT_DOCUMENT_STATUS='new',RP_REPORT_DOCUMENT_ID='doc-test',RP_REPORT_EXPORT_BUSY=false,RP_TAB_SOURCE=null,RP_TAB_META=null,RP_TAB_SOURCE_REVISION=0,RP_TAB_SOURCE_SAVED=0,RP_OPEN_GROUPING={};
 const window={PP_REPORT_WHATSAPP:{refresh:()=>calls.push(['refresh',RP_REPORT_DOCUMENT_STATUS,RP_REPORT_EXPORT_BUSY]),reset:()=>calls.push(['reset'])}};

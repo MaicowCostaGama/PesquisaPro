@@ -51,7 +51,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261020184500';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261020191000';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -205,7 +205,7 @@ async function enableResearcherPush(){
   try{
     const permission=await Notification.requestPermission();
     if(permission!=='granted'){PUSH_STATUS='blocked';go('dashboard-pesq');return;}
-    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261020184500',{scope:'./'});
+    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261020191000',{scope:'./'});
     const subscription=await PUSH_SW_REGISTRATION.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:pushKeyToUint8Array(window.PP_PUSH_PUBLIC_KEY)});
     const json=subscription.toJSON();
     const {error}=await sb.from('push_subscriptions').upsert({user_id:CURRENT_PROFILE.id,endpoint:json.endpoint,subscription:json,user_agent:navigator.userAgent,updated_at:new Date().toISOString()},{onConflict:'endpoint'});
@@ -488,6 +488,7 @@ async function logout(){
   resetCollectionEventCache();
   if(window.PP_CLIENT_ORIGINAL_EXCEL)window.PP_CLIENT_ORIGINAL_EXCEL.reset();
   if(window.PP_REPORT_WHATSAPP)window.PP_REPORT_WHATSAPP.reset();
+  if(window.PP_USER_ACTIVATION)window.PP_USER_ACTIVATION.reset();
   stopResearcherVersionMonitor();
   stopStaffNavPendingMonitor();
   if(typeof acollectCloseNoticeGate==='function')acollectCloseNoticeGate(true);
@@ -8491,6 +8492,7 @@ function loadSignupsIfNeeded(){
   return SIGNUPS_LOAD_PROMISE;
 }
 
+function userActivationButton(user){return typeof window!=='undefined'&&window.PP_USER_ACTIVATION?window.PP_USER_ACTIVATION.button(user):'';}
 const CLIENT_STATUS={ativo:'<span class="pill pill-green">● Ativo</span>',prospecto:'<span class="pill pill-amber">● Prospecto</span>',encerrado:'<span class="pill pill-gray">● Encerrado</span>'};
 const USER_TAB_NEW_LABEL={pesq:'pesquisador',pesq_inativos:'pesquisador inativo',cliente:'cliente',admpro:'ADM PesquisaPro',vendedor:'vendedor',indicador:'indicador de clientes',recrutador:'recrutador',staff:'usuário administrativo'};
 PAGES.users=()=>{
@@ -8591,7 +8593,7 @@ function userTableRows(tab){
         <td>${st}</td>
         <td class="user-actions-cell" onclick="event.stopPropagation()">
           ${conversationButton(u.phone,'Olá '+u.name+'! Podemos conversar sobre seu cadastro e as próximas coletas?')}
-          ${u.status==='encerrado'?`<button class="btn-ghost" style="color:var(--teal)" onclick="userReactivateResearcher(${i})">Reativar</button>`:u.status!=='ativo'?`<button class="btn-ghost" style="color:var(--teal)" onclick="userPesqApproveList(${i})">Aprovar</button>`:''}
+          ${userActivationButton(u)}
           <button class="btn-ghost" onclick="userShow(${i})">Ver dados</button>
           <button class="btn-ghost" onclick="userOpen(${i})">Editar</button>
           ${userPasswordResetButton(u,i)}
@@ -8608,6 +8610,7 @@ function userTableRows(tab){
       <td>${CLIENT_STATUS[u.status]||u.status}${u.resultsReleased?' <span class="pill pill-blue" style="margin-left:4px">📊 Acesso total liberado</span>':''}</td>
       <td class="user-actions-cell" onclick="event.stopPropagation()">
         ${conversationButton(u.phone,'Olá '+(u.contact||u.name)+'! Podemos conversar sobre sua pesquisa?')}
+        ${userActivationButton(u)}
         <button class="btn-ghost" onclick="userShow(${i})">Abrir</button>
         <button class="btn-ghost" onclick="userOpen(${i})">Editar</button>
         ${userPasswordResetButton(u,i)}
@@ -8615,7 +8618,7 @@ function userTableRows(tab){
       </td></tr>`).join('');
   }
   return items.map(({u,i})=>{
-    const st=u.status==='ativo'?'<span class="pill pill-green">● Ativo</span>':'<span class="pill pill-amber">● Pendente</span>';
+    const st=CLIENT_STATUS[u.status]||'<span class="pill pill-amber">● Pendente</span>';
     const commission=u.role==='vendedor'&&u.commissionRateWithIndicator>0?`${u.commissionRate}% <span style="font-size:10px;color:var(--ink3)">/ ${u.commissionRateWithIndicator}% c/ ind.</span>`:`${u.commissionRate||0}%`;
     const earning=u.role==='recrutador'?`R$ ${Number(u.recruiterCaptureValue||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}`:commission;
     const initials=u.name.split(' ').map(n=>n[0]).slice(0,2).join('');
@@ -8629,6 +8632,7 @@ function userTableRows(tab){
       <td>${st}</td>
       <td class="user-actions-cell" onclick="event.stopPropagation()">
         ${conversationButton(u.phone,'Olá '+u.name+'! Podemos conversar sobre suas atividades no PesquisaPro?')}
+        ${userActivationButton(u)}
         <button class="btn-ghost" onclick="userShow(${i})">Ver dados</button>
         <button class="btn-ghost" onclick="userOpen(${i})">Editar</button>
         ${userPasswordResetButton(u,i)}
@@ -8935,6 +8939,7 @@ function userViewGeneric(u){
     `<button class="btn btn-out" onclick="userViewBack()">← Voltar</button>
      <button class="btn btn-out" style="color:var(--teal);border-color:var(--teal)" onclick="userWhatsApp(${jsArg(u.phone)})">WhatsApp</button>
      ${userPasswordResetButton(u,USER_VIEW)}
+     ${userActivationButton(u)}
      <button class="btn btn-fill" onclick="userEditFromView()">Editar</button>`)+`
   <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
     <div class="avatar" style="width:54px;height:54px;font-size:20px">${initials}</div>
@@ -8942,7 +8947,7 @@ function userViewGeneric(u){
       <div style="font-weight:700;font-size:18px">${esc(u.name)}</div>
       <div style="display:flex;gap:8px;align-items:center;margin-top:4px">
         ${ROLE_PILL[u.role]||u.role}
-        ${u.status==='ativo'?'<span class="pill pill-green">● Ativo</span>':'<span class="pill pill-amber">● Pendente</span>'}
+        ${CLIENT_STATUS[u.status]||'<span class="pill pill-amber">● Pendente</span>'}
       </div>
     </div>
   </div>
@@ -8964,7 +8969,7 @@ function userViewGeneric(u){
       <div class="card-t">Acesso</div>
       <div class="card-d">${isStaff?'Perfil interno com acesso administrativo às áreas definidas em Perfis e permissões.':'Perfil incluído manualmente por um administrador — sem autocadastro nem aprovação pendente.'}</div>
       <table style="margin-top:6px">
-        ${row('Status',u.status==='ativo'?'Ativo':'Pendente')}
+        ${row('Status',({ativo:'Ativo',pendente:'Pendente',prospecto:'Prospecto',encerrado:'Encerrado'})[u.status]||esc(u.status||'Não informado'))}
       </table>
     </div>
   </div></div>`;
@@ -9057,7 +9062,7 @@ function userViewPesq(u,idx){
     `<button class="btn btn-out" onclick="userViewBack()">← Voltar</button>
      <button class="btn btn-out" style="color:var(--teal);border-color:var(--teal)" onclick="userWhatsApp(${jsArg(u.phone)})">WhatsApp</button>
      ${userPasswordResetButton(u,idx)}
-     ${u.status==='encerrado'?`<button class="btn btn-fill" style="background:var(--teal)" onclick="userReactivateResearcher(${idx})">Reativar usuário</button>`:u.status!=='ativo'?`<button class="btn btn-fill" style="background:var(--teal)" onclick="userPesqApprove(${idx})">Aprovar</button>`:''}
+     ${userActivationButton(u)}
      <button class="btn btn-fill" onclick="userEditFromView()">Editar</button>`)+`
   <div class="profile-identity">
     <div class="avatar profile-identity-avatar">${initials}</div>
@@ -9119,6 +9124,7 @@ function userViewCliente(u,idx){
     `<button class="btn btn-out" onclick="userViewBack()">← Voltar</button>
      <button class="btn btn-out" style="color:var(--teal);border-color:var(--teal)" onclick="userWhatsApp(${jsArg(u.phone)})">WhatsApp</button>
      ${userPasswordResetButton(u,idx)}
+     ${userActivationButton(u)}
      <button class="btn btn-fill" onclick="userEditFromView()">Editar</button>`)+`
   <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
     <div class="avatar" style="width:54px;height:54px;font-size:18px;background:var(--purple)">${initials}</div>
@@ -11272,6 +11278,7 @@ window._afterRender=function(key){
   if(window.PP_REPORT_WHATSAPP)window.PP_REPORT_WHATSAPP.reset();
   if(key!=='collect'){stopCollectLive();disposeCollectEvolutionChart();}if(key!=='client-results'&&window.PP_CLIENT_REPORTS)window.PP_CLIENT_REPORTS.reset();if(key!=='client-results'&&key!=='client-progress'){clientGeoStopLive();}if(key!=='client-progress'){clientProgressStopLive();}
   if(key!=='app-collect'){stopAcollectQuotaLive();}
+  if(key!=='users'&&window.PP_USER_ACTIVATION)window.PP_USER_ACTIVATION.reset();
   if(key!=='reports'){reportsStopLive();reportsOpenClose();}
   if(key!=='communication'){chatStopRealtime();}
   if(key!=='dashboard'&&key!=='finance')disposeDashboardCharts();

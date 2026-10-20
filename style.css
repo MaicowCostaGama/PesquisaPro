@@ -2265,3 +2265,9 @@ body.acollect-notice-gate-open{overflow:hidden}
 .reports-wa-dialog .reports-wa-help{color:#506277;font-size:13px}
 #rw-feedback{padding:14px;background:#eef7f4;color:#214e40;border-radius:12px;font-size:14px;line-height:1.6;overflow-wrap:anywhere}
 @media(max-width:600px){.reports-wa-overlay{padding:10px}.reports-wa-dialog{padding:18px;max-height:calc(100dvh - 20px);border-radius:16px}.reports-wa-dialog h2{font-size:20px}.reports-wa-head{gap:10px}.reports-wa-head .btn{padding:10px}.reports-wa-actions{display:grid;grid-template-columns:minmax(0,1fr)}.reports-wa-actions .btn,#rw-prepare,.reports-wa-entry{width:100%}}
+
+/* v181 — ativação administrativa individual */
+.user-activation-btn{border:1px solid #a7d6c3!important;background:#edf8f2!important;color:#176348!important;font-weight:650;min-height:40px;white-space:normal}
+.user-activation-btn:disabled{opacity:.62;cursor:not-allowed}
+.user-activation-btn:focus-visible{outline:3px solid #2563eb;outline-offset:2px}
+@media(max-width:600px){.user-actions-cell .user-activation-btn{min-height:44px}}

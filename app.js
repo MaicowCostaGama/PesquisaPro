@@ -51,7 +51,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261020174000';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261020182000';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -205,7 +205,7 @@ async function enableResearcherPush(){
   try{
     const permission=await Notification.requestPermission();
     if(permission!=='granted'){PUSH_STATUS='blocked';go('dashboard-pesq');return;}
-    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261020174000',{scope:'./'});
+    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261020182000',{scope:'./'});
     const subscription=await PUSH_SW_REGISTRATION.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:pushKeyToUint8Array(window.PP_PUSH_PUBLIC_KEY)});
     const json=subscription.toJSON();
     const {error}=await sb.from('push_subscriptions').upsert({user_id:CURRENT_PROFILE.id,endpoint:json.endpoint,subscription:json,user_agent:navigator.userAgent,updated_at:new Date().toISOString()},{onConflict:'endpoint'});
@@ -487,6 +487,7 @@ async function afterLogin(user){
 async function logout(){
   resetCollectionEventCache();
   if(window.PP_CLIENT_ORIGINAL_EXCEL)window.PP_CLIENT_ORIGINAL_EXCEL.reset();
+  if(window.PP_REPORT_WHATSAPP)window.PP_REPORT_WHATSAPP.reset();
   stopResearcherVersionMonitor();
   stopStaffNavPendingMonitor();
   if(typeof acollectCloseNoticeGate==='function')acollectCloseNoticeGate(true);
@@ -645,6 +646,7 @@ function go(key){
   const previousKey=document.querySelector('.nav-item.on')?.dataset.key;
   if(previousKey==='client-results'&&key!=='client-results'){window.PP_CLIENT_REPORTS?.reset();window.PP_TABULATION?.reset();}
   if(key!=='reports'&&window.PP_SIMPLE_TABULATION){if(!window.PP_SIMPLE_TABULATION.canLeave())return;window.PP_SIMPLE_TABULATION.reset();}
+  if(key!=='reports'&&window.PP_REPORT_WHATSAPP)window.PP_REPORT_WHATSAPP.reset();
   if(previousKey==='reports'&&key!=='reports'&&window.PP_TABULATION){if(!window.PP_TABULATION.canLeave())return;window.PP_TABULATION.reset();}
   document.querySelectorAll('.nav-item').forEach(n=>{
     const active=n.dataset.key===key;
@@ -6856,7 +6858,7 @@ function reportsDocumentEditorMarkup(survey){
       <div><label class="lbl">Síntese executiva</label><textarea class="inp" id="rp-doc-summary-text" rows="4" placeholder="Registre aqui a leitura executiva dos resultados."></textarea></div>
     </div>
     <div class="reports-section-picker"><div class="lbl">Blocos incluídos no PDF</div><div class="reports-section-options">${sections.map(([id,label,checked])=>`<label class="reports-section-option"><input type="checkbox" id="rp-doc-${id.replace('include','').toLowerCase()}" ${checked?'checked':''}> <span>${label}</span></label>`).join('')}</div></div>
-    <div class="reports-document-actions"><button class="btn btn-out" onclick="reportsSaveDraft()">Salvar estrutura</button><button class="btn btn-fill" onclick="reportsGeneratePdf()">Gerar PDF</button><button class="btn btn-fill reports-publish-btn" onclick="reportsFinalizeAndPublish()">Finalizar e disponibilizar ao cliente</button></div>
+    <div class="reports-document-actions"><button class="btn btn-out" onclick="reportsSaveDraft()">Salvar estrutura</button><button class="btn btn-fill" onclick="reportsGeneratePdf()">Gerar PDF</button><button class="btn btn-fill reports-publish-btn" onclick="reportsFinalizeAndPublish()">Finalizar e disponibilizar ao cliente</button><button type="button" class="btn btn-out reports-wa-entry" id="rp-share-whatsapp" onclick="window.PP_REPORT_WHATSAPP.open()" disabled>Enviar relatório por WhatsApp</button></div><p class="reports-wa-entry-note">O envio fica disponível após publicar o PDF. A mensagem informa como acessar resultados, cruzar até três variáveis e baixar Excel e PDF no perfil do cliente.</p>
     <div id="rp-document-feedback" class="reports-document-feedback" role="status"></div>
   </section>`;
 }
@@ -7102,7 +7104,7 @@ function reportsLocalValidBase(surveyId){
 function reportsGroupingEnabled(){return false;}
 let RP_OPEN_GROUPING={surveyId:null,profile:null,questions:{},clientId:null,revision:0,savedRevision:0};
 let RP_OPEN_EDITOR=null;
-function reportsOpenReset(){RP_TAB_SOURCE=null;RP_TAB_META=null;RP_TAB_SOURCE_REVISION=0;RP_TAB_SOURCE_SAVED=0;reportsOpenClose();RP_OPEN_GROUPING={surveyId:null,profile:null,questions:{},clientId:null,revision:0,savedRevision:0};}
+function reportsOpenReset(){if(typeof window!=='undefined'&&window.PP_REPORT_WHATSAPP)window.PP_REPORT_WHATSAPP.reset();RP_TAB_SOURCE=null;RP_TAB_META=null;RP_TAB_SOURCE_REVISION=0;RP_TAB_SOURCE_SAVED=0;reportsOpenClose();RP_OPEN_GROUPING={surveyId:null,profile:null,questions:{},clientId:null,revision:0,savedRevision:0};}
 function reportsOpenEnsureScope(){
   const id=reportsCurrentSurvey()?.id||null;
   if(RP_OPEN_GROUPING.surveyId!==id||RP_OPEN_GROUPING.profile!==CURRENT_PROFILE){reportsOpenReset();RP_OPEN_GROUPING.surveyId=id;RP_OPEN_GROUPING.profile=CURRENT_PROFILE;RP_REPORT_DOCUMENT_ID=null;RP_REPORT_DOCUMENT_STATUS='new';RP_REPORT_DRAFT_HYDRATED=false;RP_REPORT_DRAFT_SECTIONS=null;}
@@ -7720,7 +7722,7 @@ function reportsDocPayload(){
   const active=reportsActiveCrossing();const crossings=reportsCrossingPayloads();return {surveyId:survey?.id||null,clientId:reportsDocValue('rp-doc-client'),title:reportsDocValue('rp-doc-title'),subtitle:reportsDocValue('rp-doc-subtitle'),period:reportsDocValue('rp-doc-period'),presentation:reportsDocValue('rp-doc-presentation'),methodology:reportsDocValue('rp-doc-methodology-text'),executiveSummary:reportsDocValue('rp-doc-summary-text'),sections:{includeMethodology:reportsDocChecked('rp-doc-methodology'),includeOverview:reportsDocChecked('rp-doc-overview'),includeCross:reportsDocChecked('rp-doc-cross'),includeSummary:reportsDocChecked('rp-doc-summary'),period:reportsDocValue('rp-doc-period'),crossTitle:active?.title||'Cruzamentos selecionados',crossQuestionIds:reportsCrossingQuestionIds(active),openAnswerGrouping:reportsOpenSerialize(),tabulationSource:RP_TAB_SOURCE==null?null:JSON.parse(JSON.stringify(RP_TAB_SOURCE)),crossings}};
 }
 function reportsDocFeedback(text,kind=''){const el=document.getElementById('rp-document-feedback');if(el){el.className='reports-document-feedback '+kind;el.textContent=text;}}
-function reportsSetDocumentStatus(status){RP_REPORT_DOCUMENT_STATUS=status||'draft';const el=document.getElementById('rp-document-status');if(!el)return;el.className='reports-document-status '+status;el.textContent=status==='published'?'Publicado':status==='draft'?'Rascunho':'Novo';}
+function reportsSetDocumentStatus(status){RP_REPORT_DOCUMENT_STATUS=status||'draft';if(typeof window!=='undefined'&&window.PP_REPORT_WHATSAPP)window.PP_REPORT_WHATSAPP.refresh();const el=document.getElementById('rp-document-status');if(!el)return;el.className='reports-document-status '+status;el.textContent=status==='published'?'Publicado':status==='draft'?'Rascunho':'Novo';}
 function reportsFillDraft(r){
   if(!r)return;RP_REPORT_DOCUMENT_ID=r.id||null;reportsSetDocumentStatus(r.status||'draft');
   const values={ 'rp-doc-client':r.client_id,'rp-doc-title':r.title,'rp-doc-subtitle':r.subtitle,'rp-doc-presentation':r.presentation,'rp-doc-methodology-text':r.methodology,'rp-doc-summary-text':r.executive_summary };
@@ -7962,7 +7964,7 @@ async function reportsGeneratePdf(){
 async function reportsFinalizeAndPublish(){
   if(typeof reportsSimpleBusy==='function'&&reportsSimpleBusy()){reportsDocFeedback('Aguarde a conclusão do envio ou restauração do Excel.','warn');return;}
   if(RP_REPORT_EXPORT_BUSY)return;RP_REPORT_EXPORT_BUSY=true;reportsDocFeedback('Salvando a estrutura, gerando e publicando o PDF…');
-  try{await reportsRequireDraft();const profile=CURRENT_PROFILE,payload=reportsDocPayload();reportsValidatePdfCrossings(payload);const id=await reportsSaveDraft(true);if(!id)throw new Error('Salve uma estrutura com cliente e título antes de finalizar.');const result=await reportsCreatePdfBlob(payload);reportsVerifyDocumentSnapshot(payload,profile);const path='reports/'+id+'/'+Date.now()+'.pdf';const {error:uploadError}=await sb.storage.from('client-reports').upload(path,result.blob,{upsert:true,contentType:'application/pdf'});if(uploadError)throw uploadError;reportsVerifyDocumentSnapshot(payload,profile);const {error:publishError}=await sb.rpc('report_document_publish',{p_report_id:id,p_pdf_path:path});if(publishError)throw publishError;reportsSetDocumentStatus('published');reportsDocFeedback('Relatório finalizado. Com a migration v178 ativa, o PDF fica disponível para todos os clientes vinculados com acesso total nesta pesquisa.','ok');}catch(ex){reportsDocFeedback(ex.message||String(ex),'warn');}finally{RP_REPORT_EXPORT_BUSY=false;if(typeof reportsOpenTreatmentRender==='function')reportsOpenTreatmentRender();}
+  try{await reportsRequireDraft();const profile=CURRENT_PROFILE,payload=reportsDocPayload();reportsValidatePdfCrossings(payload);const id=await reportsSaveDraft(true);if(!id)throw new Error('Salve uma estrutura com cliente e título antes de finalizar.');const result=await reportsCreatePdfBlob(payload);reportsVerifyDocumentSnapshot(payload,profile);const path='reports/'+id+'/'+Date.now()+'.pdf';const {error:uploadError}=await sb.storage.from('client-reports').upload(path,result.blob,{upsert:true,contentType:'application/pdf'});if(uploadError)throw uploadError;reportsVerifyDocumentSnapshot(payload,profile);const {error:publishError}=await sb.rpc('report_document_publish',{p_report_id:id,p_pdf_path:path});if(publishError)throw publishError;reportsSetDocumentStatus('published');reportsDocFeedback('Relatório finalizado. Com a migration v178 ativa, o PDF fica disponível para todos os clientes vinculados com acesso total nesta pesquisa.','ok');}catch(ex){reportsDocFeedback(ex.message||String(ex),'warn');}finally{RP_REPORT_EXPORT_BUSY=false;if(typeof window!=='undefined'&&window.PP_REPORT_WHATSAPP)window.PP_REPORT_WHATSAPP.refresh();if(typeof reportsOpenTreatmentRender==='function')reportsOpenTreatmentRender();}
 }
 
 function reportsCrossCsvLines(rows,ids){
@@ -11267,6 +11269,7 @@ window._beforeRender=function(key){
 
 window._afterRender=function(key){
   if(window.PP_CLIENT_ORIGINAL_EXCEL)window.PP_CLIENT_ORIGINAL_EXCEL.reset();
+  if(window.PP_REPORT_WHATSAPP)window.PP_REPORT_WHATSAPP.reset();
   if(key!=='collect'){stopCollectLive();disposeCollectEvolutionChart();}if(key!=='client-results'&&window.PP_CLIENT_REPORTS)window.PP_CLIENT_REPORTS.reset();if(key!=='client-results'&&key!=='client-progress'){clientGeoStopLive();}if(key!=='client-progress'){clientProgressStopLive();}
   if(key!=='app-collect'){stopAcollectQuotaLive();}
   if(key!=='reports'){reportsStopLive();reportsOpenClose();}

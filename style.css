@@ -2244,3 +2244,24 @@ body.acollect-notice-gate-open{overflow:hidden}
 .client-original-excel-actions .btn{min-height:44px;white-space:normal}
 .client-original-excel-note{font-size:13px;color:var(--muted);margin-bottom:0}
 @media(max-width:700px){.client-original-excel h2{font-size:20px}.client-original-excel-actions{display:grid;grid-template-columns:minmax(0,1fr)}.client-original-excel-actions .btn{width:100%}.client-original-excel .reports-toolbar-top{flex-wrap:wrap}}
+
+/* v179 — entrega assistida do PDF por WhatsApp: somente acréscimo */
+.reports-wa-entry{border-color:#13785f;color:#116b54;min-height:44px;white-space:normal}
+.reports-wa-entry:disabled{opacity:.55;cursor:not-allowed}
+.reports-wa-entry-note{color:var(--muted);font-size:13px;line-height:1.6;margin:12px 0 0;overflow-wrap:anywhere}
+.reports-wa-overlay{position:fixed;inset:0;z-index:12000;background:rgba(13,31,50,.55);display:grid;place-items:center;padding:20px;overflow:auto}
+.reports-wa-dialog{background:#fff;color:#14253a;border-radius:20px;box-shadow:0 24px 70px rgba(13,31,50,.25);width:min(820px,100%);max-height:calc(100dvh - 40px);overflow:auto;padding:28px;min-width:0;overscroll-behavior:contain}
+.reports-wa-dialog h2{font-size:24px;margin:8px 0 0;line-height:1.3}
+.reports-wa-dialog p{font-size:14px;line-height:1.6;overflow-wrap:anywhere}
+.reports-wa-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
+.reports-wa-head>div{min-width:0}.reports-wa-head .btn{flex:none}
+.reports-wa-dialog .lbl{display:block;margin:18px 0 8px}
+.reports-wa-dialog .inp{width:100%;max-width:100%;min-width:0}
+.reports-wa-dialog textarea{resize:vertical;min-height:220px;white-space:pre-wrap;font-size:14px;line-height:1.6}
+.reports-wa-dialog #rw-prepare{margin-top:14px;min-height:44px;white-space:normal}
+.reports-wa-actions{display:flex;flex-wrap:wrap;gap:12px;margin:18px 0}
+.reports-wa-actions[hidden],.reports-wa-actions [hidden]{display:none!important}
+.reports-wa-actions .btn{min-height:44px;white-space:normal}
+.reports-wa-dialog .reports-wa-help{color:#506277;font-size:13px}
+#rw-feedback{padding:14px;background:#eef7f4;color:#214e40;border-radius:12px;font-size:14px;line-height:1.6;overflow-wrap:anywhere}
+@media(max-width:600px){.reports-wa-overlay{padding:10px}.reports-wa-dialog{padding:18px;max-height:calc(100dvh - 20px);border-radius:16px}.reports-wa-dialog h2{font-size:20px}.reports-wa-head{gap:10px}.reports-wa-head .btn{padding:10px}.reports-wa-actions{display:grid;grid-template-columns:minmax(0,1fr)}.reports-wa-actions .btn,#rw-prepare,.reports-wa-entry{width:100%}}

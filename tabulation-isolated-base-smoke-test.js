@@ -1,6 +1,6 @@
 const fs=require('fs'),vm=require('vm'),assert=require('node:assert/strict');
 const source=fs.readFileSync('reports-tabulation.js','utf8'),app=fs.readFileSync('app.js','utf8'),html=fs.readFileSync('app.html','utf8');
-assert(html.includes('reports-tabulation.js?v=20261020174000'));assert(app.includes('PP_SIMPLE_TABULATION.mount'));assert(app.includes('PP_TABULATION?.mount'));assert(app.includes('function reportsGroupingEnabled(){return false;}'));
+assert(html.includes('reports-tabulation.js?v=20261020182000'));assert(app.includes('PP_SIMPLE_TABULATION.mount'));assert(app.includes('PP_TABULATION?.mount'));assert(app.includes('function reportsGroupingEnabled(){return false;}'));
 assert(!/sb\.from\(|report_document_save|report_document_publish|collection_answers.*(update|insert|delete)/.test(source));
 let profile={id:'admin',role:'admin',status:'ativo'},survey={id:'s1',name:'Pesquisa fictícia'},accept=true,calls=[],delay=null,fail=null;
 const questions=Array.from({length:6},(_,i)=>({id:'q'+i,position:i,text:'Pergunta '+i,type:i===0?'open':'single',fields:[],options:[]}));

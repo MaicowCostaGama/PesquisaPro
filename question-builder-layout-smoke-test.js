@@ -5,9 +5,9 @@ const css = fs.readFileSync('style.css', 'utf8');
 const html = fs.readFileSync('app.html', 'utf8');
 const app = fs.readFileSync('app.js', 'utf8');
 
-assert.match(html, /pesquisapro-app-version" content="20261021175600/);
-assert.match(html, /style\.css\?v=20261021175600/);
-assert.match(html, /app\.js\?v=20261021175600/);
+assert.match(html, /pesquisapro-app-version" content="20261021181200/);
+assert.match(html, /style\.css\?v=20261021181200/);
+assert.match(html, /app\.js\?v=20261021181200/);
 assert.match(css, /\.q-card\{min-width:0;overflow:hidden\}/);
 assert.match(css, /\.q-card \.qc-head\{display:flex;align-items:center;flex-wrap:wrap/);
 assert.match(css, /\.q-card \.qc-head \.q-text-inp\{flex:1 1 300px;min-width:220px/);

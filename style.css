@@ -2642,3 +2642,19 @@ body.system-message-gate-open{overflow:hidden}
   .q-flow-direct-rule .q-flow-target,.q-flow-rule-row .q-flow-target{grid-column:2}
   .q-flow-node-card{width:240px}
 }
+
+
+/* v197 — linhas do mapa editáveis: seleção, arraste, reconexão e remoção. */
+.q-flow-edge-hit{fill:none;stroke:transparent;stroke-width:18;pointer-events:stroke;cursor:grab;opacity:.01}
+.q-flow-edge-hit:hover,.q-flow-edge-hit:focus{opacity:.18;stroke:#2563eb}
+.q-flow-edge-path.is-selected{filter:drop-shadow(0 0 4px rgba(37,99,235,.55));stroke-width:4}
+.q-flow-edge-path.is-direct.is-selected{stroke:#0f8b5d}
+.q-flow-edge-handle{fill:#fff;stroke:#2563eb;stroke-width:3;cursor:grab;pointer-events:all;transition:r .14s ease,fill .14s ease}
+.q-flow-edge-handle.is-selected{fill:#dbeafe;stroke:#174d91}
+.q-flow-edge-handle:hover,.q-flow-edge-handle:focus-visible{r:8;fill:#eff6ff;outline:none}
+.q-flow-edge-handle.is-selected:hover,.q-flow-edge-handle.is-selected:focus-visible{fill:#bfdbfe}
+.q-flow-end-node.is-connect-target{border-color:#18a974;box-shadow:0 0 0 4px rgba(24,169,116,.18),0 8px 18px rgba(25,67,117,.14)}
+.q-flow-selected-hint{max-width:210px;color:#59728f;font-size:10px;font-weight:700}
+.q-flow-delete-selected:disabled{opacity:.5;cursor:not-allowed}
+.q-flow-canvas-scroll:focus-visible{outline:3px solid rgba(37,99,235,.25);outline-offset:2px}
+@media(max-width:820px){.q-flow-selected-hint{flex:1 1 100%;max-width:none}.q-flow-delete-selected{order:2}}

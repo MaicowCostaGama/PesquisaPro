@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0f2f63">
+  <meta name="description" content="Política de Privacidade e Guarda de Dados do PesquisaPro, programa da Versus Soluções em Gestão.">
+  <title>Política de Privacidade — PesquisaPro</title>
+  <link rel="icon" type="image/png" sizes="64x64" href="assets/favicon-64.png">
+  <style>
+    :root{--navy:#0f2f63;--navy-2:#153e7e;--blue:#2563eb;--teal:#0f766e;--ink:#172033;--muted:#5d6b82;--line:#dbe3ef;--paper:#fff;--bg:#f4f7fb;--soft:#eef5ff;--soft-teal:#ecfdf5;--shadow:0 18px 55px rgba(15,47,99,.12)}
+    *{box-sizing:border-box}
+    html{scroll-behavior:smooth}
+    body{margin:0;background:linear-gradient(180deg,#eef5ff 0,#f8fafc 360px,var(--bg) 100%);color:var(--ink);font-family:Inter,Segoe UI,system-ui,-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;line-height:1.65;-webkit-font-smoothing:antialiased}
+    a{color:var(--blue);text-decoration:none}
+    a:hover{text-decoration:underline}
+    .pp-skip{position:absolute;left:-9999px;top:auto}.pp-skip:focus{left:16px;top:16px;z-index:10;background:#fff;padding:10px 14px;border-radius:8px;box-shadow:var(--shadow)}
+    .pp-header{background:rgba(255,255,255,.94);border-bottom:1px solid rgba(148,163,184,.3);backdrop-filter:blur(12px);position:sticky;top:0;z-index:5}
+    .pp-header-inner{width:min(1120px,calc(100% - 36px));min-height:76px;margin:0 auto;display:flex;align-items:center;gap:20px}
+    .pp-logo{display:block}.pp-logo img{width:188px;max-width:56vw;height:auto;display:block}.pp-spacer{flex:1}.pp-back{font-size:13px;font-weight:700;color:#41526c}.pp-back:hover{color:var(--blue)}
+    .pp-main{width:min(1050px,calc(100% - 36px));margin:42px auto 70px}
+    .pp-hero{background:linear-gradient(135deg,#0f2f63 0%,#17498e 58%,#0f766e 130%);color:#fff;border-radius:24px;padding:clamp(28px,5vw,52px);box-shadow:0 24px 70px rgba(15,47,99,.2);margin-bottom:24px}
+    .pp-kicker{font-size:11px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:#bfdbfe}.pp-hero h1{font-size:clamp(28px,5vw,46px);line-height:1.1;letter-spacing:-.04em;margin:13px 0 14px}.pp-hero p{max-width:760px;color:#e0ecff;margin:0;font-size:15px}.pp-meta{display:flex;flex-wrap:wrap;gap:9px;margin-top:25px}.pp-meta span{border:1px solid rgba(255,255,255,.24);background:rgba(255,255,255,.1);border-radius:999px;padding:6px 11px;font-size:12px;color:#eef6ff}
+    .pp-grid{display:grid;grid-template-columns:minmax(0,1fr) 265px;gap:24px;align-items:start}.pp-content,.pp-nav{background:var(--paper);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow)}
+    .pp-content{padding:clamp(24px,4vw,44px)}.pp-content h2{font-size:22px;line-height:1.25;letter-spacing:-.025em;color:var(--navy);margin:34px 0 10px}.pp-content h2:first-child{margin-top:0}.pp-content h3{font-size:16px;line-height:1.35;color:var(--navy);margin:24px 0 7px}.pp-content p{margin:0 0 13px}.pp-content ul,.pp-content ol{margin:7px 0 17px;padding-left:23px}.pp-content li{margin:6px 0}.pp-content strong{color:#1e3a63}.pp-note{border-left:4px solid var(--teal);background:var(--soft-teal);border-radius:0 12px 12px 0;padding:14px 16px;margin:17px 0 20px;color:#14534d}.pp-note strong{color:#115e59}.pp-list-card{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:14px 0 20px}.pp-item{border:1px solid var(--line);border-radius:13px;background:#fbfdff;padding:13px}.pp-item b{display:block;color:var(--navy);font-size:13px;margin-bottom:3px}.pp-item span{display:block;color:var(--muted);font-size:12px;line-height:1.5}.pp-callout{border:1px solid #bfdbfe;background:var(--soft);border-radius:14px;padding:16px;margin:18px 0}.pp-callout p:last-child{margin-bottom:0}.pp-contact{border:1px solid #99f6e4;background:linear-gradient(135deg,#f0fdfa,#f8fbff);border-radius:16px;padding:18px;margin-top:18px}.pp-contact b{color:#115e59}.pp-small{font-size:12px;color:var(--muted)}
+    .pp-nav{position:sticky;top:98px;padding:18px}.pp-nav strong{display:block;color:var(--navy);font-size:13px;margin-bottom:10px}.pp-nav a{display:block;color:#52637d;border-radius:8px;padding:7px 8px;font-size:12px;line-height:1.35}.pp-nav a:hover{background:var(--soft);color:var(--blue);text-decoration:none}.pp-footer{width:min(1050px,calc(100% - 36px));margin:0 auto 35px;color:#6b7890;font-size:12px;display:flex;justify-content:space-between;gap:15px;flex-wrap:wrap}.pp-footer a{font-weight:700}
+    @media(max-width:820px){.pp-grid{grid-template-columns:1fr}.pp-nav{position:static;order:-1;display:flex;flex-wrap:wrap;gap:5px 8px;align-items:center}.pp-nav strong{width:100%;margin-bottom:3px}.pp-nav a{padding:6px 7px}.pp-list-card{grid-template-columns:1fr}}
+    @media(max-width:560px){.pp-header-inner,.pp-main,.pp-footer{width:min(100% - 24px,1050px)}.pp-header-inner{min-height:64px}.pp-logo img{width:164px}.pp-back{font-size:12px}.pp-main{margin-top:22px}.pp-hero{border-radius:18px;padding:25px 20px}.pp-content{padding:22px 18px;border-radius:17px}.pp-content h2{font-size:20px}.pp-footer{margin-bottom:22px}}
+  </style>
+</head>
+<body>
+  <a class="pp-skip" href="#conteudo">Ir para o conteúdo principal</a>
+  <header class="pp-header">
+    <div class="pp-header-inner">
+      <a class="pp-logo" href="index.html" aria-label="Voltar ao site PesquisaPro"><img src="assets/logo-wide.png" alt="PesquisaPro"></a>
+      <div class="pp-spacer"></div>
+      <a class="pp-back" href="index.html">← Voltar ao site</a>
+    </div>
+  </header>
+
+  <main id="conteudo" class="pp-main">
+    <section class="pp-hero" aria-labelledby="titulo-politica">
+      <span class="pp-kicker">Transparência e proteção</span>
+      <h1 id="titulo-politica">Política de Privacidade e Guarda de Dados</h1>
+      <p>Esta política explica, em linguagem clara, como o PesquisaPro trata, utiliza, compartilha, protege e guarda dados pessoais de pesquisadores, clientes, participantes de pesquisas e visitantes.</p>
+      <div class="pp-meta"><span>Controladora: Versus Soluções em Gestão</span><span>CNPJ 26.643.308/0001-49</span><span>Última atualização: 21/10/2026</span></div>
+    </section>
+
+    <div class="pp-grid">
+      <article class="pp-content">
+        <h2 id="identificacao">1. Quem somos e a quem esta política se aplica</h2>
+        <p>O <strong>PesquisaPro</strong> é o programa/plataforma de pesquisa de opinião e operação de campo da <strong>Versus Soluções em Gestão</strong>, inscrita no CNPJ sob nº <strong>26.643.308/0001-49</strong>, com endereço na <strong>Avenida Trinta e um de Março, nº 861, Loja 07, São João del Rei/MG</strong>.</p>
+        <p>Para os tratamentos descritos nesta política, a Versus Soluções em Gestão atua como controladora dos dados pessoais sob sua responsabilidade. A política se aplica ao site público, ao cadastro de pesquisadores, ao aplicativo PesquisaPro, às pesquisas de opinião, aos canais de comunicação e aos processos de análise, auditoria e pagamento.</p>
+
+        <h2 id="dados">2. Quais dados podem ser tratados</h2>
+        <p>Tratamos somente os dados necessários para cada finalidade. Dependendo da relação com a plataforma e da pesquisa, podem ser tratados:</p>
+        <div class="pp-list-card">
+          <div class="pp-item"><b>Identificação</b><span>Nome, CPF, data de nascimento, CPF/CNPJ, dados de contato e informações necessárias à análise do cadastro.</span></div>
+          <div class="pp-item"><b>Endereço e atuação</b><span>Cidade, rua, número, CEP e cidades em que o pesquisador deseja atuar.</span></div>
+          <div class="pp-item"><b>Documentos</b><span>Documento oficial com foto e comprovante de endereço enviados no cadastro, quando exigidos.</span></div>
+          <div class="pp-item"><b>Acesso e segurança</b><span>E-mail, credenciais de acesso processadas pelo serviço de autenticação, registros de sessão e logs técnicos de segurança.</span></div>
+          <div class="pp-item"><b>Pesquisa e coleta</b><span>Respostas, status de validação, data e hora, informações de campo, localização ou GPS quando habilitados para a operação e dados de auditoria.</span></div>
+          <div class="pp-item"><b>Áudio</b><span>Gravação de entrevista somente quando a pesquisa estiver configurada para gravar e houver autorização do entrevistado no início da entrevista.</span></div>
+          <div class="pp-item"><b>Financeiro e contratos</b><span>Chave PIX, dados bancários informados, valores, contratos, comprovantes, pagamentos e histórico de aprovação.</span></div>
+          <div class="pp-item"><b>Comunicação</b><span>Mensagens, confirmações de leitura, preferências de alertas, conversas de suporte e informações de recrutamento ou indicação.</span></div>
+        </div>
+        <p class="pp-small">Dados de pesquisas podem incluir informações fornecidas pelos entrevistados. A equipe deve orientar a não inclusão de dados pessoais desnecessários nas respostas abertas.</p>
+
+        <h2 id="finalidades">3. Para que usamos os dados</h2>
+        <ul>
+          <li>validar cadastros, documentos e requisitos para participação na rede de pesquisadores;</li>
+          <li>criar e administrar o acesso à plataforma, proteger contas e prevenir fraude, abuso ou duplicidade;</li>
+          <li>planejar, distribuir, acompanhar, auditar e validar pesquisas de opinião e entrevistas de campo;</li>
+          <li>processar pagamentos, contratos, comprovantes e obrigações financeiras, contábeis ou legais;</li>
+          <li>enviar convites, orientações, avisos, mensagens internas e comunicações operacionais;</li>
+          <li>produzir relatórios e análises para os clientes contratantes, preferencialmente com foco agregado e sem exposição desnecessária de identificadores;</li>
+          <li>atender solicitações, reclamações, dúvidas e pedidos relacionados à privacidade;</li>
+          <li>cumprir obrigações legais, exercer direitos em processos administrativos ou judiciais e manter registros de auditoria.</li>
+        </ul>
+
+        <h2 id="bases">4. Bases legais</h2>
+        <p>O tratamento é realizado conforme a finalidade e pode se apoiar, entre outras hipóteses previstas na Lei nº 13.709/2018 (LGPD), na execução de procedimentos preliminares ou contrato, no cumprimento de obrigação legal ou regulatória, no exercício regular de direitos, no legítimo interesse com respeito aos direitos do titular e no consentimento quando ele for necessário.</p>
+        <p>Quando a finalidade exigir consentimento, ele será solicitado de forma destacada e poderá ser revogado. A revogação não invalida tratamentos realizados antes dela e pode não eliminar registros que precisem ser conservados por obrigação legal, defesa de direitos ou outra base legítima.</p>
+
+        <h2 id="audio-gps">5. Gravações, localização e participação em entrevistas</h2>
+        <div class="pp-note"><strong>Gravação não é automática em todas as pesquisas.</strong> A gravação só deve ocorrer quando estiver habilitada para aquele projeto e o entrevistado autorizar expressamente no início da entrevista. Sem autorização, a coleta segue sem iniciar a gravação.</div>
+        <p>Quando habilitados para uma operação, localização, data, hora e informações técnicas podem ser usados para conferir a execução da metodologia, segurança, distribuição territorial, auditoria e qualidade da coleta. O pesquisador deve informar o entrevistado e seguir as orientações exibidas no aplicativo.</p>
+
+        <h2 id="compartilhamento">6. Com quem podemos compartilhar</h2>
+        <p>Não vendemos dados pessoais. O compartilhamento ocorre somente quando necessário para as finalidades informadas, com acesso proporcional à função:</p>
+        <ul>
+          <li>clientes que contrataram uma pesquisa, para entrega de resultados e auditoria prevista no projeto;</li>
+          <li>pesquisadores, coordenadores, auditores e equipe autorizada, para executar a operação e validar entrevistas;</li>
+          <li>fornecedores de hospedagem, autenticação, armazenamento, comunicação, suporte e infraestrutura tecnológica;</li>
+          <li>prestadores ou instituições envolvidos no processamento de pagamentos, quando necessário;</li>
+          <li>autoridades públicas, órgãos reguladores, contadores, advogados ou terceiros quando houver obrigação legal, ordem válida ou necessidade de exercício regular de direitos.</li>
+        </ul>
+        <p>Fornecedores recebem apenas o acesso compatível com o serviço contratado e devem adotar medidas de segurança e confidencialidade. Quando houver transferência internacional ou processamento fora do Brasil por um fornecedor de tecnologia, serão observadas as exigências e salvaguardas aplicáveis da LGPD.</p>
+
+        <h2 id="guarda">7. Como protegemos e guardamos os dados</h2>
+        <p>Adotamos medidas técnicas e administrativas compatíveis com os riscos, incluindo controle de acesso por perfil, autenticação, políticas de acesso ao banco, restrição de documentos, conexões protegidas, segregação de funções, registros de auditoria e orientação da equipe. Documentos de cadastro e comprovantes não são destinados à publicação aberta na internet.</p>
+        <p>Nenhum ambiente é absolutamente imune a incidentes. Em caso de incidente relevante que possa causar risco ou dano relevante, a Versus avaliará as medidas de contenção, mitigação e comunicações exigidas pela legislação e pela autoridade competente.</p>
+
+        <h2 id="retencao">8. Por quanto tempo guardamos</h2>
+        <p>Os dados são mantidos pelo período necessário para cumprir as finalidades desta política, manter a relação contratual, concluir auditorias, processar pagamentos, atender obrigações legais e preservar direitos. O prazo varia conforme a categoria:</p>
+        <ul>
+          <li><strong>documentos de cadastro:</strong> durante a análise e a relação com a rede, podendo ser conservados pelo período necessário para auditoria, prevenção de fraude ou obrigação legal;</li>
+          <li><strong>respostas e registros da pesquisa:</strong> conforme o projeto, os contratos com clientes, a validação da coleta e obrigações de prestação de contas;</li>
+          <li><strong>gravações:</strong> pelo menor período compatível com auditoria, qualidade, pagamento e defesa de direitos do projeto;</li>
+          <li><strong>financeiro e contratos:</strong> pelo período necessário às obrigações contábeis, fiscais, contratuais e de defesa de direitos.</li>
+        </ul>
+        <p>Depois do término da necessidade, os dados serão eliminados, anonimizados ou mantidos de forma restrita quando a conservação for autorizada ou exigida por lei. Backups e registros de segurança podem permanecer por ciclos técnicos limitados.</p>
+
+        <h2 id="direitos">9. Direitos do titular</h2>
+        <p>Nos termos da LGPD, o titular pode solicitar, conforme aplicável:</p>
+        <ul>
+          <li>confirmação da existência de tratamento e acesso aos dados;</li>
+          <li>correção de dados incompletos, inexatos ou desatualizados;</li>
+          <li>informações sobre uso compartilhado, finalidades e consequências de não fornecer determinado dado;</li>
+          <li>anonimização, bloqueio, eliminação ou oposição quando cabível;</li>
+          <li>portabilidade, observada a regulamentação aplicável e os segredos comercial e industrial;</li>
+          <li>revogação do consentimento, quando o tratamento tiver essa base;</li>
+          <li>revisão de decisões automatizadas, quando aplicável.</li>
+        </ul>
+        <p>O atendimento depende da verificação razoável da identidade e dos limites legais. Alguns pedidos podem ser recusados ou limitados quando a manutenção do dado for necessária para cumprir lei, prevenir fraude, preservar auditoria ou exercer direitos.</p>
+
+        <h2 id="solicitacoes">10. Como fazer uma solicitação</h2>
+        <div class="pp-contact"><p><b>Canal de privacidade</b></p><p>Envie sua solicitação para <a href="mailto:contato@pesquisapro.com.br?subject=Solicita%C3%A7%C3%A3o%20de%20privacidade">contato@pesquisapro.com.br</a>, informando nome, e-mail usado no cadastro, assunto do pedido e, quando necessário, documentos que permitam confirmar sua identidade. Não envie senha, código de autenticação ou dados bancários completos por e-mail.</p><p>Também é possível falar com a equipe pelo <a href="https://wa.me/5531996683030" target="_blank" rel="noopener">WhatsApp (31) 99668-3030</a>; pedidos formais de acesso, correção ou eliminação devem preferencialmente ser enviados por e-mail para permitir o registro e a validação.</p></div>
+
+        <h2 id="menores">11. Crianças e adolescentes</h2>
+        <p>O cadastro de pesquisadores é destinado a pessoas adultas. Não solicitamos intencionalmente dados de crianças. Se um responsável identificar que dados de criança ou adolescente foram enviados sem a autorização adequada, deve utilizar o canal de privacidade para solicitar a análise e as providências cabíveis.</p>
+
+        <h2 id="tecnologias">12. Cookies e tecnologias necessárias</h2>
+        <p>O site e o aplicativo podem utilizar armazenamento de sessão, tokens de autenticação e tecnologias estritamente necessárias para login, segurança, atualização e funcionamento da plataforma. Não usamos os dados de cadastro para publicidade comportamental ou venda de listas. Serviços externos acessados pelo usuário, como WhatsApp, navegador, autenticação e infraestrutura tecnológica, podem aplicar suas próprias políticas.</p>
+
+        <h2 id="atualizacoes">13. Atualizações desta política</h2>
+        <p>Esta política pode ser atualizada para refletir mudanças no sistema, nos projetos, nos fornecedores ou na legislação. A data no topo identifica a versão vigente. Quando uma alteração for relevante, a Versus poderá apresentar um aviso no sistema ou utilizar os canais de comunicação disponíveis.</p>
+
+        <h2 id="referencias">14. Referências</h2>
+        <p>Esta política considera a Lei Geral de Proteção de Dados Pessoais (Lei nº 13.709/2018) e orientações públicas da Autoridade Nacional de Proteção de Dados (ANPD). Consulte a <a href="https://www.planalto.gov.br/ccivil_03/_ato2015-2018/2018/lei/l13709.htm" target="_blank" rel="noopener">LGPD no Planalto</a> e a área de <a href="https://www.gov.br/anpd/pt-br/assuntos/titular-de-dados" target="_blank" rel="noopener">Titular de Dados da ANPD</a>.</p>
+        <p class="pp-small">Esta página é uma comunicação de privacidade da plataforma. A aplicação de regras específicas pode variar conforme o contrato do projeto, a atividade desempenhada e a legislação aplicável.</p>
+      </article>
+
+      <aside class="pp-nav" aria-label="Navegação da política">
+        <strong>Nesta política</strong>
+        <a href="#identificacao">Quem somos</a>
+        <a href="#dados">Dados tratados</a>
+        <a href="#finalidades">Finalidades</a>
+        <a href="#bases">Bases legais</a>
+        <a href="#audio-gps">Gravações e localização</a>
+        <a href="#compartilhamento">Compartilhamento</a>
+        <a href="#guarda">Segurança e guarda</a>
+        <a href="#retencao">Prazos de retenção</a>
+        <a href="#direitos">Direitos do titular</a>
+        <a href="#solicitacoes">Canal de privacidade</a>
+        <a href="#atualizacoes">Atualizações</a>
+      </aside>
+    </div>
+  </main>
+
+  <footer class="pp-footer"><span>PesquisaPro · Versus Soluções em Gestão · CNPJ 26.643.308/0001-49</span><a href="index.html">Voltar ao site</a></footer>
+</body>
+</html>

@@ -53,7 +53,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261021100700';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261021130500';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -207,7 +207,7 @@ async function enableResearcherPush(){
   try{
     const permission=await Notification.requestPermission();
     if(permission!=='granted'){PUSH_STATUS='blocked';go('dashboard-pesq');return;}
-    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261020191000',{scope:'./'});
+    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261021130500',{scope:'./'});
     const subscription=await PUSH_SW_REGISTRATION.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:pushKeyToUint8Array(window.PP_PUSH_PUBLIC_KEY)});
     const json=subscription.toJSON();
     const {error}=await sb.from('push_subscriptions').upsert({user_id:CURRENT_PROFILE.id,endpoint:json.endpoint,subscription:json,user_agent:navigator.userAgent,updated_at:new Date().toISOString()},{onConflict:'endpoint'});
@@ -2779,15 +2779,17 @@ function qRender(){
       body=`<div class="q-pair-editor">${q.fields.map((field,fi)=>{
         const closed=Q_CLOSED_FIELD_TYPES.includes(field.type);
         const opts=closed?`<div class="q-opts q-pair-options">${field.options.map((option,oi)=>`<div class="opt-edit"><span class="${field.type==='single'?'opt-dot':'opt-sq'}"></span><input class="opt-inp" value="${esc(option)}" oninput="qPairOpt(${q.id},${fi},${oi},this.value)" placeholder="Opção ${oi+1}"><button class="opt-del" title="Remover opção" onclick="qPairOptDel(${q.id},${fi},${oi})">✕</button></div>`).join('')}<button class="opt-add" onclick="qPairOptAdd(${q.id},${fi})">+ adicionar opção</button></div>`:'';
-        return `<div class="q-pair-field-editor"><div class="q-pair-field-head"><span class="q-pair-field-number">${fi+1}</span><input class="inp q-pair-label" value="${esc(field.label)}" oninput="qPairFieldLabel(${q.id},${fi},this.value)" placeholder="Nome da variável ${fi+1}"><select class="inp q-pair-type" onchange="qPairFieldType(${q.id},${fi},this.value)">${[['open','Aberta'],['single','Escolha única'],['multi','Múltipla escolha']].map(([type,label])=>`<option value="${type}" ${field.type===type?'selected':''}>${label}</option>`).join('')}</select></div>${opts}</div>`;
+        const importCtl=closed&&window.PP_QUESTION_OPTIONS_EXCEL?.buttonMarkup?window.PP_QUESTION_OPTIONS_EXCEL.buttonMarkup(q.id,fi,'pair'):'';
+        return `<div class="q-pair-field-editor"><div class="q-pair-field-head"><span class="q-pair-field-number">${fi+1}</span><input class="inp q-pair-label" value="${esc(field.label)}" oninput="qPairFieldLabel(${q.id},${fi},this.value)" placeholder="Nome da variável ${fi+1}"><select class="inp q-pair-type" onchange="qPairFieldType(${q.id},${fi},this.value)">${[['open','Aberta'],['single','Escolha única'],['multi','Múltipla escolha']].map(([type,label])=>`<option value="${type}" ${field.type===type?'selected':''}>${label}</option>`).join('')}</select></div>${opts}${importCtl}</div>`;
       }).join('')}</div><div class="q-pair-hint">Os dois subcampos serão respondidos na mesma entrevista e aparecerão como variáveis separadas nos resultados.</div>`;
     }else if(Q_HAS_OPTS(q.type)){
+      const importCtl=window.PP_QUESTION_OPTIONS_EXCEL?.buttonMarkup?window.PP_QUESTION_OPTIONS_EXCEL.buttonMarkup(q.id):'';
       body=`<div class="q-opts">`+q.opts.map((o,oi)=>
         `<div class="opt-edit"><span class="${q.type==='single'?'opt-dot':'opt-sq'}"></span>
           <input class="opt-inp" value="${esc(o)}" oninput="qOpt(${q.id},${oi},this.value)" placeholder="Opção ${oi+1}">
           ${q.type==='ranking'?'':`<label class="opt-end" title="Se o entrevistado escolher esta resposta, a entrevista será encerrada"><input type="checkbox" ${q.endsInterview&&q.endsInterview[oi]?'checked':''} ${o&&o.trim()?'':'disabled'} onchange="qEndToggle(${q.id},${oi},this.checked)"> encerrar</label>`}
           <button class="opt-del" title="Remover opção" onclick="qOptDel(${q.id},${oi})">✕</button></div>`).join('')
-        +`<button class="opt-add" onclick="qOptAdd(${q.id})">+ adicionar opção</button></div>`;
+        +`<button class="opt-add" onclick="qOptAdd(${q.id})">+ adicionar opção</button></div>${importCtl}`;
       if(q.type==='ranking')body+=`<div class="q-ranking-hint">O entrevistado vai arrastar todas as opções da mais preferida para a menos preferida.</div>`;
     } else if(q.type==='scale'){
       body=`<div class="opt-line" style="padding-top:4px">Péssima &nbsp;①②③④⑤&nbsp; Ótima</div>`;

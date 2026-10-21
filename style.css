@@ -2355,3 +2355,28 @@ body.system-message-gate-open{overflow:hidden}
   .referral-reward-card-actions .btn{justify-content:center}
   .referral-reward-researcher-status{align-items:flex-start;flex-direction:column}
 }
+
+/* v188 — importação de opções por Excel/CSV; patch somente aditivo. */
+.q-excel-import-tools{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:9px 0 3px;padding:9px 10px;border:1px dashed #b8cce5;border-radius:10px;background:#f7fbff;color:#58708c;font-size:10.5px;line-height:1.4}
+.q-excel-import-tools .q-excel-import-button{min-height:36px;padding:8px 11px;border-color:#9fc1e6;background:#fff;color:#1f5f9e;font-size:11.5px;white-space:normal}
+.q-excel-import-tools .q-excel-import-button:hover{border-color:#4c91d1;background:#edf6ff;color:#174c80}
+.q-excel-import-overlay{position:fixed;inset:0;z-index:13000;display:grid;place-items:center;padding:16px;background:rgba(8,24,48,.68);backdrop-filter:blur(6px)}
+.q-excel-import-dialog{display:flex;flex-direction:column;width:min(650px,100%);max-height:calc(100dvh - 32px);overflow:auto;padding:26px;border:1px solid #c7d8eb;border-radius:19px;background:#fff;color:var(--ink);box-shadow:0 28px 90px rgba(2,19,46,.34)}
+.q-excel-import-close{align-self:flex-end;width:34px;height:34px;border:0;border-radius:9px;background:#f1f5f9;color:#4b6078;font-size:23px;line-height:1;cursor:pointer}
+.q-excel-import-close:hover{background:#e2e8f0;color:#102a56}
+.q-excel-import-dialog h2{margin:7px 0 8px;color:#102a56;font-size:22px;letter-spacing:-.3px}
+.q-excel-import-question{margin:0 0 6px;color:#1e3b5b;font-size:14px;line-height:1.5;overflow-wrap:anywhere}
+.q-excel-import-file{margin:0;color:var(--ink3);font-size:12px;line-height:1.5;overflow-wrap:anywhere}
+.q-excel-import-summary{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;margin:18px 0 12px;padding:13px 14px;border:1px solid #c8def5;border-radius:12px;background:#f5faff;color:#1e588c}
+.q-excel-import-summary strong{font-size:17px}.q-excel-import-summary span{font-size:11px;color:#58708c}
+.q-excel-import-check,.q-excel-import-mode label{display:flex;align-items:flex-start;gap:8px;color:var(--ink2);font-size:12.5px;line-height:1.5;cursor:pointer}
+.q-excel-import-check{padding:11px 12px;border:1px solid #d8e4ef;border-radius:10px;background:#fbfdff}
+.q-excel-import-check input,.q-excel-import-mode input{flex:0 0 auto;margin-top:2px;accent-color:var(--brand,#2563eb)}
+.q-excel-import-mode{display:grid;gap:8px;margin-top:14px;padding:13px;border:1px solid #e1e8f0;border-radius:11px;background:#fafcff}
+.q-excel-import-mode .lbl{margin-bottom:2px;color:#49647f;font-size:11px;font-weight:750}
+.q-excel-import-preview{margin-top:15px;padding:13px;border:1px solid #d8e4ef;border-radius:11px;background:#fff;max-height:230px;overflow:auto}
+.q-excel-import-preview-title{margin-bottom:8px;color:#49647f;font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+.q-excel-import-preview ol{margin:0;padding-left:23px;color:var(--ink);font-size:12px;line-height:1.6}.q-excel-import-preview li{padding:2px 0;overflow-wrap:anywhere}.q-excel-import-preview .q-excel-more{color:var(--ink3);font-style:italic}
+.q-excel-import-note{margin:13px 0 0;color:var(--ink3);font-size:11.5px;line-height:1.55}
+.q-excel-import-actions{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:10px;margin-top:20px}.q-excel-import-actions .btn{min-height:42px;white-space:normal}
+@media(max-width:600px){.q-excel-import-tools{align-items:stretch;flex-direction:column}.q-excel-import-tools .q-excel-import-button{width:100%}.q-excel-import-overlay{padding:8px}.q-excel-import-dialog{max-height:calc(100dvh - 16px);padding:18px 15px;border-radius:15px}.q-excel-import-dialog h2{font-size:20px}.q-excel-import-actions{display:grid;grid-template-columns:minmax(0,1fr)}.q-excel-import-actions .btn{width:100%}}

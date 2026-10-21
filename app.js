@@ -10990,13 +10990,14 @@ PAGES.contracts=()=>{
   }
   const pesqs=USERS.filter(u=>u.role==='pesq'&&u.status==='ativo');
   const isAdmin=selectedRole==='admin'||selectedRole==='admpro';
+  const privacyContract=contractUsesPrivacyPolicy();
   const signedMap={};
   ALL_CONTRACTS.forEach(c=>{signedMap[c.researcher_id]=c;});
   const assinados=pesqs.filter(u=>signedMap[u.id]).length;
   const pendentes=pesqs.length-assinados;
   const rows=pesqs.length?pesqs.map(u=>{
     const c=signedMap[u.id];
-    const action=!c&&isAdmin?`<button class="btn-ghost" style="color:var(--teal);white-space:nowrap" data-admin-sign="${esc(u.id)}" data-admin-sign-name="${esc(u.name)}" onclick="adminSignResearcherContract(this.dataset.adminSign,this.dataset.adminSignName)">Assinar</button>`:(c?'<span style="font-size:11px;color:var(--ink3)">—</span>':'');
+    const action=!c&&isAdmin&&!privacyContract?`<button class="btn-ghost" style="color:var(--teal);white-space:nowrap" data-admin-sign="${esc(u.id)}" data-admin-sign-name="${esc(u.name)}" onclick="adminSignResearcherContract(this.dataset.adminSign,this.dataset.adminSignName)">Assinar</button>`:(c?'<span style="font-size:11px;color:var(--ink3)">—</span>':(isAdmin&&privacyContract?'<span style="font-size:11px;color:var(--ink3)">Aceite pessoal</span>':''));
     return `<tr><td>${esc(u.name)}</td><td>${esc(u.cidade||'—')}</td>
       <td>${c?'<span class="pill pill-green">● Assinado</span>':'<span class="pill pill-amber">● Aguardando assinatura</span>'}</td>
       <td>${c?esc(new Date(c.accepted_at).toLocaleString('pt-BR')):'—'}</td><td>${action}</td></tr>`;
@@ -11036,8 +11037,9 @@ PAGES.contracts=()=>{
     ${stat('CONTRATANTE',COMPANY_SIGNATURE?'Assinado':'Pendente','lado do PesquisaPro',COMPANY_SIGNATURE?'✓':'◷',COMPANY_SIGNATURE?'#059669':'#dc2626')}
   </div>
   ${companyPanel}
+  ${privacyContract?'<div class="callout warn mb"><b>Esta é a versão '+esc(PRIVACY_CONTRACT_VERSION)+'.</b> O contrato incorpora a Política de Privacidade v2-2026-10-21. O aceite do pesquisador precisa ser pessoal; para contas históricas, ele pode ser registrado no momento desta assinatura. A assinatura administrativa em lote fica desabilitada para esta versão.</div>':''}
   <div class="card mb contracts-researchers-card" style="margin-top:16px">
-    <div class="contracts-researchers-head"><div><div class="card-t">Pesquisadores</div><div class="card-d">Status de assinatura do contrato-quadro (versão ${esc(CONTRACT_VERSION)}) por pesquisador ativo.</div></div>${isAdmin?(pendentes?`<button type="button" class="btn btn-accent contracts-bulk-sign-btn" data-admin-sign-all onclick="adminSignAllPendingContracts(${pendentes})">✎ Assinar todos os ${pendentes} pendentes</button>`:'<span class="pill pill-green contracts-bulk-complete">✓ Todos assinados</span>'):''}</div>
+    <div class="contracts-researchers-head"><div><div class="card-t">Pesquisadores</div><div class="card-d">Status de assinatura do contrato-quadro (versão ${esc(CONTRACT_VERSION)}) por pesquisador ativo.</div></div>${isAdmin&&!privacyContract?(pendentes?`<button type="button" class="btn btn-accent contracts-bulk-sign-btn" data-admin-sign-all onclick="adminSignAllPendingContracts(${pendentes})">✎ Assinar todos os ${pendentes} pendentes</button>`:'<span class="pill pill-green contracts-bulk-complete">✓ Todos assinados</span>'):''}</div>
     <table style="margin-top:6px"><thead><tr><th>Pesquisador</th><th>Cidade</th><th>Status</th><th>Assinado em</th><th>Ação</th></tr></thead>
     <tbody>${rows}</tbody></table>
   </div>
@@ -11047,6 +11049,7 @@ PAGES.contracts=()=>{
 async function adminSignAllPendingContracts(expectedCount){
   if(CONTRACT_BULK_SIGNING)return;
   if(!CURRENT_PROFILE||!['admin','admpro'].includes(selectedRole)){alert('Apenas um administrador pode assinar pelo pesquisador.');return;}
+  if(contractUsesPrivacyPolicy()){alert('Nesta versão o aceite do pesquisador precisa ser pessoal. A assinatura administrativa em lote está desabilitada.');return;}
   const count=Math.max(0,Number(expectedCount)||0);
   if(!count){alert('Não há contratos pendentes para assinar nesta versão.');return;}
   if(!confirm('Confirma assinar administrativamente os '+count+' contratos pendentes da versão '+CONTRACT_VERSION+'?\n\nA ação será registrada em nome do administrador, com data, hora, IP quando disponível e hash do contrato. Ela não altera contratos já assinados.'))return;
@@ -11084,6 +11087,7 @@ async function adminSignAllPendingContracts(expectedCount){
 
 async function adminSignResearcherContract(researcherId,researcherName){
   if(!CURRENT_PROFILE||!['admin','admpro'].includes(selectedRole)){alert('Apenas um administrador pode assinar pelo pesquisador.');return;}
+  if(contractUsesPrivacyPolicy()){alert('Nesta versão o aceite do pesquisador precisa ser pessoal; o administrador não pode substituí-lo.');return;}
   if(!researcherId||researcherId==='undefined'){alert('Pesquisador inválido. Atualize a lista e tente novamente.');return;}
   if(!confirm('Confirma registrar a assinatura administrativa para '+researcherName+' na versão '+CONTRACT_VERSION+'?\\n\\nEsta ação ficará registrada com seu usuário, data, hora e versão do contrato.'))return;
   const text=contractPlainText(researcherName,'','');
@@ -11305,6 +11309,11 @@ function renderTplPreview(){
    assinatura da versão antiga continua guardada, intacta, para histórico.
 */
 let CONTRACT_VERSION='v2-2026-pesquisador';
+const PRIVACY_POLICY_VERSION='v2-2026-10-21';
+const PRIVACY_POLICY_URL='https://www.pesquisa-pro.com/politica-privacidade.html';
+const PRIVACY_POLICY_HASH='1b3088a5f69ddcae9f5dc24b93695335e690091d06493ff803e0e965add31766';
+const PRIVACY_CONTRACT_VERSION='v3-2026-pesquisador';
+function contractUsesPrivacyPolicy(){return CONTRACT_VERSION===PRIVACY_CONTRACT_VERSION;}
 let CONTRACT_SETTINGS_LOADED=false,CONTRACT_SETTINGS_LOADING=false;
 async function loadContractSettingsIfNeeded(){
   if(CONTRACT_SETTINGS_LOADED||CONTRACT_SETTINGS_LOADING)return;
@@ -11364,7 +11373,7 @@ function contractClauses(nome,cpf,cidade){
     {t:'8ª. Das gravações de confirmação',p:'Para verificar a autenticidade das entrevistas, a plataforma poderá solicitar aleatoriamente uma gravação de voz do entrevistado ao final da coleta, confirmando que a entrevista ocorreu e que as perguntas foram realizadas. Em toda entrevista iniciada após as 21h00, a gravação de confirmação do entrevistado ao final será obrigatória, conforme a regra da pesquisa. O(A) CONTRATADO(A) deverá explicar a solicitação ao entrevistado, respeitar sua manifestação e registrar no aplicativo eventual recusa. A ausência injustificada de gravação obrigatória, a gravação incompatível ou a falsificação de qualquer evidência poderá levar à auditoria e à rejeição da entrevista.'},
     {t:'9ª. Das obrigações do(a) CONTRATADO(A)',p:'Sem que isso implique subordinação, o(a) CONTRATADO(A) obriga-se a: (i) entrevistar pessoas reais e registrar fielmente suas respostas; (ii) seguir o questionário, as cotas, as orientações e os limites geográficos da pesquisa; (iii) manter GPS e internet disponíveis quando exigidos pelo aplicativo; (iv) não compartilhar sua conta, dispositivo ou credenciais; (v) não criar entrevistas, respostas, localizações ou gravações fictícias; (vi) manter seus dados cadastrais e PIX atualizados; (vii) preservar a confidencialidade; e (viii) tratar entrevistados com respeito, transparência e observância da legislação aplicável.'},
     {t:'10ª. Das obrigações da CONTRATANTE',p:'A CONTRATANTE disponibilizará no aplicativo as informações essenciais de cada pesquisa antes do aceite, incluindo valor por formulário, área de atuação, período, cotas e regras específicas; manterá o registro do aceite e da auditoria; informará, sempre que possível, o motivo de eventual rejeição; e efetuará o pagamento das entrevistas aprovadas conforme as condições deste instrumento e do extrato da pesquisa.'},
-    {t:'11ª. Da proteção de dados pessoais',p:'As partes tratarão os dados pessoais dos entrevistados, do(a) CONTRATADO(A) e de terceiros em conformidade com a Lei nº 13.709/2018 (LGPD) e demais normas aplicáveis, limitando o uso ao necessário para execução, segurança, auditoria, pagamento e prestação de contas das pesquisas. É vedado copiar, comercializar, divulgar, publicar ou compartilhar dados, respostas, gravações, coordenadas ou documentos fora das finalidades autorizadas.'},
+    {t:'11ª. Da proteção de dados pessoais',p:'As partes tratarão os dados pessoais dos entrevistados, do(a) CONTRATADO(A) e de terceiros em conformidade com a Lei nº 13.709/2018 (LGPD) e demais normas aplicáveis, limitando o uso ao necessário para execução, segurança, auditoria, pagamento e prestação de contas das pesquisas. É vedado copiar, comercializar, divulgar, publicar ou compartilhar dados, respostas, gravações, coordenadas ou documentos fora das finalidades autorizadas.'+(contractUsesPrivacyPolicy()?' Nesta versão, integra este contrato a Política de Privacidade e Guarda de Dados do PesquisaPro, versão '+PRIVACY_POLICY_VERSION+', disponível em '+PRIVACY_POLICY_URL+'. O(A) CONTRATADO(A) declara que teve acesso ao documento e que seu aceite anterior está vinculado a este contrato por versão, URL, hash e data/hora.':'')},
     {t:'12ª. Da confidencialidade e da propriedade dos dados',p:'Questionários, respostas, gravações, coordenadas, cotas, metodologias, relatórios e demais informações obtidas na execução das pesquisas são confidenciais e pertencem à CONTRATANTE e/ou a seus clientes, conforme o caso. O(A) CONTRATADO(A) não poderá utilizá-los para finalidade própria ou de terceiros, inclusive após o encerramento deste contrato.'},
     {t:'13ª. Da vigência, suspensão e rescisão',p:'Este Contrato vigora por prazo indeterminado a partir do aceite eletrônico e não obriga o(a) CONTRATADO(A) a aceitar pesquisas futuras. Qualquer parte poderá encerrá-lo mediante comunicação pela plataforma ou outro meio idôneo. A CONTRATANTE poderá suspender o acesso a novas coletas ou rescindir imediatamente o contrato em caso de fraude, falsificação, compartilhamento de conta, violação de confidencialidade, manipulação de GPS, reincidência de coletas incompatíveis ou descumprimento grave das regras. O encerramento não prejudica o pagamento das entrevistas já aprovadas nem extingue as obrigações de confidencialidade e proteção de dados.'},
     {t:'14ª. Da assinatura eletrônica e dos registros',p:'A aceitação eletrônica deste contrato pelo(a) CONTRATADO(A), realizada mediante sua conta autenticada, nome e CPF cadastrados, declaração expressa de concordância e registro de data, hora, versão do contrato, endereço IP quando disponível e resumo criptográfico (hash) do texto apresentado, constitui manifestação de vontade válida para os fins deste instrumento. O aceite de cada convite de pesquisa também registrará a remuneração específica exibida e aceita para aquela pesquisa.'},
@@ -11441,7 +11450,7 @@ function companySignPadHtml(){
 let MY_CONTRACT=null,MY_CONTRACT_LOADED=false,MY_CONTRACT_LOADING=false;
 function contractRowToEntry(row){
   return {id:row.id,version:row.contract_version,fullName:row.full_name,cpf:row.cpf,
-    hash:row.content_hash,ip:row.ip_address,ts:row.accepted_at?new Date(row.accepted_at).getTime():Date.now()};
+    hash:row.content_hash,ip:row.ip_address,privacyPolicyVersion:row.privacy_policy_version,privacyPolicyHash:row.privacy_policy_hash,privacyPolicyAcceptedAt:row.privacy_policy_accepted_at,ts:row.accepted_at?new Date(row.accepted_at).getTime():Date.now()};
 }
 async function loadMyContractIfNeeded(){
   if(MY_CONTRACT_LOADED||MY_CONTRACT_LOADING)return;
@@ -11547,6 +11556,7 @@ PAGES['my-contract']=()=>{
   const nome=CURRENT_PROFILE.name||'';
   const cpf=CURRENT_PROFILE.cpf||'';
   const cidade=(CURRENT_PROFILE.cidade||'').split('/')[0];
+  const privacyContract=contractUsesPrivacyPolicy();
   const docHtml=contractHtml(nome,cpf,cidade);
   if(MY_CONTRACT){
     return head('Meu contrato','Contrato de prestação de serviços — assinado eletronicamente')+`
@@ -11554,6 +11564,7 @@ PAGES['my-contract']=()=>{
       <h3>Assinaturas</h3>
       ${companySignPadHtml()}
       <div class="sign-pad signed">✓ Assinado eletronicamente por ${esc(MY_CONTRACT.fullName)}${MY_CONTRACT.cpf?(' · CPF '+esc(MY_CONTRACT.cpf)):''} em ${esc(new Date(MY_CONTRACT.ts).toLocaleString('pt-BR'))}${MY_CONTRACT.ip?(' · IP '+esc(MY_CONTRACT.ip)):' · IP não disponível'} · hash ${esc((MY_CONTRACT.hash||'—').slice(0,16))}…</div>
+      ${MY_CONTRACT.privacyPolicyVersion?'<div class="callout" style="margin-top:10px">Aceite vinculado da Política de Privacidade: '+esc(MY_CONTRACT.privacyPolicyVersion)+' · '+esc(new Date(MY_CONTRACT.privacyPolicyAcceptedAt||MY_CONTRACT.ts).toLocaleString('pt-BR'))+' · hash '+esc((MY_CONTRACT.privacyPolicyHash||'—').slice(0,16))+'…</div>':''}
     </div>
     <div class="card contract-termination-card">
       <div class="card-t">Encerrar participação</div>
@@ -11575,7 +11586,7 @@ PAGES['my-contract']=()=>{
     </div>
     <label style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px;color:var(--ink2);cursor:pointer;margin-bottom:14px">
       <input type="checkbox" id="contractAgree" style="margin-top:3px">
-      <span>Li e concordo integralmente com os termos acima, em especial quanto à <b>ausência de vínculo empregatício</b>, às <b>regras de integridade, auditoria e gravação</b> e às <b>condições de pagamento</b>. Sei que cada pesquisa terá valor próprio, exibido antes do aceite do convite, e reconheço a validade desta assinatura eletrônica.</span>
+      <span>Li e concordo integralmente com os termos acima, em especial quanto à <b>ausência de vínculo empregatício</b>, às <b>regras de integridade, auditoria e gravação</b> e às <b>condições de pagamento</b>. Sei que cada pesquisa terá valor próprio, exibido antes do aceite do convite, e reconheço a validade desta assinatura eletrônica.${privacyContract?' Também li a <a href="'+PRIVACY_POLICY_URL+'" target="_blank" rel="noopener">Política de Privacidade e Guarda de Dados</a>, versão '+PRIVACY_POLICY_VERSION+', e confirmo que o aceite do cadastro é parte integrante desta assinatura.':''}</span>
     </label>
     <div id="contractSignMsg"></div>
     <button class="btn btn-accent" id="contractSignBtn" style="font-size:15px;padding:12px 22px" onclick="signContract()"${cpf?'':' disabled'}>✎ Assinar eletronicamente</button>
@@ -11584,6 +11595,7 @@ PAGES['my-contract']=()=>{
 };
 async function signContract(){
   if(!CURRENT_PROFILE)return;
+  const privacyContract=contractUsesPrivacyPolicy();
   const msgEl=document.getElementById('contractSignMsg');
   const agree=document.getElementById('contractAgree');
   if(!agree||!agree.checked){
@@ -11602,20 +11614,22 @@ async function signContract(){
   try{hash=await sha256Hex(text);}catch(ex){hash='';}
   const ip=await fetchClientIp();
   try{
-    const {data:inserted,error}=await sb.from('researcher_contracts').insert({
-      researcher_id:CURRENT_PROFILE.id,
-      contract_version:CONTRACT_VERSION,
-      full_name:nome,
-      cpf,
-      content_hash:hash||'indisponível neste navegador',
-      ip_address:ip,
-      user_agent:(navigator&&navigator.userAgent)||null,
-    }).select().single();
+    const {data:inserted,error}=await sb.rpc('sign_researcher_contract',{
+      p_contract_version:CONTRACT_VERSION,
+      p_full_name:nome,
+      p_cpf:cpf,
+      p_content_hash:hash||'indisponível neste navegador',
+      p_ip_address:ip,
+      p_user_agent:(navigator&&navigator.userAgent)||null,
+      p_privacy_policy_version:privacyContract?PRIVACY_POLICY_VERSION:null,
+      p_privacy_policy_hash:privacyContract?PRIVACY_POLICY_HASH:null,
+      p_privacy_policy_accepted_at:privacyContract?new Date().toISOString():null,
+    });
     if(error)throw new Error(error.message);
     MY_CONTRACT=contractRowToEntry(inserted);
     MY_CONTRACT_LOADED=true;
   }catch(ex){
-    alert('Não foi possível registrar sua assinatura agora: '+ex.message);
+    alert('Não foi possível registrar sua assinatura agora: '+ex.message+'\n\nSe a versão v200 do aceite de privacidade ainda não foi aplicada, execute deploy/aceite-politica-privacidade-v200.sql no Supabase.');
     if(btn){btn.disabled=false;btn.textContent='✎ Assinar eletronicamente';}
     return;
   }
@@ -11651,7 +11665,7 @@ PAGES.company=()=>head('Dados da empresa','Referência informativa; edição ain
         <div><label class="lbl">Inscrição estadual <span class="pill pill-gray">🔒 fixo</span></label><input class="inp" value="Isento" disabled style="background:var(--bg);color:var(--ink3);cursor:not-allowed"></div>
       </div>
       <div class="mb"><label class="lbl">Endereço</label><input class="inp" value="Avenida Trinta e um de Março, nº 861, Loja 07, São João del Rei/MG" readonly></div>
-      <div class="field-row"><div><label class="lbl">Telefone</label><input class="inp" value="(31) 99668-3030" readonly></div><div><label class="lbl">E-mail</label><input class="inp" value="contato@pesquisapro.com.br" readonly></div></div>
+      <div class="field-row"><div><label class="lbl">Telefone</label><input class="inp" value="(31) 99668-3030" readonly></div><div><label class="lbl">E-mail</label><input class="inp" value="adm@pesquisa-pro.com" readonly></div></div>
     </div>
     <div class="card">
       <div class="card-t">Marca e responsável técnico <span class="pill pill-gray">🔒 fixo</span></div>

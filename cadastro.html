@@ -7,7 +7,7 @@
   <meta name="description" content="Cadastro de pesquisador indicado pela PesquisaPro.">
   <title>Cadastro de pesquisador — PesquisaPro</title>
   <link rel="icon" type="image/png" sizes="64x64" href="assets/favicon-64.png">
-  <link rel="stylesheet" href="style.css?v=20261021185000">
+  <link rel="stylesheet" href="style.css?v=20261021221000">
   <style>
     body.signup-public{min-height:100vh;background:linear-gradient(135deg,#eff6ff 0%,#f8fafc 52%,#ecfeff 100%);color:#0f172a}
     .signup-shell{width:min(760px,calc(100% - 32px));margin:34px auto 56px}
@@ -93,6 +93,8 @@
       const $=id=>document.getElementById(id);
       const loading=$('signup-loading'),form=$('signup-form'),status=$('signup-status');
       const maxCities=5,maxFileBytes=10*1024*1024;
+      const PRIVACY_POLICY_VERSION='v2-2026-10-21';
+      const PRIVACY_POLICY_HASH='1b3088a5f69ddcae9f5dc24b93695335e690091d06493ff803e0e965add31766';
       const allCities=Array.isArray(window.PP_PUBLIC_CITIES)?window.PP_PUBLIC_CITIES:[];
       let selectedCities=[];
       const setStatus=(msg,ok=false)=>{status.textContent=msg;status.className='signup-status show '+(ok?'ok':'err');};
@@ -122,6 +124,13 @@
         const allowed=file.type.startsWith('image/')||file.type==='application/pdf';
         if(!allowed){setStatus('O '+label+' deve ser uma imagem ou PDF.');return false;}
         return true;
+      }
+      async function getClientIp(){
+        try{
+          const ctrl=new AbortController();const timer=setTimeout(()=>ctrl.abort(),2500);
+          const res=await fetch('https://api.ipify.org?format=json',{signal:ctrl.signal});clearTimeout(timer);
+          if(!res.ok)return null;const data=await res.json();return data.ip||null;
+        }catch(ex){return null;}
       }
       async function uploadDocument(file,kind){
         const path='signups/'+fileToken()+'-'+kind+'.'+safeFileName(file);
@@ -162,7 +171,10 @@
           const authUserId=authData?.user?.id;
           if(!authUserId)throw new Error('Não foi possível criar o acesso com este e-mail. Verifique se o e-mail já possui uma conta ou use a recuperação de senha.');
           btn.textContent='Enviando cadastro…';
-          const payload={p_auth_user_id:authUserId,p_name:name,p_cpf:$('cpf').value.trim()||null,p_birth:$('birth').value||null,p_email:email,p_phone:phone,p_cidade:cidade,p_rua:$('rua').value.trim()||null,p_numero:$('numero').value.trim()||null,p_cep:$('cep').value.trim()||null,p_cidades_atuacao:selectedCities,p_doc_foto_url:fotoPath,p_doc_comprovante_url:comprovantePath};
+          const privacyClientAcceptedAt=new Date().toISOString();
+          const privacyIp=await getClientIp();
+          const privacyUserAgent=navigator.userAgent||null;
+          const payload={p_auth_user_id:authUserId,p_name:name,p_cpf:$('cpf').value.trim()||null,p_birth:$('birth').value||null,p_email:email,p_phone:phone,p_cidade:cidade,p_rua:$('rua').value.trim()||null,p_numero:$('numero').value.trim()||null,p_cep:$('cep').value.trim()||null,p_cidades_atuacao:selectedCities,p_doc_foto_url:fotoPath,p_doc_comprovante_url:comprovantePath,p_privacy_policy_version:PRIVACY_POLICY_VERSION,p_privacy_policy_hash:PRIVACY_POLICY_HASH,p_privacy_policy_accepted_at:privacyClientAcceptedAt,p_privacy_policy_ip:privacyIp,p_privacy_policy_user_agent:privacyUserAgent};
           const {error}=referralToken?await sb.rpc('submit_researcher_referral_signup',{p_referral_token:referralToken,...payload}):await sb.rpc('submit_recruiter_signup',{p_recruiter_code:code,...payload});
           if(error)throw new Error(error.message);
           await sb.auth.signOut();

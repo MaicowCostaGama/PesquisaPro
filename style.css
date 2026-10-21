@@ -2658,3 +2658,11 @@ body.system-message-gate-open{overflow:hidden}
 .q-flow-delete-selected:disabled{opacity:.5;cursor:not-allowed}
 .q-flow-canvas-scroll:focus-visible{outline:3px solid rgba(37,99,235,.25);outline-offset:2px}
 @media(max-width:820px){.q-flow-selected-hint{flex:1 1 100%;max-width:none}.q-flow-delete-selected{order:2}}
+
+
+/* v198 — sequência normal entre perguntas, sempre visível no mapa. */
+.q-flow-edge-path.is-sequence{stroke:#91a4ba;stroke-width:2.2;stroke-dasharray:7 6;opacity:.92}
+.q-flow-edge-path.is-sequence.is-selected{stroke:#54708f;stroke-width:3.5;filter:drop-shadow(0 0 4px rgba(84,112,143,.38))}
+.q-flow-edge-hit.is-sequence{stroke:transparent}
+.q-flow-edge-label.is-sequence{fill:#6d8197}
+.q-flow-legend-sequence{display:inline-block;width:25px;border-top:2px dashed #91a4ba;vertical-align:middle;margin-right:6px}

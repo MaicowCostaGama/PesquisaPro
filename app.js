@@ -53,7 +53,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261021181200';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261021182300';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -207,7 +207,7 @@ async function enableResearcherPush(){
   try{
     const permission=await Notification.requestPermission();
     if(permission!=='granted'){PUSH_STATUS='blocked';go('dashboard-pesq');return;}
-    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261021181200',{scope:'./'});
+    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261021182300',{scope:'./'});
     const subscription=await PUSH_SW_REGISTRATION.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:pushKeyToUint8Array(window.PP_PUSH_PUBLIC_KEY)});
     const json=subscription.toJSON();
     const {error}=await sb.from('push_subscriptions').upsert({user_id:CURRENT_PROFILE.id,endpoint:json.endpoint,subscription:json,user_agent:navigator.userAgent,updated_at:new Date().toISOString()},{onConflict:'endpoint'});
@@ -2989,10 +2989,10 @@ function qFlowEdgeSource(edge){
   return {x:source.x+240,y:source.y+(edge.kind==='direct'?70:38+Math.min(22,Number(edge.optionIndex||0)*8))};
 }
 function qFlowEdgeLabel(edge){
-  const answer=edge.kind==='direct'?'direta':String(edge.q?.opts?.[edge.optionIndex]||'resposta').trim();
+  const answer=edge.kind==='direct'?'direta':edge.kind==='sequence'?'sequência':String(edge.q?.opts?.[edge.optionIndex]||'resposta').trim();
   const compact=answer.length>34?answer.slice(0,31).trim()+'…':answer;
   const source=qFlowEdgeSource(edge);
-  return `<text class="q-flow-edge-label ${edge.kind==='direct'?'is-direct':''}" x="${source.x+3}" y="${source.y-6}">${esc(compact)}</text>`;
+  return `<text class="q-flow-edge-label ${edge.kind==='direct'?'is-direct':edge.kind==='sequence'?'is-sequence':''}" x="${source.x+3}" y="${source.y-6}">${esc(compact)}</text>`;
 }
 function qFlowEdgePath(edge){
   const source=qFlowEdgeSource(edge);
@@ -3015,20 +3015,26 @@ function qFlowEdgeMarkup(edge,qs,end){
   const edgeWithPosition={...edge,targetPos:targetPos||{x:end.x-26,y:end.y},end};
   const key=qFlowEdgeKey(edge);
   const selected=Q_FLOW_SELECTED_EDGE===key;
-  const marker=edge.kind==='direct'?'q-flow-arrow-direct':'q-flow-arrow-answer';
+  const marker=edge.kind==='direct'?'q-flow-arrow-direct':edge.kind==='sequence'?'q-flow-arrow-sequence':'q-flow-arrow-answer';
   const optionIndex=edge.optionIndex==null?'null':edge.optionIndex;
   const point=qFlowEdgeTargetPoint(edgeWithPosition);
-  const label=edge.kind==='direct'?'conexão direta':(edge.q.opts?.[edge.optionIndex]||'resposta');
-  return `<path class="q-flow-edge-path ${edge.kind==='direct'?'is-direct':'is-answer'} ${selected?'is-selected':''}" data-edge-key="${esc(key)}" d="${qFlowEdgePath(edgeWithPosition)}" marker-end="url(#${marker})"><title>${esc(label)} → ${esc(qFlowTargetLabel(edge.target,qs))}</title></path><path class="q-flow-edge-hit" data-edge-key="${esc(key)}" d="${qFlowEdgePath(edgeWithPosition)}" aria-label="Arrastar ${esc(label)} para mudar o destino" onpointerdown="qFlowStartEdgeDrag(event,${edge.q.id},'${edge.kind}',${optionIndex})"></path><circle class="q-flow-edge-handle ${selected?'is-selected':''}" data-edge-key="${esc(key)}" cx="${point.x}" cy="${point.y}" r="6" tabindex="0" role="button" aria-label="Mudar destino de ${esc(label)}" onpointerdown="qFlowStartEdgeDrag(event,${edge.q.id},'${edge.kind}',${optionIndex})"></circle>${qFlowEdgeLabel(edgeWithPosition)}`;
+  const label=edge.kind==='direct'?'conexão direta':edge.kind==='sequence'?'sequência normal':(edge.q.opts?.[edge.optionIndex]||'resposta');
+  const cssKind=edge.kind==='direct'?'is-direct':edge.kind==='sequence'?'is-sequence':'is-answer';
+  return `<path class="q-flow-edge-path ${cssKind} ${selected?'is-selected':''}" data-edge-key="${esc(key)}" d="${qFlowEdgePath(edgeWithPosition)}" marker-end="url(#${marker})"><title>${esc(label)} → ${esc(qFlowTargetLabel(edge.target,qs))}</title></path><path class="q-flow-edge-hit ${cssKind}" data-edge-key="${esc(key)}" d="${qFlowEdgePath(edgeWithPosition)}" aria-label="Arrastar ${esc(label)} para mudar o destino" onpointerdown="qFlowStartEdgeDrag(event,${edge.q.id},'${edge.kind}',${optionIndex})"></path><circle class="q-flow-edge-handle ${selected?'is-selected':''}" data-edge-key="${esc(key)}" cx="${point.x}" cy="${point.y}" r="6" tabindex="0" role="button" aria-label="Mudar destino de ${esc(label)}" onpointerdown="qFlowStartEdgeDrag(event,${edge.q.id},'${edge.kind}',${optionIndex})"></circle>${qFlowEdgeLabel(edgeWithPosition)}`;
 }
 function qFlowEdges(qs){
   const list=[];
   (qs||[]).forEach((q,index)=>{
     const direct=String(q.directTarget||'');
     if(direct)list.push({q,index,kind:'direct',optionIndex:null,target:direct});
+    const filledOptions=q.type==='single'?(q.opts||[]).map((option,oi)=>({option,oi})).filter(item=>String(item.option||'').trim()):[];
+    const configuredAnswers=q.type==='single'?filledOptions.filter(({oi})=>String(q.routeTargets?.[oi]||'')||q.endsInterview?.[oi]===true):[];
     if(q.type==='single'){
       (q.routeTargets||[]).forEach((target,oi)=>{if(String(target||''))list.push({q,index,kind:'answer',optionIndex:oi,target:String(target)});});
     }
+    const next=qs[index+1];
+    const hasDefaultSequence=!!next&&!direct&&(q.type!=='single'||filledOptions.length===0||configuredAnswers.length<filledOptions.length);
+    if(hasDefaultSequence)list.push({q,index,kind:'sequence',optionIndex:null,target:String(next.id)});
   });
   return list;
 }
@@ -3058,7 +3064,17 @@ function qFlowStartConnect(ev,id,optionIndex,kind='answer'){
   document.addEventListener('pointercancel',qFlowPointerCancel,{once:true});
 }
 function qFlowStartDirectConnect(ev,id){qFlowStartConnect(ev,id,null,'direct');}
-function qFlowStartEdgeDrag(ev,id,kind,optionIndex=null){qFlowStartConnect(ev,id,optionIndex,kind);}
+function qFlowStartEdgeDrag(ev,id,kind,optionIndex=null){
+  if(kind!=='sequence'){qFlowStartConnect(ev,id,optionIndex,kind);return;}
+  if(!ev)return;
+  ev.preventDefault();ev.stopPropagation();
+  Q_FLOW_SELECTED_EDGE=qFlowEdgeKey(id,'sequence',null);
+  Q_FLOW_CONNECT={sourceId:id,optionIndex:null,kind:'sequence',pointerId:ev.pointerId};
+  document.querySelectorAll('.q-flow-node-card,.q-flow-end-node').forEach(node=>node.classList.remove('is-connect-target'));
+  document.addEventListener('pointermove',qFlowPointerMove,{passive:false});
+  document.addEventListener('pointerup',qFlowPointerUp,{once:true});
+  document.addEventListener('pointercancel',qFlowPointerCancel,{once:true});
+}
 function qFlowPointerMove(ev){
   if(Q_FLOW_DRAG&&ev.pointerId===Q_FLOW_DRAG.pointerId){
     ev.preventDefault();
@@ -3076,7 +3092,7 @@ function qFlowPointerMove(ev){
 }
 function qFlowAssignConnection(source,kind,optionIndex,targetId){
   if(!source)return;
-  if(kind==='direct')source.directTarget=String(targetId);
+  if(kind==='direct'||kind==='sequence')source.directTarget=String(targetId);
   else{
     source.routeTargets=source.routeTargets||[];source.endsInterview=source.endsInterview||[];
     source.routeTargets[optionIndex]=String(targetId);source.endsInterview[optionIndex]=targetId==='__end__';
@@ -3091,8 +3107,15 @@ function qFlowPointerUp(ev){
     const sourceIndex=questions.findIndex(q=>String(q.id)===String(Q_FLOW_CONNECT.sourceId));
     const targetIndex=targetId==='__end__'?Number.POSITIVE_INFINITY:questions.findIndex(q=>String(q.id)===String(targetId));
     if(source&&targetId&&(targetId==='__end__'||targetIndex>sourceIndex)){
-      qFlowAssignConnection(source,Q_FLOW_CONNECT.kind,Q_FLOW_CONNECT.optionIndex,targetId);
-      Q_FLOW_SELECTED_EDGE=qFlowEdgeKey(Q_FLOW_CONNECT.sourceId,Q_FLOW_CONNECT.kind,Q_FLOW_CONNECT.kind==='answer'?Q_FLOW_CONNECT.optionIndex:null);
+      const defaultNextId=questions[sourceIndex+1]?String(questions[sourceIndex+1].id):'';
+      if(Q_FLOW_CONNECT.kind==='sequence'&&targetId===defaultNextId){
+        source.directTarget='';
+        Q_FLOW_SELECTED_EDGE=qFlowEdgeKey(Q_FLOW_CONNECT.sourceId,'sequence',null);
+      }else{
+        const appliedKind=Q_FLOW_CONNECT.kind==='sequence'?'direct':Q_FLOW_CONNECT.kind;
+        qFlowAssignConnection(source,appliedKind,Q_FLOW_CONNECT.optionIndex,targetId);
+        Q_FLOW_SELECTED_EDGE=qFlowEdgeKey(Q_FLOW_CONNECT.sourceId,appliedKind,appliedKind==='answer'?Q_FLOW_CONNECT.optionIndex:null);
+      }
     }
     qFlowCleanup();qRender();return;
   }
@@ -3114,11 +3137,12 @@ function qFlowUpdateEdges(){
   const edges=qFlowEdges(qs);
   const width=Number(svg.dataset.width)||2400,height=Number(svg.dataset.height)||1200;
   const end={x:width-54,y:Math.max(68,height/2)};
-  svg.innerHTML=edges.map(edge=>qFlowEdgeMarkup(edge,qs,end)).join('')+`<defs><marker id="q-flow-arrow-answer" markerWidth="9" markerHeight="8" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#4f8eea"></path></marker><marker id="q-flow-arrow-direct" markerWidth="9" markerHeight="8" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#18a974"></path></marker></defs>`;
+  svg.innerHTML=edges.map(edge=>qFlowEdgeMarkup(edge,qs,end)).join('')+`<defs><marker id="q-flow-arrow-answer" markerWidth="9" markerHeight="8" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#4f8eea"></path></marker><marker id="q-flow-arrow-direct" markerWidth="9" markerHeight="8" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#18a974"></path></marker><marker id="q-flow-arrow-sequence" markerWidth="9" markerHeight="8" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#91a4ba"></path></marker></defs>`;
 }
 function qFlowAutoLayout(){(WIZ.data.questions||[]).forEach((q,index)=>{q.flowPosition=qFlowDefaultPosition(index);});qRender();}
+function qFlowSelectedEdgeCanDelete(){return !!Q_FLOW_SELECTED_EDGE&&!String(Q_FLOW_SELECTED_EDGE).endsWith('|sequence|');}
 function qFlowDeleteSelectedEdge(){
-  const selected=Q_FLOW_SELECTED_EDGE;if(!selected)return;
+  const selected=Q_FLOW_SELECTED_EDGE;if(!selected||!qFlowSelectedEdgeCanDelete())return;
   const [sourceId,kind,optionText]=String(selected).split('|');
   const source=qFind(Number(sourceId))||qFind(sourceId);
   if(!source)return;
@@ -3152,7 +3176,7 @@ function qFlowGraphMarkup(qs){
   const nodes=qs.map((q,index)=>{const pos=qFlowPosition(q,index);return `<article class="q-flow-node-card ${q.type==='single'?'is-choice':''}" data-qid="${q.id}" style="left:${pos.x}px;top:${pos.y}px" onpointerdown="qFlowStartNodeDrag(event,${q.id})"><span class="q-flow-target-port" aria-hidden="true"></span><header class="q-flow-node-head"><span class="q-flow-node-index">${index+1}</span><div><b>${esc(q.text||'(sem título)')}</b></div></header></article>`;}).join('');
   const rules=qFlowRulesPanelMarkup(qs);
   const selectedLabel=Q_FLOW_SELECTED_EDGE?'Linha selecionada: arraste para mudar o destino':'Clique ou arraste uma linha para editar';
-  return `<section class="q-flow-map q-flow-map-canvas" aria-label="Mapa visual dos caminhos da entrevista"><div class="q-flow-map-head"><div><span class="eyebrow">MAPA DO FLUXO</span><h3>Fluxo simples da entrevista</h3><p>Arraste os balões para organizar o diagrama. Arraste qualquer linha ou sua alça final para mudar a conexão; use as portas para criar novas linhas.</p></div><div class="q-flow-map-actions"><span class="pill pill-blue">${qs.length} nós</span><span class="q-flow-selected-hint">${selectedLabel}</span><button type="button" class="btn btn-out q-flow-delete-selected" onclick="qFlowDeleteSelectedEdge()" ${Q_FLOW_SELECTED_EDGE?'':'disabled'}>Remover linha</button><button type="button" class="btn btn-out" onclick="qFlowToggleRules()">${Q_FLOW_RULES_VISIBLE?'Ocultar conexões':'Configurar conexões'}</button><div class="q-flow-zoom-controls" aria-label="Controles de zoom"><button type="button" class="btn btn-out q-flow-zoom-btn" onclick="qFlowZoomOut()" title="Afastar">−</button><button type="button" class="btn btn-out q-flow-zoom-value" onclick="qFlowZoomReset()" title="Restaurar zoom">${Math.round(zoom*100)}%</button><button type="button" class="btn btn-out q-flow-zoom-btn" onclick="qFlowZoomIn()" title="Aproximar">+</button></div><button type="button" class="btn btn-out" onclick="qFlowAutoLayout()">Organizar automaticamente</button><button type="button" class="btn btn-out" onclick="qFlowClearRoutes()">Limpar conexões</button></div></div><div class="q-flow-legend"><span><i class="q-flow-legend-direct"></i> conexão direta</span><span><i class="q-flow-legend-line"></i> conexão por resposta</span><span>arraste os balões; arraste as linhas para reconectar; Ctrl + roda do mouse altera o zoom</span></div><div class="q-flow-canvas-scroll" tabindex="0" onkeydown="qFlowKeyDown(event)" onwheel="qFlowWheelZoom(event)"><div class="q-flow-canvas-shell" style="width:${frameWidth}px;height:${frameHeight}px"><div class="q-flow-canvas" style="width:${width}px;height:${height}px;transform:scale(${zoom})"><svg id="q-flow-svg" class="q-flow-svg" data-width="${width}" data-height="${height}" viewBox="0 0 ${width} ${height}" aria-hidden="true">${paths}<defs><marker id="q-flow-arrow-answer" markerWidth="9" markerHeight="8" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#4f8eea"></path></marker><marker id="q-flow-arrow-direct" markerWidth="9" markerHeight="8" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#18a974"></path></marker></defs></svg>${nodes}<div class="q-flow-end-node" data-qid="__end__" style="left:${end.x-62}px;top:${end.y-24}px">Fim da entrevista</div></div></div></div>${rules}<div class="q-flow-empty">As posições, linhas e conexões são salvas junto com a pesquisa quando você clicar em salvar.</div></section>`;
+  return `<section class="q-flow-map q-flow-map-canvas" aria-label="Mapa visual dos caminhos da entrevista"><div class="q-flow-map-head"><div><span class="eyebrow">MAPA DO FLUXO</span><h3>Fluxo simples da entrevista</h3><p>Arraste os balões para organizar o diagrama. Arraste qualquer linha ou sua alça final para mudar a conexão; use as portas para criar novas linhas.</p></div><div class="q-flow-map-actions"><span class="pill pill-blue">${qs.length} nós</span><span class="q-flow-selected-hint">${selectedLabel}</span><button type="button" class="btn btn-out q-flow-delete-selected" onclick="qFlowDeleteSelectedEdge()" ${qFlowSelectedEdgeCanDelete()?'':'disabled'}>Remover linha</button><button type="button" class="btn btn-out" onclick="qFlowToggleRules()">${Q_FLOW_RULES_VISIBLE?'Ocultar conexões':'Configurar conexões'}</button><div class="q-flow-zoom-controls" aria-label="Controles de zoom"><button type="button" class="btn btn-out q-flow-zoom-btn" onclick="qFlowZoomOut()" title="Afastar">−</button><button type="button" class="btn btn-out q-flow-zoom-value" onclick="qFlowZoomReset()" title="Restaurar zoom">${Math.round(zoom*100)}%</button><button type="button" class="btn btn-out q-flow-zoom-btn" onclick="qFlowZoomIn()" title="Aproximar">+</button></div><button type="button" class="btn btn-out" onclick="qFlowAutoLayout()">Organizar automaticamente</button><button type="button" class="btn btn-out" onclick="qFlowClearRoutes()">Limpar conexões</button></div></div><div class="q-flow-legend"><span><i class="q-flow-legend-sequence"></i> sequência normal</span><span><i class="q-flow-legend-direct"></i> conexão direta</span><span><i class="q-flow-legend-line"></i> conexão por resposta</span><span>arraste os balões; arraste as linhas para reconectar; Ctrl + roda do mouse altera o zoom</span></div><div class="q-flow-canvas-scroll" tabindex="0" onkeydown="qFlowKeyDown(event)" onwheel="qFlowWheelZoom(event)"><div class="q-flow-canvas-shell" style="width:${frameWidth}px;height:${frameHeight}px"><div class="q-flow-canvas" style="width:${width}px;height:${height}px;transform:scale(${zoom})"><svg id="q-flow-svg" class="q-flow-svg" data-width="${width}" data-height="${height}" viewBox="0 0 ${width} ${height}" aria-hidden="true">${paths}<defs><marker id="q-flow-arrow-answer" markerWidth="9" markerHeight="8" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#4f8eea"></path></marker><marker id="q-flow-arrow-direct" markerWidth="9" markerHeight="8" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#18a974"></path></marker><marker id="q-flow-arrow-sequence" markerWidth="9" markerHeight="8" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#91a4ba"></path></marker></defs></svg>${nodes}<div class="q-flow-end-node" data-qid="__end__" style="left:${end.x-62}px;top:${end.y-24}px">Fim da entrevista</div></div></div></div>${rules}<div class="q-flow-empty">As posições, linhas e conexões são salvas junto com a pesquisa quando você clicar em salvar.</div></section>`;
 }
 
 function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;');}

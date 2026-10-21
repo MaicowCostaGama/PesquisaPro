@@ -43,11 +43,11 @@ ok(/function qRouteTarget/.test(app)&&/PP_CONDITIONAL_FLOW/.test(app),'integraç
 ok(/function qSetEditorTab/.test(app)&&/q-tab-flow/.test(app)&&/q-tab-questions/.test(app),'mapa do fluxo não está separado em uma aba própria');
 ok(/function qFlowStartNodeDrag/.test(app)&&/function qFlowStartConnect/.test(app)&&/function qFlowStartDirectConnect/.test(app)&&/q-flow-node-card/.test(app),'nós arrastáveis ou os dois tipos de conexão estão ausentes');
 ok(/flowPosition/.test(app)&&/const logicJson=\{version:2,route_targets:routeTargets,direct_target:directTarget,position\}/.test(app)&&/options_source/.test(app),'posição, conexão direta e metadados da pergunta não foram integrados ao estado do editor');
-ok(/function qFlowEdges/.test(app)&&/q-flow-edge-path \$\{edge.kind===.direct./.test(app)&&/qFlowZoomIn/.test(app)&&/qFlowWheelZoom/.test(app),'linhas diferenciadas ou controles de zoom ausentes');
+ok(/function qFlowEdges/.test(app)&&/const cssKind=edge.kind===.direct./.test(app)&&/qFlowZoomIn/.test(app)&&/qFlowWheelZoom/.test(app),'linhas diferenciadas ou controles de zoom ausentes');
 ok(/visibleQuestions/.test(app)&&/acollectBuildAnswerRows/.test(app),'coleta não usa o ramo visível para validar e persistir respostas');
 ok(/acollectOptionAutocompleteBody\('single'/.test(app)&&/acollectSetAnswer\(qDbId,value,rerenderForm,optionIndex\)/.test(app),'escolha única não usa o caminho de seleção que redesenha o ramo');
-ok(html.includes('question-conditional-flow.js?v=20261021181200'),'módulo condicional não foi carregado com cache v197');
-ok(html.includes('pesquisapro-app-version" content="20261021181200'),'meta de versão v197 ausente');
+ok(html.includes('question-conditional-flow.js?v=20261021182300'),'módulo condicional não foi carregado com cache v198');
+ok(html.includes('pesquisapro-app-version" content="20261021182300'),'meta de versão v198 ausente');
 ok(css.includes('.q-flow-map')&&css.includes('.q-flow-node-card')&&css.includes('.q-flow-edge-path')&&css.includes('.q-flow-edge-path.is-direct')&&css.includes('.q-flow-zoom-controls')&&css.includes('.q-editor-tabs'),'estilos do editor visual ausentes');
 ok(/add column if not exists logic_jsonb/i.test(sql)&&/route_targets/i.test(sql)&&/alter column logic_jsonb set not null/i.test(sql),'migration SQL v189 incompleta');
 ok(!/SUPABASE_SERVICE_ROLE_KEY|VAPID_PRIVATE_KEY|OPENAI_API_KEY/.test(source+app+sql),'segredo encontrado na implementação');

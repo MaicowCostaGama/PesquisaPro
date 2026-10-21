@@ -1,21 +1,22 @@
-# Brindes por indicação — v185
+# Brindes por indicação — v185/v187
 
 A v185 acrescenta campanhas de brindes para incentivar pesquisadores a indicar novos pesquisadores em cidades prioritárias.
 
 ## Como funciona
 
 1. A gestão abre **Brindes por indicação** no menu administrativo.
-2. Cria uma campanha informando nome, descrição do brinde, cidades-alvo, início, término e quantidade de ganhadores.
-3. Durante o período, o pesquisador continua usando **Meus dados → Indicar outra pessoa para ser pesquisador**.
-4. Uma indicação só entra na campanha quando a pessoa indicada:
+2. O pesquisador encontra **Campanhas de brindes** no menu lateral, dentro de **Meu perfil**, e pode abrir a página sem acessar dados de outros participantes.
+3. Cria uma campanha informando nome, descrição do brinde, cidades-alvo, início, término e quantidade de ganhadores.
+4. Durante o período, o pesquisador continua usando **Meus dados → Indicar outra pessoa para ser pesquisador**.
+5. Uma indicação só entra na campanha quando a pessoa indicada:
    - conclui o cadastro pelo link individual;
    - é aprovada pela gestão;
    - possui perfil de pesquisador ativo;
    - está vinculada à indicação;
    - corresponde a uma cidade-alvo pela cidade informada na indicação, cidade do perfil ou cidade de atuação.
-5. Cada novo pesquisador indicado vale uma única entrada naquela campanha. A mesma pessoa não gera várias chances por duplicidade.
-6. Depois do horário final, a gestão abre **Ver elegíveis** e usa **Sortear ganhadores**.
-7. O banco grava a lista de elegíveis, a posição dos ganhadores, a semente aleatória, o compromisso SHA-256 e o resultado. O sorteio não é feito pelo navegador.
+6. Cada novo pesquisador indicado vale uma única entrada naquela campanha. A mesma pessoa não gera várias chances por duplicidade.
+7. Depois do horário final, a gestão abre **Ver elegíveis** e usa **Sortear ganhadores**.
+8. O banco grava a lista de elegíveis, a posição dos ganhadores, a semente aleatória, o compromisso SHA-256 e o resultado. O sorteio não é feito pelo navegador.
 
 A participação não altera ranking, pagamentos, contratos, coletas, respostas ou convites. A funcionalidade apenas cria e audita campanhas de incentivo.
 

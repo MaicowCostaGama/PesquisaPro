@@ -8,7 +8,7 @@ const ROLES={
   gerente:{name:'Rafael Dias',role:'Gerente',initials:'RD',
     nav:['dashboard','commercial','sample','reports','researcher-ranking','finance']},
   pesq:{name:'João Pereira',role:'Pesquisador',initials:'JP',
-    nav:['dashboard-pesq','researcher-profile','researcher-guide','app-collect','researcher-badge','my-earnings','my-contract','communication','support']},
+    nav:['dashboard-pesq','researcher-profile','researcher-guide','app-collect','researcher-badge','researcher-rewards','my-earnings','my-contract','communication','support']},
   cliente:{name:'Prefeitura de Uberlândia',role:'Cliente',initials:'PU',
     nav:['client-surveys','form-approval','client-progress','client-results','communication']},
 };
@@ -26,6 +26,7 @@ const NAV_META={
   'researcher-profile':{ico:'☺',label:'Meus dados',group:'Meu perfil'},
   'researcher-my-ranking':{ico:'★',label:'Seu Ranking',group:'Meu perfil'},
   'researcher-badge':{ico:'▤',label:'Crachá virtual',group:'Meu perfil'},
+  'researcher-rewards':{ico:'✦',label:'Campanhas de brindes',group:'Meu perfil'},
   support:{ico:'☎',label:'Suporte',group:'Ajuda'},
   reports:{ico:'◫',label:'Relatórios',group:'Análise'},
   'researcher-ranking':{ico:'★',label:'Ranking de pesquisadores',group:'Análise'},
@@ -52,7 +53,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261021092100';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261021100700';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -350,7 +351,7 @@ const ROLE_NAV={
   admin:['dashboard','commercial','recruitment','referral-rewards','new-survey','surveys','surveys-done','sample','collect','reports','researcher-ranking','users','permissions','finance','contracts','contract-template','company','communication'],
   coord:['dashboard','commercial','surveys','surveys-done','collect','reports','researcher-ranking','finance','communication'],
   gerente:['dashboard','commercial','sample','reports','researcher-ranking','finance','communication'],
-  pesq:['dashboard-pesq','researcher-guide','app-collect','researcher-profile','researcher-my-ranking','researcher-badge','my-earnings','my-contract','support','communication'],
+  pesq:['dashboard-pesq','researcher-guide','app-collect','researcher-profile','researcher-my-ranking','researcher-badge','researcher-rewards','my-earnings','my-contract','support','communication'],
   cliente:['client-surveys','form-approval','client-progress','client-results','communication'],
   admpro:['dashboard','commercial','recruitment','referral-rewards','new-survey','surveys','surveys-done','sample','collect','reports','researcher-ranking','users','permissions','finance','contracts','contract-template','company','communication'],
   vendedor:['commercial'],

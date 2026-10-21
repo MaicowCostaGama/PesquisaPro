@@ -10,6 +10,8 @@ const html=read('app.html');
 const css=read('style.css');
 
 assert.match(app,/referral-rewards/,'rota de brindes ausente no app');
+assert.match(app,/researcher-rewards/,'campanhas de brindes ausentes do menu do pesquisador');
+assert.match(app,/Campanhas de brindes/,'rótulo de campanhas ausente no menu lateral');
 assert.match(app,/PP_REFERRAL_REWARDS/,'perfil não integra campanhas de indicação');
 assert.match(moduleSource,/create_referral_reward_campaign/,'criação de campanha ausente');
 assert.match(moduleSource,/get_referral_reward_candidates/,'consulta de elegíveis ausente');
@@ -18,6 +20,7 @@ assert.match(moduleSource,/winner_rank|selection_hash|draw_commitment/,'resultad
 assert.match(moduleSource,/p_target_cities|Cidades-alvo/,'cidades-alvo ausentes na configuração');
 assert.match(moduleSource,/ends_at|referral-reward-end/,'período da campanha ausente');
 assert.match(moduleSource,/my_eligible_count|Suas chances/,'pesquisador não vê suas chances');
+assert.match(moduleSource,/researcherPage|PAGES\['researcher-rewards'\]/,'rota dedicada do pesquisador ausente');
 assert.match(migration,/create table if not exists public\.referral_reward_campaigns/,'tabela de campanhas ausente');
 assert.match(migration,/create table if not exists public\.referral_reward_entries/,'tabela de entradas ausente');
 assert.match(migration,/unique \(campaign_id, referred_profile_id\)/,'duplicidade do indicado não é bloqueada');
@@ -36,9 +39,9 @@ assert.match(migration,/pg_catalog\.sha256\(pg_catalog\.convert_to\(/,'compromis
 assert.match(migration,/status='sorteada'/,'campanha não é marcada como sorteada');
 assert.match(migration,/ends_at/,'período não é validado no sorteio');
 assert.doesNotMatch(migration,/drop table|delete from public\.(profiles|signups|researcher_referrals)/i,'migration contém exclusão destrutiva');
-assert.match(html,/referral-rewards\.js\?v=20261021092100/,'módulo sem cache v185');
-assert.match(html,/app\.js\?v=20261021092100/,'app sem cache v185');
-assert.match(html,/style\.css\?v=20261021092100/,'CSS sem cache v185');
+assert.match(html,/referral-rewards\.js\?v=20261021100700/,'módulo sem cache v185');
+assert.match(html,/app\.js\?v=20261021100700/,'app sem cache v185');
+assert.match(html,/style\.css\?v=20261021100700/,'CSS sem cache v185');
 assert.match(css,/referral-reward-card/,'CSS das campanhas ausente');
 assert.match(css,/referral-reward-audit/,'CSS da auditoria ausente');
 console.log('referral-rewards-smoke-test: OK');

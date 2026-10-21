@@ -21,7 +21,7 @@
   const campaignPeriod=c=>`${dateTime(c.starts_at)} até ${dateTime(c.ends_at)}`;
   const refreshCurrent=()=>{
     const key=document.querySelector('.nav-item.on')?.dataset.key;
-    if(key==='referral-rewards'||key==='researcher-profile')go(key);
+    if(key==='referral-rewards'||key==='researcher-rewards'||key==='researcher-profile')go(key);
   };
   const rpcError=(error,fallback)=>{
     if(error&&schemaError(error))state.schemaMissing=true;
@@ -146,12 +146,19 @@
     return `<section class="card mb referral-reward-researcher-card"><div class="section-heading"><div><div class="card-t">Campanhas de brindes por indicação</div><div class="card-d">Indique pessoas nas cidades prioritárias e acompanhe aqui suas entradas e eventuais resultados.</div></div><span class="pill pill-blue">${campaigns.length} campanha(s)</span></div><div class="referral-reward-list">${cards}</div></section>`;
   }
 
+  function researcherPage(){
+    if(!CURRENT_PROFILE||CURRENT_PROFILE.role!=='pesq')return head('Campanhas de brindes','Área disponível apenas para pesquisadores')+'<div class="empty">Este recurso está disponível no perfil de pesquisador.</div>';
+    load();
+    return head('Campanhas de brindes','Indique novos pesquisadores nas cidades prioritárias e acompanhe suas chances')+researcherMarkup();
+  }
+
   function reset(){state.loaded=false;state.loading=false;state.campaigns=[];state.candidates={};state.candidateLoading={};state.schemaMissing=false;state.error=null;state.promise=null;}
-  window.PP_REFERRAL_REWARDS={load,reset,state:()=>({...state,candidates:{...state.candidates}}),researcherMarkup};
+  window.PP_REFERRAL_REWARDS={load,reset,state:()=>({...state,candidates:{...state.candidates}}),researcherMarkup,researcherPage};
   window.createReferralRewardCampaign=createCampaign;
   window.referralRewardsReload=()=>{load(true);};
   window.referralRewardsLoadCandidates=id=>loadCandidates(id);
   window.referralRewardsCloseCandidates=id=>{delete state.candidates[id];refreshCurrent();};
   window.referralRewardsDraw=id=>drawCampaign(id);
   if(typeof PAGES!=='undefined')PAGES['referral-rewards']=managementPage;
+  if(typeof PAGES!=='undefined')PAGES['researcher-rewards']=researcherPage;
 })();

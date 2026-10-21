@@ -26,5 +26,5 @@ assert(worker.includes('candidate.origin===self.location.origin'),'Push não pod
 assert(worker.includes("candidate.pathname.endsWith('/app.html')"),'Destino Push limitado à tela do app');
 assert(config.includes('window.PP_PUSH_PUBLIC_KEY = window.PP_PUSH_PUBLIC_KEY || '),'Chave pública VAPID deve estar configurada sem expor a privada');
 assert(css.includes('.researcher-alert-prefs label'),'Preferências devem ser legíveis em celular');
-assert(html.includes('app.js?v=20261021092100'),'Cache do app não atualizado');
+assert(html.includes('app.js?v=20261021100700'),'Cache do app não atualizado');
 console.log('Researcher alert preferences smoke test: PASS — consentimento, estado honesto, isolamento e links Push seguros.');

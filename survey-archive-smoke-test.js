@@ -13,7 +13,7 @@ assert(app.includes("sb.rpc('archive_survey',{p_survey_id:s.id})"), 'frontend n�
 assert(app.includes("sb.rpc('restore_survey',{p_survey_id:s.id})"), 'frontend não chama restore_survey');
 assert(app.includes('onclick="surveyArchive(${idx})"'), 'botão de operação ainda não usa arquivamento');
 assert(app.includes('onclick="surveyRestore(${idx})"'), 'botão de restauração ausente');
-assert(!app.includes("from('surveys').delete()"), 'frontend ainda tenta apagar surveys fisicamente');
+assert(!app.includes("from('surveys').delete()"), 'frontend ainda tenta apagar surveys diretamente sem a RPC protegida');
 assert(app.includes("filter(entry=>!entry.s.archivedAt)"), 'financeiro operacional ainda inclui pesquisas arquivadas');
 assert(app.includes("const archived=!!s?.archivedAt||!s"), 'extrato do pesquisador não neutraliza pesquisa arquivada');
 assert(app.includes("p.researcherId===myId&&!SURVEYS.find(x=>x.id===p.surveyId)?.archivedAt"), 'painel do pesquisador ainda soma pagamento arquivado');

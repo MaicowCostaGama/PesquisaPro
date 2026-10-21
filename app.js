@@ -53,7 +53,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261021135400';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261021143000';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -3429,12 +3429,14 @@ function surveyRow(s,idx,opts){
   const tag=s.isNew?' <span class="pill pill-amber" style="font-size:9px;padding:1px 6px">nova</span>':'';
   const teamN=(s.team||[]).length;
   const isArchived=!!s.archivedAt;
+  const canDelete=['admin','admpro'].includes(CURRENT_PROFILE?.role);
   const actions=isArchived
     ?`<button class="btn-ghost" onclick="chatOpenSurveyChannel('${s.id}')">Chat</button>
       <button class="btn-ghost" onclick="go('reports')">Ver relatório</button>
       <button class="btn-ghost" onclick="surveyDuplicate(${idx})">Duplicar</button>
       <button class="btn-ghost survey-pdf-action" onclick="surveyFormPdfDownload(${idx})">📄 PDF formulário</button>
-      <button class="btn-ghost" style="color:var(--teal)" onclick="surveyRestore(${idx})">Restaurar</button>`
+      <button class="btn-ghost" style="color:var(--teal)" onclick="surveyRestore(${idx})">Restaurar</button>
+      ${canDelete?`<button type="button" class="btn-ghost survey-delete-action" onclick="surveyDelete(${idx})">Excluir definitivamente</button>`:''}`
     :opts&&opts.done
     ?`<button type="button" class="btn-ghost completed-collection-access" onclick="collectOpenCompletedSurvey('${esc(s.id)}')" title="Acessar equipe, mapa ao vivo, auditoria, metas de cotas e evolução sem reabrir a pesquisa">Coleta completa</button>
       <button type="button" class="btn-ghost completed-client-access" onclick="completedClientsOpen(${jsArg(s.id)})" title="Editar clientes e acesso sem reabrir a coleta">Clientes e acesso</button>
@@ -3443,7 +3445,8 @@ function surveyRow(s,idx,opts){
       <button class="btn-ghost" onclick="surveyDuplicate(${idx})">Duplicar</button>
       <button class="btn-ghost survey-pdf-action" onclick="surveyFormPdfDownload(${idx})">📄 PDF formulário</button>
       <button class="btn-ghost" onclick="surveyReopen(${idx})">Reabrir</button>
-      <button class="btn-ghost" style="color:var(--red)" onclick="surveyArchive(${idx})">Arquivar</button>`
+      <button class="btn-ghost" style="color:var(--red)" onclick="surveyArchive(${idx})">Arquivar</button>
+      ${canDelete?`<button type="button" class="btn-ghost survey-delete-action" onclick="surveyDelete(${idx})">Excluir definitivamente</button>`:''}`
     :`${s.status==='rascunho'?`<button class="btn-ghost" style="color:var(--teal)" onclick="surveyStart(${idx})">▶ Iniciar coleta</button>`:''}
       <button class="btn-ghost" onclick="chatOpenSurveyChannel('${s.id}')">Chat</button>
       <button class="btn-ghost" onclick="surveyTeam(${idx})">Equipe</button>
@@ -3451,15 +3454,16 @@ function surveyRow(s,idx,opts){
       <button class="btn-ghost" onclick="surveyDuplicate(${idx})">Duplicar</button>
       <button class="btn-ghost survey-pdf-action" onclick="surveyFormPdfDownload(${idx})">📄 PDF formulário</button>
       <button class="btn-ghost" onclick="surveyFinish(${idx})">Concluir</button>
-      <button class="btn-ghost" style="color:var(--red)" onclick="surveyArchive(${idx})">Arquivar</button>`;
+      <button class="btn-ghost" style="color:var(--red)" onclick="surveyArchive(${idx})">Arquivar</button>
+      ${canDelete?`<button type="button" class="btn-ghost survey-delete-action" onclick="surveyDelete(${idx})">Excluir definitivamente</button>`:''}`;
   return `<tr>
-    <td><b>${esc(s.name)}</b>${tag}<div style="font-size:11px;color:var(--ink3)">${esc(s.created)}</div></td>
-    <td>${s.questions.length} ${s.questions.length===1?'pergunta':'perguntas'}</td>
-    <td>${sample.toLocaleString('pt-BR')}</td>
-    <td>${coll}</td>
-    <td>${teamN?teamN+(teamN===1?' pessoa':' pessoas'):'<span style="color:var(--ink3)">não atribuída</span>'}</td>
-    <td>${isArchived?STATUS_PILL.arquivada:(STATUS_PILL[s.status]||STATUS_PILL.rascunho)}</td>
-    <td ${!isArchived&&opts?.done?'class="completed-survey-actions-cell"':'style="white-space:nowrap"'}>${!isArchived&&opts?.done?'<div class="completed-survey-actions">'+actions+'</div>':actions}</td></tr>`;
+    <td data-label="Pesquisa"><b>${esc(s.name)}</b>${tag}<div style="font-size:11px;color:var(--ink3)">${esc(s.created)}</div></td>
+    <td data-label="Formulário">${s.questions.length} ${s.questions.length===1?'pergunta':'perguntas'}</td>
+    <td data-label="Amostra">${sample.toLocaleString('pt-BR')}</td>
+    <td data-label="Coletado">${coll}</td>
+    <td data-label="Equipe">${teamN?teamN+(teamN===1?' pessoa':' pessoas'):'<span style="color:var(--ink3)">não atribuída</span>'}</td>
+    <td data-label="Status">${isArchived?STATUS_PILL.arquivada:(STATUS_PILL[s.status]||STATUS_PILL.rascunho)}</td>
+    <td data-label="Ações" class="survey-actions-cell ${!isArchived&&opts?.done?'completed-survey-actions-cell':''}"><div class="survey-row-actions ${!isArchived&&opts?.done?'completed-survey-actions':''}">${actions}</div></td></tr>`;
 }
 PAGES.surveys=()=>{
   if(!SURVEYS_LOADED){
@@ -3596,7 +3600,30 @@ async function surveyRestore(idx){
   refreshClientSurveyLinks();
   go('surveys-archived');
 }
-function surveyDelete(idx){return surveyArchive(idx);}
+async function surveyDelete(idx){
+  const s=SURVEYS[idx];
+  if(!s?.id||!['admin','admpro'].includes(CURRENT_PROFILE?.role)){
+    alert('Apenas um administrador pode excluir pesquisas definitivamente.');
+    return;
+  }
+  const currentKey=document.querySelector('.nav-item.on')?.dataset.key||'surveys';
+  const warning='Excluir definitivamente a pesquisa "'+s.name+'"?\n\n'+
+    'Esta ação apagará a pesquisa e os registros vinculados (perguntas, respostas, coletas, equipe, financeiro, mensagens e relatórios). Não é possível desfazer.\n\n'+
+    'Use Arquivar se você quiser apenas retirá-la da operação sem apagar o histórico.';
+  if(!confirm(warning))return;
+  try{
+    const {error}=await sb.rpc('delete_survey_permanently',{p_survey_id:s.id});
+    if(error)throw new Error(error.message);
+  }catch(ex){
+    alert('Não foi possível excluir a pesquisa: '+(ex?.message||ex)+'\n\nExecute primeiro a migration deploy/excluir-pesquisa.sql no Supabase. Nenhum dado foi apagado.');
+    return;
+  }
+  const deletedId=s.id;
+  SURVEYS=SURVEYS.filter(row=>row.id!==deletedId);
+  refreshClientSurveyLinks();
+  alert('Pesquisa excluída definitivamente.');
+  go(['surveys','surveys-done','surveys-archived'].includes(currentKey)?currentKey:'surveys');
+}
 async function surveyEdit(idx){
   const s=SURVEYS[idx];
   if(!s?.id)return;

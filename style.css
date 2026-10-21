@@ -2405,3 +2405,47 @@ body.system-message-gate-open{overflow:hidden}
 .q-flow-arrow{text-align:center;color:#7392ba;font-weight:800}
 .q-flow-target{height:32px;font-size:11.5px;background:#fff}
 @media (max-width:640px){.q-flow-map{padding:12px}.q-flow-map-head,.q-flow-editor-head{display:block}.q-flow-map-head .pill,.q-flow-node-badge{display:inline-block;margin-top:8px}.q-flow-rule-row{grid-template-columns:1fr;gap:5px}.q-flow-arrow{display:none}.q-flow-target{width:100%}}
+
+
+/* ---------- PESQUISAS — tabela compacta e ações sem encavalamento v191 ---------- */
+.survey-table-scroll table{width:100%;min-width:0;table-layout:fixed}
+.survey-table-scroll th,.survey-table-scroll td{vertical-align:top;overflow-wrap:anywhere}
+.survey-table-scroll th:nth-child(1),.survey-table-scroll td:nth-child(1){width:21%}
+.survey-table-scroll th:nth-child(2),.survey-table-scroll td:nth-child(2){width:10%}
+.survey-table-scroll th:nth-child(3),.survey-table-scroll td:nth-child(3){width:9%}
+.survey-table-scroll th:nth-child(4),.survey-table-scroll td:nth-child(4){width:11%}
+.survey-table-scroll th:nth-child(5),.survey-table-scroll td:nth-child(5){width:11%}
+.survey-table-scroll th:nth-child(6),.survey-table-scroll td:nth-child(6){width:10%}
+.survey-table-scroll th:nth-child(7),.survey-table-scroll td:nth-child(7){width:28%}
+.survey-table-scroll td:last-child{min-width:0}
+.survey-row-actions{display:flex;align-items:center;justify-content:flex-start;flex-wrap:wrap;gap:5px;min-width:0}
+.survey-row-actions .btn-ghost{display:inline-flex;align-items:center;justify-content:center;min-height:30px;margin:0;padding:6px 8px;font-size:10.5px;line-height:1.15;white-space:normal;text-align:center}
+.survey-row-actions .survey-delete-action{color:#b42318!important;border-color:#f1c3bd!important;background:#fff8f7!important}
+.survey-row-actions .survey-delete-action:hover,.survey-row-actions .survey-delete-action:focus-visible{color:#991b1b!important;border-color:#e99c91!important;background:#fff0ee!important}
+@media(max-width:980px){
+  .survey-table-scroll{overflow:visible}
+  .survey-table-scroll table,.survey-table-scroll thead,.survey-table-scroll tbody,.survey-table-scroll tr,.survey-table-scroll td{display:block}
+  .survey-table-scroll thead{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+  .survey-table-scroll tbody{display:grid;gap:12px}
+  .survey-table-scroll tbody tr{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 12px;padding:13px 14px;border:1px solid #dce7f4;border-radius:14px;background:#fff;box-shadow:0 5px 15px rgba(24,59,105,.05)}
+  .survey-table-scroll tbody td{display:grid;grid-template-columns:minmax(82px,34%) minmax(0,1fr);gap:8px;align-items:start;width:auto!important;min-width:0!important;padding:7px 0;border-bottom:1px solid #eef2f7;font-size:11.5px}
+  .survey-table-scroll tbody td::before{content:attr(data-label);color:#71839a;font-size:9.5px;font-weight:800;letter-spacing:.045em;text-transform:uppercase}
+  .survey-table-scroll tbody td:nth-child(1),.survey-table-scroll tbody td:nth-child(4),.survey-table-scroll tbody td:nth-child(7){grid-column:1/-1}
+  .survey-table-scroll tbody td:first-child{padding-top:1px}
+  .survey-table-scroll tbody td:last-child{padding-bottom:1px;border-bottom:0}
+  .survey-table-scroll tbody td.empty{display:block;grid-column:1/-1;padding:25px;text-align:center}
+  .survey-table-scroll tbody td.empty::before{display:none}
+  .survey-row-actions{grid-column:2;justify-content:flex-start;gap:6px}
+  .survey-row-actions .btn-ghost{min-height:34px;font-size:10.5px}
+}
+@media(max-width:600px){
+  .survey-table-scroll tbody tr{grid-template-columns:1fr;gap:0;padding:12px}
+  .survey-table-scroll tbody td{grid-column:1/-1!important;grid-template-columns:minmax(88px,31%) minmax(0,1fr);padding:7px 0}
+  .survey-row-actions{grid-column:2;gap:6px}
+  .survey-row-actions .btn-ghost{flex:1 1 125px;min-height:36px;padding:7px 8px}
+}
+@media(max-width:380px){
+  .survey-table-scroll tbody td{grid-template-columns:1fr;gap:4px}
+  .survey-row-actions{grid-column:1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+  .survey-row-actions .btn-ghost{width:100%;min-width:0}
+}

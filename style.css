@@ -2670,3 +2670,7 @@ body.system-message-gate-open{overflow:hidden}
 /* v201 — arquivo bilateral com as assinaturas da CONTRATANTE e do pesquisador. */
 .contract-download-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px}.contract-download-actions .btn,.contract-download-actions .btn-ghost{min-height:36px}
 @media(max-width:640px){.contract-download-actions{align-items:stretch;flex-direction:column}.contract-download-actions .btn,.contract-download-actions .btn-ghost{width:100%;white-space:normal}}
+
+/* v203 — busca por nome/CPF e ações individuais de contrato. */
+.contracts-search-toolbar{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;padding:12px 0 4px}.contracts-search-toolbar>div:first-child{width:min(100%,420px)}.contracts-search-toolbar .card-d{padding-bottom:9px;white-space:nowrap}.contracts-researchers-card table td:last-child,.contracts-researchers-card table th:last-child{min-width:150px}.contracts-researchers-card table td:last-child .btn-ghost{margin:2px 4px 2px 0}
+@media(max-width:760px){.contracts-search-toolbar{align-items:stretch;flex-direction:column;gap:5px}.contracts-search-toolbar>div:first-child{width:100%}.contracts-search-toolbar .card-d{padding-bottom:0}.contracts-researchers-card{overflow-x:auto}.contracts-researchers-card table{min-width:820px}}

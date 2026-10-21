@@ -51,7 +51,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261020191000';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261021081200';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -474,6 +474,7 @@ async function afterLogin(user){
   buildSidebar();
   const nav=ROLE_NAV[profile.role]||['dashboard'];
   go(nav[0]);
+  window.PP_SYSTEM_MESSAGES?.start();
   startStaffNavPendingMonitor();
   if(profile.role==='pesq'){
     startResearcherVersionMonitor();
@@ -491,6 +492,7 @@ async function logout(){
   if(window.PP_USER_ACTIVATION)window.PP_USER_ACTIVATION.reset();
   stopResearcherVersionMonitor();
   stopStaffNavPendingMonitor();
+  window.PP_SYSTEM_MESSAGES?.reset();
   if(typeof acollectCloseNoticeGate==='function')acollectCloseNoticeGate(true);
   await sb.auth.signOut();
   chatStopRealtime();
@@ -643,12 +645,14 @@ function openResearcherSupport(){
 }
 
 function go(key){
+  if(window.PP_SYSTEM_MESSAGES&&!window.PP_SYSTEM_MESSAGES.guardNavigation(key))return;
   if(staffNavPendingEnabled())refreshStaffNavPendingCounts();
   const previousKey=document.querySelector('.nav-item.on')?.dataset.key;
   if(previousKey==='client-results'&&key!=='client-results'){window.PP_CLIENT_REPORTS?.reset();window.PP_TABULATION?.reset();}
   if(key!=='reports'&&window.PP_SIMPLE_TABULATION){if(!window.PP_SIMPLE_TABULATION.canLeave())return;window.PP_SIMPLE_TABULATION.reset();}
   if(key!=='reports'&&window.PP_REPORT_WHATSAPP)window.PP_REPORT_WHATSAPP.reset();
   if(key!=='users'&&window.PP_USERS_PUSH)window.PP_USERS_PUSH.reset();
+  if(key!=='users'&&window.PP_SYSTEM_MESSAGES)window.PP_SYSTEM_MESSAGES.reset();
   if(previousKey==='reports'&&key!=='reports'&&window.PP_TABULATION){if(!window.PP_TABULATION.canLeave())return;window.PP_TABULATION.reset();}
   document.querySelectorAll('.nav-item').forEach(n=>{
     const active=n.dataset.key===key;
@@ -6437,6 +6441,7 @@ function acollectCancel(){
   if(formEl)formEl.innerHTML='';
   renderAcollectQuotas();
   applyPendingResearcherUpdateIfSafe();
+  window.PP_SYSTEM_MESSAGES?.load(true);
 }
 async function loadCollectEventsForced(){
   const profile=CURRENT_PROFILE,generation=COLLECTION_EVENTS_SESSION_GENERATION;
@@ -6622,6 +6627,7 @@ async function acollectSubmit(){
     setTimeout(()=>{if(msg)msg.innerHTML='';},4000);
   }
   applyPendingResearcherUpdateIfSafe();
+  window.PP_SYSTEM_MESSAGES?.load(true);
 }
 
 function requestGeo(){
@@ -8595,6 +8601,7 @@ function userTableRows(tab){
         <td class="user-actions-cell" onclick="event.stopPropagation()">
           ${conversationButton(u.phone,'Olá '+u.name+'! Podemos conversar sobre seu cadastro e as próximas coletas?')}
           ${userActivationButton(u)}
+          ${window.PP_SYSTEM_MESSAGES?.rowButton?.(u)||''}
           ${window.PP_USERS_PUSH?.rowButton?.(u)||''}
           <button class="btn-ghost" onclick="userShow(${i})">Ver dados</button>
           <button class="btn-ghost" onclick="userOpen(${i})">Editar</button>
@@ -8613,6 +8620,7 @@ function userTableRows(tab){
       <td class="user-actions-cell" onclick="event.stopPropagation()">
         ${conversationButton(u.phone,'Olá '+(u.contact||u.name)+'! Podemos conversar sobre sua pesquisa?')}
         ${userActivationButton(u)}
+        ${window.PP_SYSTEM_MESSAGES?.rowButton?.(u)||''}
         ${window.PP_USERS_PUSH?.rowButton?.(u)||''}
         <button class="btn-ghost" onclick="userShow(${i})">Abrir</button>
         <button class="btn-ghost" onclick="userOpen(${i})">Editar</button>
@@ -8636,6 +8644,7 @@ function userTableRows(tab){
       <td class="user-actions-cell" onclick="event.stopPropagation()">
         ${conversationButton(u.phone,'Olá '+u.name+'! Podemos conversar sobre suas atividades no PesquisaPro?')}
         ${userActivationButton(u)}
+        ${window.PP_SYSTEM_MESSAGES?.rowButton?.(u)||''}
         ${window.PP_USERS_PUSH?.rowButton?.(u)||''}
         <button class="btn-ghost" onclick="userShow(${i})">Ver dados</button>
         <button class="btn-ghost" onclick="userOpen(${i})">Editar</button>
@@ -8683,15 +8692,17 @@ function userList(){
   const generalFilters=userGeneralFiltersMarkup(tab);
   const researcherFilters=tab==='pesq'?userResearcherFiltersMarkup(usersInTab('pesq')):'';
   const researcherQueue=tab==='pesq'?researcherApprovalQueueMarkup():'';
+  const systemMessageButton=window.PP_SYSTEM_MESSAGES?.headerButton?.()||'';
+  const systemMessagePanel=window.PP_SYSTEM_MESSAGES?.panel?.(usersInTab(tab).map(({u})=>u))||'';
   const pushButton=window.PP_USERS_PUSH?.headerButton?.()||'';
   const pushPanel=window.PP_USERS_PUSH?.panel?.(usersInTab(tab).map(({u})=>u))||'';
   const newButton=tab==='pesq_inativos'?'':`<button class="btn btn-fill" onclick="userOpen('new')">＋ Novo ${USER_TAB_NEW_LABEL[tab]||'usuário'}</button>`;
   return `<div class="users-page"><div class="users-context"><div><span class="eyebrow">${tabInfo[0]}</span><p>${tabInfo[1]}</p></div><span class="users-count-chip">${currentCount} ${currentCount===1?'perfil':'perfis'}</span></div>`+
-  head('Usuários','Cadastre e gerencie os diferentes perfis de usuário do sistema',profilesRefreshButton()+pushButton+
+  head('Usuários','Cadastre e gerencie os diferentes perfis de usuário do sistema',profilesRefreshButton()+systemMessageButton+pushButton+
     newButton)+
   userTabBar()+
   userTabStats(tab)+
-  pushPanel+
+  systemMessagePanel+pushPanel+
   researcherQueue+
   searchBar+generalFilters+researcherFilters+
   `<div class="card user-table-card" ${tab==='pesq'?'id="researcher-table"':''}><div class="user-table-heading"><div><div class="card-t">${USER_TAB_NEW_LABEL[tab]||'Usuários'} encontrados</div><div class="card-d">${currentCount?`Mostrando ${currentCount} ${currentCount===1?'registro':'registros'} com os filtros atuais.`:'Nenhum registro corresponde aos filtros atuais.'}</div></div><span class="users-table-count" aria-label="Quantidade encontrada">${currentCount}</span></div>${tableContent}

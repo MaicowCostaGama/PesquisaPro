@@ -8,8 +8,8 @@ const key='BIAEeym2CZZva4DsZG-VRDWISOVNutsGCA3TWN2o6JtMA-gCttu6Ai6Z1iID_PnpzWblG
 assert(config.includes(`window.PP_PUSH_PUBLIC_KEY = window.PP_PUSH_PUBLIC_KEY || '${key}'`),'chave pública VAPID não encontrada no push-config.js');
 assert(!config.includes('VAPID_PRIVATE_KEY'),'chave privada não pode estar no frontend');
 assert(!config.includes('OPENAI_API_KEY'),'segredo não pode estar no frontend');
-assert(html.includes('pesquisapro-app-version" content="20261020213500'),'cache da v183 ausente no HTML');
-assert(html.includes('push-config.js?v=20261020213500'),'cache da configuração Push não foi atualizado');
-assert(html.includes('app.js?v=20261020213500'),'cache do app não foi atualizado');
+assert(html.includes('pesquisapro-app-version" content="20261021081200'),'cache da v184 ausente no HTML');
+assert(html.includes('push-config.js?v=20261021081200'),'cache da configuração Push não foi atualizado');
+assert(html.includes('app.js?v=20261021081200'),'cache do app não foi atualizado');
 assert(/^[A-Za-z0-9_-]{80,100}$/.test(key),'formato da chave pública VAPID inválido');
-console.log('Push VAPID config smoke test: PASS — chave pública configurada, privada ausente e cache v183 atualizado.');
+console.log('Push VAPID config smoke test: PASS — chave pública configurada, privada ausente e cache v184 atualizado.');

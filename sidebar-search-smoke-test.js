@@ -1,0 +1,17 @@
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const path=require('node:path');
+const root='/home/ubuntu/PesquisaPro-remoto';
+const app=fs.readFileSync(path.join(root,'app.js'),'utf8');
+const html=fs.readFileSync(path.join(root,'app.html'),'utf8');
+const css=fs.readFileSync(path.join(root,'style.css'),'utf8');
+assert.doesNotMatch(app,/Encontrar uma página|Buscar no menu|navSectionSearch|filterSidebarNavigation/,'busca lateral ainda aparece no app');
+assert.doesNotMatch(css,/sidebar-tools|sidebar-search-empty/,'estilos da busca lateral ainda aparecem no CSS');
+assert.match(app,/function buildSidebar\(\)/,'construção do menu foi removida por engano');
+assert.match(app,/data-nav-group/,'grupos do menu foram removidos');
+assert.match(app,/class="nav-label"/,'rótulos do menu foram removidos');
+assert.match(app,/function go\(key\)/,'navegação principal foi removida');
+assert.match(app,/event\.key==='Escape'/,'fechamento acessível do menu foi removido');
+assert.match(html,/pesquisapro-app-version" content="20261021135400/,'cache v190 ausente');
+assert.match(html,/app\.js\?v=20261021135400/,'app.js não está versionado em v190');
+console.log('sidebar-search-smoke-test: PASS — busca removida e navegação preservada.');

@@ -34,8 +34,8 @@ ok(/function qConditionalEditorMarkup/.test(app)&&/function qFlowGraphMarkup/.te
 ok(/function qRouteTarget/.test(app)&&/PP_CONDITIONAL_FLOW/.test(app),'integração do motor no editor/coleta ausente');
 ok(/visibleQuestions/.test(app)&&/acollectBuildAnswerRows/.test(app),'coleta não usa o ramo visível para validar e persistir respostas');
 ok(/acollectSetAnswer\('\$\{q\.dbId\}',\$\{jsArg\(opt\)\},true,\$\{oi\}\)/.test(app),'escolha única não redesenha o ramo selecionado');
-ok(html.includes('question-conditional-flow.js?v=20261021133000'),'módulo condicional não foi carregado com cache v189');
-ok(html.includes('pesquisapro-app-version" content="20261021133000'),'meta de versão v189 ausente');
+ok(html.includes('question-conditional-flow.js?v=20261021135400'),'módulo condicional não foi carregado com cache v190');
+ok(html.includes('pesquisapro-app-version" content="20261021135400'),'meta de versão v190 ausente');
 ok(css.includes('.q-flow-map')&&css.includes('.q-flow-rule-row')&&css.includes('.q-flow-node'),'estilos do editor visual ausentes');
 ok(/add column if not exists logic_jsonb/i.test(sql)&&/route_targets/i.test(sql)&&/alter column logic_jsonb set not null/i.test(sql),'migration SQL v189 incompleta');
 ok(!/SUPABASE_SERVICE_ROLE_KEY|VAPID_PRIVATE_KEY|OPENAI_API_KEY/.test(source+app+sql),'segredo encontrado na implementação');

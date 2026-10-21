@@ -51,9 +51,9 @@ for(const token of [
   'public.is_staff()',
 ])ok(migration.includes(token),`migration sem ${token}`);
 ok(!/\b(drop\s+table|drop\s+column|truncate|delete\s+from)\b/i.test(migration),'migration contém operação destrutiva');
-ok(html.includes('system-messages.js?v=20261021081200'),'módulo global sem cache v184');
-ok(html.includes('app.js?v=20261021081200'),'app sem cache v184');
-ok(html.includes('style.css?v=20261021081200'),'CSS sem cache v184');
+ok(html.includes('system-messages.js?v=20261021092100'),'módulo global sem cache v184');
+ok(html.includes('app.js?v=20261021092100'),'app sem cache v184');
+ok(html.includes('style.css?v=20261021092100'),'CSS sem cache v184');
 
 const users=[
   {id:'11111111-1111-4111-8111-111111111111',name:'Ana Ativa',email:'ana@example.com',role:'pesq',status:'ativo'},

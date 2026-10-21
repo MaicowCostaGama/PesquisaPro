@@ -2,7 +2,7 @@
 let selectedRole='admin';
 const ROLES={
   admin:{name:'Admin Master',role:'Administrador',initials:'AM',
-    nav:['dashboard','commercial','new-survey','surveys','surveys-done','sample','collect','reports','researcher-ranking','users','permissions','finance','contracts','contract-template','company','communication']},
+    nav:['dashboard','commercial','referral-rewards','new-survey','surveys','surveys-done','sample','collect','reports','researcher-ranking','users','permissions','finance','contracts','contract-template','company','communication']},
   coord:{name:'Carla Menezes',role:'Coordenadora',initials:'CM',
     nav:['dashboard','commercial','surveys','surveys-done','collect','reports','researcher-ranking','finance']},
   gerente:{name:'Rafael Dias',role:'Gerente',initials:'RD',
@@ -40,6 +40,7 @@ const NAV_META={
   communication:{ico:'✉',label:'Comunicação',group:'Comunicação'},
   commercial:{ico:'↗',label:'Comercial',group:'Comercial'},
   recruitment:{ico:'♙',label:'Recrutamento',group:'Administração'},
+  'referral-rewards':{ico:'✦',label:'Brindes por indicação',group:'Administração'},
   'client-surveys':{ico:'▤',label:'Minhas pesquisas',group:'Minha pesquisa'},
   'client-progress':{ico:'◷',label:'Andamento',group:'Minha pesquisa'},
   'form-approval':{ico:'✓',label:'Aprovar formulário',group:'Minha pesquisa'},
@@ -51,7 +52,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261021081200';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261021092100';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -346,12 +347,12 @@ async function completePasswordReset(){
 }
 
 const ROLE_NAV={
-  admin:['dashboard','commercial','recruitment','new-survey','surveys','surveys-done','sample','collect','reports','researcher-ranking','users','permissions','finance','contracts','contract-template','company','communication'],
+  admin:['dashboard','commercial','recruitment','referral-rewards','new-survey','surveys','surveys-done','sample','collect','reports','researcher-ranking','users','permissions','finance','contracts','contract-template','company','communication'],
   coord:['dashboard','commercial','surveys','surveys-done','collect','reports','researcher-ranking','finance','communication'],
   gerente:['dashboard','commercial','sample','reports','researcher-ranking','finance','communication'],
   pesq:['dashboard-pesq','researcher-guide','app-collect','researcher-profile','researcher-my-ranking','researcher-badge','my-earnings','my-contract','support','communication'],
   cliente:['client-surveys','form-approval','client-progress','client-results','communication'],
-  admpro:['dashboard','commercial','recruitment','new-survey','surveys','surveys-done','sample','collect','reports','researcher-ranking','users','permissions','finance','contracts','contract-template','company','communication'],
+  admpro:['dashboard','commercial','recruitment','referral-rewards','new-survey','surveys','surveys-done','sample','collect','reports','researcher-ranking','users','permissions','finance','contracts','contract-template','company','communication'],
   vendedor:['commercial'],
   indicador:['commercial'],
   recrutador:['recruitment'],
@@ -493,6 +494,7 @@ async function logout(){
   stopResearcherVersionMonitor();
   stopStaffNavPendingMonitor();
   window.PP_SYSTEM_MESSAGES?.reset();
+  window.PP_REFERRAL_REWARDS?.reset();
   if(typeof acollectCloseNoticeGate==='function')acollectCloseNoticeGate(true);
   await sb.auth.signOut();
   chatStopRealtime();
@@ -1084,7 +1086,7 @@ function quota(label,done,total,color){
 
 /* ============ DASHBOARD (admin/coord/gerente) ============ */
 PAGES.dashboard=()=>{
-  if(!CONTRACT_SETTINGS_LOADED){loadContractSettingsIfNeeded();return head('Painel geral','Visão consolidada da pesquisa eleitoral · Minas Gerais 2026')+'<div class="empty">Carregando a versão vigente do contrato…</div>';}
+  if(!CONTRACT_SETTINGS_LOADED){loadContractSettingsIfNeeded();return head('Painel geral','Visão geral das operações do sistema')+'<div class="empty">Carregando a versão vigente do contrato…</div>';}
   if(!USERS_LOADED)loadUsersIfNeeded();
   if(['admin','admpro'].includes(selectedRole)&&!SIGNUPS_LOADED)loadSignupsIfNeeded();
   if(!SURVEYS_LOADED)loadSurveysIfNeeded();
@@ -1101,7 +1103,7 @@ PAGES.dashboard=()=>{
   const signedIds=new Set(ALL_CONTRACTS.map(c=>c.researcher_id));
   const contratosPendentes=pesqAtivosList.filter(u=>!signedIds.has(u.id)).length;
   const isAdmin=selectedRole==='admin'||selectedRole==='admpro';
-  return head('Painel geral','Visão consolidada da pesquisa eleitoral · Minas Gerais 2026')+`
+  return head('Painel geral','Visão geral das operações do sistema')+`
   ${(isAdmin&&COMPANY_SIGNATURE_LOADED&&!COMPANY_SIGNATURE)?'<div class="callout mb">✎ O contrato-quadro dos pesquisadores ainda não foi assinado do lado do PesquisaPro (CONTRATANTE) — assine para que o contrato valha para os pesquisadores. <button class="btn-ghost" style="margin-left:6px" onclick="go(\'contracts\')">Assinar agora →</button></div>':''}
   <div class="grid g4" style="margin-bottom:18px">
     ${stat('Pesquisas em campo',String(emCampo),'coletando dados agora','▤','#2563eb')}
@@ -1259,6 +1261,7 @@ PAGES['researcher-profile']=()=>{
   if(CURRENT_PROFILE?.role!=='pesq')return head('Meus dados','Área disponível apenas para pesquisadores')+'<div class="empty">Este recurso está disponível no perfil de pesquisador.</div>';
   if(!SURVEYS_LOADED)loadSurveysIfNeeded();
   if(!MY_INVITES_LOADED)loadMyInvitesIfNeeded();
+  window.PP_REFERRAL_REWARDS?.load();
   if(!RESEARCHER_PROFILE_CITIES_LOADED||!RESEARCHER_REFERRALS_LOADED||!MY_INVITES_LOADED||!SURVEYS_LOADED){if(!RESEARCHER_PROFILE_CITIES_LOADED)loadResearcherProfileCities();if(!RESEARCHER_REFERRALS_LOADED)loadResearcherReferrals();return head('Meus dados','Carregando seus dados cadastrais…')+'<div class="empty">Carregando convites e dados…</div>';}
   const p={...(CURRENT_PROFILE||{}),...(RESEARCHER_PROFILE_FORM_DRAFT||{})};
   return head('Meus dados','Corrija seus dados cadastrais e mantenha suas cidades de atuação atualizadas')+`<div class="researcher-profile-page">
@@ -1279,6 +1282,7 @@ PAGES['researcher-profile']=()=>{
     <section class="card mb"><div class="card-t">Cidades em que pode atuar *</div><div class="card-d">Escolha de uma a cinco cidades. Essas informações ajudam a equipe a encontrar pesquisas compatíveis.</div><div id="researcher-profile-cities-wrap">${researcherProfileCitiesMarkup()}</div></section>
     <section class="card mb researcher-profile-chat-card"><div><div class="card-t">Atendimento PesquisaPro</div><div class="card-d">Fale diretamente com a equipe PesquisaPro em um chat privado para tirar dúvidas, receber orientações e relatar problemas de execução.</div></div><button class="btn btn-out" onclick="go('communication')">✉ Abrir chat privado</button></section>
     ${researcherReferralsMarkup()}
+    ${window.PP_REFERRAL_REWARDS?.researcherMarkup?.()||''}
     <section class="card mb"><div class="card-t">Dados de pagamento <span class="pill pill-gray">Opcional</span></div><div class="card-d">Você pode informar ou corrigir o PIX agora ou depois. Ele será usado somente para repasses aprovados.</div>
       <div class="field-row mb"><div><label class="lbl">Chave PIX</label><input class="inp" id="researcher-profile-pix-key" value="${esc(p.pix_key||'')}" placeholder="CPF, e-mail, celular ou chave aleatória"></div><div><label class="lbl">Banco</label><input class="inp" id="researcher-profile-pix-bank" value="${esc(p.pix_bank||'')}"></div></div>
       <div class="mb"><label class="lbl">CPF/CNPJ do titular</label><input class="inp" id="researcher-profile-pix-doc" value="${esc(p.pix_doc||'')}"></div>

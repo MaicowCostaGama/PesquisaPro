@@ -2449,3 +2449,34 @@ body.system-message-gate-open{overflow:hidden}
   .survey-row-actions{grid-column:1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
   .survey-row-actions .btn-ghost{width:100%;min-width:0}
 }
+
+/* v192 — editor de perguntas: cabeçalho quebrável, sem corte ou encavalamento. */
+.q-card{min-width:0;overflow:hidden}
+.q-card .qc-head{display:flex;align-items:center;flex-wrap:wrap;row-gap:8px;column-gap:8px;min-width:0}
+.q-card .qc-head .q-text-inp{flex:1 1 300px;min-width:220px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.q-card .qc-head .q-region-btn,.q-card .qc-head .q-quota-btn,.q-card .qc-head .q-difficulty-control,.q-card .qc-head .q-type-sel,.q-card .qc-head .q-order-controls,.q-card .qc-head .q-drag-handle,.q-card .qc-head .q-del{flex:0 0 auto}
+.q-card .qc-head .q-order-controls{margin-left:auto}
+.q-card .q-opts,.q-card .q-pair-editor,.q-card .q-flow-editor{min-width:0}
+.q-card .opt-edit{min-width:0}
+.q-card .opt-inp{min-width:0}
+.q-flow-map{min-width:0;overflow:hidden}
+.q-flow-node-strip{min-width:0;max-width:100%;overscroll-behavior-inline:contain}
+.q-flow-editor{overflow:hidden}
+@media(max-width:900px){
+  .q-card .qc-head .q-text-inp{flex-basis:calc(100% - 42px);min-width:calc(100% - 42px)}
+  .q-card .qc-head .q-order-controls{margin-left:0}
+}
+@media(max-width:640px){
+  .q-card{padding:13px}
+  .q-card .qc-head{column-gap:6px}
+  .q-card .qc-head .q-text-inp{flex-basis:calc(100% - 38px);min-width:calc(100% - 38px);font-size:13px}
+  .q-card .qc-head .q-region-btn,.q-card .qc-head .q-quota-btn,.q-card .qc-head .q-difficulty-control,.q-card .qc-head .q-type-sel{max-width:100%}
+  .q-card .qc-head .q-type-sel{flex:1 1 145px;min-width:140px}
+  .q-card .qc-head .q-difficulty-control{flex:1 1 145px;justify-content:space-between}
+  .q-card .qc-head .q-difficulty-control select{max-width:none}
+  .q-flow-node-strip{padding-top:12px}
+}
+@media(max-width:380px){
+  .q-card .qc-head .q-type-sel,.q-card .qc-head .q-difficulty-control{flex-basis:100%}
+  .q-card .qc-head .q-order-controls{margin-left:0}
+}

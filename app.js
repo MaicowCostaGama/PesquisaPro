@@ -53,7 +53,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261021171500';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261021175600';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -207,7 +207,7 @@ async function enableResearcherPush(){
   try{
     const permission=await Notification.requestPermission();
     if(permission!=='granted'){PUSH_STATUS='blocked';go('dashboard-pesq');return;}
-    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261021171500',{scope:'./'});
+    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261021175600',{scope:'./'});
     const subscription=await PUSH_SW_REGISTRATION.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:pushKeyToUint8Array(window.PP_PUSH_PUBLIC_KEY)});
     const json=subscription.toJSON();
     const {error}=await sb.from('push_subscriptions').upsert({user_id:CURRENT_PROFILE.id,endpoint:json.endpoint,subscription:json,user_agent:navigator.userAgent,updated_at:new Date().toISOString()},{onConflict:'endpoint'});
@@ -2159,15 +2159,17 @@ function surveyRowToSnapshot(row,questionRows,clientCompanyNames,teamNames){
     let logic=q.logic_jsonb;
     if(typeof logic==='string'){try{logic=JSON.parse(logic);}catch(ex){logic={};}}
     const routeTargets=Array.isArray(logic?.route_targets)?logic.route_targets.map(value=>String(value??'')):[];
+    const directTarget=logic?.direct_target!=null?String(logic.direct_target??''):'';
     const optionsImported=logic?.options_source==='excel';
     const fieldOptionsImported=Array.isArray(logic?.field_options_source)?logic.field_options_source.map(value=>value==='excel'):[];
     const flowPosition=logic?.position&&Number.isFinite(Number(logic.position.x))&&Number.isFinite(Number(logic.position.y))
       ?{x:Number(logic.position.x),y:Number(logic.position.y)}:null;
-    return {id:localId,position:Number.isFinite(Number(q.position))?Number(q.position):qi,dbId:q.id,text:q.text||'',type:q.type||'single',difficulty:Math.min(5,Math.max(1,Number(q.difficulty)||3)),opts:opts.map(o=>o.label||''),endsInterview:opts.map(o=>!!o.ends_interview),routeTargets,flowPosition,optionsImported,fieldOptionsImported,fields:fields.length===2?fields:DEFAULT_PAIR_FIELDS(),isRegion:!!q.is_region};
+    return {id:localId,position:Number.isFinite(Number(q.position))?Number(q.position):qi,dbId:q.id,text:q.text||'',type:q.type||'single',difficulty:Math.min(5,Math.max(1,Number(q.difficulty)||3)),opts:opts.map(o=>o.label||''),endsInterview:opts.map(o=>!!o.ends_interview),routeTargets,directTarget,flowPosition,optionsImported,fieldOptionsImported,fields:fields.length===2?fields:DEFAULT_PAIR_FIELDS(),isRegion:!!q.is_region};
   });
   const dbToLocal=new Map(questions.map(question=>[String(question.dbId),String(question.id)]));
   questions.forEach(question=>{
     question.routeTargets=(question.routeTargets||[]).map(target=>target==='__end__'?'__end__':(dbToLocal.get(String(target))||''));
+    question.directTarget=question.directTarget==='__end__'?'__end__':(dbToLocal.get(String(question.directTarget))||'');
   });
   return {
     id:row.id,
@@ -2206,7 +2208,7 @@ async function syncSurveyQuestionsAndOptions(surveyId,d){
   const flow=window.PP_CONDITIONAL_FLOW;
   const conditionalErrors=flow?.validateQuestions?flow.validateQuestions(d.questions||[]):[];
   if(conditionalErrors.length)throw new Error('Revise os caminhos condicionais antes de salvar:\n• '+conditionalErrors.join('\n• '));
-  const hasConditionalRules=(d.questions||[]).some(q=>(flow?.normalizeRouteTargets?flow.normalizeRouteTargets(q):[]).some(Boolean));
+  const hasConditionalRules=(d.questions||[]).some(q=>(flow?.normalizeRouteTargets?flow.normalizeRouteTargets(q):[]).some(Boolean)||String(q.directTarget||'').trim());
   let conditionalLogicAvailable=true;
   let activeColumnAvailable=true;
   let difficultyColumnAvailable=true;
@@ -2322,8 +2324,9 @@ async function syncSurveyQuestionsAndOptions(surveyId,d){
     for(const q of d.questions||[]){
       if(!q.dbId)continue;
       const routeTargets=flow?.dbTargetsFromLocal?flow.dbTargetsFromLocal(q,localToDb):[];
+      const directTarget=flow?.dbDirectTargetFromLocal?flow.dbDirectTargetFromLocal(q,localToDb):null;
       const position=qFlowPosition(q,(d.questions||[]).indexOf(q));
-      const logicJson={version:1,route_targets:routeTargets,position};
+      const logicJson={version:2,route_targets:routeTargets,direct_target:directTarget,position};
       if(q.optionsImported===true)logicJson.options_source='excel';
       if(q.type==='pair'&&Array.isArray(q.fieldOptionsImported)&&q.fieldOptionsImported.some(Boolean))logicJson.field_options_source=q.fieldOptionsImported.map(value=>value===true?'excel':null);
       const {error}=await sb.from('survey_questions').update({logic_jsonb:logicJson}).eq('id',q.dbId).eq('survey_id',surveyId);
@@ -2704,20 +2707,31 @@ let Q_EDITOR_TAB='questions';
 let Q_FLOW_DRAG=null;
 let Q_FLOW_CONNECT=null;
 let Q_FLOW_RULES_VISIBLE=false;
+let Q_FLOW_ZOOM=1;
 
 function qSetEditorTab(tab){
   Q_EDITOR_TAB=tab==='flow'?'flow':'questions';
   qRender();
 }
 function qFlowDefaultPosition(index){
-  const column=Math.floor(index/6),row=index%6;
-  return {x:28+column*270,y:28+row*106};
+  const column=Math.floor(index/4),row=index%4;
+  return {x:32+column*360,y:32+row*190};
 }
 function qFlowPosition(q,index){
   const raw=q?.flowPosition||q?.logic?.position;
   const fallback=qFlowDefaultPosition(index);
   const x=Number(raw?.x),y=Number(raw?.y);
-  return {x:Number.isFinite(x)?Math.max(12,Math.min(2400,x)):fallback.x,y:Number.isFinite(y)?Math.max(12,Math.min(1600,y)):fallback.y};
+  return {x:Number.isFinite(x)?Math.max(12,Math.min(4800,x)):fallback.x,y:Number.isFinite(y)?Math.max(12,Math.min(3000,y)):fallback.y};
+}
+function qFlowClampZoom(value){return Math.max(.55,Math.min(1.6,Number(value)||1));}
+function qFlowSetZoom(value){Q_FLOW_ZOOM=qFlowClampZoom(value);qRender();}
+function qFlowZoomIn(){qFlowSetZoom(Q_FLOW_ZOOM+.1);}
+function qFlowZoomOut(){qFlowSetZoom(Q_FLOW_ZOOM-.1);}
+function qFlowZoomReset(){qFlowSetZoom(1);}
+function qFlowWheelZoom(ev){
+  if(!ev||(!ev.ctrlKey&&!ev.metaKey))return;
+  ev.preventDefault();
+  qFlowSetZoom(Q_FLOW_ZOOM+(ev.deltaY<0?.1:-.1));
 }
 function qFlowEnsurePositions(qs){
   (qs||[]).forEach((q,index)=>{if(!q.flowPosition)q.flowPosition=qFlowDefaultPosition(index);});
@@ -2934,50 +2948,66 @@ function qConditionalEditorMarkup(q,index,qs){
     if(!String(option||'').trim())return'';
     const legacyEnd=q.endsInterview?.[oi]===true;
     const selected=String(routes[oi]||'')|| (legacyEnd?'__end__':'');
-    return `<div class="q-flow-rule-row"><div class="q-flow-source"><span class="q-flow-port" aria-hidden="true"></span><div><b>Se responder</b><span>${esc(option)}</span></div></div><span class="q-flow-arrow" aria-hidden="true">→</span><select class="inp q-flow-target" aria-label="Destino para ${esc(option)}" onchange="qRouteTarget(${q.id},${oi},this.value)">${qConditionalTargetOptions(q,index,qs,selected)}</select></div>`;
+    return `<div class="q-flow-rule-row"><button type="button" class="q-flow-port q-flow-answer-port" onpointerdown="qFlowStartConnect(event,${q.id},${oi},'answer')" aria-label="Conectar a resposta ${esc(option)}">●</button><div class="q-flow-source"><div><b>Se responder</b><span>${esc(option)}</span></div></div><span class="q-flow-arrow" aria-hidden="true">→</span><select class="inp q-flow-target" aria-label="Destino para ${esc(option)}" onchange="qRouteTarget(${q.id},${oi},this.value)">${qConditionalTargetOptions(q,index,qs,selected)}</select></div>`;
   }).join('');
-  return `<section class="q-flow-editor"><div class="q-flow-editor-head"><div><span class="eyebrow">FLUXO CONDICIONAL</span><strong>Saídas da pergunta ${index+1}</strong></div><span class="q-flow-node-badge">Nó ${index+1}</span></div><p class="q-flow-editor-copy">Escolha o destino de cada resposta. “Próxima pergunta” mantém a sequência normal; saltos só podem apontar para perguntas posteriores.</p>${rows}</section>`;
+  return `<section class="q-flow-editor"><div class="q-flow-editor-head"><div><span class="eyebrow">CONEXÃO POR RESPOSTA</span><strong>Saídas da pergunta ${index+1}</strong></div><span class="q-flow-node-badge">Nó ${index+1}</span></div><p class="q-flow-editor-copy">Ligue uma resposta específica a outra pergunta. O salto só pode apontar para uma pergunta posterior.</p>${rows}</section>`;
 }
+function qFlowDirectRuleMarkup(q,index,qs){
+  const selected=String(q.directTarget||'');
+  return `<div class="q-flow-direct-rule"><button type="button" class="q-flow-port q-flow-direct-port" onpointerdown="qFlowStartDirectConnect(event,${q.id})" aria-label="Conectar diretamente depois da pergunta ${index+1}">●</button><div class="q-flow-source"><div><b>Conexão direta</b><span>Depois de responder a pergunta ${index+1}</span></div></div><span class="q-flow-arrow" aria-hidden="true">→</span><select class="inp q-flow-target q-flow-direct-select" aria-label="Conexão direta depois da pergunta ${index+1}" onchange="qDirectTarget(${q.id},this.value)">${qFlowDirectTargetOptions(index,qs,selected)}</select></div>`;
+}
+function qFlowRulesPanelMarkup(qs){
+  const sections=(qs||[]).map((q,index)=>{
+    const answers=qConditionalEditorMarkup(q,index,qs);
+    return `<div class="q-flow-rules-question"><div class="q-flow-rules-question-title"><span class="q-flow-node-badge">Nó ${index+1}</span><strong>${esc(q.text||'(sem título)')}</strong></div>${qFlowDirectRuleMarkup(q,index,qs)}${answers}</div>`;
+  }).join('');
+  if(!sections)return'';
+  return `<section class="q-flow-rules-panel" ${Q_FLOW_RULES_VISIBLE?'':'hidden'} aria-label="Configuração das conexões do fluxo"><div class="q-flow-rules-panel-head"><div><span class="eyebrow">CONFIGURAÇÃO DAS CONEXÕES</span><strong>Escolha como cada pergunta segue</strong><p>Use a conexão direta para definir o caminho padrão. Use a conexão por resposta para criar exceções e saltos diferentes. Também é possível arrastar as portas no mapa.</p></div></div>${sections}</section>`;
+}
+function qFlowToggleRules(){Q_FLOW_RULES_VISIBLE=!Q_FLOW_RULES_VISIBLE;qRender();}
 function qFlowTargetLabel(target,qs){
   if(target==='__end__')return'Encerrar entrevista';
   if(!target)return'Próxima pergunta';
   const index=(qs||[]).findIndex(q=>String(q.id)===String(target));
   return index>=0?'Pergunta '+(index+1):'Destino inválido';
 }
-function qFlowNodeOptionsMarkup(q,index,qs){
-  if(q.type!=='single')return'<div class="q-flow-node-note">Sem saídas condicionais. O fluxo segue para a próxima pergunta.</div>';
-  const options=(q.opts||[]).map((option,oi)=>{
-    if(!String(option||'').trim())return'';
-    const route=String(q.routeTargets?.[oi]||'');
-    return `<div class="q-flow-option-row"><button type="button" class="q-flow-option-port" onpointerdown="qFlowStartConnect(event,${q.id},${oi})" aria-label="Conectar a resposta ${esc(option)}">●</button><span class="q-flow-option-text" title="${esc(option)}">${esc(option)}</span><span class="q-flow-option-route">${esc(qFlowTargetLabel(route,qs))}</span><select class="q-flow-route-select" aria-label="Destino para ${esc(option)}" onchange="qRouteTarget(${q.id},${oi},this.value)">${qConditionalTargetOptions(q,index,qs,route)}</select></div>`;
-  }).join('');
-  return options||'<div class="q-flow-node-note">Adicione opções para criar caminhos.</div>';
+function qFlowDirectTargetOptions(index,qs,selected){
+  const options=[`<option value="">Sequência normal (próxima pergunta)</option>`];
+  (qs||[]).forEach((target,targetIndex)=>{if(targetIndex<=index)return;const value=String(target.id);options.push(`<option value="${esc(value)}" ${selected===value?'selected':''}>Pergunta ${targetIndex+1} · ${esc(target.text||'(sem título)')}</option>`);});
+  options.push(`<option value="__end__" ${selected==='__end__'?'selected':''}>Encerrar entrevista</option>`);
+  return options.join('');
 }
-function qFlowToggleRules(){
-  Q_FLOW_RULES_VISIBLE=!Q_FLOW_RULES_VISIBLE;
-  qRender();
-}
-function qFlowRulesPanelMarkup(qs){
-  const editors=(qs||[]).map((q,index)=>qConditionalEditorMarkup(q,index,qs)).filter(Boolean).join('');
-  if(!editors)return'';
-  return `<section class="q-flow-rules-panel" ${Q_FLOW_RULES_VISIBLE?'':'hidden'} aria-label="Configuração das saídas condicionais"><div class="q-flow-rules-panel-head"><div><span class="eyebrow">SAÍDAS CONDICIONAIS</span><strong>Configure os destinos por resposta</strong><p>Escolha para qual pergunta cada resposta deve seguir. As conexões e seus rótulos serão atualizados no mapa acima.</p></div></div>${editors}</section>`;
+function qFlowEdgeSource(edge){
+  const source=qFlowPosition(edge.q,edge.index);
+  return {x:source.x+240,y:source.y+(edge.kind==='direct'?70:38+Math.min(22,Number(edge.optionIndex||0)*8))};
 }
 function qFlowEdgeLabel(edge){
-  const answer=String(edge.q?.opts?.[edge.optionIndex]||'Resposta').trim();
+  const answer=edge.kind==='direct'?'direta':String(edge.q?.opts?.[edge.optionIndex]||'resposta').trim();
   const compact=answer.length>34?answer.slice(0,31).trim()+'…':answer;
-  const x=edge.source.x+242;
-  const y=edge.source.y+30+Math.min(22,Number(edge.optionIndex||0)*8);
-  return `<text class="q-flow-edge-label" x="${x}" y="${y}">${esc(compact)}</text>`;
+  const source=qFlowEdgeSource(edge);
+  return `<text class="q-flow-edge-label ${edge.kind==='direct'?'is-direct':''}" x="${source.x+3}" y="${source.y-6}">${esc(compact)}</text>`;
 }
 function qFlowEdgePath(edge){
-  const sx=edge.source.x+240,sy=edge.source.y+38+Math.min(22,Number(edge.optionIndex||0)*8);
+  const source=qFlowEdgeSource(edge);
+  const sx=source.x,sy=source.y;
   const tx=edge.target==='__end__'?edge.end.x:edge.targetPos.x-8;
   const ty=edge.target==='__end__'?edge.end.y:edge.targetPos.y+38;
-  const bend=Math.max(34,Math.abs(tx-sx)*.42);
+  const bend=Math.max(38,Math.abs(tx-sx)*.42);
   return `M ${sx} ${sy} C ${sx+bend} ${sy}, ${tx-bend} ${ty}, ${tx} ${ty}`;
 }
+function qFlowEdges(qs){
+  const list=[];
+  (qs||[]).forEach((q,index)=>{
+    const direct=String(q.directTarget||'');
+    if(direct)list.push({q,index,kind:'direct',optionIndex:null,target:direct});
+    if(q.type==='single'){
+      (q.routeTargets||[]).forEach((target,oi)=>{if(String(target||''))list.push({q,index,kind:'answer',optionIndex:oi,target:String(target)});});
+    }
+  });
+  return list;
+}
 function qFlowStartNodeDrag(ev,id){
-  if(ev?.target?.closest?.('.q-flow-option-port,.q-flow-route-select'))return;
+  if(ev?.target?.closest?.('.q-flow-option-port,.q-flow-direct-port,.q-flow-port,.q-flow-route-select,.q-flow-direct-select'))return;
   if(!ev||ev.button!=null&&ev.button!==0)return;
   ev.preventDefault();
   const node=ev.currentTarget?.closest?.('.q-flow-node-card')||ev.target?.closest?.('.q-flow-node-card');
@@ -2989,20 +3019,22 @@ function qFlowStartNodeDrag(ev,id){
   document.addEventListener('pointerup',qFlowPointerUp,{once:true});
   document.addEventListener('pointercancel',qFlowPointerCancel,{once:true});
 }
-function qFlowStartConnect(ev,id,optionIndex){
+function qFlowStartConnect(ev,id,optionIndex,kind='answer'){
   if(!ev)return;
   ev.preventDefault();ev.stopPropagation();
-  Q_FLOW_CONNECT={sourceId:id,optionIndex,pointerId:ev.pointerId};
+  Q_FLOW_CONNECT={sourceId:id,optionIndex:kind==='answer'?optionIndex:null,kind,pointerId:ev.pointerId};
   document.querySelectorAll('.q-flow-node-card').forEach(node=>node.classList.remove('is-connect-target'));
   document.addEventListener('pointermove',qFlowPointerMove,{passive:false});
   document.addEventListener('pointerup',qFlowPointerUp,{once:true});
   document.addEventListener('pointercancel',qFlowPointerCancel,{once:true});
 }
+function qFlowStartDirectConnect(ev,id){qFlowStartConnect(ev,id,null,'direct');}
 function qFlowPointerMove(ev){
   if(Q_FLOW_DRAG&&ev.pointerId===Q_FLOW_DRAG.pointerId){
     ev.preventDefault();
     const q=qFind(Q_FLOW_DRAG.id);if(!q)return;
-    q.flowPosition={x:Math.max(12,Q_FLOW_DRAG.originX+ev.clientX-Q_FLOW_DRAG.startX),y:Math.max(12,Q_FLOW_DRAG.originY+ev.clientY-Q_FLOW_DRAG.startY)};
+    const zoom=Q_FLOW_ZOOM||1;
+    q.flowPosition={x:Math.max(12,Q_FLOW_DRAG.originX+(ev.clientX-Q_FLOW_DRAG.startX)/zoom),y:Math.max(12,Q_FLOW_DRAG.originY+(ev.clientY-Q_FLOW_DRAG.startY)/zoom)};
     if(Q_FLOW_DRAG.node){Q_FLOW_DRAG.node.style.left=q.flowPosition.x+'px';Q_FLOW_DRAG.node.style.top=q.flowPosition.y+'px';}
     qFlowUpdateEdges();
   }
@@ -3021,8 +3053,11 @@ function qFlowPointerUp(ev){
     const sourceIndex=questions.findIndex(q=>String(q.id)===String(Q_FLOW_CONNECT.sourceId));
     const targetIndex=questions.findIndex(q=>String(q.id)===String(targetId));
     if(source&&targetId&&targetIndex>sourceIndex){
-      source.routeTargets=source.routeTargets||[];source.endsInterview=source.endsInterview||[];
-      source.routeTargets[Q_FLOW_CONNECT.optionIndex]=String(targetId);source.endsInterview[Q_FLOW_CONNECT.optionIndex]=false;
+      if(Q_FLOW_CONNECT.kind==='direct')source.directTarget=String(targetId);
+      else{
+        source.routeTargets=source.routeTargets||[];source.endsInterview=source.endsInterview||[];
+        source.routeTargets[Q_FLOW_CONNECT.optionIndex]=String(targetId);source.endsInterview[Q_FLOW_CONNECT.optionIndex]=false;
+      }
     }
     qFlowCleanup();qRender();return;
   }
@@ -3041,19 +3076,16 @@ function qFlowCleanup(){
 function qFlowUpdateEdges(){
   const svg=document.getElementById('q-flow-svg');if(!svg)return;
   const qs=WIZ.data.questions||[];
-  const edges=qs.flatMap((q,index)=>(q.type==='single'?(q.routeTargets||[]).map((target,oi)=>({q,index,optionIndex:oi,target:String(target||'')})):[])).filter(edge=>edge.target);
-  const width=Number(svg.dataset.width)||1800,height=Number(svg.dataset.height)||900;
+  const edges=qFlowEdges(qs);
+  const width=Number(svg.dataset.width)||2400,height=Number(svg.dataset.height)||1200;
   const end={x:width-54,y:Math.max(68,height/2)};
-  svg.innerHTML=edges.map(edge=>{const targetPos=edge.target==='__end__'?null:qFlowPosition(qs.find(q=>String(q.id)===edge.target),qs.findIndex(q=>String(q.id)===edge.target));const edgeWithPosition={...edge,source:qFlowPosition(edge.q,edge.index),targetPos:targetPos||{x:width-80,y:height/2},end};return `<path class="q-flow-edge-path" d="${qFlowEdgePath(edgeWithPosition)}" marker-end="url(#q-flow-arrow)"></path>${qFlowEdgeLabel(edgeWithPosition)}`;}).join('')+`<defs><marker id="q-flow-arrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#4f8eea"></path></marker></defs>`;
+  svg.innerHTML=edges.map(edge=>{const targetPos=edge.target==='__end__'?null:qFlowPosition(qs.find(q=>String(q.id)===edge.target),qs.findIndex(q=>String(q.id)===edge.target));const edgeWithPosition={...edge,targetPos:targetPos||{x:width-80,y:height/2},end};const marker=edge.kind==='direct'?'q-flow-arrow-direct':'q-flow-arrow-answer';return `<path class="q-flow-edge-path ${edge.kind==='direct'?'is-direct':'is-answer'}" d="${qFlowEdgePath(edgeWithPosition)}" marker-end="url(#${marker})"><title>${esc(edge.kind==='direct'?'conexão direta':(edge.q.opts?.[edge.optionIndex]||'resposta'))} → ${esc(qFlowTargetLabel(edge.target,qs))}</title></path>${qFlowEdgeLabel(edgeWithPosition)}`;}).join('')+`<defs><marker id="q-flow-arrow-answer" markerWidth="9" markerHeight="8" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#4f8eea"></path></marker><marker id="q-flow-arrow-direct" markerWidth="9" markerHeight="8" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#18a974"></path></marker></defs>`;
 }
-function qFlowAutoLayout(){
-  (WIZ.data.questions||[]).forEach((q,index)=>{q.flowPosition=qFlowDefaultPosition(index);});
-  qRender();
-}
+function qFlowAutoLayout(){(WIZ.data.questions||[]).forEach((q,index)=>{q.flowPosition=qFlowDefaultPosition(index);});qRender();}
 function qFlowClearRoutes(){
-  if(!(WIZ.data.questions||[]).some(q=>(q.routeTargets||[]).some(Boolean)))return;
-  if(!confirm('Limpar todos os caminhos condicionais?'))return;
-  (WIZ.data.questions||[]).forEach(q=>{if(Array.isArray(q.routeTargets))q.routeTargets=q.routeTargets.map(()=> '');if(Array.isArray(q.endsInterview))q.endsInterview=q.endsInterview.map(()=>false);});
+  if(!(WIZ.data.questions||[]).some(q=>String(q.directTarget||'')||(q.routeTargets||[]).some(Boolean)))return;
+  if(!confirm('Limpar todas as conexões do fluxo?'))return;
+  (WIZ.data.questions||[]).forEach(q=>{q.directTarget='';if(Array.isArray(q.routeTargets))q.routeTargets=q.routeTargets.map(()=> '');if(Array.isArray(q.endsInterview))q.endsInterview=q.endsInterview.map(()=>false);});
   qRender();
 }
 function qFlowGraphMarkup(qs){
@@ -3061,15 +3093,16 @@ function qFlowGraphMarkup(qs){
   qFlowEnsurePositions(qs);
   const maxX=Math.max(...qs.map((q,i)=>qFlowPosition(q,i).x))+278;
   const maxY=Math.max(...qs.map((q,i)=>qFlowPosition(q,i).y))+130;
-  const width=Math.max(860,Math.min(2600,maxX));
-  const height=Math.max(500,Math.min(1800,maxY));
-  const explicit=qs.flatMap((q,index)=>(q.type==='single'?(q.routeTargets||[]).map((target,oi)=>({q,index,optionIndex:oi,target:String(target||'')})):[])).filter(edge=>edge.target);
-  const end={x:width-54,y:Math.max(68,height/2)};
-  const paths=explicit.map(edge=>{const target=qs.find(q=>String(q.id)===edge.target);const targetPos=target?qFlowPosition(target,qs.indexOf(target)):null;const edgeWithPosition={...edge,source:qFlowPosition(edge.q,edge.index),targetPos:targetPos||{x:width-80,y:height/2},end};return `<path class="q-flow-edge-path" d="${qFlowEdgePath(edgeWithPosition)}" marker-end="url(#q-flow-arrow)"></path>${qFlowEdgeLabel(edgeWithPosition)}`;}).join('');
-  const nodes=qs.map((q,index)=>{const pos=qFlowPosition(q,index);return `<article class="q-flow-node-card ${q.type==='single'?'is-choice':''}" data-qid="${q.id}" style="left:${pos.x}px;top:${pos.y}px" onpointerdown="qFlowStartNodeDrag(event,${q.id})"><header class="q-flow-node-head"><span class="q-flow-node-index">${index+1}</span><div><b>${esc(q.text||'(sem título)')}</b></div></header></article>`;}).join('');
+  const width=Math.max(1100,Math.min(5000,maxX));
+  const height=Math.max(620,Math.min(3200,maxY));
+  const zoom=qFlowClampZoom(Q_FLOW_ZOOM),frameWidth=Math.round(width*zoom),frameHeight=Math.round(height*zoom);
+  const explicit=qFlowEdges(qs),end={x:width-54,y:Math.max(68,height/2)};
+  const paths=explicit.map(edge=>{const target=qs.find(q=>String(q.id)===edge.target);const targetPos=target?qFlowPosition(target,qs.indexOf(target)):null;const edgeWithPosition={...edge,targetPos:targetPos||{x:width-80,y:height/2},end};const marker=edge.kind==='direct'?'q-flow-arrow-direct':'q-flow-arrow-answer';return `<path class="q-flow-edge-path ${edge.kind==='direct'?'is-direct':'is-answer'}" d="${qFlowEdgePath(edgeWithPosition)}" marker-end="url(#${marker})"><title>${esc(edge.kind==='direct'?'conexão direta':(edge.q.opts?.[edge.optionIndex]||'resposta'))} → ${esc(qFlowTargetLabel(edge.target,qs))}</title></path>${qFlowEdgeLabel(edgeWithPosition)}`;}).join('');
+  const nodes=qs.map((q,index)=>{const pos=qFlowPosition(q,index);return `<article class="q-flow-node-card ${q.type==='single'?'is-choice':''}" data-qid="${q.id}" style="left:${pos.x}px;top:${pos.y}px" onpointerdown="qFlowStartNodeDrag(event,${q.id})"><span class="q-flow-target-port" aria-hidden="true"></span><header class="q-flow-node-head"><span class="q-flow-node-index">${index+1}</span><div><b>${esc(q.text||'(sem título)')}</b></div></header></article>`;}).join('');
   const rules=qFlowRulesPanelMarkup(qs);
-  return `<section class="q-flow-map q-flow-map-canvas" aria-label="Mapa visual dos caminhos da entrevista"><div class="q-flow-map-head"><div><span class="eyebrow">MAPA DO FLUXO</span><h3>Fluxo simples da entrevista</h3><p>Arraste os balões para organizar o diagrama. Cada balão mostra apenas o número e o enunciado; as setas exibem a resposta que leva ao próximo passo.</p></div><div class="q-flow-map-actions"><span class="pill pill-blue">${qs.length} nós</span><button type="button" class="btn btn-out" onclick="qFlowToggleRules()">${Q_FLOW_RULES_VISIBLE?'Ocultar saídas':'Configurar saídas'}</button><button type="button" class="btn btn-out" onclick="qFlowAutoLayout()">Organizar automaticamente</button><button type="button" class="btn btn-out" onclick="qFlowClearRoutes()">Limpar caminhos</button></div></div><div class="q-flow-legend"><span><i class="q-flow-legend-line"></i> conexão condicional</span><span>o rótulo da seta identifica a resposta</span><span>sem seta, o fluxo segue para a próxima pergunta</span></div><div class="q-flow-canvas-scroll"><div class="q-flow-canvas" style="width:${width}px;height:${height}px"><svg id="q-flow-svg" class="q-flow-svg" data-width="${width}" data-height="${height}" viewBox="0 0 ${width} ${height}" aria-hidden="true">${paths}<defs><marker id="q-flow-arrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#4f8eea"></path></marker></defs></svg>${nodes}<div class="q-flow-end-node" style="left:${end.x-62}px;top:${end.y-24}px">Fim da entrevista</div></div></div>${rules}<div class="q-flow-empty">As posições e conexões são salvas junto com a pesquisa quando você clicar em salvar.</div></section>`;
+  return `<section class="q-flow-map q-flow-map-canvas" aria-label="Mapa visual dos caminhos da entrevista"><div class="q-flow-map-head"><div><span class="eyebrow">MAPA DO FLUXO</span><h3>Fluxo simples da entrevista</h3><p>Arraste os balões para organizar o diagrama. As linhas mostram conexões diretas e caminhos definidos por resposta.</p></div><div class="q-flow-map-actions"><span class="pill pill-blue">${qs.length} nós</span><button type="button" class="btn btn-out" onclick="qFlowToggleRules()">${Q_FLOW_RULES_VISIBLE?'Ocultar conexões':'Configurar conexões'}</button><div class="q-flow-zoom-controls" aria-label="Controles de zoom"><button type="button" class="btn btn-out q-flow-zoom-btn" onclick="qFlowZoomOut()" title="Afastar">−</button><button type="button" class="btn btn-out q-flow-zoom-value" onclick="qFlowZoomReset()" title="Restaurar zoom">${Math.round(zoom*100)}%</button><button type="button" class="btn btn-out q-flow-zoom-btn" onclick="qFlowZoomIn()" title="Aproximar">+</button></div><button type="button" class="btn btn-out" onclick="qFlowAutoLayout()">Organizar automaticamente</button><button type="button" class="btn btn-out" onclick="qFlowClearRoutes()">Limpar conexões</button></div></div><div class="q-flow-legend"><span><i class="q-flow-legend-direct"></i> conexão direta</span><span><i class="q-flow-legend-line"></i> conexão por resposta</span><span>arraste os balões; Ctrl + roda do mouse altera o zoom</span></div><div class="q-flow-canvas-scroll" onwheel="qFlowWheelZoom(event)"><div class="q-flow-canvas-shell" style="width:${frameWidth}px;height:${frameHeight}px"><div class="q-flow-canvas" style="width:${width}px;height:${height}px;transform:scale(${zoom})"><svg id="q-flow-svg" class="q-flow-svg" data-width="${width}" data-height="${height}" viewBox="0 0 ${width} ${height}" aria-hidden="true">${paths}<defs><marker id="q-flow-arrow-answer" markerWidth="9" markerHeight="8" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#4f8eea"></path></marker><marker id="q-flow-arrow-direct" markerWidth="9" markerHeight="8" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#18a974"></path></marker></defs></svg>${nodes}<div class="q-flow-end-node" style="left:${end.x-62}px;top:${end.y-24}px">Fim da entrevista</div></div></div></div>${rules}<div class="q-flow-empty">As posições e conexões são salvas junto com a pesquisa quando você clicar em salvar.</div></section>`;
 }
+
 function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;');}
 /* Serializa textos para uso dentro de atributos HTML que chamam funções JS.
    JSON.stringify evita quebra por aspas, apóstrofos, barras ou quebras de linha. */
@@ -3089,7 +3122,7 @@ function qAdd(type){
   WIZ.data.questions.push(q);qRender();
   setTimeout(()=>{const inputs=document.querySelectorAll('.q-text-inp');if(inputs.length)inputs[inputs.length-1].focus();},30);
 }
-function qDel(id){WIZ.data.questions=WIZ.data.questions.filter(q=>q.id!==id);WIZ.data.questions.forEach(q=>{if(Array.isArray(q.routeTargets))q.routeTargets=q.routeTargets.map(target=>String(target)===String(id)?'':target);});qRender();}
+function qDel(id){WIZ.data.questions=WIZ.data.questions.filter(q=>q.id!==id);WIZ.data.questions.forEach(q=>{if(Array.isArray(q.routeTargets))q.routeTargets=q.routeTargets.map(target=>String(target)===String(id)?'':target);if(String(q.directTarget||'')===String(id))q.directTarget='';});qRender();}
 function qText(id,v){const q=qFind(id);if(q)q.text=v;}
 function qDifficulty(id,v){const q=qFind(id);if(q)q.difficulty=Math.min(5,Math.max(1,Number(v)||3));}
 function qEnsurePairFields(q){if(!q)return;const current=Array.isArray(q.fields)?q.fields:[];q.fields=[0,1].map(i=>{const f=current[i]||DEFAULT_PAIR_FIELDS()[i];return {label:String(f.label||'Resposta '+(i+1)),type:Q_CLOSED_FIELD_TYPES.includes(f.type)?f.type:'open',options:Array.isArray(f.options)?f.options.map(v=>String(v??'')):[]};});}
@@ -3099,6 +3132,7 @@ function qOptAdd(id){const q=qFind(id);if(q){q.opts.push('');q.endsInterview=q.e
 function qOptDel(id,oi){const q=qFind(id);if(q&&q.opts.length>1){q.opts.splice(oi,1);if(q.endsInterview)q.endsInterview.splice(oi,1);if(q.routeTargets)q.routeTargets.splice(oi,1);qRender();}}
 function qEndToggle(id,oi,checked){const q=qFind(id);if(!q)return;q.endsInterview=q.endsInterview||[];q.endsInterview[oi]=checked===true;if(q.type==='single'){q.routeTargets=q.routeTargets||[];q.routeTargets[oi]=checked===true?'__end__':(q.routeTargets[oi]==='__end__'?'':'');}qRender();}
 function qRouteTarget(id,oi,target){const q=qFind(id);if(!q||q.type!=='single')return;q.routeTargets=q.routeTargets||[];q.routeTargets[oi]=target==='__end__'?'__end__':String(target||'');q.endsInterview=q.endsInterview||[];q.endsInterview[oi]=target==='__end__';qRender();}
+function qDirectTarget(id,target){const q=qFind(id);if(!q)return;q.directTarget=target==='__end__'?'__end__':String(target||'');qRender();}
 function qPairField(qid,fieldIndex){const q=qFind(qid);if(!q||q.type!=='pair')return null;qEnsurePairFields(q);return q.fields[fieldIndex]||null;}
 function qPairFieldLabel(qid,fieldIndex,value){const field=qPairField(qid,fieldIndex);if(field)field.label=value;}
 function qPairFieldType(qid,fieldIndex,value){const field=qPairField(qid,fieldIndex);if(!field)return;field.type=Q_CLOSED_FIELD_TYPES.includes(value)?value:'open';if(field.type==='open')field.options=[];else if(!field.options.length)field.options=['',''];qRender();}

@@ -16,14 +16,23 @@
     return single?[single]:[];
   }
   function answerPresent(answer){return answerValues(answer).length>0;}
-  function routeTargetFor(question,answer){
-    if(!question||question.type!=='single'||!answerPresent(answer))return null;
-    const values=answerValues(answer),options=questionOptions(question);
-    const index=options.findIndex(option=>option===values[0]);
-    if(index<0)return null;
-    const route=Array.isArray(question.routeTargets)?clean(question.routeTargets[index]):DEFAULT;
+  function directTargetFor(question){
+    const route=clean(question?.directTarget);
     if(route===END)return END;
     return route||null;
+  }
+  function routeTargetFor(question,answer){
+    if(!question||!answerPresent(answer))return null;
+    if(question.type==='single'){
+      const values=answerValues(answer),options=questionOptions(question);
+      const index=options.findIndex(option=>option===values[0]);
+      if(index>=0){
+        const route=Array.isArray(question.routeTargets)?clean(question.routeTargets[index]):DEFAULT;
+        if(route===END)return END;
+        if(route)return route;
+      }
+    }
+    return directTargetFor(question);
   }
   function questionIndexById(questions,id){
     const target=clean(id);
@@ -72,8 +81,14 @@
       const question=list[index];
       const routes=normalizeRouteTargets(question);
       const rawRoutes=Array.isArray(question.routeTargets)?question.routeTargets.map(clean):[];
+      const direct=clean(question.directTarget);
       if((routes.some(Boolean)||rawRoutes.some(Boolean))&&question.type!=='single'){
-        errors.push(`A pergunta ${index+1} só pode ter caminho condicional em escolha única.`);
+        errors.push(`A pergunta ${index+1} só pode ter caminho por resposta em escolha única.`);
+      }
+      if(direct&&direct!==END){
+        const targetIndex=indexById.get(String(direct));
+        if(targetIndex==null)errors.push(`A pergunta ${index+1}, conexão direta, aponta para uma pergunta inexistente.`);
+        else if(targetIndex<=index)errors.push(`A pergunta ${index+1}, conexão direta, deve apontar somente para uma pergunta posterior.`);
       }
       routes.forEach((route,optionIndex)=>{
         if(!route||route===END)return;
@@ -96,9 +111,15 @@
       return localToDb.get(String(route))||null;
     });
   }
+  function dbDirectTargetFromLocal(question,localToDb){
+    const route=clean(question?.directTarget);
+    if(route===END)return END;
+    if(!route)return null;
+    return localToDb.get(String(route))||null;
+  }
 
   root.PP_CONDITIONAL_FLOW={
-    DEFAULT,END,clean,answerValues,answerPresent,routeTargetFor,visibleQuestions,
-    visibleQuestionIds,hiddenAnsweredQuestionIds,normalizeRouteTargets,validateQuestions,dbTargetsFromLocal
+    DEFAULT,END,clean,answerValues,answerPresent,directTargetFor,routeTargetFor,visibleQuestions,
+    visibleQuestionIds,hiddenAnsweredQuestionIds,normalizeRouteTargets,validateQuestions,dbTargetsFromLocal,dbDirectTargetFromLocal
   };
 })(typeof window!=='undefined'?window:globalThis);

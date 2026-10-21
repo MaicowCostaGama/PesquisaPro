@@ -22,8 +22,8 @@ hosts.set('single:q-1:',host);
 
 ok('módulo e cache v195 estão carregados',()=>{
   assert.match(moduleSource,/PP_QUESTION_OPTIONS_AUTOCOMPLETE/);
-  assert.match(html,/question-options-autocomplete\.js\?v=20261021171500/);
-  assert.match(html,/pesquisapro-app-version" content="20261021171500/);
+  assert.match(html,/question-options-autocomplete\.js\?v=20261021175600/);
+  assert.match(html,/pesquisapro-app-version" content="20261021175600/);
   assert.match(app,/acollectOptionAutocompleteBody\('single'/);
   assert.match(app,/q\.optionsImported===true/);
   assert.match(app,/q\.fieldOptionsImported\?\.\[fieldIndex\]===true/);

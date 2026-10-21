@@ -53,7 +53,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261021161000';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261021171500';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -207,7 +207,7 @@ async function enableResearcherPush(){
   try{
     const permission=await Notification.requestPermission();
     if(permission!=='granted'){PUSH_STATUS='blocked';go('dashboard-pesq');return;}
-    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261021161000',{scope:'./'});
+    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261021171500',{scope:'./'});
     const subscription=await PUSH_SW_REGISTRATION.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:pushKeyToUint8Array(window.PP_PUSH_PUBLIC_KEY)});
     const json=subscription.toJSON();
     const {error}=await sb.from('push_subscriptions').upsert({user_id:CURRENT_PROFILE.id,endpoint:json.endpoint,subscription:json,user_agent:navigator.userAgent,updated_at:new Date().toISOString()},{onConflict:'endpoint'});
@@ -2703,14 +2703,15 @@ let Q_POINTER_DRAG=null;
 let Q_EDITOR_TAB='questions';
 let Q_FLOW_DRAG=null;
 let Q_FLOW_CONNECT=null;
+let Q_FLOW_RULES_VISIBLE=false;
 
 function qSetEditorTab(tab){
   Q_EDITOR_TAB=tab==='flow'?'flow':'questions';
   qRender();
 }
 function qFlowDefaultPosition(index){
-  const column=Math.floor(index/4),row=index%4;
-  return {x:28+column*238,y:28+row*142};
+  const column=Math.floor(index/6),row=index%6;
+  return {x:28+column*270,y:28+row*106};
 }
 function qFlowPosition(q,index){
   const raw=q?.flowPosition||q?.logic?.position;
@@ -2952,10 +2953,26 @@ function qFlowNodeOptionsMarkup(q,index,qs){
   }).join('');
   return options||'<div class="q-flow-node-note">Adicione opções para criar caminhos.</div>';
 }
+function qFlowToggleRules(){
+  Q_FLOW_RULES_VISIBLE=!Q_FLOW_RULES_VISIBLE;
+  qRender();
+}
+function qFlowRulesPanelMarkup(qs){
+  const editors=(qs||[]).map((q,index)=>qConditionalEditorMarkup(q,index,qs)).filter(Boolean).join('');
+  if(!editors)return'';
+  return `<section class="q-flow-rules-panel" ${Q_FLOW_RULES_VISIBLE?'':'hidden'} aria-label="Configuração das saídas condicionais"><div class="q-flow-rules-panel-head"><div><span class="eyebrow">SAÍDAS CONDICIONAIS</span><strong>Configure os destinos por resposta</strong><p>Escolha para qual pergunta cada resposta deve seguir. As conexões e seus rótulos serão atualizados no mapa acima.</p></div></div>${editors}</section>`;
+}
+function qFlowEdgeLabel(edge){
+  const answer=String(edge.q?.opts?.[edge.optionIndex]||'Resposta').trim();
+  const compact=answer.length>34?answer.slice(0,31).trim()+'…':answer;
+  const x=edge.source.x+242;
+  const y=edge.source.y+30+Math.min(22,Number(edge.optionIndex||0)*8);
+  return `<text class="q-flow-edge-label" x="${x}" y="${y}">${esc(compact)}</text>`;
+}
 function qFlowEdgePath(edge){
-  const sx=edge.source.x+218,sy=edge.source.y+76+edge.optionIndex*34;
+  const sx=edge.source.x+240,sy=edge.source.y+38+Math.min(22,Number(edge.optionIndex||0)*8);
   const tx=edge.target==='__end__'?edge.end.x:edge.targetPos.x-8;
-  const ty=edge.target==='__end__'?edge.end.y:edge.targetPos.y+48;
+  const ty=edge.target==='__end__'?edge.end.y:edge.targetPos.y+38;
   const bend=Math.max(34,Math.abs(tx-sx)*.42);
   return `M ${sx} ${sy} C ${sx+bend} ${sy}, ${tx-bend} ${ty}, ${tx} ${ty}`;
 }
@@ -3027,7 +3044,7 @@ function qFlowUpdateEdges(){
   const edges=qs.flatMap((q,index)=>(q.type==='single'?(q.routeTargets||[]).map((target,oi)=>({q,index,optionIndex:oi,target:String(target||'')})):[])).filter(edge=>edge.target);
   const width=Number(svg.dataset.width)||1800,height=Number(svg.dataset.height)||900;
   const end={x:width-54,y:Math.max(68,height/2)};
-  svg.innerHTML=edges.map(edge=>{const targetPos=edge.target==='__end__'?null:qFlowPosition(qs.find(q=>String(q.id)===edge.target),qs.findIndex(q=>String(q.id)===edge.target));const path=qFlowEdgePath({...edge,source:qFlowPosition(edge.q,edge.index),targetPos:targetPos||{x:width-80,y:height/2},end});return `<path class="q-flow-edge-path" d="${path}" marker-end="url(#q-flow-arrow)"></path>`;}).join('')+`<defs><marker id="q-flow-arrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#4f8eea"></path></marker></defs>`;
+  svg.innerHTML=edges.map(edge=>{const targetPos=edge.target==='__end__'?null:qFlowPosition(qs.find(q=>String(q.id)===edge.target),qs.findIndex(q=>String(q.id)===edge.target));const edgeWithPosition={...edge,source:qFlowPosition(edge.q,edge.index),targetPos:targetPos||{x:width-80,y:height/2},end};return `<path class="q-flow-edge-path" d="${qFlowEdgePath(edgeWithPosition)}" marker-end="url(#q-flow-arrow)"></path>${qFlowEdgeLabel(edgeWithPosition)}`;}).join('')+`<defs><marker id="q-flow-arrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#4f8eea"></path></marker></defs>`;
 }
 function qFlowAutoLayout(){
   (WIZ.data.questions||[]).forEach((q,index)=>{q.flowPosition=qFlowDefaultPosition(index);});
@@ -3042,15 +3059,16 @@ function qFlowClearRoutes(){
 function qFlowGraphMarkup(qs){
   if(!qs?.length)return'<section class="q-flow-map q-flow-map-empty"><div class="q-flow-empty">Adicione perguntas para montar o mapa de caminhos.</div></section>';
   qFlowEnsurePositions(qs);
-  const maxX=Math.max(...qs.map((q,i)=>qFlowPosition(q,i).x))+250;
-  const maxY=Math.max(...qs.map((q,i)=>qFlowPosition(q,i).y))+190;
+  const maxX=Math.max(...qs.map((q,i)=>qFlowPosition(q,i).x))+278;
+  const maxY=Math.max(...qs.map((q,i)=>qFlowPosition(q,i).y))+130;
   const width=Math.max(860,Math.min(2600,maxX));
   const height=Math.max(500,Math.min(1800,maxY));
   const explicit=qs.flatMap((q,index)=>(q.type==='single'?(q.routeTargets||[]).map((target,oi)=>({q,index,optionIndex:oi,target:String(target||'')})):[])).filter(edge=>edge.target);
   const end={x:width-54,y:Math.max(68,height/2)};
-  const paths=explicit.map(edge=>{const target=qs.find(q=>String(q.id)===edge.target);const targetPos=target?qFlowPosition(target,qs.indexOf(target)):null;return `<path class="q-flow-edge-path" d="${qFlowEdgePath({...edge,source:qFlowPosition(edge.q,edge.index),targetPos:targetPos||{x:width-80,y:height/2},end})}" marker-end="url(#q-flow-arrow)"></path>`;}).join('');
-  const nodes=qs.map((q,index)=>{const pos=qFlowPosition(q,index);return `<article class="q-flow-node-card ${q.type==='single'?'is-choice':''}" data-qid="${q.id}" style="left:${pos.x}px;top:${pos.y}px" onpointerdown="qFlowStartNodeDrag(event,${q.id})"><header class="q-flow-node-head"><span class="q-flow-node-index">${index+1}</span><div><b>${esc(q.text||'(sem título)')}</b><small>${esc(Q_TYPES[q.type]||q.type)}${q.type==='single'?' · '+(q.opts||[]).filter(Boolean).length+' saídas':''}</small></div><span class="q-flow-drag-icon" aria-hidden="true">⠿</span></header><div class="q-flow-node-options">${qFlowNodeOptionsMarkup(q,index,qs)}</div></article>`;}).join('');
-  return `<section class="q-flow-map q-flow-map-canvas" aria-label="Mapa visual dos caminhos da entrevista"><div class="q-flow-map-head"><div><span class="eyebrow">MAPA DO FLUXO</span><h3>Desenhe os caminhos da entrevista</h3><p>Arraste os balões para organizar o mapa. Para ligar uma resposta a outro balão, arraste o ponto azul dessa resposta até o destino.</p></div><div class="q-flow-map-actions"><span class="pill pill-blue">${qs.length} nós</span><button type="button" class="btn btn-out" onclick="qFlowAutoLayout()">Organizar automaticamente</button><button type="button" class="btn btn-out" onclick="qFlowClearRoutes()">Limpar caminhos</button></div></div><div class="q-flow-legend"><span><i class="q-flow-legend-dot"></i> ponto de saída</span><span><i class="q-flow-legend-line"></i> caminho configurado</span><span>o fluxo padrão segue para a próxima pergunta</span></div><div class="q-flow-canvas-scroll"><div class="q-flow-canvas" style="width:${width}px;height:${height}px"><svg id="q-flow-svg" class="q-flow-svg" data-width="${width}" data-height="${height}" viewBox="0 0 ${width} ${height}" aria-hidden="true">${paths}<defs><marker id="q-flow-arrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#4f8eea"></path></marker></defs></svg>${nodes}<div class="q-flow-end-node" style="left:${end.x-62}px;top:${end.y-24}px">Fim da entrevista</div></div></div><div class="q-flow-empty">As posições e conexões são salvas junto com a pesquisa quando você clicar em salvar.</div></section>`;
+  const paths=explicit.map(edge=>{const target=qs.find(q=>String(q.id)===edge.target);const targetPos=target?qFlowPosition(target,qs.indexOf(target)):null;const edgeWithPosition={...edge,source:qFlowPosition(edge.q,edge.index),targetPos:targetPos||{x:width-80,y:height/2},end};return `<path class="q-flow-edge-path" d="${qFlowEdgePath(edgeWithPosition)}" marker-end="url(#q-flow-arrow)"></path>${qFlowEdgeLabel(edgeWithPosition)}`;}).join('');
+  const nodes=qs.map((q,index)=>{const pos=qFlowPosition(q,index);return `<article class="q-flow-node-card ${q.type==='single'?'is-choice':''}" data-qid="${q.id}" style="left:${pos.x}px;top:${pos.y}px" onpointerdown="qFlowStartNodeDrag(event,${q.id})"><header class="q-flow-node-head"><span class="q-flow-node-index">${index+1}</span><div><b>${esc(q.text||'(sem título)')}</b></div></header></article>`;}).join('');
+  const rules=qFlowRulesPanelMarkup(qs);
+  return `<section class="q-flow-map q-flow-map-canvas" aria-label="Mapa visual dos caminhos da entrevista"><div class="q-flow-map-head"><div><span class="eyebrow">MAPA DO FLUXO</span><h3>Fluxo simples da entrevista</h3><p>Arraste os balões para organizar o diagrama. Cada balão mostra apenas o número e o enunciado; as setas exibem a resposta que leva ao próximo passo.</p></div><div class="q-flow-map-actions"><span class="pill pill-blue">${qs.length} nós</span><button type="button" class="btn btn-out" onclick="qFlowToggleRules()">${Q_FLOW_RULES_VISIBLE?'Ocultar saídas':'Configurar saídas'}</button><button type="button" class="btn btn-out" onclick="qFlowAutoLayout()">Organizar automaticamente</button><button type="button" class="btn btn-out" onclick="qFlowClearRoutes()">Limpar caminhos</button></div></div><div class="q-flow-legend"><span><i class="q-flow-legend-line"></i> conexão condicional</span><span>o rótulo da seta identifica a resposta</span><span>sem seta, o fluxo segue para a próxima pergunta</span></div><div class="q-flow-canvas-scroll"><div class="q-flow-canvas" style="width:${width}px;height:${height}px"><svg id="q-flow-svg" class="q-flow-svg" data-width="${width}" data-height="${height}" viewBox="0 0 ${width} ${height}" aria-hidden="true">${paths}<defs><marker id="q-flow-arrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#4f8eea"></path></marker></defs></svg>${nodes}<div class="q-flow-end-node" style="left:${end.x-62}px;top:${end.y-24}px">Fim da entrevista</div></div></div>${rules}<div class="q-flow-empty">As posições e conexões são salvas junto com a pesquisa quando você clicar em salvar.</div></section>`;
 }
 function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;');}
 /* Serializa textos para uso dentro de atributos HTML que chamam funções JS.

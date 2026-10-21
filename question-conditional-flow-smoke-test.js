@@ -37,8 +37,8 @@ ok(/function qFlowStartNodeDrag/.test(app)&&/function qFlowStartConnect/.test(ap
 ok(/flowPosition/.test(app)&&/const logicJson=\{version:1,route_targets:routeTargets,position\}/.test(app)&&/options_source/.test(app),'posição dos balões e metadados da pergunta não foram integrados ao estado do editor');
 ok(/visibleQuestions/.test(app)&&/acollectBuildAnswerRows/.test(app),'coleta não usa o ramo visível para validar e persistir respostas');
 ok(/acollectOptionAutocompleteBody\('single'/.test(app)&&/acollectSetAnswer\(qDbId,value,rerenderForm,optionIndex\)/.test(app),'escolha única não usa o caminho de seleção que redesenha o ramo');
-ok(html.includes('question-conditional-flow.js?v=20261021161000'),'módulo condicional não foi carregado com cache v193');
-ok(html.includes('pesquisapro-app-version" content="20261021161000'),'meta de versão v193 ausente');
+ok(html.includes('question-conditional-flow.js?v=20261021171500'),'módulo condicional não foi carregado com cache v193');
+ok(html.includes('pesquisapro-app-version" content="20261021171500'),'meta de versão v193 ausente');
 ok(css.includes('.q-flow-map')&&css.includes('.q-flow-node-card')&&css.includes('.q-flow-edge-path')&&css.includes('.q-editor-tabs'),'estilos do editor visual ausentes');
 ok(/add column if not exists logic_jsonb/i.test(sql)&&/route_targets/i.test(sql)&&/alter column logic_jsonb set not null/i.test(sql),'migration SQL v189 incompleta');
 ok(!/SUPABASE_SERVICE_ROLE_KEY|VAPID_PRIVATE_KEY|OPENAI_API_KEY/.test(source+app+sql),'segredo encontrado na implementação');

@@ -7,10 +7,10 @@ A v193 reorganiza o editor de caminhos condicionais em uma aba própria chamada 
 1. Abra **Nova pesquisa** ou edite um rascunho e avance até **Formulário**.
 2. Crie todas as perguntas na aba **Perguntas**.
 3. Abra a aba **Mapa do fluxo**.
-4. Arraste os balões para posicioná-los no local desejado.
-5. Em uma pergunta de escolha única, arraste o ponto azul ao lado de uma resposta até o balão da pergunta posterior que deve ser exibida.
-6. Repita o procedimento para criar dois, três, quatro ou mais caminhos na mesma pergunta. Cada resposta pode ter seu próprio destino.
-7. Se preferir, use o seletor exibido dentro de cada resposta para escolher o destino sem arrastar.
+4. Arraste os balões para posicioná-los no local desejado. Cada um mostra somente o número e o enunciado da pergunta.
+5. Clique em **Configurar saídas** para abrir o painel de destinos por resposta.
+6. Em uma pergunta de escolha única, escolha a pergunta posterior ou o encerramento para cada resposta.
+7. Cada conexão aparece no mapa como uma seta com o rótulo da resposta correspondente.
 8. Use **Organizar automaticamente** para reorganizar os balões ou **Limpar caminhos** para remover as conexões condicionais.
 9. Salve a pesquisa pelo fluxo normal do sistema.
 

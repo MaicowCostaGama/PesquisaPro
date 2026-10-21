@@ -53,7 +53,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261021144700';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261021150000';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -207,7 +207,7 @@ async function enableResearcherPush(){
   try{
     const permission=await Notification.requestPermission();
     if(permission!=='granted'){PUSH_STATUS='blocked';go('dashboard-pesq');return;}
-    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261021144700',{scope:'./'});
+    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261021150000',{scope:'./'});
     const subscription=await PUSH_SW_REGISTRATION.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:pushKeyToUint8Array(window.PP_PUSH_PUBLIC_KEY)});
     const json=subscription.toJSON();
     const {error}=await sb.from('push_subscriptions').upsert({user_id:CURRENT_PROFILE.id,endpoint:json.endpoint,subscription:json,user_agent:navigator.userAgent,updated_at:new Date().toISOString()},{onConflict:'endpoint'});
@@ -2159,7 +2159,9 @@ function surveyRowToSnapshot(row,questionRows,clientCompanyNames,teamNames){
     let logic=q.logic_jsonb;
     if(typeof logic==='string'){try{logic=JSON.parse(logic);}catch(ex){logic={};}}
     const routeTargets=Array.isArray(logic?.route_targets)?logic.route_targets.map(value=>String(value??'')):[];
-    return {id:localId,position:Number.isFinite(Number(q.position))?Number(q.position):qi,dbId:q.id,text:q.text||'',type:q.type||'single',difficulty:Math.min(5,Math.max(1,Number(q.difficulty)||3)),opts:opts.map(o=>o.label||''),endsInterview:opts.map(o=>!!o.ends_interview),routeTargets,fields:fields.length===2?fields:DEFAULT_PAIR_FIELDS(),isRegion:!!q.is_region};
+    const flowPosition=logic?.position&&Number.isFinite(Number(logic.position.x))&&Number.isFinite(Number(logic.position.y))
+      ?{x:Number(logic.position.x),y:Number(logic.position.y)}:null;
+    return {id:localId,position:Number.isFinite(Number(q.position))?Number(q.position):qi,dbId:q.id,text:q.text||'',type:q.type||'single',difficulty:Math.min(5,Math.max(1,Number(q.difficulty)||3)),opts:opts.map(o=>o.label||''),endsInterview:opts.map(o=>!!o.ends_interview),routeTargets,flowPosition,fields:fields.length===2?fields:DEFAULT_PAIR_FIELDS(),isRegion:!!q.is_region};
   });
   const dbToLocal=new Map(questions.map(question=>[String(question.dbId),String(question.id)]));
   questions.forEach(question=>{
@@ -2318,7 +2320,8 @@ async function syncSurveyQuestionsAndOptions(surveyId,d){
     for(const q of d.questions||[]){
       if(!q.dbId)continue;
       const routeTargets=flow?.dbTargetsFromLocal?flow.dbTargetsFromLocal(q,localToDb):[];
-      const {error}=await sb.from('survey_questions').update({logic_jsonb:{version:1,route_targets:routeTargets}}).eq('id',q.dbId).eq('survey_id',surveyId);
+      const position=qFlowPosition(q,(d.questions||[]).indexOf(q));
+      const {error}=await sb.from('survey_questions').update({logic_jsonb:{version:1,route_targets:routeTargets,position}}).eq('id',q.dbId).eq('survey_id',surveyId);
       if(error){
         if(/logic_jsonb|schema cache|column .* does not exist/i.test(error.message||''))throw new Error('Os caminhos condicionais exigem a migration deploy/caminhos-condicionais-v189.sql no Supabase. Nenhuma regra foi gravada.');
         throw new Error('Não foi possível salvar os caminhos condicionais: '+error.message);
@@ -2638,22 +2641,28 @@ WIZ_BODY[2]=()=>{
       </div>
       ${wizNav()}</div>`;
   }
-  return `<div class="card" style="max-width:760px">
+  return `<div class="card q-form-builder-card" style="max-width:1180px;width:100%">
   <div style="display:flex;align-items:center;gap:10px"><div class="card-t" style="margin:0">Formulário</div>
     <span class="pill pill-gray" id="q-count" style="margin-left:6px"></span>
     <button class="btn btn-out" style="margin-left:auto" onclick="qLoadExample()">Carregar exemplo</button>
     <button class="btn btn-out" onclick="qClear()">Limpar tudo</button></div>
   <div class="card-d" style="margin-top:6px">Crie as perguntas desta pesquisa. As variáveis aqui ficam disponíveis para cotas e cruzamentos.</div>
-  <div class="q-order-hint"><span aria-hidden="true">⠿</span> Arraste a alça pontilhada para mudar a ordem. Se preferir, use as setas em cada pergunta.</div>
-  <div class="q-condition-hint"><span aria-hidden="true">↳</span> Use o <b>Editor visual de fluxo</b> para ligar respostas a perguntas posteriores. O caminho padrão segue para a próxima pergunta; você também pode saltar etapas ou encerrar a entrevista.</div>
-  <div class="q-format-hint"><span aria-hidden="true">↕</span> <b>Ranking de preferências</b> registra a ordem completa das opções. <b>Duas respostas</b> cria dois subcampos independentes, abertos ou fechados.</div>
-  <div class="q-duration-hint"><span aria-hidden="true">⏱</span> Defina a dificuldade de cada pergunta. Ela será usada para calcular o tempo mínimo da entrevista e proteger a qualidade da coleta.</div>
-  <div id="q-flow-preview"></div>
-  <div id="q-list"></div>
-  <div class="add-q">
-    <span style="font-size:12px;font-weight:600;color:var(--ink2)">Adicionar pergunta:</span>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
-      ${Object.keys(Q_TYPES).map(t=>`<button class="chip" onclick="qAdd('${t}')">+ ${Q_TYPES[t]}</button>`).join('')}
+  <div class="q-condition-hint"><span aria-hidden="true">↳</span> O fluxo agora possui uma aba própria. No mapa, arraste os nós e arraste o ponto de uma resposta até outro nó para criar caminhos diferentes.</div>
+  <div class="q-editor-tabs" role="tablist" aria-label="Editor da pesquisa">
+    <button type="button" class="q-editor-tab" id="q-tab-questions" role="tab" aria-controls="q-questions-panel" onclick="qSetEditorTab('questions')">Perguntas <span class="q-editor-tab-count" id="q-tab-question-count"></span></button>
+    <button type="button" class="q-editor-tab" id="q-tab-flow" role="tab" aria-controls="q-flow-preview" onclick="qSetEditorTab('flow')">Mapa do fluxo <span class="q-editor-tab-count" id="q-tab-flow-count"></span></button>
+  </div>
+  <div id="q-flow-preview" role="tabpanel" aria-labelledby="q-tab-flow" hidden></div>
+  <div id="q-questions-panel" role="tabpanel" aria-labelledby="q-tab-questions">
+    <div class="q-order-hint"><span aria-hidden="true">⠿</span> Arraste a alça pontilhada para mudar a ordem. Se preferir, use as setas em cada pergunta.</div>
+    <div class="q-format-hint"><span aria-hidden="true">↕</span> <b>Ranking de preferências</b> registra a ordem completa das opções. <b>Duas respostas</b> cria dois subcampos independentes, abertos ou fechados.</div>
+    <div class="q-duration-hint"><span aria-hidden="true">⏱</span> Defina a dificuldade de cada pergunta. Ela será usada para calcular o tempo mínimo da entrevista e proteger a qualidade da coleta.</div>
+    <div id="q-list"></div>
+    <div class="add-q">
+      <span style="font-size:12px;font-weight:600;color:var(--ink2)">Adicionar pergunta:</span>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+        ${Object.keys(Q_TYPES).map(t=>`<button class="chip" onclick="qAdd('${t}')">+ ${Q_TYPES[t]}</button>`).join('')}
+      </div>
     </div>
   </div>
   ${wizNav()}</div>`;
@@ -2686,6 +2695,33 @@ function qStart(withExample){
 let Q_DRAG_ID=null;
 let Q_DRAG_DROP_BEFORE=true;
 let Q_POINTER_DRAG=null;
+let Q_EDITOR_TAB='questions';
+let Q_FLOW_DRAG=null;
+let Q_FLOW_CONNECT=null;
+
+function qSetEditorTab(tab){
+  Q_EDITOR_TAB=tab==='flow'?'flow':'questions';
+  qRender();
+}
+function qFlowDefaultPosition(index){
+  const column=Math.floor(index/4),row=index%4;
+  return {x:28+column*238,y:28+row*142};
+}
+function qFlowPosition(q,index){
+  const raw=q?.flowPosition||q?.logic?.position;
+  const fallback=qFlowDefaultPosition(index);
+  const x=Number(raw?.x),y=Number(raw?.y);
+  return {x:Number.isFinite(x)?Math.max(12,Math.min(2400,x)):fallback.x,y:Number.isFinite(y)?Math.max(12,Math.min(1600,y)):fallback.y};
+}
+function qFlowEnsurePositions(qs){
+  (qs||[]).forEach((q,index)=>{if(!q.flowPosition)q.flowPosition=qFlowDefaultPosition(index);});
+}
+function qFlowFindNodeAtPoint(x,y,excludeId){
+  const el=document.elementFromPoint(x,y);
+  const node=el?.closest?.('.q-flow-node-card');
+  if(!node||String(node.dataset.qid)===String(excludeId))return null;
+  return node;
+}
 
 function qCardAtPoint(x,y){
   const el=document.elementFromPoint(x,y);
@@ -2776,12 +2812,25 @@ function qPointerCleanup(){
   Q_POINTER_DRAG=null;
 }
 function qRender(){
-  const wrap=document.getElementById('q-list');if(!wrap)return;
-  const qs=WIZ.data.questions;
-  document.getElementById('q-count').textContent=qs.length+(qs.length===1?' pergunta':' perguntas');
+  const wrap=document.getElementById('q-list');
   const flowPreview=document.getElementById('q-flow-preview');
+  if(!wrap&&!flowPreview)return;
+  const qs=WIZ.data.questions;
+  qFlowEnsurePositions(qs);
+  const count=qs.length+(qs.length===1?' pergunta':' perguntas');
+  const countEl=document.getElementById('q-count');if(countEl)countEl.textContent=count;
+  const questionCountEl=document.getElementById('q-tab-question-count');if(questionCountEl)questionCountEl.textContent=qs.length;
+  const flowCountEl=document.getElementById('q-tab-flow-count');if(flowCountEl)flowCountEl.textContent=qs.length;
   if(flowPreview)flowPreview.innerHTML=qFlowGraphMarkup(qs);
-  if(qs.length===0){wrap.innerHTML='<div class="empty">Nenhuma pergunta ainda. Adicione abaixo.</div>';return;}
+  const questionPanel=document.getElementById('q-questions-panel');
+  if(questionPanel)questionPanel.hidden=Q_EDITOR_TAB==='flow';
+  if(flowPreview)flowPreview.hidden=Q_EDITOR_TAB!=='flow';
+  document.querySelectorAll('.q-editor-tab').forEach(tab=>{
+    const active=(tab.id==='q-tab-flow'&&Q_EDITOR_TAB==='flow')||(tab.id==='q-tab-questions'&&Q_EDITOR_TAB==='questions');
+    tab.classList.toggle('on',active);tab.setAttribute('aria-selected',active?'true':'false');
+  });
+  if(qs.length===0){if(wrap)wrap.innerHTML='<div class="empty">Nenhuma pergunta ainda. Adicione abaixo.</div>';return;}
+  if(!wrap)return;
   wrap.innerHTML=qs.map((q,i)=>{
     let body='';
     if(q.type==='pair'){
@@ -2814,7 +2863,7 @@ function qRender(){
     } else if(q.type==='date'){
       body=`<div class="opt-line" style="padding-top:4px;color:var(--ink3)">— seletor de data —</div>`;
     }
-    const flowCtl=qConditionalEditorMarkup(q,i,qs);
+    const flowCtl='';
     const delBtn=`<button class="q-del" title="Excluir pergunta" onclick="qDel(${q.id})">🗑</button>`;
     const typeCtl=`<select class="q-type-sel" onchange="qType(${q.id},this.value)">
           ${Object.keys(Q_TYPES).map(t=>`<option value="${t}" ${q.type===t?'selected':''}>${Q_TYPES[t]}</option>`).join('')}
@@ -2870,12 +2919,120 @@ function qConditionalEditorMarkup(q,index,qs){
   }).join('');
   return `<section class="q-flow-editor"><div class="q-flow-editor-head"><div><span class="eyebrow">FLUXO CONDICIONAL</span><strong>Saídas da pergunta ${index+1}</strong></div><span class="q-flow-node-badge">Nó ${index+1}</span></div><p class="q-flow-editor-copy">Escolha o destino de cada resposta. “Próxima pergunta” mantém a sequência normal; saltos só podem apontar para perguntas posteriores.</p>${rows}</section>`;
 }
+function qFlowTargetLabel(target,qs){
+  if(target==='__end__')return'Encerrar entrevista';
+  if(!target)return'Próxima pergunta';
+  const index=(qs||[]).findIndex(q=>String(q.id)===String(target));
+  return index>=0?'Pergunta '+(index+1):'Destino inválido';
+}
+function qFlowNodeOptionsMarkup(q,index,qs){
+  if(q.type!=='single')return'<div class="q-flow-node-note">Sem saídas condicionais. O fluxo segue para a próxima pergunta.</div>';
+  const options=(q.opts||[]).map((option,oi)=>{
+    if(!String(option||'').trim())return'';
+    const route=String(q.routeTargets?.[oi]||'');
+    return `<div class="q-flow-option-row"><button type="button" class="q-flow-option-port" onpointerdown="qFlowStartConnect(event,${q.id},${oi})" aria-label="Conectar a resposta ${esc(option)}">●</button><span class="q-flow-option-text" title="${esc(option)}">${esc(option)}</span><span class="q-flow-option-route">${esc(qFlowTargetLabel(route,qs))}</span><select class="q-flow-route-select" aria-label="Destino para ${esc(option)}" onchange="qRouteTarget(${q.id},${oi},this.value)">${qConditionalTargetOptions(q,index,qs,route)}</select></div>`;
+  }).join('');
+  return options||'<div class="q-flow-node-note">Adicione opções para criar caminhos.</div>';
+}
+function qFlowEdgePath(edge){
+  const sx=edge.source.x+218,sy=edge.source.y+76+edge.optionIndex*34;
+  const tx=edge.target==='__end__'?edge.end.x:edge.targetPos.x-8;
+  const ty=edge.target==='__end__'?edge.end.y:edge.targetPos.y+48;
+  const bend=Math.max(34,Math.abs(tx-sx)*.42);
+  return `M ${sx} ${sy} C ${sx+bend} ${sy}, ${tx-bend} ${ty}, ${tx} ${ty}`;
+}
+function qFlowStartNodeDrag(ev,id){
+  if(ev?.target?.closest?.('.q-flow-option-port,.q-flow-route-select'))return;
+  if(!ev||ev.button!=null&&ev.button!==0)return;
+  ev.preventDefault();
+  const node=ev.currentTarget?.closest?.('.q-flow-node-card')||ev.target?.closest?.('.q-flow-node-card');
+  const q=qFind(id);if(!node||!q)return;
+  const pos=qFlowPosition(q,WIZ.data.questions.indexOf(q));
+  Q_FLOW_DRAG={id,pointerId:ev.pointerId,startX:ev.clientX,startY:ev.clientY,originX:pos.x,originY:pos.y,node};
+  node.classList.add('is-dragging');
+  document.addEventListener('pointermove',qFlowPointerMove,{passive:false});
+  document.addEventListener('pointerup',qFlowPointerUp,{once:true});
+  document.addEventListener('pointercancel',qFlowPointerCancel,{once:true});
+}
+function qFlowStartConnect(ev,id,optionIndex){
+  if(!ev)return;
+  ev.preventDefault();ev.stopPropagation();
+  Q_FLOW_CONNECT={sourceId:id,optionIndex,pointerId:ev.pointerId};
+  document.querySelectorAll('.q-flow-node-card').forEach(node=>node.classList.remove('is-connect-target'));
+  document.addEventListener('pointermove',qFlowPointerMove,{passive:false});
+  document.addEventListener('pointerup',qFlowPointerUp,{once:true});
+  document.addEventListener('pointercancel',qFlowPointerCancel,{once:true});
+}
+function qFlowPointerMove(ev){
+  if(Q_FLOW_DRAG&&ev.pointerId===Q_FLOW_DRAG.pointerId){
+    ev.preventDefault();
+    const q=qFind(Q_FLOW_DRAG.id);if(!q)return;
+    q.flowPosition={x:Math.max(12,Q_FLOW_DRAG.originX+ev.clientX-Q_FLOW_DRAG.startX),y:Math.max(12,Q_FLOW_DRAG.originY+ev.clientY-Q_FLOW_DRAG.startY)};
+    if(Q_FLOW_DRAG.node){Q_FLOW_DRAG.node.style.left=q.flowPosition.x+'px';Q_FLOW_DRAG.node.style.top=q.flowPosition.y+'px';}
+    qFlowUpdateEdges();
+  }
+  if(Q_FLOW_CONNECT&&ev.pointerId===Q_FLOW_CONNECT.pointerId){
+    ev.preventDefault();
+    const target=qFlowFindNodeAtPoint(ev.clientX,ev.clientY,Q_FLOW_CONNECT.sourceId);
+    document.querySelectorAll('.q-flow-node-card').forEach(node=>node.classList.toggle('is-connect-target',!!target&&node===target));
+  }
+}
+function qFlowPointerUp(ev){
+  if(Q_FLOW_CONNECT&&ev.pointerId===Q_FLOW_CONNECT.pointerId){
+    const target=qFlowFindNodeAtPoint(ev.clientX,ev.clientY,Q_FLOW_CONNECT.sourceId);
+    const source=qFind(Q_FLOW_CONNECT.sourceId);
+    const targetId=target?.dataset?.qid;
+    const questions=WIZ.data.questions||[];
+    const sourceIndex=questions.findIndex(q=>String(q.id)===String(Q_FLOW_CONNECT.sourceId));
+    const targetIndex=questions.findIndex(q=>String(q.id)===String(targetId));
+    if(source&&targetId&&targetIndex>sourceIndex){
+      source.routeTargets=source.routeTargets||[];source.endsInterview=source.endsInterview||[];
+      source.routeTargets[Q_FLOW_CONNECT.optionIndex]=String(targetId);source.endsInterview[Q_FLOW_CONNECT.optionIndex]=false;
+    }
+    qFlowCleanup();qRender();return;
+  }
+  if(Q_FLOW_DRAG&&ev.pointerId===Q_FLOW_DRAG.pointerId){
+    const node=Q_FLOW_DRAG.node;if(node)node.classList.remove('is-dragging');
+    qFlowCleanup();qRender();
+  }
+}
+function qFlowPointerCancel(){qFlowCleanup();qRender();}
+function qFlowCleanup(){
+  document.removeEventListener('pointermove',qFlowPointerMove);
+  document.removeEventListener('pointercancel',qFlowPointerCancel);
+  document.querySelectorAll('.q-flow-node-card').forEach(node=>node.classList.remove('is-dragging','is-connect-target'));
+  Q_FLOW_DRAG=null;Q_FLOW_CONNECT=null;
+}
+function qFlowUpdateEdges(){
+  const svg=document.getElementById('q-flow-svg');if(!svg)return;
+  const qs=WIZ.data.questions||[];
+  const edges=qs.flatMap((q,index)=>(q.type==='single'?(q.routeTargets||[]).map((target,oi)=>({q,index,optionIndex:oi,target:String(target||'')})):[])).filter(edge=>edge.target);
+  const width=Number(svg.dataset.width)||1800,height=Number(svg.dataset.height)||900;
+  const end={x:width-54,y:Math.max(68,height/2)};
+  svg.innerHTML=edges.map(edge=>{const targetPos=edge.target==='__end__'?null:qFlowPosition(qs.find(q=>String(q.id)===edge.target),qs.findIndex(q=>String(q.id)===edge.target));const path=qFlowEdgePath({...edge,source:qFlowPosition(edge.q,edge.index),targetPos:targetPos||{x:width-80,y:height/2},end});return `<path class="q-flow-edge-path" d="${path}" marker-end="url(#q-flow-arrow)"></path>`;}).join('')+`<defs><marker id="q-flow-arrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#4f8eea"></path></marker></defs>`;
+}
+function qFlowAutoLayout(){
+  (WIZ.data.questions||[]).forEach((q,index)=>{q.flowPosition=qFlowDefaultPosition(index);});
+  qRender();
+}
+function qFlowClearRoutes(){
+  if(!(WIZ.data.questions||[]).some(q=>(q.routeTargets||[]).some(Boolean)))return;
+  if(!confirm('Limpar todos os caminhos condicionais?'))return;
+  (WIZ.data.questions||[]).forEach(q=>{if(Array.isArray(q.routeTargets))q.routeTargets=q.routeTargets.map(()=> '');if(Array.isArray(q.endsInterview))q.endsInterview=q.endsInterview.map(()=>false);});
+  qRender();
+}
 function qFlowGraphMarkup(qs){
-  if(!qs?.length)return'';
-  const explicit=(qs||[]).flatMap((q,index)=>(q.type==='single'?(q.routeTargets||[]).map((target,oi)=>({q,index,target:String(target||''),option:q.opts?.[oi]||''})):[])).filter(edge=>edge.target);
-  const nodes=(qs||[]).map((q,index)=>`<div class="q-flow-node ${q.type==='single'?'is-choice':''}"><span class="q-flow-node-index">${index+1}</span><div><b>${esc(q.text||'(sem título)')}</b><small>${esc(Q_TYPES[q.type]||q.type)}${q.type==='single'?' · '+(q.opts||[]).filter(Boolean).length+' saídas':''}</small></div></div>`).join('<span class="q-flow-connector" aria-hidden="true">→</span>');
-  const edges=explicit.map(edge=>`<span class="q-flow-edge"><b>P${edge.index+1}</b> “${esc(edge.option)}” → ${edge.target==='__end__'?'encerrar':`P${Math.max(1,(qs||[]).findIndex(target=>String(target.id)===edge.target)+1)}`}</span>`).join('');
-  return `<section class="q-flow-map" aria-label="Prévia visual do fluxo"><div class="q-flow-map-head"><div><span class="eyebrow">EDITOR DE FLUXO VISUAL</span><h3>Como a entrevista vai percorrer as perguntas</h3><p>Os nós seguem a ordem padrão. As conexões configuradas aparecem abaixo e serão aplicadas durante a coleta.</p></div><span class="pill pill-blue">${qs.length} nós</span></div><div class="q-flow-node-strip">${nodes}</div>${edges?`<div class="q-flow-edges">${edges}</div>`:'<div class="q-flow-empty">Nenhum salto configurado ainda. Abra uma pergunta de escolha única e defina suas saídas.</div>'}</section>`;
+  if(!qs?.length)return'<section class="q-flow-map q-flow-map-empty"><div class="q-flow-empty">Adicione perguntas para montar o mapa de caminhos.</div></section>';
+  qFlowEnsurePositions(qs);
+  const maxX=Math.max(...qs.map((q,i)=>qFlowPosition(q,i).x))+250;
+  const maxY=Math.max(...qs.map((q,i)=>qFlowPosition(q,i).y))+190;
+  const width=Math.max(860,Math.min(2600,maxX));
+  const height=Math.max(500,Math.min(1800,maxY));
+  const explicit=qs.flatMap((q,index)=>(q.type==='single'?(q.routeTargets||[]).map((target,oi)=>({q,index,optionIndex:oi,target:String(target||'')})):[])).filter(edge=>edge.target);
+  const end={x:width-54,y:Math.max(68,height/2)};
+  const paths=explicit.map(edge=>{const target=qs.find(q=>String(q.id)===edge.target);const targetPos=target?qFlowPosition(target,qs.indexOf(target)):null;return `<path class="q-flow-edge-path" d="${qFlowEdgePath({...edge,source:qFlowPosition(edge.q,edge.index),targetPos:targetPos||{x:width-80,y:height/2},end})}" marker-end="url(#q-flow-arrow)"></path>`;}).join('');
+  const nodes=qs.map((q,index)=>{const pos=qFlowPosition(q,index);return `<article class="q-flow-node-card ${q.type==='single'?'is-choice':''}" data-qid="${q.id}" style="left:${pos.x}px;top:${pos.y}px" onpointerdown="qFlowStartNodeDrag(event,${q.id})"><header class="q-flow-node-head"><span class="q-flow-node-index">${index+1}</span><div><b>${esc(q.text||'(sem título)')}</b><small>${esc(Q_TYPES[q.type]||q.type)}${q.type==='single'?' · '+(q.opts||[]).filter(Boolean).length+' saídas':''}</small></div><span class="q-flow-drag-icon" aria-hidden="true">⠿</span></header><div class="q-flow-node-options">${qFlowNodeOptionsMarkup(q,index,qs)}</div></article>`;}).join('');
+  return `<section class="q-flow-map q-flow-map-canvas" aria-label="Mapa visual dos caminhos da entrevista"><div class="q-flow-map-head"><div><span class="eyebrow">MAPA DO FLUXO</span><h3>Desenhe os caminhos da entrevista</h3><p>Arraste os balões para organizar o mapa. Para ligar uma resposta a outro balão, arraste o ponto azul dessa resposta até o destino.</p></div><div class="q-flow-map-actions"><span class="pill pill-blue">${qs.length} nós</span><button type="button" class="btn btn-out" onclick="qFlowAutoLayout()">Organizar automaticamente</button><button type="button" class="btn btn-out" onclick="qFlowClearRoutes()">Limpar caminhos</button></div></div><div class="q-flow-legend"><span><i class="q-flow-legend-dot"></i> ponto de saída</span><span><i class="q-flow-legend-line"></i> caminho configurado</span><span>o fluxo padrão segue para a próxima pergunta</span></div><div class="q-flow-canvas-scroll"><div class="q-flow-canvas" style="width:${width}px;height:${height}px"><svg id="q-flow-svg" class="q-flow-svg" data-width="${width}" data-height="${height}" viewBox="0 0 ${width} ${height}" aria-hidden="true">${paths}<defs><marker id="q-flow-arrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#4f8eea"></path></marker></defs></svg>${nodes}<div class="q-flow-end-node" style="left:${end.x-62}px;top:${end.y-24}px">Fim da entrevista</div></div></div><div class="q-flow-empty">As posições e conexões são salvas junto com a pesquisa quando você clicar em salvar.</div></section>`;
 }
 function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;');}
 /* Serializa textos para uso dentro de atributos HTML que chamam funções JS.

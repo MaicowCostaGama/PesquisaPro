@@ -11423,7 +11423,7 @@ async function fetchClientIp(){
 let COMPANY_SIGNATURE=null,COMPANY_SIGNATURE_LOADED=false,COMPANY_SIGNATURE_LOADING=false;
 function companySignatureRowToEntry(row){
   return {id:row.id,version:row.contract_version,name:row.signer_name,role:row.signer_role,
-    hash:row.content_hash,ip:row.ip_address,ts:row.signed_at?new Date(row.signed_at).getTime():Date.now()};
+    hash:row.content_hash,ip:row.ip_address,userAgent:row.user_agent,signedBy:row.signed_by,ts:row.signed_at?new Date(row.signed_at).getTime():Date.now()};
 }
 async function loadCompanySignatureIfNeeded(){
   if(COMPANY_SIGNATURE_LOADED||COMPANY_SIGNATURE_LOADING)return;
@@ -11450,7 +11450,7 @@ function companySignPadHtml(){
 let MY_CONTRACT=null,MY_CONTRACT_LOADED=false,MY_CONTRACT_LOADING=false;
 function contractRowToEntry(row){
   return {id:row.id,version:row.contract_version,fullName:row.full_name,cpf:row.cpf,
-    hash:row.content_hash,ip:row.ip_address,privacyPolicyVersion:row.privacy_policy_version,privacyPolicyHash:row.privacy_policy_hash,privacyPolicyAcceptedAt:row.privacy_policy_accepted_at,ts:row.accepted_at?new Date(row.accepted_at).getTime():Date.now()};
+    hash:row.content_hash,ip:row.ip_address,userAgent:row.user_agent,privacyPolicyVersion:row.privacy_policy_version,privacyPolicyHash:row.privacy_policy_hash,privacyPolicyAcceptedAt:row.privacy_policy_accepted_at,ts:row.accepted_at?new Date(row.accepted_at).getTime():Date.now()};
 }
 async function loadMyContractIfNeeded(){
   if(MY_CONTRACT_LOADED||MY_CONTRACT_LOADING)return;
@@ -11571,8 +11571,7 @@ PAGES['my-contract']=()=>{
       <div class="card-d">Se você não deseja mais participar do PesquisaPro, pode solicitar o encerramento do contrato e o cancelamento da sua inscrição. Seu histórico de coletas, contratos e pagamentos será preservado para a gestão.</div>
       <button class="btn btn-out" id="contractTerminateBtn" style="color:var(--red);border-color:var(--red);margin-top:10px" onclick="requestResearcherContractTermination()">Solicitar encerramento e cancelar inscrição</button>
     </div>
-    <button class="btn btn-out" onclick="window.print()">🖨️ Imprimir / salvar em PDF</button>
-    <button class="btn-ghost" onclick="downloadContractCopy()">⬇ Baixar cópia (.txt)</button>`;
+    <div class="contract-download-actions"><button class="btn btn-out" onclick="window.print()">🖨️ Imprimir / salvar em PDF</button><button class="btn btn-ghost" onclick="downloadContractCopy()">⬇ Baixar contrato bilateral (.html)</button></div>`;
   }
   return head('Meu contrato','Leia com atenção — este contrato vale para todas as suas pesquisas')+`
   <div class="callout mb">📄 Este é um contrato único: ao assinar, ele passa a valer automaticamente para todas as pesquisas que você aceitar na plataforma — não é preciso assinar de novo a cada pesquisa. <b>Enquanto não assinar, a tela "Coletar (app)" fica bloqueada.</b></div>
@@ -11635,22 +11634,21 @@ async function signContract(){
   }
   go('my-contract');
 }
+function contractFileSafeName(value){return String(value||'pesquisador').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/gi,'_').replace(/^_+|_+$/g,'').toLowerCase()||'pesquisador';}
+function contractFileDate(value){return value?new Date(value).toLocaleString('pt-BR'):'não disponível';}
+function contractFileAuditRow(label,value){return '<dt>'+esc(label)+'</dt><dd>'+esc(value||'não disponível')+'</dd>';}
 function downloadContractCopy(){
   if(!MY_CONTRACT||!CURRENT_PROFILE)return;
+  if(!COMPANY_SIGNATURE_LOADED||!COMPANY_SIGNATURE){alert('O arquivo bilateral só pode ser baixado depois que a CONTRATANTE assinar esta versão do contrato.');return;}
   const cidade=(CURRENT_PROFILE.cidade||'').split('/')[0];
-  const text=contractPlainText(MY_CONTRACT.fullName,MY_CONTRACT.cpf,cidade)+
-    '\n\n----------------------------------------\nASSINATURA ELETRÔNICA\n'+
-    'Assinado por: '+MY_CONTRACT.fullName+' (CPF '+(MY_CONTRACT.cpf||'—')+')\n'+
-    'Data/hora: '+new Date(MY_CONTRACT.ts).toLocaleString('pt-BR')+'\n'+
-    'Endereço IP: '+(MY_CONTRACT.ip||'não disponível')+'\n'+
-    'Hash SHA-256 do documento: '+(MY_CONTRACT.hash||'—')+'\n'+
-    'Versão do contrato: '+MY_CONTRACT.version+'\n';
-  const blob=new Blob([text],{type:'text/plain;charset=utf-8'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');
-  a.href=url;a.download='contrato-pesquisapro-'+(MY_CONTRACT.fullName||'pesquisador').replace(/\s+/g,'_')+'.txt';
-  document.body.appendChild(a);a.click();document.body.removeChild(a);
-  setTimeout(()=>URL.revokeObjectURL(url),2000);
+  const researcherName=MY_CONTRACT.fullName||CURRENT_PROFILE.name||'Pesquisador';
+  const contractText=contractPlainText(researcherName,MY_CONTRACT.cpf||'',cidade);
+  const policyBlock=MY_CONTRACT.privacyPolicyVersion?`<section class="privacy"><h2>Vínculo da Política de Privacidade</h2><p>O aceite da Política de Privacidade e Guarda de Dados foi vinculado a esta assinatura contratual.</p><dl>${contractFileAuditRow('Versão da política',MY_CONTRACT.privacyPolicyVersion)}${contractFileAuditRow('URL da política',PRIVACY_POLICY_URL)}${contractFileAuditRow('Hash SHA-256 da política',MY_CONTRACT.privacyPolicyHash)}${contractFileAuditRow('Data/hora do aceite',contractFileDate(MY_CONTRACT.privacyPolicyAcceptedAt||MY_CONTRACT.ts))}</dl></section>`:'<section class="privacy"><h2>Vínculo da Política de Privacidade</h2><p>Esta assinatura não contém um vínculo de aceite da política porque corresponde a uma versão histórica do contrato.</p></section>';
+  const html=`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(CONTRACT_TITLE)}</title><style>
+*{box-sizing:border-box}body{margin:0;background:#f3f6fa;color:#1f2937;font-family:Arial,Helvetica,sans-serif;line-height:1.55}.page{width:min(900px,calc(100% - 32px));margin:28px auto;background:#fff;padding:44px 54px;box-shadow:0 8px 30px rgba(15,42,86,.12)}.eyebrow{color:#2563eb;font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}h1{margin:8px 0 5px;color:#102a56;font-size:21px;line-height:1.25}h2{margin:26px 0 10px;padding-bottom:6px;border-bottom:1px solid #dbe5ef;color:#102a56;font-size:15px}p{margin:0 0 10px;font-size:12px}.document-meta{margin:18px 0;padding:12px 14px;border:1px solid #dbe5ef;border-radius:9px;background:#f7fbff;color:#4b6178;font-size:11px}.terms{white-space:pre-wrap;font:12px/1.7 Arial,Helvetica,sans-serif;color:#27364a}.signature-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:12px}.signature-card{min-height:210px;padding:16px;border:1px solid #b8cbe0;border-radius:10px;background:#fbfdff}.signature-card.company{border-color:#91d4c9;background:#f4fffd}.signature-card h3{margin:0 0 12px;color:#102a56;font-size:12px;letter-spacing:.08em}.signature-card.company h3{color:#0f766e}dl{display:grid;grid-template-columns:155px minmax(0,1fr);gap:5px 12px;margin:10px 0 0;font-size:10.5px}dt{color:#64748b;font-weight:700}dd{margin:0;overflow-wrap:anywhere;color:#1f2937}.privacy{margin-top:16px;padding:14px;border:1px solid #d8e5f7;border-radius:10px;background:#f8fbff}.privacy h2{margin-top:0;border:0;padding:0}.footer{margin-top:28px;padding-top:10px;border-top:1px solid #dbe5ef;color:#64748b;font-size:10px}@media(max-width:680px){.page{width:100%;margin:0;padding:28px 20px;box-shadow:none}.signature-grid{grid-template-columns:1fr}dl{grid-template-columns:1fr;gap:2px}.terms{font-size:11px}}@media print{body{background:#fff}.page{width:100%;margin:0;padding:0;box-shadow:none}.no-print{display:none!important}}
+</style></head><body><main class="page"><div class="eyebrow">PesquisaPro · Versus Soluções em Gestão</div><h1>${esc(CONTRACT_TITLE)}</h1><div class="document-meta">Arquivo bilateral de contrato assinado eletronicamente · versão ${esc(MY_CONTRACT.version)} · gerado em ${esc(contractFileDate(new Date()))}</div><div class="terms">${esc(contractText)}</div><h2>Assinaturas eletrônicas</h2><div class="signature-grid"><section class="signature-card company"><h3>CONTRATANTE</h3><p><strong>${esc(EMPRESA_CONTRATO.razao)}</strong>, produto ${esc(EMPRESA_CONTRATO.programa)}</p><dl>${contractFileAuditRow('Representante',COMPANY_SIGNATURE.name)} ${contractFileAuditRow('Cargo/função',COMPANY_SIGNATURE.role)}${contractFileAuditRow('Data/hora',contractFileDate(COMPANY_SIGNATURE.ts))}${contractFileAuditRow('Endereço IP',COMPANY_SIGNATURE.ip)}${contractFileAuditRow('User-agent',COMPANY_SIGNATURE.userAgent)}${contractFileAuditRow('Hash SHA-256',COMPANY_SIGNATURE.hash)}${contractFileAuditRow('Versão do contrato',COMPANY_SIGNATURE.version)}</dl></section><section class="signature-card"><h3>CONTRATADO(A) · PESQUISADOR(A)</h3><p><strong>${esc(researcherName)}</strong>${MY_CONTRACT.cpf?' · CPF '+esc(MY_CONTRACT.cpf):''}</p><dl>${contractFileAuditRow('Data/hora',contractFileDate(MY_CONTRACT.ts))}${contractFileAuditRow('Endereço IP',MY_CONTRACT.ip)}${contractFileAuditRow('User-agent',MY_CONTRACT.userAgent)}${contractFileAuditRow('Hash SHA-256',MY_CONTRACT.hash)}${contractFileAuditRow('Versão do contrato',MY_CONTRACT.version)}</dl></section></div>${policyBlock}<div class="footer">Este arquivo reúne o texto do contrato e as duas evidências de assinatura disponíveis para a mesma versão. Para gerar PDF, use a opção de impressão do navegador e selecione “Salvar como PDF”.</div></main></body></html>`;
+  const blob=new Blob([html],{type:'text/html;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');
+  a.href=url;a.download='contrato-pesquisapro-bilateral-'+contractFileSafeName(researcherName)+'.html';document.body.appendChild(a);a.click();document.body.removeChild(a);setTimeout(()=>URL.revokeObjectURL(url),2000);
 }
 
 /* ============ COMPANY ============ */

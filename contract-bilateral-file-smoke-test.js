@@ -1,0 +1,23 @@
+const assert=require('assert');
+const fs=require('fs');
+const path=require('path');
+const root=__dirname;
+const app=fs.readFileSync(path.join(root,'app.js'),'utf8');
+const css=fs.readFileSync(path.join(root,'style.css'),'utf8');
+const html=fs.readFileSync(path.join(root,'app.html'),'utf8');
+function ok(condition,message){assert(condition,message);}
+ok(app.includes('downloadContractCopy'),'download do contrato bilateral ausente');
+ok(app.includes(".html';document.body.appendChild(a)"),'download não gera arquivo HTML');
+ok(app.includes('Arquivo bilateral de contrato assinado eletronicamente'),'arquivo não se identifica como bilateral');
+ok(app.includes('CONTRATANTE')&&app.includes('CONTRATADO(A) · PESQUISADOR(A)'),'os dois blocos de assinatura não são gerados');
+ok(app.includes('COMPANY_SIGNATURE.hash')&&app.includes('MY_CONTRACT.hash'),'os dois hashes de assinatura não são incluídos');
+ok(app.includes('COMPANY_SIGNATURE.userAgent')&&app.includes('MY_CONTRACT.userAgent'),'os dois user-agents não são incluídos');
+ok(app.includes('COMPANY_SIGNATURE.ts')&&app.includes('MY_CONTRACT.ts'),'as duas datas de assinatura não são incluídas');
+ok(app.includes('COMPANY_SIGNATURE.ip')&&app.includes('MY_CONTRACT.ip'),'os dois IPs não são incluídos');
+ok(app.includes('contractFileAuditRow'),'linhas de auditoria do arquivo não são centralizadas');
+ok(app.includes('Para gerar PDF'),'o arquivo não orienta a impressão para PDF');
+ok(app.includes('O arquivo bilateral só pode ser baixado depois que a CONTRATANTE assinar'),'download sem assinatura da empresa não é bloqueado');
+ok(app.includes('contract-download-actions'),'ações do arquivo não têm contêiner próprio');
+ok(css.includes('.contract-download-actions'),'estilo das ações do arquivo bilateral ausente');
+ok(html.includes('app.js?v=20261021200500')&&html.includes('style.css?v=20261021200500'),'cache v201 não foi atualizado');
+console.log('Contract bilateral file smoke test: PASS — texto, duas assinaturas, hashes, datas, IPs, user-agents e impressão para PDF verificados.');

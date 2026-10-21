@@ -2666,3 +2666,7 @@ body.system-message-gate-open{overflow:hidden}
 .q-flow-edge-hit.is-sequence{stroke:transparent}
 .q-flow-edge-label.is-sequence{fill:#6d8197}
 .q-flow-legend-sequence{display:inline-block;width:25px;border-top:2px dashed #91a4ba;vertical-align:middle;margin-right:6px}
+
+/* v201 — arquivo bilateral com as assinaturas da CONTRATANTE e do pesquisador. */
+.contract-download-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px}.contract-download-actions .btn,.contract-download-actions .btn-ghost{min-height:36px}
+@media(max-width:640px){.contract-download-actions{align-items:stretch;flex-direction:column}.contract-download-actions .btn,.contract-download-actions .btn-ghost{width:100%;white-space:normal}}

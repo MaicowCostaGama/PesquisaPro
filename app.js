@@ -53,7 +53,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261021130500';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261021133000';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -2178,7 +2178,14 @@ function surveyRowToSnapshot(row,questionRows,clientCompanyNames,teamNames){
       if(typeof options==='string'){try{options=JSON.parse(options);}catch(ex){options=[];}}
       return {id:field.id,label:field.label||'',type:field.type||'open',options:Array.isArray(options)?options.map(v=>String(v??'')):[]};
     });
-    return {id:localId,position:Number.isFinite(Number(q.position))?Number(q.position):qi,dbId:q.id,text:q.text||'',type:q.type||'single',difficulty:Math.min(5,Math.max(1,Number(q.difficulty)||3)),opts:opts.map(o=>o.label||''),endsInterview:opts.map(o=>!!o.ends_interview),fields:fields.length===2?fields:DEFAULT_PAIR_FIELDS(),isRegion:!!q.is_region};
+    let logic=q.logic_jsonb;
+    if(typeof logic==='string'){try{logic=JSON.parse(logic);}catch(ex){logic={};}}
+    const routeTargets=Array.isArray(logic?.route_targets)?logic.route_targets.map(value=>String(value??'')):[];
+    return {id:localId,position:Number.isFinite(Number(q.position))?Number(q.position):qi,dbId:q.id,text:q.text||'',type:q.type||'single',difficulty:Math.min(5,Math.max(1,Number(q.difficulty)||3)),opts:opts.map(o=>o.label||''),endsInterview:opts.map(o=>!!o.ends_interview),routeTargets,fields:fields.length===2?fields:DEFAULT_PAIR_FIELDS(),isRegion:!!q.is_region};
+  });
+  const dbToLocal=new Map(questions.map(question=>[String(question.dbId),String(question.id)]));
+  questions.forEach(question=>{
+    question.routeTargets=(question.routeTargets||[]).map(target=>target==='__end__'?'__end__':(dbToLocal.get(String(target))||''));
   });
   return {
     id:row.id,
@@ -2214,9 +2221,19 @@ function snapshotToSurveyRow(d){
    aplicada; assim o histórico continua preservado sem aparecer no formulário. */
 async function syncSurveyQuestionsAndOptions(surveyId,d){
   SURVEY_END_CONDITION_SCHEMA_MISSING=false;
+  const flow=window.PP_CONDITIONAL_FLOW;
+  const conditionalErrors=flow?.validateQuestions?flow.validateQuestions(d.questions||[]):[];
+  if(conditionalErrors.length)throw new Error('Revise os caminhos condicionais antes de salvar:\n• '+conditionalErrors.join('\n• '));
+  const hasConditionalRules=(d.questions||[]).some(q=>(flow?.normalizeRouteTargets?flow.normalizeRouteTargets(q):[]).some(Boolean));
+  let conditionalLogicAvailable=true;
   let activeColumnAvailable=true;
   let difficultyColumnAvailable=true;
-  const existingResult=await sb.from('survey_questions').select('id').eq('survey_id',surveyId);
+  let existingResult=await sb.from('survey_questions').select('id,logic_jsonb').eq('survey_id',surveyId);
+  if(existingResult.error&&/logic_jsonb|schema cache|column .* does not exist/i.test(existingResult.error.message||'')){
+    conditionalLogicAvailable=false;
+    if(hasConditionalRules)throw new Error('Os caminhos condicionais exigem a migration deploy/caminhos-condicionais-v189.sql no Supabase. Nenhuma pergunta foi alterada.');
+    existingResult=await sb.from('survey_questions').select('id').eq('survey_id',surveyId);
+  }
   if(existingResult.error)throw new Error('Não foi possível ler as perguntas atuais: '+existingResult.error.message);
   const existingIds=(existingResult.data||[]).map(row=>row.id);
   const questions=d.questions||[];
@@ -2316,6 +2333,18 @@ async function syncSurveyQuestionsAndOptions(surveyId,d){
     }else if(!fieldsTableMissing&&existingFieldRows.length){
       const {error:staleError}=await sb.from('survey_question_fields').delete().in('id',existingFieldRows.map(field=>field.id));
       if(staleError)throw new Error('Não foi possível desassociar subcampos antigos: '+staleError.message);
+    }
+  }
+  if(conditionalLogicAvailable){
+    const localToDb=new Map((d.questions||[]).filter(q=>q.dbId).map(q=>[String(q.id),q.dbId]));
+    for(const q of d.questions||[]){
+      if(!q.dbId)continue;
+      const routeTargets=flow?.dbTargetsFromLocal?flow.dbTargetsFromLocal(q,localToDb):[];
+      const {error}=await sb.from('survey_questions').update({logic_jsonb:{version:1,route_targets:routeTargets}}).eq('id',q.dbId).eq('survey_id',surveyId);
+      if(error){
+        if(/logic_jsonb|schema cache|column .* does not exist/i.test(error.message||''))throw new Error('Os caminhos condicionais exigem a migration deploy/caminhos-condicionais-v189.sql no Supabase. Nenhuma regra foi gravada.');
+        throw new Error('Não foi possível salvar os caminhos condicionais: '+error.message);
+      }
     }
   }
 }
@@ -2638,9 +2667,10 @@ WIZ_BODY[2]=()=>{
     <button class="btn btn-out" onclick="qClear()">Limpar tudo</button></div>
   <div class="card-d" style="margin-top:6px">Crie as perguntas desta pesquisa. As variáveis aqui ficam disponíveis para cotas e cruzamentos.</div>
   <div class="q-order-hint"><span aria-hidden="true">⠿</span> Arraste a alça pontilhada para mudar a ordem. Se preferir, use as setas em cada pergunta.</div>
-  <div class="q-condition-hint"><span aria-hidden="true">!</span> Nas perguntas de escolha, marque <b>encerrar</b> ao lado de uma resposta para avisar o pesquisador e encerrar a entrevista quando ela for selecionada.</div>
+  <div class="q-condition-hint"><span aria-hidden="true">↳</span> Use o <b>Editor visual de fluxo</b> para ligar respostas a perguntas posteriores. O caminho padrão segue para a próxima pergunta; você também pode saltar etapas ou encerrar a entrevista.</div>
   <div class="q-format-hint"><span aria-hidden="true">↕</span> <b>Ranking de preferências</b> registra a ordem completa das opções. <b>Duas respostas</b> cria dois subcampos independentes, abertos ou fechados.</div>
   <div class="q-duration-hint"><span aria-hidden="true">⏱</span> Defina a dificuldade de cada pergunta. Ela será usada para calcular o tempo mínimo da entrevista e proteger a qualidade da coleta.</div>
+  <div id="q-flow-preview"></div>
   <div id="q-list"></div>
   <div class="add-q">
     <span style="font-size:12px;font-weight:600;color:var(--ink2)">Adicionar pergunta:</span>
@@ -2771,6 +2801,8 @@ function qRender(){
   const wrap=document.getElementById('q-list');if(!wrap)return;
   const qs=WIZ.data.questions;
   document.getElementById('q-count').textContent=qs.length+(qs.length===1?' pergunta':' perguntas');
+  const flowPreview=document.getElementById('q-flow-preview');
+  if(flowPreview)flowPreview.innerHTML=qFlowGraphMarkup(qs);
   if(qs.length===0){wrap.innerHTML='<div class="empty">Nenhuma pergunta ainda. Adicione abaixo.</div>';return;}
   wrap.innerHTML=qs.map((q,i)=>{
     let body='';
@@ -2804,6 +2836,7 @@ function qRender(){
     } else if(q.type==='date'){
       body=`<div class="opt-line" style="padding-top:4px;color:var(--ink3)">— seletor de data —</div>`;
     }
+    const flowCtl=qConditionalEditorMarkup(q,i,qs);
     const delBtn=`<button class="q-del" title="Excluir pergunta" onclick="qDel(${q.id})">🗑</button>`;
     const typeCtl=`<select class="q-type-sel" onchange="qType(${q.id},this.value)">
           ${Object.keys(Q_TYPES).map(t=>`<option value="${t}" ${q.type===t?'selected':''}>${Q_TYPES[t]}</option>`).join('')}
@@ -2834,8 +2867,37 @@ function qRender(){
         ${delBtn}
       </div>
       ${body}
+      ${flowCtl}
     </div>`;
   }).join('');
+}
+function qConditionalTargetOptions(q,index,qs,selected){
+  const options=['<option value="">Próxima pergunta (sequência normal)</option>'];
+  (qs||[]).forEach((target,targetIndex)=>{
+    if(targetIndex<=index)return;
+    const value=String(target.id);
+    options.push(`<option value="${esc(value)}" ${selected===value?'selected':''}>Pergunta ${targetIndex+1} · ${esc(target.text||'(sem título)')}</option>`);
+  });
+  options.push(`<option value="__end__" ${selected==='__end__'?'selected':''}>Encerrar entrevista</option>`);
+  return options.join('');
+}
+function qConditionalEditorMarkup(q,index,qs){
+  if(q.type!=='single'||!q.opts?.some(option=>String(option||'').trim()))return'';
+  const routes=Array.isArray(q.routeTargets)?q.routeTargets:[];
+  const rows=q.opts.map((option,oi)=>{
+    if(!String(option||'').trim())return'';
+    const legacyEnd=q.endsInterview?.[oi]===true;
+    const selected=String(routes[oi]||'')|| (legacyEnd?'__end__':'');
+    return `<div class="q-flow-rule-row"><div class="q-flow-source"><span class="q-flow-port" aria-hidden="true"></span><div><b>Se responder</b><span>${esc(option)}</span></div></div><span class="q-flow-arrow" aria-hidden="true">→</span><select class="inp q-flow-target" aria-label="Destino para ${esc(option)}" onchange="qRouteTarget(${q.id},${oi},this.value)">${qConditionalTargetOptions(q,index,qs,selected)}</select></div>`;
+  }).join('');
+  return `<section class="q-flow-editor"><div class="q-flow-editor-head"><div><span class="eyebrow">FLUXO CONDICIONAL</span><strong>Saídas da pergunta ${index+1}</strong></div><span class="q-flow-node-badge">Nó ${index+1}</span></div><p class="q-flow-editor-copy">Escolha o destino de cada resposta. “Próxima pergunta” mantém a sequência normal; saltos só podem apontar para perguntas posteriores.</p>${rows}</section>`;
+}
+function qFlowGraphMarkup(qs){
+  if(!qs?.length)return'';
+  const explicit=(qs||[]).flatMap((q,index)=>(q.type==='single'?(q.routeTargets||[]).map((target,oi)=>({q,index,target:String(target||''),option:q.opts?.[oi]||''})):[])).filter(edge=>edge.target);
+  const nodes=(qs||[]).map((q,index)=>`<div class="q-flow-node ${q.type==='single'?'is-choice':''}"><span class="q-flow-node-index">${index+1}</span><div><b>${esc(q.text||'(sem título)')}</b><small>${esc(Q_TYPES[q.type]||q.type)}${q.type==='single'?' · '+(q.opts||[]).filter(Boolean).length+' saídas':''}</small></div></div>`).join('<span class="q-flow-connector" aria-hidden="true">→</span>');
+  const edges=explicit.map(edge=>`<span class="q-flow-edge"><b>P${edge.index+1}</b> “${esc(edge.option)}” → ${edge.target==='__end__'?'encerrar':`P${Math.max(1,(qs||[]).findIndex(target=>String(target.id)===edge.target)+1)}`}</span>`).join('');
+  return `<section class="q-flow-map" aria-label="Prévia visual do fluxo"><div class="q-flow-map-head"><div><span class="eyebrow">EDITOR DE FLUXO VISUAL</span><h3>Como a entrevista vai percorrer as perguntas</h3><p>Os nós seguem a ordem padrão. As conexões configuradas aparecem abaixo e serão aplicadas durante a coleta.</p></div><span class="pill pill-blue">${qs.length} nós</span></div><div class="q-flow-node-strip">${nodes}</div>${edges?`<div class="q-flow-edges">${edges}</div>`:'<div class="q-flow-empty">Nenhum salto configurado ainda. Abra uma pergunta de escolha única e defina suas saídas.</div>'}</section>`;
 }
 function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;');}
 /* Serializa textos para uso dentro de atributos HTML que chamam funções JS.
@@ -2852,19 +2914,20 @@ function fmtDataBR(iso){
 }
 function qFind(id){return WIZ.data.questions.find(q=>q.id===id);}
 function qAdd(type){
-  const q={id:WIZ_QID++,text:'',type,difficulty:3,opts:Q_HAS_OPTS(type)?['',''] :[],endsInterview:Q_HAS_OPTS(type)?[false,false]:[],fields:type==='pair'?DEFAULT_PAIR_FIELDS():[]};
+  const q={id:WIZ_QID++,text:'',type,difficulty:3,opts:Q_HAS_OPTS(type)?['',''] :[],endsInterview:Q_HAS_OPTS(type)?[false,false]:[],routeTargets:Q_HAS_OPTS(type)?['','']:[],fields:type==='pair'?DEFAULT_PAIR_FIELDS():[]};
   WIZ.data.questions.push(q);qRender();
   setTimeout(()=>{const inputs=document.querySelectorAll('.q-text-inp');if(inputs.length)inputs[inputs.length-1].focus();},30);
 }
-function qDel(id){WIZ.data.questions=WIZ.data.questions.filter(q=>q.id!==id);qRender();}
+function qDel(id){WIZ.data.questions=WIZ.data.questions.filter(q=>q.id!==id);WIZ.data.questions.forEach(q=>{if(Array.isArray(q.routeTargets))q.routeTargets=q.routeTargets.map(target=>String(target)===String(id)?'':target);});qRender();}
 function qText(id,v){const q=qFind(id);if(q)q.text=v;}
 function qDifficulty(id,v){const q=qFind(id);if(q)q.difficulty=Math.min(5,Math.max(1,Number(v)||3));}
 function qEnsurePairFields(q){if(!q)return;const current=Array.isArray(q.fields)?q.fields:[];q.fields=[0,1].map(i=>{const f=current[i]||DEFAULT_PAIR_FIELDS()[i];return {label:String(f.label||'Resposta '+(i+1)),type:Q_CLOSED_FIELD_TYPES.includes(f.type)?f.type:'open',options:Array.isArray(f.options)?f.options.map(v=>String(v??'')):[]};});}
-function qType(id,v){const q=qFind(id);if(!q)return;q.type=v;if(Q_HAS_OPTS(v)&&q.opts.length===0){q.opts=['',''];q.endsInterview=[false,false];}if(v==='pair')qEnsurePairFields(q);if(!Q_HAS_OPTS(v)||v!=='single')q.isRegion=false;qRender();}
-function qOpt(id,oi,v){const q=qFind(id);if(q){q.opts[oi]=v;if(!String(v||'').trim()&&q.endsInterview)q.endsInterview[oi]=false;}}
-function qOptAdd(id){const q=qFind(id);if(q){q.opts.push('');q.endsInterview=q.endsInterview||[];q.endsInterview.push(false);qRender();}}
-function qOptDel(id,oi){const q=qFind(id);if(q&&q.opts.length>1){q.opts.splice(oi,1);if(q.endsInterview)q.endsInterview.splice(oi,1);qRender();}}
-function qEndToggle(id,oi,checked){const q=qFind(id);if(!q)return;q.endsInterview=q.endsInterview||[];q.endsInterview[oi]=checked===true;qRender();}
+function qType(id,v){const q=qFind(id);if(!q)return;q.type=v;if(Q_HAS_OPTS(v)&&q.opts.length===0){q.opts=['',''];q.endsInterview=[false,false];q.routeTargets=['',''];}if(v==='pair')qEnsurePairFields(q);if(!Q_HAS_OPTS(v)||v!=='single'){q.isRegion=false;q.routeTargets=[];}qRender();}
+function qOpt(id,oi,v){const q=qFind(id);if(q){q.opts[oi]=v;if(!String(v||'').trim()&&q.endsInterview)q.endsInterview[oi]=false;if(!String(v||'').trim()&&q.routeTargets)q.routeTargets[oi]='';}}
+function qOptAdd(id){const q=qFind(id);if(q){q.opts.push('');q.endsInterview=q.endsInterview||[];q.endsInterview.push(false);q.routeTargets=q.routeTargets||[];q.routeTargets.push('');qRender();}}
+function qOptDel(id,oi){const q=qFind(id);if(q&&q.opts.length>1){q.opts.splice(oi,1);if(q.endsInterview)q.endsInterview.splice(oi,1);if(q.routeTargets)q.routeTargets.splice(oi,1);qRender();}}
+function qEndToggle(id,oi,checked){const q=qFind(id);if(!q)return;q.endsInterview=q.endsInterview||[];q.endsInterview[oi]=checked===true;if(q.type==='single'){q.routeTargets=q.routeTargets||[];q.routeTargets[oi]=checked===true?'__end__':(q.routeTargets[oi]==='__end__'?'':'');}qRender();}
+function qRouteTarget(id,oi,target){const q=qFind(id);if(!q||q.type!=='single')return;q.routeTargets=q.routeTargets||[];q.routeTargets[oi]=target==='__end__'?'__end__':String(target||'');q.endsInterview=q.endsInterview||[];q.endsInterview[oi]=target==='__end__';qRender();}
 function qPairField(qid,fieldIndex){const q=qFind(qid);if(!q||q.type!=='pair')return null;qEnsurePairFields(q);return q.fields[fieldIndex]||null;}
 function qPairFieldLabel(qid,fieldIndex,value){const field=qPairField(qid,fieldIndex);if(field)field.label=value;}
 function qPairFieldType(qid,fieldIndex,value){const field=qPairField(qid,fieldIndex);if(!field)return;field.type=Q_CLOSED_FIELD_TYPES.includes(value)?value:'open';if(field.type==='open')field.options=[];else if(!field.options.length)field.options=['',''];qRender();}
@@ -5895,7 +5958,11 @@ function acollectConditionLabels(qDbId,value,optionIndex){
   const s=SURVEYS.find(x=>x.id===ACOLLECT_SURVEY_ID);
   const q=(s?.questions||[]).find(item=>item.dbId===qDbId);
   if(!q||!['single','multi'].includes(q.type))return[];
-  if(optionIndex!=null)return q.endsInterview&&q.endsInterview[optionIndex]===true?[Array.isArray(value)?value[0]:value]:[];
+  if(optionIndex!=null){
+    const selected=Array.isArray(value)?value[0]:value;
+    const routedEnd=q.type==='single'&&window.PP_CONDITIONAL_FLOW?.routeTargetFor?.(q,{value:selected})===window.PP_CONDITIONAL_FLOW?.END;
+    return (q.endsInterview&&q.endsInterview[optionIndex]===true)||routedEnd?[selected]:[];
+  }
   const values=Array.isArray(value)?value:[value];
   return values.filter(v=>v!==''&&v!=null).filter(v=>{
     const oi=(q.opts||[]).indexOf(v);
@@ -5935,17 +6002,17 @@ function acollectSetAnswer(qDbId,value,rerenderForm,optionIndex){
      marcado; campos de texto/número/data NÃO são re-renderizados aqui para
      não perder o foco/cursor a cada tecla digitada — o próprio campo já
      mostra o que foi digitado sozinho */
-  if(rerenderForm)renderAcollectForm();
-  renderAcollectActionState();
-  acollectEndByCondition(qDbId,value,optionIndex);
+  const ended=acollectEndByCondition(qDbId,value,optionIndex);
+  if(!ended&&rerenderForm)renderAcollectForm();
+  if(!ended)renderAcollectActionState();
 }
 function acollectToggleMultiAnswer(qDbId,label,optionIndex){
   const cur=(ACOLLECT_ANSWERS[qDbId]&&Array.isArray(ACOLLECT_ANSWERS[qDbId].value))?ACOLLECT_ANSWERS[qDbId].value.slice():[];
   const i=cur.indexOf(label);
   if(i>=0)cur.splice(i,1);else cur.push(label);
   ACOLLECT_ANSWERS[qDbId]={value:cur};
-  renderAcollectActionState();
-  acollectEndByCondition(qDbId,label,optionIndex);
+  const ended=acollectEndByCondition(qDbId,label,optionIndex);
+  if(!ended){renderAcollectForm();renderAcollectActionState();}
 }
 function acollectPairField(qDbId,fieldIndex){
   const current=ACOLLECT_ANSWERS[qDbId]||{};
@@ -6142,7 +6209,9 @@ function acollectRecordingRetake(){
 function acollectMissingRequired(){
   const s=SURVEYS.find(x=>x.id===ACOLLECT_SURVEY_ID);
   if(!s)return[];
-  return (s.questions||[]).filter(q=>q.type!=='open').filter(q=>{
+  const flow=window.PP_CONDITIONAL_FLOW;
+  const questions=flow?.visibleQuestions?flow.visibleQuestions(s.questions||[],ACOLLECT_ANSWERS):(s.questions||[]);
+  return questions.filter(q=>q.type!=='open').filter(q=>{
     if(!q.dbId)return false; // pergunta sem id real (não deveria acontecer) — não trava o envio por ela
     const a=ACOLLECT_ANSWERS[q.dbId];
     if(q.type==='pair'){
@@ -6173,7 +6242,8 @@ function renderAcollectForm(){
   if(!ACOLLECT_IN_PROGRESS){el.innerHTML='';return;}
   const s=SURVEYS.find(x=>x.id===ACOLLECT_SURVEY_ID);
   if(!s){el.innerHTML='';return;}
-  const qs=(s.questions||[]).filter(q=>q.dbId);
+  const flow=window.PP_CONDITIONAL_FLOW;
+  const qs=(flow?.visibleQuestions?flow.visibleQuestions(s.questions||[],ACOLLECT_ANSWERS):(s.questions||[])).filter(q=>q.dbId);
   el.innerHTML='<div style="font-weight:700;font-size:13px;margin:12px 0 4px">Questionário</div>'+
     qs.map(q=>{
       const a=ACOLLECT_ANSWERS[q.dbId];
@@ -6181,7 +6251,7 @@ function renderAcollectForm(){
       let body='';
       if(q.type==='single'){
         body=(q.opts||[]).map((opt,oi)=>`<label style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:12px;${locked?'opacity:.7':''}">
-          <input type="radio" name="acq-${q.dbId}" ${a&&a.value===opt?'checked':''} ${locked?'disabled':''} onchange="acollectSetAnswer('${q.dbId}',${jsArg(opt)},false,${oi})"> ${esc(opt)}</label>`).join('');
+          <input type="radio" name="acq-${q.dbId}" ${a&&a.value===opt?'checked':''} ${locked?'disabled':''} onchange="acollectSetAnswer('${q.dbId}',${jsArg(opt)},true,${oi})"> ${esc(opt)}</label>`).join('');
       }else if(q.type==='multi'){
         body=(q.opts||[]).map((opt,oi)=>{
           const checked=a&&Array.isArray(a.value)&&a.value.includes(opt);
@@ -6467,7 +6537,9 @@ function acollectBuildAnswerRows(eventId){
   const s=SURVEYS.find(x=>x.id===ACOLLECT_SURVEY_ID);
   if(!s)return[];
   const rows=[];
-  (s.questions||[]).filter(q=>q.dbId).forEach(q=>{
+  const flow=window.PP_CONDITIONAL_FLOW;
+  const questions=flow?.visibleQuestions?flow.visibleQuestions(s.questions||[],ACOLLECT_ANSWERS):(s.questions||[]);
+  questions.filter(q=>q.dbId).forEach(q=>{
     const a=ACOLLECT_ANSWERS[q.dbId];
     if(!a||a.value===''||a.value==null||(Array.isArray(a.value)&&a.value.length===0))return;
     if(q.type==='multi'){

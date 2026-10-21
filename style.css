@@ -2380,3 +2380,33 @@ body.system-message-gate-open{overflow:hidden}
 .q-excel-import-note{margin:13px 0 0;color:var(--ink3);font-size:11.5px;line-height:1.55}
 .q-excel-import-actions{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:10px;margin-top:20px}.q-excel-import-actions .btn{min-height:42px;white-space:normal}
 @media(max-width:600px){.q-excel-import-tools{align-items:stretch;flex-direction:column}.q-excel-import-tools .q-excel-import-button{width:100%}.q-excel-import-overlay{padding:8px}.q-excel-import-dialog{max-height:calc(100dvh - 16px);padding:18px 15px;border-radius:15px}.q-excel-import-dialog h2{font-size:20px}.q-excel-import-actions{display:grid;grid-template-columns:minmax(0,1fr)}.q-excel-import-actions .btn{width:100%}}
+
+
+/* v189 — editor visual de fluxo condicional */
+.q-flow-map{margin:16px 0 18px;padding:16px;border:1px solid #d9e5f4;border-radius:16px;background:linear-gradient(135deg,#f8fbff 0%,#f0f6ff 100%);box-shadow:0 10px 26px rgba(37,99,235,.08)}
+.q-flow-map-head,.q-flow-editor-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.q-flow-map-head h3{margin:4px 0 5px;font-size:16px;color:#102a56}
+.q-flow-map-head p,.q-flow-editor-copy{margin:0;color:#63748b;font-size:12px;line-height:1.5}
+.q-flow-node-strip{display:flex;align-items:stretch;gap:8px;overflow-x:auto;padding:16px 4px 10px;scrollbar-width:thin}
+.q-flow-node{min-width:150px;max-width:210px;display:flex;align-items:flex-start;gap:8px;padding:10px;border:1px solid #cbdcf2;border-radius:12px;background:#fff;box-shadow:0 5px 12px rgba(15,56,110,.08)}
+.q-flow-node.is-choice{border-color:#91b8ef}
+.q-flow-node-index{display:grid;place-items:center;flex:0 0 24px;height:24px;border-radius:8px;background:#2563eb;color:#fff;font-size:11px;font-weight:800}
+.q-flow-node b{display:block;color:#1d3557;font-size:11.5px;line-height:1.35;max-height:32px;overflow:hidden}
+.q-flow-node small{display:block;margin-top:4px;color:#76869a;font-size:10px}
+.q-flow-connector{align-self:center;color:#7d9cc5;font-size:18px;font-weight:700}
+.q-flow-edges{display:flex;flex-wrap:wrap;gap:6px;padding-top:4px;border-top:1px dashed #c8d8eb}
+.q-flow-edge{display:inline-flex;align-items:center;gap:4px;padding:5px 8px;border-radius:999px;background:#e7f0ff;color:#28548f;font-size:10.5px}
+.q-flow-empty{padding-top:10px;color:#728198;font-size:11px}
+.q-flow-node-badge{flex:none;padding:5px 8px;border-radius:999px;background:#e7f0ff;color:#25579b;font-size:10px;font-weight:800}
+.q-flow-editor{margin:12px 0 2px;padding:13px;border:1px solid #d7e3f1;border-radius:13px;background:#fbfdff}
+.q-flow-editor-head strong{display:block;margin-top:3px;font-size:12.5px;color:#1d3557}
+.q-flow-editor-copy{margin:8px 0 10px}
+.q-flow-rule-row{display:grid;grid-template-columns:minmax(150px,1fr) 22px minmax(210px,1.35fr);align-items:center;gap:7px;padding:8px 0;border-top:1px solid #edf2f7}
+.q-flow-source{display:flex;align-items:center;gap:8px;min-width:0}
+.q-flow-port{width:9px;height:9px;flex:none;border-radius:50%;background:#4f8eea;box-shadow:0 0 0 4px #e8f1ff}
+.q-flow-source b,.q-flow-source span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.q-flow-source b{font-size:10px;color:#7b8b9d;font-weight:600}
+.q-flow-source span{font-size:11.5px;color:#253b58}
+.q-flow-arrow{text-align:center;color:#7392ba;font-weight:800}
+.q-flow-target{height:32px;font-size:11.5px;background:#fff}
+@media (max-width:640px){.q-flow-map{padding:12px}.q-flow-map-head,.q-flow-editor-head{display:block}.q-flow-map-head .pill,.q-flow-node-badge{display:inline-block;margin-top:8px}.q-flow-rule-row{grid-template-columns:1fr;gap:5px}.q-flow-arrow{display:none}.q-flow-target{width:100%}}

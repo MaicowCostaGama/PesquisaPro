@@ -27,8 +27,8 @@ function xlsxFile(rows,name='opcoes.xlsx'){
     assert.match(app,/PP_QUESTION_OPTIONS_EXCEL\.buttonMarkup/);
     assert.match(moduleSource,/Importar opções do Excel/);
     assert.match(app,/qPair.*PP_QUESTION_OPTIONS_EXCEL|PP_QUESTION_OPTIONS_EXCEL.*pair/);
-    assert.match(html,/question-options-excel\.js\?v=20261021150000/);
-    assert.match(html,/pesquisapro-app-version" content="20261021150000/);
+    assert.match(html,/question-options-excel\.js\?v=20261021152000/);
+    assert.match(html,/pesquisapro-app-version" content="20261021152000/);
     assert.match(css,/q-excel-import-overlay/);
   });
   await check('leitura XLSX usa a primeira aba e a primeira coluna preenchida',()=>{
@@ -39,6 +39,12 @@ function xlsxFile(rows,name='opcoes.xlsx'){
   });
   await check('deduplicação ignora caixa e acentos, mas preserva o primeiro texto',()=>{
     assert.deepEqual(Array.from(api.cleanValues(['Fiat Uno','fiat uno','  FIÁT ÚNO  ','Honda Civic','','Honda Civic'])),['Fiat Uno','Honda Civic']);
+  });
+  await check('limite de 10.000 opções é aceito e o excesso é recusado',()=>{
+    assert.equal(api.MAX_ROWS,10000);
+    const tenThousand=Array.from({length:10000},(_,index)=>`Opção ${index+1}`);
+    assert.equal(api.cleanValues(tenThousand).length,10000);
+    assert.throws(()=>api.cleanValues([...tenThousand,'Opção excedente']),/10\.000 opções/);
   });
   await check('adicionar mantém opções atuais e substituição troca a lista',()=>{
     assert.deepEqual(Array.from(api.buildOptionList(['A','B'],['B','C'],'append')),['A','B','C']);

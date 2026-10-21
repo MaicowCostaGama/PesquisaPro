@@ -20,7 +20,7 @@ Em perguntas **Duas respostas**, o botão aparece somente quando o subcampo foi 
 
 - Linhas vazias são ignoradas.
 - Opções repetidas são removidas, inclusive diferenças apenas de maiúsculas/minúsculas e acentos.
-- O limite é de 5.000 opções e 200 caracteres por opção.
+- Na v194, o limite foi ampliado para 10.000 opções e 200 caracteres por opção. Consulte `OPCOES-EXCEL-V194.md` para o limite vigente.
 - O arquivo tem limite de 8 MB.
 - Macros, fórmulas, links, erros e datas automáticas são recusados.
 - Apenas a primeira aba e a primeira coluna preenchida são importadas.

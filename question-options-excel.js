@@ -5,7 +5,7 @@
   'use strict';
 
   const MAX_FILE_BYTES=8*1024*1024;
-  const MAX_ROWS=5000;
+  const MAX_ROWS=10000;
   const MAX_COLUMNS=20;
   const MAX_CELLS=120000;
   const MAX_OPTION_LENGTH=200;
@@ -42,7 +42,7 @@
         const bounds=lib.utils.decode_range(sheet['!ref']);
         const rowCount=bounds.e.r-bounds.s.r+1;
         const columnCount=bounds.e.c-bounds.s.c+1;
-        if(rowCount>MAX_ROWS+1)throw new Error('A planilha excede o limite de 5.000 linhas.');
+        if(rowCount>MAX_ROWS+1)throw new Error('A planilha excede o limite de 10.000 linhas.');
         if(columnCount>MAX_COLUMNS)throw new Error('A planilha excede o limite de 20 colunas.');
       }
       for(const [address,cell] of Object.entries(sheet)){
@@ -61,7 +61,7 @@
     const sheet=book.Sheets[sheetName];
     if(!sheet?.['!ref'])throw new Error('A primeira aba está vazia.');
     const rows=lib.utils.sheet_to_json(sheet,{header:1,raw:true,defval:''});
-    if(rows.length>MAX_ROWS+1)throw new Error('A planilha excede o limite de 5.000 linhas.');
+    if(rows.length>MAX_ROWS+1)throw new Error('A planilha excede o limite de 10.000 linhas.');
     let column=-1;
     for(let index=0;index<Math.min(MAX_COLUMNS,rows.reduce((max,row)=>Math.max(max,Array.isArray(row)?row.length:0),0));index++){
       if(rows.some(row=>cellText(Array.isArray(row)?row[index]:'')!=='')){column=index;break;}
@@ -80,7 +80,7 @@
       const normalized=key(item);
       if(!normalized||seen.has(normalized))continue;
       seen.add(normalized);out.push(item);
-      if(out.length>MAX_ROWS)throw new Error('A importação excede o limite de 5.000 opções.');
+      if(out.length>MAX_ROWS)throw new Error('A importação excede o limite de 10.000 opções.');
     }
     return out;
   }

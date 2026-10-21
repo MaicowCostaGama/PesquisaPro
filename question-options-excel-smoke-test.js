@@ -27,8 +27,8 @@ function xlsxFile(rows,name='opcoes.xlsx'){
     assert.match(app,/PP_QUESTION_OPTIONS_EXCEL\.buttonMarkup/);
     assert.match(moduleSource,/Importar opções do Excel/);
     assert.match(app,/qPair.*PP_QUESTION_OPTIONS_EXCEL|PP_QUESTION_OPTIONS_EXCEL.*pair/);
-    assert.match(html,/question-options-excel\.js\?v=20261021152000/);
-    assert.match(html,/pesquisapro-app-version" content="20261021152000/);
+    assert.match(html,/question-options-excel\.js\?v=20261021161000/);
+    assert.match(html,/pesquisapro-app-version" content="20261021161000/);
     assert.match(css,/q-excel-import-overlay/);
   });
   await check('leitura XLSX usa a primeira aba e a primeira coluna preenchida',()=>{

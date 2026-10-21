@@ -53,7 +53,7 @@ const NAV_META={
    variável), só que agora ela é preenchida com o "role" de verdade
    vindo da tabela "profiles" do banco, depois de um login real. */
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
-const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261021152000';
+const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261021161000';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
@@ -207,7 +207,7 @@ async function enableResearcherPush(){
   try{
     const permission=await Notification.requestPermission();
     if(permission!=='granted'){PUSH_STATUS='blocked';go('dashboard-pesq');return;}
-    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261021152000',{scope:'./'});
+    PUSH_SW_REGISTRATION=await navigator.serviceWorker.register('push-sw.js?v=20261021161000',{scope:'./'});
     const subscription=await PUSH_SW_REGISTRATION.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:pushKeyToUint8Array(window.PP_PUSH_PUBLIC_KEY)});
     const json=subscription.toJSON();
     const {error}=await sb.from('push_subscriptions').upsert({user_id:CURRENT_PROFILE.id,endpoint:json.endpoint,subscription:json,user_agent:navigator.userAgent,updated_at:new Date().toISOString()},{onConflict:'endpoint'});
@@ -2159,9 +2159,11 @@ function surveyRowToSnapshot(row,questionRows,clientCompanyNames,teamNames){
     let logic=q.logic_jsonb;
     if(typeof logic==='string'){try{logic=JSON.parse(logic);}catch(ex){logic={};}}
     const routeTargets=Array.isArray(logic?.route_targets)?logic.route_targets.map(value=>String(value??'')):[];
+    const optionsImported=logic?.options_source==='excel';
+    const fieldOptionsImported=Array.isArray(logic?.field_options_source)?logic.field_options_source.map(value=>value==='excel'):[];
     const flowPosition=logic?.position&&Number.isFinite(Number(logic.position.x))&&Number.isFinite(Number(logic.position.y))
       ?{x:Number(logic.position.x),y:Number(logic.position.y)}:null;
-    return {id:localId,position:Number.isFinite(Number(q.position))?Number(q.position):qi,dbId:q.id,text:q.text||'',type:q.type||'single',difficulty:Math.min(5,Math.max(1,Number(q.difficulty)||3)),opts:opts.map(o=>o.label||''),endsInterview:opts.map(o=>!!o.ends_interview),routeTargets,flowPosition,fields:fields.length===2?fields:DEFAULT_PAIR_FIELDS(),isRegion:!!q.is_region};
+    return {id:localId,position:Number.isFinite(Number(q.position))?Number(q.position):qi,dbId:q.id,text:q.text||'',type:q.type||'single',difficulty:Math.min(5,Math.max(1,Number(q.difficulty)||3)),opts:opts.map(o=>o.label||''),endsInterview:opts.map(o=>!!o.ends_interview),routeTargets,flowPosition,optionsImported,fieldOptionsImported,fields:fields.length===2?fields:DEFAULT_PAIR_FIELDS(),isRegion:!!q.is_region};
   });
   const dbToLocal=new Map(questions.map(question=>[String(question.dbId),String(question.id)]));
   questions.forEach(question=>{
@@ -2321,7 +2323,10 @@ async function syncSurveyQuestionsAndOptions(surveyId,d){
       if(!q.dbId)continue;
       const routeTargets=flow?.dbTargetsFromLocal?flow.dbTargetsFromLocal(q,localToDb):[];
       const position=qFlowPosition(q,(d.questions||[]).indexOf(q));
-      const {error}=await sb.from('survey_questions').update({logic_jsonb:{version:1,route_targets:routeTargets,position}}).eq('id',q.dbId).eq('survey_id',surveyId);
+      const logicJson={version:1,route_targets:routeTargets,position};
+      if(q.optionsImported===true)logicJson.options_source='excel';
+      if(q.type==='pair'&&Array.isArray(q.fieldOptionsImported)&&q.fieldOptionsImported.some(Boolean))logicJson.field_options_source=q.fieldOptionsImported.map(value=>value===true?'excel':null);
+      const {error}=await sb.from('survey_questions').update({logic_jsonb:logicJson}).eq('id',q.dbId).eq('survey_id',surveyId);
       if(error){
         if(/logic_jsonb|schema cache|column .* does not exist/i.test(error.message||''))throw new Error('Os caminhos condicionais exigem a migration deploy/caminhos-condicionais-v189.sql no Supabase. Nenhuma regra foi gravada.');
         throw new Error('Não foi possível salvar os caminhos condicionais: '+error.message);
@@ -2811,6 +2816,24 @@ function qPointerCleanup(){
   document.removeEventListener('pointercancel',qPointerCancel);
   Q_POINTER_DRAG=null;
 }
+function qOptionsEditorMarkup(q,options,context={}){
+  const isPair=context.pair===true,fieldIndex=isPair?Number(context.fieldIndex):null;
+  const type=isPair?context.field?.type:q.type;
+  const list=Array.isArray(options)?options:[],filled=list.filter(value=>String(value||'').trim()).length;
+  const rows=list.map((option,oi)=>{
+    const inputHandler=isPair?`qPairOpt(${q.id},${fieldIndex},${oi},this.value)`:`qOpt(${q.id},${oi},this.value)`;
+    const removeHandler=isPair?`qPairOptDel(${q.id},${fieldIndex},${oi})`:`qOptDel(${q.id},${oi})`;
+    const endControl=!isPair&&type!=='ranking'?`<label class="opt-end" title="Se o entrevistado escolher esta resposta, a entrevista será encerrada"><input type="checkbox" ${q.endsInterview&&q.endsInterview[oi]?'checked':''} ${option&&String(option).trim()?'':'disabled'} onchange="qEndToggle(${q.id},${oi},this.checked)"> encerrar</label>`:'';
+    return `<div class="opt-edit"><span class="${type==='single'?'opt-dot':'opt-sq'}"></span><input class="opt-inp" value="${esc(option)}" oninput="${inputHandler}" placeholder="Opção ${oi+1}">${endControl}<button class="opt-del" title="Remover opção" onclick="${removeHandler}">✕</button></div>`;
+  }).join('');
+  const addHandler=isPair?`qPairOptAdd(${q.id},${fieldIndex})`:`qOptAdd(${q.id})`;
+  const scrollKey=isPair?`pair-${q.id}-${fieldIndex}`:`question-${q.id}`;
+  return `<div class="q-opts q-opts-large" data-qopts-key="${scrollKey}"><div class="q-opts-scroll">${rows||'<div class="q-options-empty">Nenhuma opção cadastrada.</div>'}</div><div class="q-opts-toolbar"><span>${filled.toLocaleString('pt-BR')} opções preenchidas${list.length>5?' · mostrando em caixa rolável':''}</span><div><button type="button" class="q-opts-last" onclick="qScrollOptionsToEnd(${q.id},${fieldIndex==null?'null':fieldIndex})">Ir para a última</button><button type="button" class="opt-add" onclick="${addHandler}">+ adicionar opção</button></div></div></div>`;
+}
+function qScrollOptionsToEnd(qid,fieldIndex=null){
+  const key=fieldIndex==null?`question-${qid}`:`pair-${qid}-${fieldIndex}`;
+  setTimeout(()=>{const box=document.querySelector(`[data-qopts-key="${key}"] .q-opts-scroll`);if(box)box.scrollTo({top:box.scrollHeight,behavior:'smooth'});},0);
+}
 function qRender(){
   const wrap=document.getElementById('q-list');
   const flowPreview=document.getElementById('q-flow-preview');
@@ -2837,18 +2860,13 @@ function qRender(){
       qEnsurePairFields(q);
       body=`<div class="q-pair-editor">${q.fields.map((field,fi)=>{
         const closed=Q_CLOSED_FIELD_TYPES.includes(field.type);
-        const opts=closed?`<div class="q-opts q-pair-options">${field.options.map((option,oi)=>`<div class="opt-edit"><span class="${field.type==='single'?'opt-dot':'opt-sq'}"></span><input class="opt-inp" value="${esc(option)}" oninput="qPairOpt(${q.id},${fi},${oi},this.value)" placeholder="Opção ${oi+1}"><button class="opt-del" title="Remover opção" onclick="qPairOptDel(${q.id},${fi},${oi})">✕</button></div>`).join('')}<button class="opt-add" onclick="qPairOptAdd(${q.id},${fi})">+ adicionar opção</button></div>`:'';
+        const opts=closed?qOptionsEditorMarkup(q,field.options,{pair:true,field,fieldIndex:fi}):'';
         const importCtl=closed&&window.PP_QUESTION_OPTIONS_EXCEL?.buttonMarkup?window.PP_QUESTION_OPTIONS_EXCEL.buttonMarkup(q.id,fi,'pair'):'';
         return `<div class="q-pair-field-editor"><div class="q-pair-field-head"><span class="q-pair-field-number">${fi+1}</span><input class="inp q-pair-label" value="${esc(field.label)}" oninput="qPairFieldLabel(${q.id},${fi},this.value)" placeholder="Nome da variável ${fi+1}"><select class="inp q-pair-type" onchange="qPairFieldType(${q.id},${fi},this.value)">${[['open','Aberta'],['single','Escolha única'],['multi','Múltipla escolha']].map(([type,label])=>`<option value="${type}" ${field.type===type?'selected':''}>${label}</option>`).join('')}</select></div>${opts}${importCtl}</div>`;
       }).join('')}</div><div class="q-pair-hint">Os dois subcampos serão respondidos na mesma entrevista e aparecerão como variáveis separadas nos resultados.</div>`;
     }else if(Q_HAS_OPTS(q.type)){
       const importCtl=window.PP_QUESTION_OPTIONS_EXCEL?.buttonMarkup?window.PP_QUESTION_OPTIONS_EXCEL.buttonMarkup(q.id):'';
-      body=`<div class="q-opts">`+q.opts.map((o,oi)=>
-        `<div class="opt-edit"><span class="${q.type==='single'?'opt-dot':'opt-sq'}"></span>
-          <input class="opt-inp" value="${esc(o)}" oninput="qOpt(${q.id},${oi},this.value)" placeholder="Opção ${oi+1}">
-          ${q.type==='ranking'?'':`<label class="opt-end" title="Se o entrevistado escolher esta resposta, a entrevista será encerrada"><input type="checkbox" ${q.endsInterview&&q.endsInterview[oi]?'checked':''} ${o&&o.trim()?'':'disabled'} onchange="qEndToggle(${q.id},${oi},this.checked)"> encerrar</label>`}
-          <button class="opt-del" title="Remover opção" onclick="qOptDel(${q.id},${oi})">✕</button></div>`).join('')
-        +`<button class="opt-add" onclick="qOptAdd(${q.id})">+ adicionar opção</button></div>${importCtl}`;
+      body=qOptionsEditorMarkup(q,q.opts)+importCtl;
       if(q.type==='ranking')body+=`<div class="q-ranking-hint">O entrevistado vai arrastar todas as opções da mais preferida para a menos preferida.</div>`;
     } else if(q.type==='scale'){
       body=`<div class="opt-line" style="padding-top:4px">Péssima &nbsp;①②③④⑤&nbsp; Ótima</div>`;
@@ -6391,12 +6409,19 @@ function acollectMissingRequired(){
 }
 function acollectPairFieldBody(q,field,fieldIndex,value){
   const name='acpair-'+q.dbId+'-'+fieldIndex;
-  if(field.type==='single')return (field.options||[]).map(option=>`<label class="collect-option"><input type="radio" name="${name}" ${value===option?'checked':''} onchange="acollectSetPairField('${q.dbId}',${fieldIndex},${jsArg(option)})"> ${esc(option)}</label>`).join('');
+  if(field.type==='single')return acollectOptionAutocompleteBody('pair-single',q.dbId,fieldIndex,field.options||[],value?[value]:[],false,q.fieldOptionsImported?.[fieldIndex]===true);
   if(field.type==='multi'){
     const values=Array.isArray(value)?value:[];
-    return (field.options||[]).map(option=>`<label class="collect-option"><input type="checkbox" ${values.includes(option)?'checked':''} onchange="acollectTogglePairMulti('${q.dbId}',${fieldIndex},${jsArg(option)})"> ${esc(option)}</label>`).join('');
+    return acollectOptionAutocompleteBody('pair-multi',q.dbId,fieldIndex,field.options||[],values,false,q.fieldOptionsImported?.[fieldIndex]===true);
   }
   return `<textarea class="inp collect-pair-open" rows="2" oninput="acollectSetPairField('${q.dbId}',${fieldIndex},this.value)">${esc(value||'')}</textarea>`;
+}
+function acollectOptionAutocompleteBody(mode,qid,fieldIndex,options,selected,locked=false,useAutocomplete=false){
+  const autocomplete=window.PP_QUESTION_OPTIONS_AUTOCOMPLETE;
+  if(useAutocomplete&&autocomplete?.mount)return autocomplete.mount(mode,String(qid),fieldIndex,options,selected,locked);
+  const values=Array.isArray(selected)?selected:[];
+  if(mode==='multi'||mode==='pair-multi')return (options||[]).map((option,oi)=>`<label class="collect-option"><input type="checkbox" ${values.includes(option)?'checked':''} onchange="${mode==='multi'?`acollectToggleMultiAnswer('${qid}',${jsArg(option)},${oi})`:`acollectTogglePairMulti('${qid}',${fieldIndex},${jsArg(option)})`}"> ${esc(option)}</label>`).join('');
+  return (options||[]).map((option,oi)=>`<label class="collect-option"><input type="radio" name="acauto-${qid}-${fieldIndex??''}" ${values[0]===option?'checked':''} onchange="${mode==='single'?`acollectSetAnswer('${qid}',${jsArg(option)},true,${oi})`:`acollectSetPairField('${qid}',${fieldIndex},${jsArg(option)})`}"> ${esc(option)}</label>`).join('');
 }
 function renderAcollectForm(){
   const el=document.getElementById('acollectForm');
@@ -6412,14 +6437,9 @@ function renderAcollectForm(){
       const locked=a&&a.locked;
       let body='';
       if(q.type==='single'){
-        body=(q.opts||[]).map((opt,oi)=>`<label style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:12px;${locked?'opacity:.7':''}">
-          <input type="radio" name="acq-${q.dbId}" ${a&&a.value===opt?'checked':''} ${locked?'disabled':''} onchange="acollectSetAnswer('${q.dbId}',${jsArg(opt)},true,${oi})"> ${esc(opt)}</label>`).join('');
+        body=acollectOptionAutocompleteBody('single',q.dbId,null,q.opts||[],a&&a.value!=null?[a.value]:[],locked,q.optionsImported===true);
       }else if(q.type==='multi'){
-        body=(q.opts||[]).map((opt,oi)=>{
-          const checked=a&&Array.isArray(a.value)&&a.value.includes(opt);
-          return `<label style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:12px">
-          <input type="checkbox" ${checked?'checked':''} onchange="acollectToggleMultiAnswer('${q.dbId}',${jsArg(opt)},${oi})"> ${esc(opt)}</label>`;
-        }).join('');
+        body=acollectOptionAutocompleteBody('multi',q.dbId,null,q.opts||[],a&&Array.isArray(a.value)?a.value:[],false,q.optionsImported===true);
       }else if(q.type==='ranking'){
         const order=acollectRankingOrder(q,a);
         body=`<div class="collect-ranking-note">Arraste para ordenar da mais preferida à menos preferida. No celular, use as setas.</div><div class="collect-ranking-list">${order.map((option,index)=>`<div class="collect-ranking-row" draggable="true" ondragstart="acollectRankingDragStart(event,'${q.dbId}',${index})" ondragover="event.preventDefault()" ondrop="acollectRankingDrop(event,'${q.dbId}',${index})" ondragend="acollectRankingDragEnd()"><span class="collect-ranking-position">${index+1}</span><span>${esc(option)}</span><span class="collect-ranking-controls"><button type="button" class="collect-ranking-move" ${index===0?'disabled':''} onclick="acollectRankingMove('${q.dbId}',${index},${index-1})" aria-label="Subir ${esc(option)}">↑</button><button type="button" class="collect-ranking-move" ${index===order.length-1?'disabled':''} onclick="acollectRankingMove('${q.dbId}',${index},${index+1})" aria-label="Descer ${esc(option)}">↓</button></span><span class="collect-ranking-grip" aria-hidden="true">⠿</span></div>`).join('')}</div>`;

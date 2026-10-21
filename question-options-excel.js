@@ -149,12 +149,14 @@
     modal.querySelector('[data-q-excel-apply]')?.addEventListener('click',applyPreview);
     modal.querySelector('#qExcelSkipHeader')?.focus();
   }
-  function updateQuestionOptions(q,target,next){
+  function updateQuestionOptions(q,target,next,fieldIndex=null){
     const old=targetOptions(target,q);
     const oldFlags=new Map();
     if(target===q&&Array.isArray(q.endsInterview))old.forEach((value,index)=>{const normalized=key(value);if(normalized)oldFlags.set(normalized,q.endsInterview[index]===true);});
     if(Array.isArray(target.options))target.options=next.slice();
     else target.opts=next.slice();
+    if(target===q)q.optionsImported=true;
+    else if(q?.type==='pair'&&fieldIndex!=null){q.fieldOptionsImported=Array.isArray(q.fieldOptionsImported)?q.fieldOptionsImported.slice():[];q.fieldOptionsImported[fieldIndex]=true;}
     if(target===q&&['single','multi'].includes(q.type))q.endsInterview=next.map(value=>oldFlags.get(key(value))===true);
     if(typeof root.qRender==='function')root.qRender();
   }
@@ -168,7 +170,7 @@
       const {q,target}=targetFor(p.qid,p.fieldIndex);
       const next=buildOptionList(targetOptions(target,q),imported,mode);
       if(!next.length)throw new Error('Nenhuma opção válida para aplicar.');
-      updateQuestionOptions(q,target,next);
+      updateQuestionOptions(q,target,next,p.fieldIndex);
       closeModal();
       if(typeof root.alert==='function')root.alert(`${optionCountLabel(imported.length)} importadas. Revise o formulário e salve a pesquisa para persistir a alteração.`);
     }catch(ex){showError(ex.message||'Não foi possível aplicar as opções.');}

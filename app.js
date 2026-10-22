@@ -2360,15 +2360,7 @@ async function syncSurveyQuestionsAndOptions(surveyId,d){
           ends_interview:!!(q.endsInterview&&q.endsInterview[oi]),
         };
       });
-      let optionInsert=await sb.from('survey_question_options').insert(optRows);
-      const optionSchemaMissing=optionInsert.error&&/ends_interview|schema cache|column .* does not exist/i.test(optionInsert.error.message||'');
-      if(optionSchemaMissing){
-        SURVEY_END_CONDITION_SCHEMA_MISSING=true;
-        const legacyOptRows=optRows.map(({ends_interview,...row})=>row);
-        optionInsert=await sb.from('survey_question_options').insert(legacyOptRows);
-      }
-      const {error:oErr}=optionInsert;
-      if(oErr)throw new Error('Não foi possível salvar as opções: '+oErr.message);
+      await insertSurveyQuestionOptionsInBatches(optRows);
     }
     if(q.type==='pair'){
       if(fieldsTableMissing)throw new Error('Para usar “Duas respostas”, execute a migration deploy/perguntas-ranking-duas-respostas.sql no Supabase.');
@@ -2452,6 +2444,22 @@ const SURVEY_JOIN_SELECT='*, survey_questions(*, survey_question_fields(*)), sur
    depender de um relacionamento aninhado que corta a lista no primeiro lote. */
 const SURVEY_OPTIONS_PAGE_SIZE=1000;
 const SURVEY_OPTIONS_MAX_ROWS=100000;
+const SURVEY_OPTIONS_WRITE_BATCH_SIZE=500;
+async function insertSurveyQuestionOptionsInBatches(rows){
+  let supportsEndInterview=true;
+  for(let from=0;from<rows.length;from+=SURVEY_OPTIONS_WRITE_BATCH_SIZE){
+    const batch=rows.slice(from,from+SURVEY_OPTIONS_WRITE_BATCH_SIZE);
+    let payload=supportsEndInterview?batch:batch.map(({ends_interview,...row})=>row);
+    let result=await sb.from('survey_question_options').insert(payload);
+    if(result.error&&supportsEndInterview&&/ends_interview|schema cache|column .* does not exist/i.test(result.error.message||'')){
+      supportsEndInterview=false;
+      SURVEY_END_CONDITION_SCHEMA_MISSING=true;
+      payload=batch.map(({ends_interview,...row})=>row);
+      result=await sb.from('survey_question_options').insert(payload);
+    }
+    if(result.error)throw new Error('Não foi possível salvar as opções: '+result.error.message);
+  }
+}
 async function loadSurveyQuestionOptions(questionRows){
   const ids=[...new Set((questionRows||[]).map(row=>row?.id).filter(Boolean).map(String))];
   const byQuestion=new Map(ids.map(id=>[id,[]]));

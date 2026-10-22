@@ -2736,3 +2736,13 @@ body.system-message-gate-open{overflow:hidden}
 .researcher-rejection-reason strong{font-size:13px;line-height:1.45;color:#7f1d1d;overflow-wrap:anywhere}
 .researcher-rejection-note{margin-top:7px;color:var(--ink3);font-size:10.5px;line-height:1.45}
 @media(max-width:640px){.researcher-rejection-head{flex-direction:column;gap:7px}.researcher-rejection-head .pill{align-self:flex-start}.researcher-rejection-reason{padding:9px 10px}}
+
+/* v216 — motivo também visível no histórico da tela Coletar */
+.researcher-collection-log-item{display:grid;grid-template-columns:16px minmax(0,1fr) auto;align-items:start;gap:8px;padding:8px 0;border-bottom:1px solid var(--line);font-size:11.5px}
+.researcher-collection-log-main{min-width:0;color:var(--ink2)}
+.researcher-collection-log-title{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0}
+.researcher-collection-log-title>span:first-child{overflow-wrap:anywhere}
+.researcher-collection-log-reason{display:flex;flex-direction:column;gap:2px;margin-top:6px;padding:6px 8px;border-left:3px solid #dc2626;border-radius:0 7px 7px 0;background:#fff7f7;color:#7f1d1d;line-height:1.4}
+.researcher-collection-log-reason b{font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;color:#b42318}
+.researcher-collection-log-reason span{font-size:11px;overflow-wrap:anywhere}
+@media(max-width:640px){.researcher-collection-log-item{grid-template-columns:16px minmax(0,1fr);gap:7px}.researcher-collection-log-item>span:last-child{grid-column:2;justify-self:end;margin-top:-2px}.researcher-collection-log-reason{margin-top:5px}}

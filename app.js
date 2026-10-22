@@ -7373,9 +7373,10 @@ function renderGeoLog(){
   el.innerHTML=mine.length?mine.map(g=>{
     const s=SURVEYS.find(x=>x.id===g.surveyId);
     const statusBadge=g.status==='rejected'?' <span class="pill pill-red">✕ Reprovada</span>':g.status==='pending_recording'?' <span class="pill pill-amber">Áudio pendente · não contabilizada</span>':g.calibration?' <span class="pill pill-blue">◎ Calibração</span>':'';
-    return `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--line);font-size:11.5px">
+    const rejectionReason=g.status==='rejected'?String(g.rejectReason||'').trim()||'Motivo não informado pela auditoria.':'';
+    return `<div class="researcher-collection-log-item">
       <span style="width:16px;text-align:center;flex-shrink:0">${g.synced?'✓':'⏳'}</span>
-      <span style="flex:1;color:var(--ink2)">${esc(g.cota||'(sem cota)')}${s?' · <span style="color:var(--ink3)">'+esc(s.name)+'</span>':''}${statusBadge}</span>
+      <div class="researcher-collection-log-main"><div class="researcher-collection-log-title"><span>${esc(g.cota||'(sem cota)')}${s?' · <span style="color:var(--ink3)">'+esc(s.name)+'</span>':''}</span>${statusBadge}</div>${rejectionReason?`<div class="researcher-collection-log-reason"><b>Por que foi reprovada?</b><span>${esc(rejectionReason)}</span></div>`:''}</div>
       <span style="color:var(--ink3);white-space:nowrap;flex-shrink:0">${geoAgo(g.ts)}</span>
     </div>`;
   }).join(''):'<div class="empty" style="padding:14px 0">Nenhuma coleta registrada ainda.</div>';

@@ -2143,8 +2143,14 @@ function normalizeGeoStates(value){
     try{raw=JSON.parse(raw);}catch(_){raw=raw.split(/[;,]/);}
   }
   if(!Array.isArray(raw))raw=[];
-  const known=new Set((BR_ESTADOS||[]).map(state=>String(state.sigla||'').toUpperCase()));
+  const known=new Set(surveyGeoStatesCatalog().map(state=>String(state.sigla||'').toUpperCase()));
   return [...new Set(raw.map(item=>String(item??'').trim().toUpperCase()).filter(item=>item&&(known.size===0||known.has(item))))];
+}
+function surveyGeoStatesCatalog(){
+  return typeof BR_ESTADOS!=='undefined'&&Array.isArray(BR_ESTADOS)?BR_ESTADOS:[];
+}
+function surveyGeoMunicipiosCatalog(){
+  return typeof BR_MUNICIPIOS!=='undefined'&&BR_MUNICIPIOS&&typeof BR_MUNICIPIOS==='object'?BR_MUNICIPIOS:{};
 }
 function normalizeGeoCities(value){
   let raw=value;
@@ -2178,6 +2184,7 @@ function blankSurveyData(){
 let SURVEYS=[];
 let SURVEYS_LOADED=false;
 let SURVEYS_LOADING=false;
+let SURVEYS_LOAD_ERROR='';
 let SURVEY_END_CONDITION_SCHEMA_MISSING=false;
 let SURVEY_NEW_FORMAT_SCHEMA_MISSING=false;
 
@@ -2454,29 +2461,37 @@ async function reloadSurveySnapshot(surveyId){
 async function loadSurveysIfNeeded(){
   if(SURVEYS_LOADED||SURVEYS_LOADING)return;
   SURVEYS_LOADING=true;
-  await loadUsersIfNeeded(); // precisa dos nomes reais para resolver clientes/equipe vinculados
   try{
+    await loadUsersIfNeeded(); // precisa dos nomes reais para resolver clientes/equipe vinculados
     let result=await sb.from('surveys').select(SURVEY_JOIN_SELECT).order('created_at',{ascending:false});
     if(result.error&&/survey_question_fields|schema cache|relation .* does not exist/i.test(result.error.message||'')){
       SURVEY_NEW_FORMAT_SCHEMA_MISSING=true;
       result=await sb.from('surveys').select(SURVEY_JOIN_SELECT_LEGACY).order('created_at',{ascending:false});
     }
     const {data,error}=result;
-    if(!error){
-      SURVEYS=(data||[]).map(row=>{
-        const qRows=(row.survey_questions||[]).slice().sort((a,b)=>a.position-b.position);
-        const companyNames=idsToClientCompanies((row.survey_clients||[]).map(sc=>sc.client_id));
-        const teamNames=idsToResearcherNames((row.survey_team||[]).map(t=>t.researcher_id));
-        return surveyRowToSnapshot(row,qRows,companyNames,teamNames);
-      });
-      SURVEYS_LOADED=true;
-    }else console.error('Erro ao carregar pesquisas:',error);
-  }catch(ex){console.error('Erro de conexão ao carregar pesquisas:',ex);}
+    if(error)throw new Error(error.message||'Não foi possível consultar as pesquisas.');
+    SURVEYS=(data||[]).map(row=>{
+      const qRows=(row.survey_questions||[]).slice().sort((a,b)=>a.position-b.position);
+      const companyNames=idsToClientCompanies((row.survey_clients||[]).map(sc=>sc.client_id));
+      const teamNames=idsToResearcherNames((row.survey_team||[]).map(t=>t.researcher_id));
+      return surveyRowToSnapshot(row,qRows,companyNames,teamNames);
+    });
+    SURVEYS_LOAD_ERROR='';
+    SURVEYS_LOADED=true;
+  }catch(ex){
+    SURVEYS_LOAD_ERROR=ex?.message||'Não foi possível carregar as pesquisas. Verifique a conexão e tente novamente.';
+    console.error('Erro ao carregar pesquisas:',ex);
+  }
   SURVEYS_LOADING=false;
   refreshClientSurveyLinks();
   const onKey=document.querySelector('.nav-item.on');
   const k=onKey&&onKey.dataset.key;
   if(k==='surveys'||k==='surveys-done'||k==='surveys-archived'||k==='dashboard'||k==='dashboard-pesq'||k==='researcher-profile'||k==='researcher-my-ranking'||k==='survey-team'||k==='client-surveys'||k==='client-progress'||k==='client-results'||k==='reports'||k==='communication'||k==='researcher-ranking')go(k);
+}
+function retrySurveysLoad(){
+  SURVEYS_LOAD_ERROR='';
+  SURVEYS_LOADED=false;
+  loadSurveysIfNeeded();
 }
 function surveySample(s){
   return Math.ceil(sampleSize(s&&s.pop,s&&s.err,s&&s.conf,s&&s.prop)*1.1);
@@ -2575,7 +2590,7 @@ function wizGeoRender(){
   const wrap=document.getElementById('wiz-geo');if(!wrap)return;
   const ab=WIZ.data.abrangencia||'estadual';
   const cfg=ABRANGENCIA_CFG[ab]||ABRANGENCIA_CFG.estadual;
-  const ufsOrd=BR_ESTADOS;
+  const ufsOrd=surveyGeoStatesCatalog();
   let estadoHtml='';
   if(cfg.multiState){
     const n=WIZ.data.estados.length;
@@ -2605,7 +2620,8 @@ function wizGeoRenderCidades(){
   }
   if(cfg.multiCity){
     const items=[];
-    ufs.forEach(uf=>{(BR_MUNICIPIOS[uf]||[]).forEach(c=>items.push({uf,c}));});
+    const municipios=surveyGeoMunicipiosCatalog();
+    ufs.forEach(uf=>{(municipios[uf]||[]).forEach(c=>items.push({uf,c}));});
     const selCount=Object.values(WIZ.data.cidades).reduce((a,arr)=>a+arr.length,0);
     wrap.innerHTML=`<div class="mb">
       <label class="lbl">Cidades</label>
@@ -2628,7 +2644,7 @@ function wizGeoRenderCidades(){
     wrap.innerHTML=`<div class="mb"><label class="lbl">Cidade</label>
       <select class="inp" id="w-cidade" onchange="wizCidadeChangeSingle(this.value)">
         <option value="">Selecione a cidade…</option>
-        ${(BR_MUNICIPIOS[uf]||[]).map(c=>`<option value="${esc(c)}" ${currentCity===c?'selected':''}>${esc(c)}</option>`).join('')}
+        ${(surveyGeoMunicipiosCatalog()[uf]||[]).map(c=>`<option value="${esc(c)}" ${currentCity===c?'selected':''}>${esc(c)}</option>`).join('')}
       </select></div>`;
   }
 }
@@ -2663,7 +2679,7 @@ function wizEstadoChangeSingle(uf){
   wizGeoRenderCidades();
 }
 function wizSelectAllEstados(){
-  WIZ.data.estados=BR_ESTADOS.map(e=>e.sigla);
+  WIZ.data.estados=surveyGeoStatesCatalog().map(e=>e.sigla);
   wizGeoRender();
 }
 function wizClearEstados(){
@@ -2684,7 +2700,8 @@ function wizCidadeChangeSingle(cidade){
   WIZ.data.cidades=(uf&&cidade)?{[uf]:[cidade]}:{};
 }
 function wizSelectAllCidades(){
-  (WIZ.data.estados||[]).forEach(uf=>{WIZ.data.cidades[uf]=[...(BR_MUNICIPIOS[uf]||[])];});
+  const municipios=surveyGeoMunicipiosCatalog();
+  (WIZ.data.estados||[]).forEach(uf=>{WIZ.data.cidades[uf]=[...(municipios[uf]||[])];});
   wizGeoRenderCidades();
 }
 function wizClearCidades(){
@@ -3873,10 +3890,14 @@ function surveyRow(s,idx,opts){
     <td data-label="Status">${isArchived?STATUS_PILL.arquivada:(STATUS_PILL[s.status]||STATUS_PILL.rascunho)}</td>
     <td data-label="Ações" class="survey-actions-cell ${!isArchived&&opts?.done?'completed-survey-actions-cell':''}"><div class="survey-row-actions ${!isArchived&&opts?.done?'completed-survey-actions':''}">${actions}</div></td></tr>`;
 }
+function surveysLoadState(title,subtitle){
+  if(SURVEYS_LOAD_ERROR)return head(title,subtitle)+`<div class="card"><div class="callout warn" role="alert"><b>Não foi possível carregar as pesquisas.</b><br><span style="font-size:12px">${esc(SURVEYS_LOAD_ERROR)}</span></div><button class="btn btn-fill" type="button" onclick="retrySurveysLoad()">Tentar novamente</button></div>`;
+  loadSurveysIfNeeded();
+  return head(title,subtitle)+'<div class="empty" role="status">Carregando pesquisas do banco de dados…</div>';
+}
 PAGES.surveys=()=>{
   if(!SURVEYS_LOADED){
-    loadSurveysIfNeeded();
-    return head('Minhas pesquisas','Pesquisas em desenvolvimento (rascunho e em campo).')+'<div class="empty">Carregando pesquisas do banco de dados…</div>';
+    return surveysLoadState('Minhas pesquisas','Pesquisas em desenvolvimento (rascunho e em campo).');
   }
   const inDev=SURVEYS.map((s,idx)=>({s,idx})).filter(x=>!x.s.archivedAt&&x.s.status!=='encerrada');
   const rows=inDev.map(x=>surveyRow(x.s,x.idx)).join('')
@@ -3898,8 +3919,7 @@ PAGES.surveys=()=>{
 
 PAGES['surveys-done']=()=>{
   if(!SURVEYS_LOADED){
-    loadSurveysIfNeeded();
-    return head('Pesquisas concluídas','Pesquisas encerradas — acesse a coleta completa e os relatórios sem reabrir.')+'<div class="empty">Carregando pesquisas do banco de dados…</div>';
+    return surveysLoadState('Pesquisas concluídas','Pesquisas encerradas — acesse a coleta completa e os relatórios sem reabrir.');
   }
   const done=SURVEYS.map((s,idx)=>({s,idx})).filter(x=>!x.s.archivedAt&&x.s.status==='encerrada');
   const rows=done.map(x=>surveyRow(x.s,x.idx,{done:true})).join('')
@@ -3920,7 +3940,7 @@ PAGES['surveys-done']=()=>{
 };
 
 PAGES['surveys-archived']=()=>{
-  if(!SURVEYS_LOADED){loadSurveysIfNeeded();return head('Pesquisas arquivadas','Histórico preservado fora das listas operacionais.')+'<div class="empty">Carregando pesquisas do banco de dados…</div>';}
+  if(!SURVEYS_LOADED)return surveysLoadState('Pesquisas arquivadas','Histórico preservado fora das listas operacionais.');
   const archived=SURVEYS.map((s,idx)=>({s,idx})).filter(x=>!!x.s.archivedAt);
   const rows=archived.map(x=>surveyRow(x.s,x.idx,{archived:true})).join('')
     ||'<tr><td colspan="7" class="empty">Nenhuma pesquisa arquivada.</td></tr>';
@@ -9977,8 +9997,9 @@ function pesqCidadeSearch(q){
   const qq=(q||'').trim().toLowerCase();
   if(qq.length<2){box.style.display='none';box.innerHTML='';return;}
   const out=[];
-  outer: for(const uf of Object.keys(BR_MUNICIPIOS)){
-    for(const c of BR_MUNICIPIOS[uf]){
+  const municipios=surveyGeoMunicipiosCatalog();
+  outer: for(const uf of Object.keys(municipios)){
+    for(const c of municipios[uf]){
       if(c.toLowerCase().includes(qq)){
         const val=c+'/'+uf;
         if(!_pesqCidadesDraft.includes(val))out.push(val);

@@ -2,7 +2,10 @@ const fs=require('fs');
 const vm=require('vm');
 const assert=require('assert/strict');
 const app=fs.readFileSync(__dirname+'/app.js','utf8');
+const appHtml=fs.readFileSync(__dirname+'/app.html','utf8');
 function assertIncludes(text,message){assert(app.includes(text),message);}
+assert(appHtml.includes('<script src="br-localidades.js'), 'catálogo de estados e municípios não é carregado');
+assert(appHtml.indexOf('<script src="br-localidades.js') < appHtml.indexOf('<script src="app.js'), 'catálogo precisa vir antes da tag do app');
 assertIncludes('function normalizeGeoStates(value)','normalização de estados ausente');
 assertIncludes('function normalizeGeoCities(value)','normalização de cidades ausente');
 assertIncludes('function normalizeSurveyGeo(data)','normalização geográfica da pesquisa ausente');
@@ -20,6 +23,13 @@ vm.runInContext(app.slice(start,end),ctx);
 assert.deepEqual([...ctx.normalizeGeoStates('["mg","SP","mg"]')],['MG','SP']);
 assert.equal(JSON.stringify(ctx.normalizeGeoCities('{"mg":["Belo Horizonte","Belo Horizonte"],"SP":"São Paulo"}')),JSON.stringify({MG:['Belo Horizonte'],SP:['São Paulo']}));
 assert.equal(JSON.stringify(ctx.normalizeSurveyGeo({estados:['MG'],cidades:{SP:['São Paulo']}})),JSON.stringify({estados:['MG','SP'],cidades:{SP:['São Paulo']}}));
+
+const fallbackCtx={};
+vm.createContext(fallbackCtx);
+vm.runInContext(app.slice(start,end),fallbackCtx);
+assert.equal(JSON.stringify([...fallbackCtx.normalizeGeoStates('MG, SP')]),JSON.stringify(['MG','SP']));
+assert.equal(JSON.stringify(fallbackCtx.surveyGeoStatesCatalog()),JSON.stringify([]));
+assert.equal(JSON.stringify(fallbackCtx.surveyGeoMunicipiosCatalog()),JSON.stringify({}));
 
 const scopeStart=app.indexOf('function wizNormalizeGeoForScope()');
 const scopeEnd=app.indexOf('\nfunction wizToggleEstado',scopeStart);

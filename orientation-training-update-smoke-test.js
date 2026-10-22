@@ -8,7 +8,7 @@ for(const token of [
   'surveyInitialOrientationDefaultTemplate',
   'surveyInitialOrientationWhatsappMessage',
   'surveyTrainingVideoUrl',
-  'eRSQOsqQYTCEppwp.mp4',
+  'rPIxhxCeZodagzpK.mp4',
   'cidade ou região autorizada',
   'menos de 15 metros',
   'desta mesma pesquisa',
@@ -26,7 +26,7 @@ for(const token of [
   'poderão ser desligados da operação',
   '08','Respeite a distância','Respeite o tempo mínimo'
 ]) assert(app.includes(token),`app sem ${token}`);
-assert(html.includes('app.js?v=20261020191000'),'cache do app não atualizado');
+assert(html.includes('app.js?v=20261022160000'),'cache do app não atualizado');
 assert(fs.existsSync(video),'vídeo local não foi incluído');
 const stat=fs.statSync(video);
 assert(stat.size>30*1024*1024,`vídeo revisado muito pequeno: ${stat.size}`);

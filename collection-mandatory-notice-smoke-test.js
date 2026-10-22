@@ -36,7 +36,7 @@ function context(){
     acollectRenderNoticeGate:error=>{state.renders++;if(error)state.errors.push(error)},acollectCloseNoticeGate:()=>{state.closed++},acollectStart:async()=>{state.starts++},
   };
   vm.createContext(ctx);
-  vm.runInContext('let ACOLLECT_NOTICE_GATE_ACKING=false,ACOLLECT_NOTICE_GATE_SURVEY_ID=null,ACOLLECT_NOTICE_GATE_RESEARCHER_ID=null,ACOLLECT_NOTICE_GATE_MESSAGES=[],ACOLLECT_NOTICE_GATE_CONFIRMED_CURRENT=false;\n'+
+  vm.runInContext('let ACOLLECT_NOTICE_GATE_ACKING=false,ACOLLECT_NOTICE_GATE_SURVEY_ID=null,ACOLLECT_NOTICE_GATE_RESEARCHER_ID=null,ACOLLECT_NOTICE_GATE_MESSAGES=[],ACOLLECT_NOTICE_GATE_CONFIRMED_CURRENT=false,ACOLLECT_NOTICE_GATE_VIDEO_REQUIRED=false,ACOLLECT_NOTICE_GATE_VIDEO_WATCHED=false,ACOLLECT_NOTICE_GATE_VIDEO_URL="";\n'+
     section('async function acollectFetchPendingNotices(surveyId){','async function acollectConfirmNoticeRead(){')+
     section('async function acollectConfirmNoticeRead(){','function renderAcollectActionState(){'),ctx);
   return {state,ctx};

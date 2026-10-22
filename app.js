@@ -2594,7 +2594,7 @@ WIZ_BODY[1]=()=>`<div class="card" style="max-width:640px">
     </select>
   </div>
   <div id="wiz-geo"></div>
-  <div class="wiz-orientation-card"><label class="lbl" for="w-orientation-template">Orientações iniciais por aplicativo</label><p class="card-d">Enviadas automaticamente a cada pesquisador que aceitar esta pesquisa. O modelo atual já está sugerido: revise e personalize antes de salvar. Cada pesquisador confirma a leitura antes de iniciar a coleta.</p><textarea class="inp" id="w-orientation-template" rows="12" maxlength="3500" required>${esc(WIZ.data.orientationMessage||surveyInitialOrientationDefaultTemplate())}</textarea><p class="card-d">Até 3.500 caracteres no modelo; a mensagem final, com nome e links inseridos, deve caber em 4.000. Use <code>{{pesquisador}}</code>, <code>{{pesquisa}}</code>, <code>{{grupo}}</code>, <code>{{site}}</code> e <code>{{video}}</code>. Regras de integridade e gravação final após 21:00 são obrigatórias.</p></div>
+  <div class="wiz-orientation-card"><label class="lbl" for="w-orientation-template">Orientações iniciais por aplicativo</label><p class="card-d">Enviadas automaticamente a cada pesquisador que aceitar esta pesquisa. O modelo atual já está sugerido: revise e personalize antes de salvar. Cada pesquisador confirma a leitura antes de iniciar a coleta.</p><textarea class="inp" id="w-orientation-template" rows="12" maxlength="3800" required>${esc(WIZ.data.orientationMessage||surveyInitialOrientationDefaultTemplate())}</textarea><p class="card-d">Até 3.800 caracteres no modelo; a mensagem final, com nome e links inseridos, deve caber em 4.000. Use <code>{{pesquisador}}</code>, <code>{{pesquisa}}</code>, <code>{{grupo}}</code>, <code>{{site}}</code> e <code>{{video}}</code>. Regras de integridade e gravação final após 21:00 são obrigatórias.</p></div>
   ${wizNav(true)}</div>`;
 
 /* ---- abrangência geográfica: estado(s) e cidade(s) ---- */
@@ -4334,7 +4334,7 @@ function surveyInitialOrientationWhatsappMessage(s,u,groupLink='',template=''){
 function validateSurveyOrientationTemplate(template,surveyName){
   const text=String(template||'').trim();
   if(!text)throw new Error('Defina as orientações iniciais antes de salvar a pesquisa. O modelo atual está disponível como sugestão.');
-  if(text.length>3500)throw new Error('O modelo de orientações deve ter até 3.500 caracteres. Resuma-o antes de salvar.');
+  if(text.length>3800)throw new Error('O modelo de orientações deve ter até 3.800 caracteres. Resuma-o antes de salvar.');
   const longResearcherName='Pesquisador(a) '+('Nome '.repeat(19));
   const exampleGroupLink='https://chat.whatsapp.com/'+('A'.repeat(55));
   const preview=surveyInitialOrientationWhatsappMessage({name:String(surveyName||'Pesquisa')},{name:longResearcherName},exampleGroupLink,text);
@@ -4419,7 +4419,7 @@ function teamCommunicationMarkup(){
 }
 function teamOrientationMessageMarkup(){
   const value=TEAM_COMM_SETTINGS?.orientation_message_template||surveyInitialOrientationDefaultTemplate();
-  return `<div class="card mb team-orientation-message-card"><div class="card-t">Orientações iniciais desta pesquisa</div><div class="card-d">A mensagem é enviada <b>automaticamente pelo aplicativo</b> após o aceite de novos convites. Você também pode reabrir o texto no WhatsApp ou reenviar manualmente a casos pendentes pela aba Coleta.</div><label class="lbl" for="team-orientation-message">Mensagem definida para a pesquisa</label><textarea class="inp team-orientation-message" id="team-orientation-message" rows="14" maxlength="3500">${esc(value)}</textarea><div class="team-communication-help">Placeholders: <code>{{pesquisador}}</code>, <code>{{pesquisa}}</code>, <code>{{grupo}}</code>, <code>{{site}}</code> e <code>{{video}}</code>. Máximo de 3.500 caracteres no modelo, 4.000 após personalização; gravação após 21:00 e integridade são obrigatórias. Se apagar o conteúdo, restaure o modelo padrão antes de salvar.</div><button class="btn btn-fill" style="margin-top:10px" onclick="saveTeamOrientationMessage()">Salvar orientações desta pesquisa</button></div>`;
+  return `<div class="card mb team-orientation-message-card"><div class="card-t">Orientações iniciais desta pesquisa</div><div class="card-d">A mensagem é enviada <b>automaticamente pelo aplicativo</b> após o aceite de novos convites. Você também pode reabrir o texto no WhatsApp ou reenviar manualmente a casos pendentes pela aba Coleta.</div><label class="lbl" for="team-orientation-message">Mensagem definida para a pesquisa</label><textarea class="inp team-orientation-message" id="team-orientation-message" rows="14" maxlength="3800">${esc(value)}</textarea><div class="team-communication-help">Placeholders: <code>{{pesquisador}}</code>, <code>{{pesquisa}}</code>, <code>{{grupo}}</code>, <code>{{site}}</code> e <code>{{video}}</code>. Máximo de 3.800 caracteres no modelo, 4.000 após personalização; gravação após 21:00 e integridade são obrigatórias. Se apagar o conteúdo, restaure o modelo padrão antes de salvar.</div><button class="btn btn-fill" style="margin-top:10px" onclick="saveTeamOrientationMessage()">Salvar orientações desta pesquisa</button></div>`;
 }
 async function saveTeamOrientationMessage(){
   const s=SURVEYS[TEAM_IDX];if(!s?.id)return;
@@ -6812,6 +6812,7 @@ function acollectStartTicking(){
 }
 let ACOLLECT_NOTICE_GATE_CHECKING=false,ACOLLECT_NOTICE_GATE_ACKING=false;
 let ACOLLECT_NOTICE_GATE_SURVEY_ID=null,ACOLLECT_NOTICE_GATE_RESEARCHER_ID=null,ACOLLECT_NOTICE_GATE_MESSAGES=[],ACOLLECT_NOTICE_GATE_CONFIRMED_CURRENT=false;
+let ACOLLECT_NOTICE_GATE_VIDEO_REQUIRED=false,ACOLLECT_NOTICE_GATE_VIDEO_WATCHED=false,ACOLLECT_NOTICE_GATE_VIDEO_URL='';
 function acollectNoticeGateElement(){
   let overlay=document.getElementById('acollectNoticeGate');
   if(overlay)return overlay;
@@ -6835,21 +6836,55 @@ function acollectCloseNoticeGate(force=false){
   if(overlay)overlay.hidden=true;
   document.body.classList.remove('acollect-notice-gate-open');
   ACOLLECT_NOTICE_GATE_SURVEY_ID=null;ACOLLECT_NOTICE_GATE_RESEARCHER_ID=null;ACOLLECT_NOTICE_GATE_MESSAGES=[];ACOLLECT_NOTICE_GATE_CONFIRMED_CURRENT=false;
+  ACOLLECT_NOTICE_GATE_VIDEO_REQUIRED=false;ACOLLECT_NOTICE_GATE_VIDEO_WATCHED=false;ACOLLECT_NOTICE_GATE_VIDEO_URL='';
   if(force)ACOLLECT_NOTICE_GATE_CHECKING=false;
   if(!force&&CURRENT_PROFILE?.role==='pesq')document.getElementById('startCollectBtn')?.focus();
 }
-function acollectNoticeGateConsentChanged(checked){
+function acollectMessageRequiresTrainingVideo(message){
+  const body=String(message?.body||'');
+  return /orientações iniciais|vídeo obrigatório de treinamento|assista a este vídeo para entender como fazer as coletas/i.test(body)||body.includes(surveyTrainingVideoUrl());
+}
+function acollectNoticeGateUpdateConfirm(){
   const button=document.getElementById('acollectNoticeGateConfirm');
-  if(button)button.disabled=!checked||ACOLLECT_NOTICE_GATE_ACKING;
+  if(!button)return;
+  const consent=document.querySelector('#acollectNoticeGateContent input[type="checkbox"]');
+  const videoReady=!ACOLLECT_NOTICE_GATE_VIDEO_REQUIRED||ACOLLECT_NOTICE_GATE_VIDEO_WATCHED;
+  button.disabled=!consent?.checked||!videoReady||ACOLLECT_NOTICE_GATE_ACKING;
+  if(!consent?.checked)button.title='Marque a confirmação de leitura.';
+  else if(!videoReady)button.title='Assista ao vídeo até o final para continuar.';
+  else button.removeAttribute('title');
+}
+function acollectNoticeGateVideoEnded(){
+  if(!ACOLLECT_NOTICE_GATE_VIDEO_REQUIRED)return;
+  ACOLLECT_NOTICE_GATE_VIDEO_WATCHED=true;
+  const status=document.getElementById('acollectNoticeGateVideoStatus');
+  if(status){status.textContent='Vídeo concluído. Agora marque a confirmação de leitura para continuar.';status.classList.add('is-ready');}
+  acollectNoticeGateUpdateConfirm();
+}
+function acollectNoticeGateConsentChanged(checked){
+  acollectNoticeGateUpdateConfirm();
 }
 function acollectRenderNoticeGate(errorMessage=''){
   const overlay=acollectNoticeGateElement(),content=document.getElementById('acollectNoticeGateContent');
   const message=ACOLLECT_NOTICE_GATE_MESSAGES[0];if(!message)return;
   const survey=SURVEYS.find(s=>s.id===ACOLLECT_NOTICE_GATE_SURVEY_ID);
   const total=ACOLLECT_NOTICE_GATE_MESSAGES.length;
-  content.innerHTML=`<span class="eyebrow">ANTES DA COLETA · ${total} ${total===1?'AVISO PENDENTE':'AVISOS PENDENTES'}</span><h2 id="acollectNoticeGateTitle">Leia e confirme este aviso</h2><p id="acollectNoticeGateHelp">Pesquisa: <strong>${esc(survey?.name||'Pesquisa')}</strong>. Você só poderá iniciar uma nova entrevista após confirmar individualmente todos os avisos desta pesquisa. Marcar como lido no painel não substitui esta confirmação.</p><article class="acollect-notice-gate-message"><div><strong>Enviado por ${esc(message.sender_name||'Equipe PesquisaPro')}</strong><time>${esc(new Date(message.created_at).toLocaleString('pt-BR'))}</time></div><p>${esc(message.body||'')}</p></article>${errorMessage?`<div class="callout warn" role="alert">${esc(errorMessage)}</div>`:''}<label class="acollect-notice-gate-consent"><input type="checkbox" onchange="acollectNoticeGateConsentChanged(this.checked)"> Li integralmente este aviso e estou ciente das orientações para a coleta.</label>`;
+  ACOLLECT_NOTICE_GATE_VIDEO_REQUIRED=acollectMessageRequiresTrainingVideo(message);
+  ACOLLECT_NOTICE_GATE_VIDEO_WATCHED=false;
+  ACOLLECT_NOTICE_GATE_VIDEO_URL=surveyTrainingVideoUrl();
+  const videoMarkup=ACOLLECT_NOTICE_GATE_VIDEO_REQUIRED?`<section class="acollect-notice-gate-training" aria-labelledby="acollectNoticeGateVideoTitle"><div class="acollect-notice-gate-training-heading"><span class="eyebrow">TREINAMENTO OBRIGATÓRIO</span><strong id="acollectNoticeGateVideoTitle">Assista ao vídeo antes de iniciar</strong></div><video class="acollect-notice-gate-video" data-orientation-training-video controls playsinline preload="metadata"><source src="${esc(ACOLLECT_NOTICE_GATE_VIDEO_URL)}" type="video/mp4">Seu navegador não conseguiu carregar o vídeo de treinamento.</video><p id="acollectNoticeGateVideoStatus" class="acollect-notice-gate-video-status" aria-live="polite">Assista ao vídeo até o final. O botão de confirmação será liberado quando a reprodução terminar.</p></section>`:'';
+  content.innerHTML=`<span class="eyebrow">ANTES DA COLETA · ${total} ${total===1?'AVISO PENDENTE':'AVISOS PENDENTES'}</span><h2 id="acollectNoticeGateTitle">Leia e confirme este aviso</h2><p id="acollectNoticeGateHelp">Pesquisa: <strong>${esc(survey?.name||'Pesquisa')}</strong>. Você só poderá iniciar uma nova entrevista após confirmar individualmente todos os avisos desta pesquisa. Marcar como lido no painel não substitui esta confirmação.</p><article class="acollect-notice-gate-message"><div><strong>Enviado por ${esc(message.sender_name||'Equipe PesquisaPro')}</strong><time>${esc(new Date(message.created_at).toLocaleString('pt-BR'))}</time></div><p>${esc(message.body||'')}</p></article>${videoMarkup}${errorMessage?`<div class="callout warn" role="alert">${esc(errorMessage)}</div>`:''}<label class="acollect-notice-gate-consent"><input type="checkbox" onchange="acollectNoticeGateConsentChanged(this.checked)"> Li integralmente este aviso e estou ciente das orientações para a coleta.</label>`;
+  const trainingVideo=content.querySelector('[data-orientation-training-video]');
+  if(trainingVideo){
+    trainingVideo.addEventListener('ended',acollectNoticeGateVideoEnded);
+    trainingVideo.addEventListener('error',()=>{
+      const status=document.getElementById('acollectNoticeGateVideoStatus');
+      if(status)status.textContent='Não foi possível carregar o vídeo. Verifique a conexão e tente novamente; a coleta permanece bloqueada até a conclusão.';
+    });
+  }
   const button=document.getElementById('acollectNoticeGateConfirm');
-  button.textContent=ACOLLECT_NOTICE_GATE_CONFIRMED_CURRENT?'Verificar novamente':'Confirmar leitura';button.disabled=true;
+  button.textContent=ACOLLECT_NOTICE_GATE_CONFIRMED_CURRENT?'Verificar novamente':'Confirmar leitura';
+  acollectNoticeGateUpdateConfirm();
   overlay.hidden=false;document.body.classList.add('acollect-notice-gate-open');
   content.querySelector('input[type="checkbox"]')?.focus();
 }
@@ -6880,6 +6915,12 @@ async function acollectConfirmNoticeRead(){
   const surveyId=ACOLLECT_NOTICE_GATE_SURVEY_ID,researcherId=ACOLLECT_NOTICE_GATE_RESEARCHER_ID,message=ACOLLECT_NOTICE_GATE_MESSAGES[0];
   const consent=document.querySelector('#acollectNoticeGateContent input[type="checkbox"]');
   if(!surveyId||!message||!consent?.checked||ACOLLECT_NOTICE_GATE_ACKING||ACOLLECT_IN_PROGRESS||CURRENT_PROFILE?.id!==researcherId)return;
+  if(ACOLLECT_NOTICE_GATE_VIDEO_REQUIRED&&!ACOLLECT_NOTICE_GATE_VIDEO_WATCHED){
+    const status=document.getElementById('acollectNoticeGateVideoStatus');
+    if(status)status.textContent='É necessário assistir ao vídeo até o final antes de confirmar a leitura.';
+    acollectNoticeGateUpdateConfirm();
+    return;
+  }
   ACOLLECT_NOTICE_GATE_ACKING=true;
   const button=document.getElementById('acollectNoticeGateConfirm');button.disabled=true;button.textContent='Registrando confirmação…';
   try{

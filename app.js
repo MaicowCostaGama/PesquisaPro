@@ -2523,7 +2523,7 @@ function wizStepsBar(){
 }
 function wizJump(n){
   if(n===WIZ.step||n<1||n>WIZ.total)return;
-  wizSave();
+  if(!wizSave())return;
   WIZ.step=n;wizRender();
 }
 
@@ -2541,7 +2541,7 @@ function wizRender(){
 function wizGo(d){
   const n=WIZ.step+d;
   if(n<1||n>WIZ.total)return;
-  if(d>0)wizSave();
+  if(!wizSave())return;
   WIZ.step=n;wizRender();
 }
 function wizSave(){
@@ -2556,10 +2556,22 @@ function wizSave(){
     wizNormalizeGeoForScope();
     if(g('w-orientation-template')!=null)WIZ.data.orientationMessage=g('w-orientation-template');
   }
+  if(WIZ.step===2){
+    const raw=String(g('wiz-minimum-duration-input')??'').trim();
+    const seconds=raw===''?null:Number(raw);
+    if(seconds!==null&&(!Number.isInteger(seconds)||seconds<30||seconds>3600)){
+      const input=document.getElementById('wiz-minimum-duration-input');
+      if(input)input.focus();
+      alert('Informe um tempo inteiro entre 30 e 3600 segundos ou deixe vazio para usar a sugestão automática.');
+      return false;
+    }
+    WIZ.data.minimumCollectionSeconds=seconds;
+  }
   if(WIZ.step===3){
     WIZ.data.pop=+g('w-pop');WIZ.data.err=g('w-err');WIZ.data.conf=g('w-conf');WIZ.data.prop=+g('w-prop');
   }
   if(WIZ.step===5){WIZ.data.price=+g('w-price');WIZ.data.priceRemote=+g('w-price-r');WIZ.data.clientPrice=+g('w-client-price')||WIZ.data.clientPrice;}
+  return true;
 }
 
 const WIZ_BODY={};
@@ -2726,11 +2738,52 @@ function wizGeoResumo(){
   return ABRANGENCIA_LABELS[ab]+' · '+ufsTxt+' · '+cidadeTxt;
 }
 
+function wizMinimumDurationValue(raw){
+  const text=String(raw??'').trim();
+  if(text==='')return null;
+  const value=Number(text);
+  return Number.isInteger(value)&&value>=30&&value<=3600?value:null;
+}
+function wizMinimumDurationMarkup(){
+  const automatic=surveyAutomaticMinimumSeconds(WIZ.data),override=Number(WIZ.data.minimumCollectionSeconds);
+  const hasOverride=Number.isFinite(override)&&override>=30;
+  const effective=hasOverride?Math.min(3600,Math.round(override)):automatic;
+  const questionCount=(WIZ.data.questions||[]).filter(q=>q?.dbId||q?.text).length;
+  return `<section class="wiz-audit-duration-card" aria-labelledby="wiz-audit-duration-title">
+    <div class="wiz-audit-duration-head"><div><span class="eyebrow">AUDITORIA DA COLETA</span><h3 id="wiz-audit-duration-title">Tempo mínimo sugerido para a entrevista</h3><p>O sistema estima o tempo pela quantidade, pelo tipo e pela dificuldade das perguntas. Esse valor será usado para verificar se a entrevista teve duração compatível com um atendimento real.</p></div><span class="wiz-audit-duration-badge" id="wiz-minimum-effective">${fmtInterviewDuration(effective)}</span></div>
+    <div class="wiz-audit-duration-grid"><div><span class="wiz-audit-duration-label">Sugestão automática</span><strong id="wiz-minimum-auto">${fmtInterviewDuration(automatic)}</strong><small id="wiz-minimum-question-meta">${questionCount} pergunta${questionCount===1?'':'s'} · dificuldade 1 a 5</small></div><div><label class="wiz-audit-duration-label" for="wiz-minimum-duration-input">Definir outro mínimo (opcional)</label><div class="wiz-audit-duration-input-row"><input class="inp" id="wiz-minimum-duration-input" type="number" min="30" max="3600" step="5" value="${hasOverride?override:''}" placeholder="${automatic}" oninput="wizMinimumDurationPreview(this.value)" aria-describedby="wiz-minimum-duration-help"><span>segundos</span></div><small id="wiz-minimum-duration-help">${hasOverride?'Ajuste manual ativo. Limpe o campo para voltar à sugestão.':'Deixe vazio para usar a sugestão automática.'}</small></div><div class="wiz-audit-duration-current"><span class="wiz-audit-duration-label">Regra que será aplicada</span><strong id="wiz-minimum-mode">${fmtInterviewDuration(effective)}</strong><small id="wiz-minimum-mode-label">${hasOverride?'Manual':'Automática'}</small></div></div>
+    <div class="wiz-audit-duration-note"><b>Como usar:</b> mantenha a sugestão quando ela representar o formulário ou informe um valor maior quando a abordagem exigir apresentação, leitura, deslocamento interno ou explicações adicionais. O valor fica salvo junto da pesquisa e pode ser revisado antes da publicação.</div>
+  </section>`;
+}
+function wizMinimumDurationPreview(raw){
+  const automatic=surveyAutomaticMinimumSeconds(WIZ.data),value=wizMinimumDurationValue(raw),text=String(raw??'').trim();
+  const invalid=text!==''&&value===null;
+  const effective=value===null&&!invalid?automatic:(value===null?automatic:value);
+  const autoEl=document.getElementById('wiz-minimum-auto');if(autoEl)autoEl.textContent=fmtInterviewDuration(automatic);
+  const effectiveEl=document.getElementById('wiz-minimum-effective');if(effectiveEl)effectiveEl.textContent=fmtInterviewDuration(effective);
+  const modeEl=document.getElementById('wiz-minimum-mode');if(modeEl)modeEl.textContent=fmtInterviewDuration(effective);
+  const labelEl=document.getElementById('wiz-minimum-mode-label');if(labelEl)labelEl.textContent=value!==null?'Manual':invalid?'Revise o valor':'Automática';
+  const helpEl=document.getElementById('wiz-minimum-duration-help');if(helpEl)helpEl.textContent=invalid?'Use um número inteiro entre 30 e 3600 segundos.':value!==null?'Ajuste manual ativo. Limpe o campo para voltar à sugestão.':'Deixe vazio para usar a sugestão automática.';
+  const input=document.getElementById('wiz-minimum-duration-input');if(input)input.setAttribute('aria-invalid',invalid?'true':'false');
+}
+function wizMinimumDurationRefresh(){
+  const automatic=surveyAutomaticMinimumSeconds(WIZ.data),input=document.getElementById('wiz-minimum-duration-input');
+  if(!input){return;}
+  const value=wizMinimumDurationValue(input.value),effective=value===null?automatic:value;
+  const autoEl=document.getElementById('wiz-minimum-auto');if(autoEl)autoEl.textContent=fmtInterviewDuration(automatic);
+  const effectiveEl=document.getElementById('wiz-minimum-effective');if(effectiveEl)effectiveEl.textContent=fmtInterviewDuration(effective);
+  const modeEl=document.getElementById('wiz-minimum-mode');if(modeEl)modeEl.textContent=fmtInterviewDuration(effective);
+  const labelEl=document.getElementById('wiz-minimum-mode-label');if(labelEl)labelEl.textContent=value!==null?'Manual':'Automática';
+  const metaEl=document.getElementById('wiz-minimum-question-meta');if(metaEl){const n=(WIZ.data.questions||[]).filter(q=>q?.dbId||q?.text).length;metaEl.textContent=n+' pergunta'+(n===1?'':'s')+' · dificuldade 1 a 5';}
+}
+
 WIZ_BODY[2]=()=>{
+  const durationCard=wizMinimumDurationMarkup();
   if(!WIZ.data.formStarted){
     return `<div class="card" style="max-width:760px">
       <div class="card-t">Formulário</div>
       <div class="card-d">Monte o questionário desta pesquisa. As perguntas viram variáveis para cotas e cruzamentos.</div>
+      ${durationCard}
       <div class="form-start">
         <div class="fs-ico">❒</div>
         <div class="fs-title">Nenhum formulário ainda</div>
@@ -2758,6 +2811,7 @@ WIZ_BODY[2]=()=>{
     <div class="q-order-hint"><span aria-hidden="true">⠿</span> Arraste a alça pontilhada para mudar a ordem. Se preferir, use as setas em cada pergunta.</div>
     <div class="q-format-hint"><span aria-hidden="true">↕</span> <b>Ranking de preferências</b> registra a ordem completa das opções. <b>Duas respostas</b> cria dois subcampos independentes, abertos ou fechados.</div>
     <div class="q-duration-hint"><span aria-hidden="true">⏱</span> Defina a dificuldade de cada pergunta. Ela será usada para calcular o tempo mínimo da entrevista e proteger a qualidade da coleta.</div>
+    ${durationCard}
     <div id="q-list"></div>
     <div class="add-q">
       <span style="font-size:12px;font-weight:600;color:var(--ink2)">Adicionar pergunta:</span>
@@ -2965,6 +3019,7 @@ function qRender(){
   const wrap=document.getElementById('q-list');
   const flowPreview=document.getElementById('q-flow-preview');
   if(!wrap&&!flowPreview)return;
+  wizMinimumDurationRefresh();
   const qs=WIZ.data.questions;
   qFlowEnsurePositions(qs);
   const count=qs.length+(qs.length===1?' pergunta':' perguntas');
@@ -2979,7 +3034,7 @@ function qRender(){
     const active=(tab.id==='q-tab-flow'&&Q_EDITOR_TAB==='flow')||(tab.id==='q-tab-questions'&&Q_EDITOR_TAB==='questions');
     tab.classList.toggle('on',active);tab.setAttribute('aria-selected',active?'true':'false');
   });
-  if(qs.length===0){if(wrap)wrap.innerHTML='<div class="empty">Nenhuma pergunta ainda. Adicione abaixo.</div>';return;}
+  if(qs.length===0){if(wrap)wrap.innerHTML='<div class="empty">Nenhuma pergunta ainda. Adicione abaixo.</div>';wizMinimumDurationRefresh();return;}
   if(!wrap)return;
   wrap.innerHTML=qs.map((q,i)=>{
     let body='';
@@ -3044,6 +3099,7 @@ function qRender(){
       ${flowCtl}
     </div>`;
   }).join('');
+  wizMinimumDurationRefresh();
 }
 function qConditionalTargetOptions(q,index,qs,selected){
   const options=['<option value="">Próxima pergunta (sequência normal)</option>'];
@@ -3307,8 +3363,8 @@ function qAdd(type){
   setTimeout(()=>{const inputs=document.querySelectorAll('.q-text-inp');if(inputs.length)inputs[inputs.length-1].focus();},30);
 }
 function qDel(id){WIZ.data.questions=WIZ.data.questions.filter(q=>q.id!==id);WIZ.data.questions.forEach(q=>{if(Array.isArray(q.routeTargets))q.routeTargets=q.routeTargets.map(target=>String(target)===String(id)?'':target);if(String(q.directTarget||'')===String(id))q.directTarget='';});qRender();}
-function qText(id,v){const q=qFind(id);if(q)q.text=v;}
-function qDifficulty(id,v){const q=qFind(id);if(q)q.difficulty=Math.min(5,Math.max(1,Number(v)||3));}
+function qText(id,v){const q=qFind(id);if(q){q.text=v;wizMinimumDurationRefresh();}}
+function qDifficulty(id,v){const q=qFind(id);if(q){q.difficulty=Math.min(5,Math.max(1,Number(v)||3));wizMinimumDurationRefresh();}}
 function qEnsurePairFields(q){if(!q)return;const current=Array.isArray(q.fields)?q.fields:[];q.fields=[0,1].map(i=>{const f=current[i]||DEFAULT_PAIR_FIELDS()[i];return {label:String(f.label||'Resposta '+(i+1)),type:Q_CLOSED_FIELD_TYPES.includes(f.type)?f.type:'open',options:Array.isArray(f.options)?f.options.map(v=>String(v??'')):[]};});}
 function qType(id,v){
   const q=qFind(id);if(!q)return;
@@ -3325,7 +3381,7 @@ function qCurrencyConfig(qid,key,value){
   const next={...(q.currencyConfig||DEFAULT_CURRENCY_CONFIG),[key]:Number(String(value??'').replace(',','.'))};
   q.currencyConfig=normalizeCurrencyConfig(next);qRender();
 }
-function qOpt(id,oi,v){const q=qFind(id);if(q){q.opts[oi]=v;if(!String(v||'').trim()&&q.endsInterview)q.endsInterview[oi]=false;if(!String(v||'').trim()&&q.routeTargets)q.routeTargets[oi]='';}}
+function qOpt(id,oi,v){const q=qFind(id);if(q){q.opts[oi]=v;if(!String(v||'').trim()&&q.endsInterview)q.endsInterview[oi]=false;if(!String(v||'').trim()&&q.routeTargets)q.routeTargets[oi]='';wizMinimumDurationRefresh();}}
 function qOptAdd(id){const q=qFind(id);if(q){q.opts.push('');q.endsInterview=q.endsInterview||[];q.endsInterview.push(false);q.routeTargets=q.routeTargets||[];q.routeTargets.push('');qRender();}}
 function qOptDel(id,oi){const q=qFind(id);if(q&&q.opts.length>1){q.opts.splice(oi,1);if(q.endsInterview)q.endsInterview.splice(oi,1);if(q.routeTargets)q.routeTargets.splice(oi,1);qRender();}}
 function qEndToggle(id,oi,checked){const q=qFind(id);if(!q)return;q.endsInterview=q.endsInterview||[];q.endsInterview[oi]=checked===true;if(q.type==='single'){q.routeTargets=q.routeTargets||[];q.routeTargets[oi]=checked===true?'__end__':(q.routeTargets[oi]==='__end__'?'':'');}qRender();}
@@ -3805,6 +3861,7 @@ function wizReview(){
     ${row('População',(+d.pop).toLocaleString('pt-BR'))}
     ${row('Margem de erro / confiança','±'+(+d.err*100)+'% · '+({'1.645':'90%','1.96':'95%','2.576':'99%'}[d.conf]))}
     ${row('Amostra (com folga)',nadj.toLocaleString('pt-BR')+' coletas')}
+    ${row('Tempo mínimo de auditoria',fmtInterviewDuration(surveyEffectiveMinimumSeconds(d))+' · '+(Number.isFinite(Number(d.minimumCollectionSeconds))&&Number(d.minimumCollectionSeconds)>=30?'ajuste manual':'sugestão automática'))}
     ${row('Preço por formulário (pesquisador)','R$ '+(+d.price).toFixed(2)+' (remota R$ '+(+d.priceRemote).toFixed(2)+')')}
     ${row('Preço por formulário (cliente)','R$ '+(+(d.clientPrice||0)).toFixed(2))}
     ${row('Custo estimado','R$ '+(nadj*d.price).toLocaleString('pt-BR',{maximumFractionDigits:0}))}

@@ -1990,7 +1990,7 @@ async function clientLoadReportOverview(){
   }catch(ex){if(active()){CR_CLIENT_REPORT_CACHE={surveyId:null,overviewRows:[],crossRowsById:{},document:null};out.innerHTML='<div class="callout warn">Não foi possível carregar os resultados completos. A gestão deve conferir a ativação do SQL relatorios-clientes-leitura-completa-v172.sql. '+esc(ex.message||ex)+'</div>';}}
 }
 let CR_CLIENT_REPORT_OPERATION=null;
-function clientRenderReportOverview(out,survey,qs,rows,document,crossings){const byQ={};(rows||[]).forEach(r=>(byQ[r.question_id]||(byQ[r.question_id]=[])).push(r));const cards=qs.map((q,qi)=>{const source=byQ[q.dbId]||[],validBase=Number(source[0]?.valid_base)||0,open=q.type==='open',data=reportsCodedDisplayRows(open?source.filter(r=>r.value_kind!=='missing'&&(r.value_kind||r.value_label!=='(sem resposta)')):source),total=data.reduce((sum,r)=>sum+Number(r.cnt||0),0),answered=source[0]?.answered_base!=null?Number(source[0].answered_base):total,base=open&&reportsOfficialConfig(document?.sections?.openAnswerGrouping,survey.id,q.dbId).denominator!=='valid'?answered:validBase,max=Math.max(1,...data.map(r=>Number(r.cnt||0)));const lines=data.length?data.map(r=>{const cnt=Number(r.cnt||0),pct=open?reportsOpenPercentText(cnt,base):reportPercent(cnt,base||total)+'%';return `<div class="reports-answer-row"><div class="reports-answer-head"><span>${esc(r.value_label||'(sem resposta)')}</span><strong>${cnt.toLocaleString('pt-BR')} · ${pct}</strong></div><div class="reports-answer-bar"><i style="width:${Math.min(100,Math.round((cnt/max)*100))}%"></i></div></div>`;}).join(''):'<div class="empty" style="padding:16px 0">Ainda não há respostas válidas.</div>';return `<article class="card reports-question-card"><div class="reports-question-head"><div><span class="reports-question-number">${String(qi+1).padStart(2,'0')}</span><h3>${esc(q.text||'(pergunta sem texto)')}</h3></div><span class="pill pill-blue">${validBase.toLocaleString('pt-BR')} válidas</span></div><div class="reports-question-meta">${esc(Q_TYPES[q.type]||q.type||'Pergunta')}${open?' · respostas originais da coleta · base percentual: '+(reportsOfficialConfig(document?.sections?.openAnswerGrouping,survey.id,q.dbId).denominator==='valid'?'entrevistas válidas':'respostas preenchidas')+' ('+base+')':''}</div>${lines}</article>`;}).join('');let html=`<div class="reports-overview-head"><div><h2>${esc(document?.title||'Resultados da pesquisa')}</h2><p>${esc(document?.subtitle||'Distribuição atualizada das respostas válidas, pergunta a pergunta.')}</p></div><span class="reports-count-pill">${qs.length} pergunta${qs.length===1?'':'s'}</span></div>`;if(document?.presentation)html+=`<article class="card reports-client-intro"><div class="card-t">Apresentação</div><p>${esc(document.presentation)}</p></article>`;html+=`<div class="reports-question-list">${cards}</div>`;if(document?.executive_summary)html+=`<article class="card reports-client-summary"><div class="card-t">Síntese executiva</div><p>${esc(document.executive_summary)}</p></article>`;if(crossings.length){html+=`<div class="reports-overview-head" style="margin-top:24px"><div><h2>Cruzamentos do relatório</h2><p>Matrizes percentuais sobre a base total de entrevistas válidas.</p></div><span class="reports-count-pill">${crossings.length} análise${crossings.length===1?'':'s'}</span></div>`;crossings.forEach(c=>{const rowsFor=CR_CLIENT_REPORT_CACHE.crossRowsById[c.id]||[],ids=reportsCrossingQuestionIds(c),parts=reportsCrossPartitions(rowsFor,ids);html+=`<article class="card reports-client-crossing"><div class="card-t">${esc(c.title)}</div><div class="card-d">${ids.map((id,i)=>(i+1)+'. '+esc(clientReportQuestionLabel(reportsQuestionsForSurvey(survey),id))).join(' · ')}</div>${parts.map(part=>clientReportCrossMatrixMarkup(clientReportCrossMatrixModel(part.rows,ids,part.values,reportsQuestionsForSurvey(survey)),ids,reportsQuestionsForSurvey(survey),reportsCrossSliceTitle(ids,part.values,id=>clientReportQuestionLabel(reportsQuestionsForSurvey(survey),id),rowsFor))).join('')}</article>`;});}out.innerHTML=html;}
+function clientRenderReportOverview(out,survey,qs,rows,document,crossings){const byQ={};(rows||[]).forEach(r=>(byQ[r.question_id]||(byQ[r.question_id]=[])).push(r));const cards=qs.map((q,qi)=>{const source=byQ[q.dbId]||[],validBase=Number(source[0]?.valid_base)||0,open=q.type==='open',data=reportsCodedDisplayRows(open?source.filter(r=>r.value_kind!=='missing'&&(r.value_kind||r.value_label!=='(sem resposta)')):source),total=data.reduce((sum,r)=>sum+Number(r.cnt||0),0),answered=source[0]?.answered_base!=null?Number(source[0].answered_base):total,base=open&&reportsOfficialConfig(document?.sections?.openAnswerGrouping,survey.id,q.dbId).denominator!=='valid'?answered:validBase,max=Math.max(1,...data.map(r=>Number(r.cnt||0)));const lines=data.length?data.map(r=>{const cnt=Number(r.cnt||0),pct=open?reportsOpenPercentText(cnt,base):reportPercent(cnt,base||total)+'%';return `<div class="reports-answer-row"><div class="reports-answer-head"><span>${esc(r.value_label||'(sem resposta)')}</span><strong>${cnt.toLocaleString('pt-BR')} · ${pct}</strong></div><div class="reports-answer-bar"><i style="width:${Math.min(100,Math.round((cnt/max)*100))}%"></i></div></div>`;}).join(''):'<div class="empty" style="padding:16px 0">Ainda não há respostas válidas.</div>';return `<article class="card reports-question-card"><div class="reports-question-head"><div><span class="reports-question-number">${String(qi+1).padStart(2,'0')}</span><h3>${esc(q.text||'(pergunta sem texto)')}</h3></div><span class="pill pill-blue">${validBase.toLocaleString('pt-BR')} válidas</span></div><div class="reports-question-meta">${esc(questionTypeLabel(q))}${open?' · respostas originais da coleta · base percentual: '+(reportsOfficialConfig(document?.sections?.openAnswerGrouping,survey.id,q.dbId).denominator==='valid'?'entrevistas válidas':'respostas preenchidas')+' ('+base+')':''}</div>${lines}</article>`;}).join('');let html=`<div class="reports-overview-head"><div><h2>${esc(document?.title||'Resultados da pesquisa')}</h2><p>${esc(document?.subtitle||'Distribuição atualizada das respostas válidas, pergunta a pergunta.')}</p></div><span class="reports-count-pill">${qs.length} pergunta${qs.length===1?'':'s'}</span></div>`;if(document?.presentation)html+=`<article class="card reports-client-intro"><div class="card-t">Apresentação</div><p>${esc(document.presentation)}</p></article>`;html+=`<div class="reports-question-list">${cards}</div>`;if(document?.executive_summary)html+=`<article class="card reports-client-summary"><div class="card-t">Síntese executiva</div><p>${esc(document.executive_summary)}</p></article>`;if(crossings.length){html+=`<div class="reports-overview-head" style="margin-top:24px"><div><h2>Cruzamentos do relatório</h2><p>Matrizes percentuais sobre a base total de entrevistas válidas.</p></div><span class="reports-count-pill">${crossings.length} análise${crossings.length===1?'':'s'}</span></div>`;crossings.forEach(c=>{const rowsFor=CR_CLIENT_REPORT_CACHE.crossRowsById[c.id]||[],ids=reportsCrossingQuestionIds(c),parts=reportsCrossPartitions(rowsFor,ids);html+=`<article class="card reports-client-crossing"><div class="card-t">${esc(c.title)}</div><div class="card-d">${ids.map((id,i)=>(i+1)+'. '+esc(clientReportQuestionLabel(reportsQuestionsForSurvey(survey),id))).join(' · ')}</div>${parts.map(part=>clientReportCrossMatrixMarkup(clientReportCrossMatrixModel(part.rows,ids,part.values,reportsQuestionsForSurvey(survey)),ids,reportsQuestionsForSurvey(survey),reportsCrossSliceTitle(ids,part.values,id=>clientReportQuestionLabel(reportsQuestionsForSurvey(survey),id),rowsFor))).join('')}</article>`;});}out.innerHTML=html;}
 
 let CR_PUBLISHED_REPORT_OPERATION=null;
 async function clientLoadPublishedReports(){
@@ -2081,7 +2081,34 @@ const WIZ={step:1,total:7,editIndex:null,
     formStarted:false,questions:[],quotas:{},quotaOff:{},remote:{},clientReleaseById:{},minimumCollectionSeconds:null,orientationMessage:''}};
 let WIZ_QID=1;
 const Q_TYPES={single:'Escolha única',multi:'Múltipla escolha',ranking:'Ranking de preferências',pair:'Duas respostas',scale:'Escala 1–5',scale10:'Escala 1–10',nps:'NPS 0–10',open:'Resposta aberta',number:'Número',date:'Data'};
+const Q_TYPE_CHOICES=[['single','Escolha única'],['multi','Múltipla escolha'],['currency_single','Valor em moeda · escolha única'],['currency_multi','Valores em moeda · múltipla'],['ranking','Ranking de preferências'],['pair','Duas respostas'],['scale','Escala 1–5'],['scale10','Escala 1–10'],['nps','NPS 0–10'],['open','Resposta aberta'],['number','Número'],['date','Data']];
 const Q_HAS_OPTS=t=>t==='single'||t==='multi'||t==='ranking';
+const DEFAULT_CURRENCY_CONFIG={min:0.01,max:1000,step:0.01};
+const CURRENCY_MAX_VALUE=999999999.99;
+function roundCurrencyValue(value){return Math.round(Number(value)*100)/100;}
+function normalizeCurrencyConfig(input){
+  const raw=input&&typeof input==='object'?input:{};
+  const min=Number.isFinite(Number(raw.min))?roundCurrencyValue(raw.min):DEFAULT_CURRENCY_CONFIG.min;
+  const max=Number.isFinite(Number(raw.max))?roundCurrencyValue(raw.max):DEFAULT_CURRENCY_CONFIG.max;
+  const step=Number.isFinite(Number(raw.step))?roundCurrencyValue(raw.step):DEFAULT_CURRENCY_CONFIG.step;
+  const safeMin=Math.max(0.01,Math.min(CURRENCY_MAX_VALUE-0.01,min));
+  const safeStep=Math.max(0.01,Math.min(CURRENCY_MAX_VALUE,step));
+  const safeMax=Math.max(safeMin+safeStep,Math.min(CURRENCY_MAX_VALUE,Math.max(0.02,max)));
+  return {min:roundCurrencyValue(safeMin),max:roundCurrencyValue(safeMax),step:roundCurrencyValue(safeStep)};
+}
+function isCurrencyQuestion(q){return q?.currencyMode==='BRL'&&['single','multi'].includes(q?.type);}
+function formatCurrencyBRL(value){
+  const numeric=Number(value);
+  return Number.isFinite(numeric)?numeric.toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:2,maximumFractionDigits:2}):'';
+}
+function questionTypeLabel(q){return isCurrencyQuestion(q)?`${Q_TYPES[q.type]} · valores em moeda (R$)`:Q_TYPES[q?.type]||q?.type||'Pergunta';}
+function questionTypeChoice(value){
+  const key=String(value||'single');
+  if(key==='currency_single')return {type:'single',currencyMode:'BRL'};
+  if(key==='currency_multi')return {type:'multi',currencyMode:'BRL'};
+  return {type:key,currencyMode:null};
+}
+function questionTypeChoiceValue(q){return isCurrencyQuestion(q)?`currency_${q.type}`:(q?.type||'single');}
 const Q_HAS_QUOTA_OPTS=t=>t==='single'||t==='multi';
 const Q_CLOSED_FIELD_TYPES=['single','multi'];
 const DEFAULT_PAIR_FIELDS=()=>[
@@ -2162,9 +2189,11 @@ function surveyRowToSnapshot(row,questionRows,clientCompanyNames,teamNames){
     const directTarget=logic?.direct_target!=null?String(logic.direct_target??''):'';
     const optionsImported=logic?.options_source==='excel';
     const fieldOptionsImported=Array.isArray(logic?.field_options_source)?logic.field_options_source.map(value=>value==='excel'):[];
+    const currencyMode=logic?.currency_mode==='BRL'&&['single','multi'].includes(q.type)?'BRL':null;
+    const currencyConfig=currencyMode?normalizeCurrencyConfig(logic?.currency):null;
     const flowPosition=logic?.position&&Number.isFinite(Number(logic.position.x))&&Number.isFinite(Number(logic.position.y))
       ?{x:Number(logic.position.x),y:Number(logic.position.y)}:null;
-    return {id:localId,position:Number.isFinite(Number(q.position))?Number(q.position):qi,dbId:q.id,text:q.text||'',type:q.type||'single',difficulty:Math.min(5,Math.max(1,Number(q.difficulty)||3)),opts:opts.map(o=>o.label||''),endsInterview:opts.map(o=>!!o.ends_interview),routeTargets,directTarget,flowPosition,optionsImported,fieldOptionsImported,fields:fields.length===2?fields:DEFAULT_PAIR_FIELDS(),isRegion:!!q.is_region};
+    return {id:localId,position:Number.isFinite(Number(q.position))?Number(q.position):qi,dbId:q.id,text:q.text||'',type:q.type||'single',difficulty:Math.min(5,Math.max(1,Number(q.difficulty)||3)),opts:opts.map(o=>o.label||''),endsInterview:opts.map(o=>!!o.ends_interview),routeTargets,directTarget,flowPosition,optionsImported,fieldOptionsImported,currencyMode,currencyConfig,fields:fields.length===2?fields:DEFAULT_PAIR_FIELDS(),isRegion:!!q.is_region};
   });
   const dbToLocal=new Map(questions.map(question=>[String(question.dbId),String(question.id)]));
   questions.forEach(question=>{
@@ -2209,13 +2238,14 @@ async function syncSurveyQuestionsAndOptions(surveyId,d){
   const conditionalErrors=flow?.validateQuestions?flow.validateQuestions(d.questions||[]):[];
   if(conditionalErrors.length)throw new Error('Revise os caminhos condicionais antes de salvar:\n• '+conditionalErrors.join('\n• '));
   const hasConditionalRules=(d.questions||[]).some(q=>(flow?.normalizeRouteTargets?flow.normalizeRouteTargets(q):[]).some(Boolean)||String(q.directTarget||'').trim());
+  const hasCurrencyQuestions=(d.questions||[]).some(q=>isCurrencyQuestion(q));
   let conditionalLogicAvailable=true;
   let activeColumnAvailable=true;
   let difficultyColumnAvailable=true;
   let existingResult=await sb.from('survey_questions').select('id,logic_jsonb').eq('survey_id',surveyId);
   if(existingResult.error&&/logic_jsonb|schema cache|column .* does not exist/i.test(existingResult.error.message||'')){
     conditionalLogicAvailable=false;
-    if(hasConditionalRules)throw new Error('Os caminhos condicionais exigem a migration deploy/caminhos-condicionais-v189.sql no Supabase. Nenhuma pergunta foi alterada.');
+    if(hasConditionalRules||hasCurrencyQuestions)throw new Error('Os caminhos condicionais e as perguntas monetárias exigem a migration deploy/caminhos-condicionais-v189.sql no Supabase. Nenhuma pergunta foi alterada.');
     existingResult=await sb.from('survey_questions').select('id').eq('survey_id',surveyId);
   }
   if(existingResult.error)throw new Error('Não foi possível ler as perguntas atuais: '+existingResult.error.message);
@@ -2328,6 +2358,11 @@ async function syncSurveyQuestionsAndOptions(surveyId,d){
       const position=qFlowPosition(q,(d.questions||[]).indexOf(q));
       const logicJson={version:2,route_targets:routeTargets,direct_target:directTarget,position};
       if(q.optionsImported===true)logicJson.options_source='excel';
+      if(isCurrencyQuestion(q)){
+        const currency=normalizeCurrencyConfig(q.currencyConfig);
+        logicJson.currency_mode='BRL';
+        logicJson.currency=currency;
+      }
       if(q.type==='pair'&&Array.isArray(q.fieldOptionsImported)&&q.fieldOptionsImported.some(Boolean))logicJson.field_options_source=q.fieldOptionsImported.map(value=>value===true?'excel':null);
       const {error}=await sb.from('survey_questions').update({logic_jsonb:logicJson}).eq('id',q.dbId).eq('survey_id',surveyId);
       if(error){
@@ -2669,7 +2704,7 @@ WIZ_BODY[2]=()=>{
     <div class="add-q">
       <span style="font-size:12px;font-weight:600;color:var(--ink2)">Adicionar pergunta:</span>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
-        ${Object.keys(Q_TYPES).map(t=>`<button class="chip" onclick="qAdd('${t}')">+ ${Q_TYPES[t]}</button>`).join('')}
+        ${Q_TYPE_CHOICES.map(([t,label])=>`<button class="chip" onclick="qAdd('${t}')">+ ${label}</button>`).join('')}
       </div>
     </div>
   </div>
@@ -2852,6 +2887,18 @@ function qOptionsEditorMarkup(q,options,context={}){
   const scrollKey=isPair?`pair-${q.id}-${fieldIndex}`:`question-${q.id}`;
   return `<div class="q-opts q-opts-large" data-qopts-key="${scrollKey}"><div class="q-opts-scroll">${rows||'<div class="q-options-empty">Nenhuma opção cadastrada.</div>'}</div><div class="q-opts-toolbar"><span>${filled.toLocaleString('pt-BR')} opções preenchidas${list.length>5?' · mostrando em caixa rolável':''}</span><div><button type="button" class="q-opts-last" onclick="qScrollOptionsToEnd(${q.id},${fieldIndex==null?'null':fieldIndex})">Ir para a última</button><button type="button" class="opt-add" onclick="${addHandler}">+ adicionar opção</button></div></div></div>`;
 }
+function qCurrencyConfigMarkup(q){
+  const config=normalizeCurrencyConfig(q.currencyConfig);
+  return `<div class="q-currency-config">
+    <div class="q-currency-config-head"><div><strong>Valores em reais (R$)</strong><span>O pesquisador digitará e escolherá uma sugestão no autocomplete. Nenhuma lista com milhares de opções será carregada.</span></div><b>R$</b></div>
+    <div class="q-currency-config-grid">
+      <label><span>Valor mínimo</span><input class="inp" type="number" min="0.01" max="${CURRENCY_MAX_VALUE}" step="0.01" value="${config.min.toFixed(2)}" onchange="qCurrencyConfig(${q.id},'min',this.value)"><small>A partir de R$ 0,01</small></label>
+      <label><span>Valor máximo</span><input class="inp" type="number" min="0.02" max="${CURRENCY_MAX_VALUE}" step="0.01" value="${config.max.toFixed(2)}" onchange="qCurrencyConfig(${q.id},'max',this.value)"><small>Até o limite definido por você</small></label>
+      <label><span>Intervalo das sugestões</span><input class="inp" type="number" min="0.01" max="${CURRENCY_MAX_VALUE}" step="0.01" value="${config.step.toFixed(2)}" onchange="qCurrencyConfig(${q.id},'step',this.value)"><small>Ex.: 0,01 ou 1,00</small></label>
+    </div>
+    <div class="q-currency-example">Exemplo: ${formatCurrencyBRL(config.min)} até ${formatCurrencyBRL(config.max)}, de ${formatCurrencyBRL(config.step)} em ${formatCurrencyBRL(config.step)}. O pesquisador pode refinar digitando parte do valor.</div>
+  </div>`;
+}
 function qScrollOptionsToEnd(qid,fieldIndex=null){
   const key=fieldIndex==null?`question-${qid}`:`pair-${qid}-${fieldIndex}`;
   setTimeout(()=>{const box=document.querySelector(`[data-qopts-key="${key}"] .q-opts-scroll`);if(box)box.scrollTo({top:box.scrollHeight,behavior:'smooth'});},0);
@@ -2886,6 +2933,8 @@ function qRender(){
         const importCtl=closed&&window.PP_QUESTION_OPTIONS_EXCEL?.buttonMarkup?window.PP_QUESTION_OPTIONS_EXCEL.buttonMarkup(q.id,fi,'pair'):'';
         return `<div class="q-pair-field-editor"><div class="q-pair-field-head"><span class="q-pair-field-number">${fi+1}</span><input class="inp q-pair-label" value="${esc(field.label)}" oninput="qPairFieldLabel(${q.id},${fi},this.value)" placeholder="Nome da variável ${fi+1}"><select class="inp q-pair-type" onchange="qPairFieldType(${q.id},${fi},this.value)">${[['open','Aberta'],['single','Escolha única'],['multi','Múltipla escolha']].map(([type,label])=>`<option value="${type}" ${field.type===type?'selected':''}>${label}</option>`).join('')}</select></div>${opts}${importCtl}</div>`;
       }).join('')}</div><div class="q-pair-hint">Os dois subcampos serão respondidos na mesma entrevista e aparecerão como variáveis separadas nos resultados.</div>`;
+    }else if(isCurrencyQuestion(q)){
+      body=qCurrencyConfigMarkup(q);
     }else if(Q_HAS_OPTS(q.type)){
       const importCtl=window.PP_QUESTION_OPTIONS_EXCEL?.buttonMarkup?window.PP_QUESTION_OPTIONS_EXCEL.buttonMarkup(q.id):'';
       body=qOptionsEditorMarkup(q,q.opts)+importCtl;
@@ -2906,13 +2955,13 @@ function qRender(){
     const flowCtl='';
     const delBtn=`<button class="q-del" title="Excluir pergunta" onclick="qDel(${q.id})">🗑</button>`;
     const typeCtl=`<select class="q-type-sel" onchange="qType(${q.id},this.value)">
-          ${Object.keys(Q_TYPES).map(t=>`<option value="${t}" ${q.type===t?'selected':''}>${Q_TYPES[t]}</option>`).join('')}
+          ${Q_TYPE_CHOICES.map(([t,label])=>`<option value="${t}" ${questionTypeChoiceValue(q)===t?'selected':''}>${label}</option>`).join('')}
         </select>`;
-    const canBeRegion=q.type==='single'&&q.opts.some(o=>o&&o.trim());
+    const canBeRegion=q.type==='single'&&!isCurrencyQuestion(q)&&q.opts.some(o=>o&&o.trim());
     const regionCtl=canBeRegion
       ?`<button class="q-region-btn ${q.isRegion?'on':''}" title="Marcar esta pergunta como a pergunta de bairro/região (usada para definir coletas remotas no preço) — você escolhe qual pergunta é essa" onclick="qSetRegion(${q.id})">${q.isRegion?'★ região':'☆ região'}</button>`
       :'';
-    const canQuota=Q_HAS_QUOTA_OPTS(q.type)&&q.opts.some(o=>o&&o.trim());
+    const canQuota=Q_HAS_QUOTA_OPTS(q.type)&&!isCurrencyQuestion(q)&&q.opts.some(o=>o&&o.trim());
     const quotaOn=canQuota&&!(WIZ.data.quotaOff&&WIZ.data.quotaOff[q.id]);
     const quotaCtl=canQuota
       ?`<button class="q-quota-btn ${quotaOn?'on':''}" title="Definir se esta pergunta terá cota controlada na amostra (ajustável em detalhe no passo Cotas)" onclick="qToggleQuota(${q.id})">${quotaOn?'✓ cota':'sem cota'}</button>`
@@ -3194,7 +3243,8 @@ function fmtDataBR(iso){
 }
 function qFind(id){return WIZ.data.questions.find(q=>q.id===id);}
 function qAdd(type){
-  const q={id:WIZ_QID++,text:'',type,difficulty:3,opts:Q_HAS_OPTS(type)?['',''] :[],endsInterview:Q_HAS_OPTS(type)?[false,false]:[],routeTargets:Q_HAS_OPTS(type)?['','']:[],fields:type==='pair'?DEFAULT_PAIR_FIELDS():[]};
+  const choice=questionTypeChoice(type),currency=choice.currencyMode==='BRL';
+  const q={id:WIZ_QID++,text:'',type:choice.type,currencyMode:choice.currencyMode,currencyConfig:currency?{...DEFAULT_CURRENCY_CONFIG}:null,difficulty:3,opts:currency?[]:(Q_HAS_OPTS(choice.type)?['',''] :[]),endsInterview:currency?[]:(Q_HAS_OPTS(choice.type)?[false,false]:[]),routeTargets:currency?[]:(Q_HAS_OPTS(choice.type)?['','']:[]),fields:choice.type==='pair'?DEFAULT_PAIR_FIELDS():[]};
   WIZ.data.questions.push(q);qRender();
   setTimeout(()=>{const inputs=document.querySelectorAll('.q-text-inp');if(inputs.length)inputs[inputs.length-1].focus();},30);
 }
@@ -3202,7 +3252,21 @@ function qDel(id){WIZ.data.questions=WIZ.data.questions.filter(q=>q.id!==id);WIZ
 function qText(id,v){const q=qFind(id);if(q)q.text=v;}
 function qDifficulty(id,v){const q=qFind(id);if(q)q.difficulty=Math.min(5,Math.max(1,Number(v)||3));}
 function qEnsurePairFields(q){if(!q)return;const current=Array.isArray(q.fields)?q.fields:[];q.fields=[0,1].map(i=>{const f=current[i]||DEFAULT_PAIR_FIELDS()[i];return {label:String(f.label||'Resposta '+(i+1)),type:Q_CLOSED_FIELD_TYPES.includes(f.type)?f.type:'open',options:Array.isArray(f.options)?f.options.map(v=>String(v??'')):[]};});}
-function qType(id,v){const q=qFind(id);if(!q)return;q.type=v;if(Q_HAS_OPTS(v)&&q.opts.length===0){q.opts=['',''];q.endsInterview=[false,false];q.routeTargets=['',''];}if(v==='pair')qEnsurePairFields(q);if(!Q_HAS_OPTS(v)||v!=='single'){q.isRegion=false;q.routeTargets=[];}qRender();}
+function qType(id,v){
+  const q=qFind(id);if(!q)return;
+  const choice=questionTypeChoice(v),currency=choice.currencyMode==='BRL';
+  q.type=choice.type;q.currencyMode=choice.currencyMode;q.currencyConfig=currency?normalizeCurrencyConfig(q.currencyConfig):null;
+  if(currency){q.opts=[];q.endsInterview=[];q.routeTargets=[];q.isRegion=false;}
+  else if(Q_HAS_OPTS(choice.type)&&q.opts.length===0){q.opts=['',''];q.endsInterview=[false,false];q.routeTargets=['',''];}
+  if(choice.type==='pair')qEnsurePairFields(q);
+  if(!Q_HAS_OPTS(choice.type)||choice.type!=='single'){q.isRegion=false;q.routeTargets=[];}
+  qRender();
+}
+function qCurrencyConfig(qid,key,value){
+  const q=qFind(qid);if(!q||!isCurrencyQuestion(q))return;
+  const next={...(q.currencyConfig||DEFAULT_CURRENCY_CONFIG),[key]:Number(String(value??'').replace(',','.'))};
+  q.currencyConfig=normalizeCurrencyConfig(next);qRender();
+}
 function qOpt(id,oi,v){const q=qFind(id);if(q){q.opts[oi]=v;if(!String(v||'').trim()&&q.endsInterview)q.endsInterview[oi]=false;if(!String(v||'').trim()&&q.routeTargets)q.routeTargets[oi]='';}}
 function qOptAdd(id){const q=qFind(id);if(q){q.opts.push('');q.endsInterview=q.endsInterview||[];q.endsInterview.push(false);q.routeTargets=q.routeTargets||[];q.routeTargets.push('');qRender();}}
 function qOptDel(id,oi){const q=qFind(id);if(q&&q.opts.length>1){q.opts.splice(oi,1);if(q.endsInterview)q.endsInterview.splice(oi,1);if(q.routeTargets)q.routeTargets.splice(oi,1);qRender();}}
@@ -6551,6 +6615,14 @@ function acollectOptionAutocompleteBody(mode,qid,fieldIndex,options,selected,loc
   if(mode==='multi'||mode==='pair-multi')return (options||[]).map((option,oi)=>`<label class="collect-option"><input type="checkbox" ${values.includes(option)?'checked':''} onchange="${mode==='multi'?`acollectToggleMultiAnswer('${qid}',${jsArg(option)},${oi})`:`acollectTogglePairMulti('${qid}',${fieldIndex},${jsArg(option)})`}"> ${esc(option)}</label>`).join('');
   return (options||[]).map((option,oi)=>`<label class="collect-option"><input type="radio" name="acauto-${qid}-${fieldIndex??''}" ${values[0]===option?'checked':''} onchange="${mode==='single'?`acollectSetAnswer('${qid}',${jsArg(option)},true,${oi})`:`acollectSetPairField('${qid}',${fieldIndex},${jsArg(option)})`}"> ${esc(option)}</label>`).join('');
 }
+function acollectCurrencyBody(q,a,locked=false){
+  const mode=q.type==='multi'?'currency-multi':'currency-single';
+  const selected=q.type==='multi'?(Array.isArray(a?.value)?a.value:[]):(a?.value!=null&&a.value!==''?[a.value]:[]);
+  const config=normalizeCurrencyConfig(q.currencyConfig);
+  return window.PP_QUESTION_CURRENCY_AUTOCOMPLETE?.mount
+    ?window.PP_QUESTION_CURRENCY_AUTOCOMPLETE.mount(mode,String(q.dbId),config,selected,locked)
+    :`<input class="inp" type="number" min="${config.min}" max="${config.max}" step="${config.step}" value="${selected[0]??''}" oninput="acollectSetAnswer('${q.dbId}',this.value===''?'':+this.value)">`;
+}
 function renderAcollectForm(){
   const el=document.getElementById('acollectForm');
   if(!el)return;
@@ -6564,8 +6636,12 @@ function renderAcollectForm(){
       const a=ACOLLECT_ANSWERS[q.dbId];
       const locked=a&&a.locked;
       let body='';
-      if(q.type==='single'){
+      if(q.type==='single'&&isCurrencyQuestion(q)){
+        body=acollectCurrencyBody(q,a,locked);
+      }else if(q.type==='single'){
         body=acollectOptionAutocompleteBody('single',q.dbId,null,q.opts||[],a&&a.value!=null?[a.value]:[],locked,q.optionsImported===true);
+      }else if(q.type==='multi'&&isCurrencyQuestion(q)){
+        body=acollectCurrencyBody(q,a,false);
       }else if(q.type==='multi'){
         body=acollectOptionAutocompleteBody('multi',q.dbId,null,q.opts||[],a&&Array.isArray(a.value)?a.value:[],false,q.optionsImported===true);
       }else if(q.type==='ranking'){
@@ -6852,7 +6928,9 @@ function acollectBuildAnswerRows(eventId){
   questions.filter(q=>q.dbId).forEach(q=>{
     const a=ACOLLECT_ANSWERS[q.dbId];
     if(!a||a.value===''||a.value==null||(Array.isArray(a.value)&&a.value.length===0))return;
-    if(q.type==='multi'){
+    if(q.type==='multi'&&isCurrencyQuestion(q)){
+      a.value.forEach(value=>{const numeric=Number(value);if(Number.isFinite(numeric))rows.push({collection_event_id:eventId,question_id:q.dbId,value_number:numeric,value_text:formatCurrencyBRL(numeric)});});
+    }else if(q.type==='multi'){
       a.value.forEach(label=>rows.push({collection_event_id:eventId,question_id:q.dbId,value_text:label}));
     }else if(q.type==='ranking'){
       a.value.forEach((label,index)=>rows.push({collection_event_id:eventId,question_id:q.dbId,value_text:label,value_number:index+1}));
@@ -6863,6 +6941,8 @@ function acollectBuildAnswerRows(eventId){
         if(field.type==='multi')value.forEach(label=>rows.push({collection_event_id:eventId,question_id:q.dbId,field_id:fieldId,value_text:label}));
         else rows.push({collection_event_id:eventId,question_id:q.dbId,field_id:fieldId,...(field.type==='open'?{value_text:String(value)}:{value_text:String(value)})});
       });
+    }else if(isCurrencyQuestion(q)){
+      const numeric=Number(a.value);if(Number.isFinite(numeric))rows.push({collection_event_id:eventId,question_id:q.dbId,value_number:numeric,value_text:formatCurrencyBRL(numeric)});
     }else if(q.type==='scale'||q.type==='scale10'||q.type==='nps'||q.type==='number'){
       rows.push({collection_event_id:eventId,question_id:q.dbId,value_number:a.value});
     }else{ // single, date, open
@@ -7923,11 +8003,11 @@ function reportsExcelWorkbook(lib,survey,questions,rows,grouping,mode,generatedA
   const workbook=lib.utils.book_new(),summary=[['Pergunta nº','Pergunta','Tipo','Aba','Resultados distintos','Ocorrências','Base válida','Base percentual','Critério do percentual','Respostas preenchidas (abertas)']],sheets=[];
   for(const q of questions){
     const index=reportsQuestionsForSurvey(survey).findIndex(item=>item.dbId===q.dbId)+1,name='Q'+String(index).padStart(2,'0')+' '+(q.type==='open'?'Aberta':'Fechada'),model=reportsExcelQuestionRows(q,rows,grouping,mode);
-    const records=[['Pergunta nº',index],['Pergunta',String(q.text||'')],['Tipo',Q_TYPES[q.type]||q.type||'Pergunta'],['Conteúdo',survey.tabulationSourceLabel||'Respostas originais da coleta'],['Base válida',model.base],['Base percentual',model.percentBase],['Critério do percentual',model.basis],['Total de ocorrências',model.occurrences],['Observação','Base: entrevistas válidas, sem rejeitadas nem calibração. Múltipla escolha, ranking e duas respostas podem ter mais ocorrências que entrevistas.'],[],['Resposta original / alternativa','Quantidade','Percentual','Base percentual','Tipo de resultado']];
+    const records=[['Pergunta nº',index],['Pergunta',String(q.text||'')],['Tipo',questionTypeLabel(q)],['Conteúdo',survey.tabulationSourceLabel||'Respostas originais da coleta'],['Base válida',model.base],['Base percentual',model.percentBase],['Critério do percentual',model.basis],['Total de ocorrências',model.occurrences],['Observação','Base: entrevistas válidas, sem rejeitadas nem calibração. Múltipla escolha, ranking e duas respostas podem ter mais ocorrências que entrevistas.'],[],['Resposta original / alternativa','Quantidade','Percentual','Base percentual','Tipo de resultado']];
     if(rows.some(row=>row.value_key))records[10].push('Código estável');for(const item of model.values)records.push([item.label,item.count,item.percent,model.percentBase,item.content,...(rows.some(row=>row.value_key)?[item.key]:[])]);
     const sheet=reportsExcelSheet(lib,records,[80,18,18,22,38,55]);sheet['!autofilter']={ref:'A11:'+(rows.some(row=>row.value_key)?'F':'E')+Math.max(11,records.length)};
     for(let row=12;row<=records.length;row++)if(sheet['C'+row])sheet['C'+row].z='0.00%';
-    sheets.push({name,sheet});summary.push([index,String(q.text||''),Q_TYPES[q.type]||q.type,name,model.values.length,model.occurrences,model.base,model.percentBase,model.basis,model.answered]);
+    sheets.push({name,sheet});summary.push([index,String(q.text||''),questionTypeLabel(q),name,model.values.length,model.occurrences,model.base,model.percentBase,model.basis,model.answered]);
   }
   const info=[['PesquisaPro — respostas por pergunta'],['Pesquisa',String(survey.name||'')],['Conteúdo',survey.tabulationSourceLabel||'Respostas originais da coleta'],['Gerado em',generatedAt.toLocaleString('pt-BR')],['Escopo','Distribuições agregadas por pergunta; sem IDs de entrevistas, GPS, contatos de pesquisadores ou dados financeiros.'],['Integralidade','Todas as linhas retornadas pela consulta paginada completa. Não usa o limite de 100 resultados da tela.'],['Percentuais','São valores numéricos formatados como percentual. A base é informada em cada aba. Sem respostas válidas, o percentual é zero.'],['Múltiplas respostas','Múltipla escolha, ranking e duas respostas podem somar mais de 100% sobre a base válida.'],['Ausência de resposta','(sem resposta) é mantida quando retornada pelo servidor; em perguntas abertas com base de respondidas seu percentual fica vazio.'],['Perguntas abertas',survey.tabulationSourceLabel?'Fonte: '+survey.tabulationSourceLabel+'; tratamentos externos explícitos por registro, sem IA.':'Cada texto original é apresentado separadamente, sem categorização por significado.'],['Privacidade','Textos livres podem conter dados pessoais. Revise antes de compartilhar; exportação agregada não é anonimização.'],['Persistência','Exportar não salva, publica nem altera os dados da coleta ou a estrutura do relatório.']];
   lib.utils.book_append_sheet(workbook,reportsExcelSheet(lib,info,[32,110]),'Informações');
@@ -8039,7 +8119,7 @@ function renderReportsOverview(out,rows,qs){
     const data=reportRowsWithCounts([byQ[q.dbId],byPosition[q.position],byText[normalizeReportQuestionText(q.text)],byOrdinal[qi]]);const base=Number(data[0]?.valid_base)||localBase||0;const total=data.reduce((sum,r)=>sum+Number(r.cnt||0),0);const max=Math.max(1,...data.map(r=>Number(r.cnt||0)));
     if(q.type==='open')return reportsOpenCard(q,qi,data,base);
     const lines=data.length?data.map((r,i)=>{const cnt=Number(r.cnt||0),pct=reportPercent(cnt,base||total);return `<div class="reports-answer-row"><div class="reports-answer-head"><span>${esc(r.value_label||'(sem resposta)')}</span><strong>${cnt.toLocaleString('pt-BR')} · ${pct}%</strong></div><div class="reports-answer-bar"><i style="width:${Math.min(100,Math.round((cnt/max)*100))}%"></i></div></div>`;}).join(''):`<div class="empty" style="padding:16px 0">${base?'Nenhuma resposta foi registrada para esta pergunta na base válida.':'Ainda não há respostas válidas.'}</div>`;
-    return `<article class="card reports-question-card"><div class="reports-question-head"><div><span class="reports-question-number">${String(qi+1).padStart(2,'0')}</span><h3>${esc(q.text||'(pergunta sem texto)')}</h3></div><span class="pill pill-blue">${base.toLocaleString('pt-BR')} válidas</span></div><div class="reports-question-meta">${esc(Q_TYPES[q.type]||q.type||'Pergunta')}</div><div class="reports-excel-question-action">${reportsExcelQuestionButton(q.dbId)}</div>${lines}</article>`;
+    return `<article class="card reports-question-card"><div class="reports-question-head"><div><span class="reports-question-number">${String(qi+1).padStart(2,'0')}</span><h3>${esc(q.text||'(pergunta sem texto)')}</h3></div><span class="pill pill-blue">${base.toLocaleString('pt-BR')} válidas</span></div><div class="reports-question-meta">${esc(questionTypeLabel(q))}</div><div class="reports-excel-question-action">${reportsExcelQuestionButton(q.dbId)}</div>${lines}</article>`;
   }).join('');
   out.innerHTML=`<div class="reports-overview-head"><div><h2>Todas as perguntas</h2><p>Distribuição atualizada das respostas válidas, pergunta a pergunta.</p></div><span class="reports-count-pill">${qs.length} pergunta${qs.length===1?'':'s'}</span></div><div class="reports-question-list">${cards}</div>`;
 }
@@ -8191,7 +8271,7 @@ function surveyFormPdfGeo(data){
   const location=[label,states,cities.length?cities.length+' cidade'+(cities.length===1?'':'s'):null].filter(Boolean);
   return location.join(' · ')||'—';
 }
-function surveyFormPdfQuestionKind(q){return Q_TYPES[q.type]||q.type||'Pergunta';}
+function surveyFormPdfQuestionKind(q){return questionTypeLabel(q);}
 function surveyFormPdfPage(doc,y,title,subtitle){
   const H=doc.internal.pageSize.getHeight();
   if(y+20>H-20){doc.addPage();return reportsPdfHeader(doc,title,subtitle);}
@@ -11874,10 +11954,13 @@ function approvalSnapshotMarkup(snapshot){
   const questions=Array.isArray(snapshot?.questions)?snapshot.questions:[];
   if(!questions.length)return '<div class="empty">Este formulário ainda não possui perguntas configuradas.</div>';
   return `<div class="approval-form-question-list">${questions.slice().sort((a,b)=>(a.position||0)-(b.position||0)).map((q,i)=>{
+    let logic=q.logic_jsonb||{};if(typeof logic==='string'){try{logic=JSON.parse(logic);}catch(ex){logic={};}}
+    const currency=logic?.currency_mode==='BRL'&&['single','multi'].includes(q.type),currencyConfig=currency?normalizeCurrencyConfig(logic.currency):null;
     const options=Array.isArray(q.options)?q.options:[],fields=Array.isArray(q.fields)?q.fields:[];
     const optionMarkup=options.length?`<div class="approval-form-options">${options.slice().sort((a,b)=>(a.position||0)-(b.position||0)).map(o=>`<span class="approval-form-option">${esc(o.label||'')}</span>`).join('')}</div>`:'';
     const fieldMarkup=fields.length?`<div class="approval-form-fields">${fields.slice().sort((a,b)=>(a.position||0)-(b.position||0)).map(f=>`<div class="approval-form-field"><b>${esc(f.label||'Resposta')}</b><span>${esc(approvalQuestionTypeLabel(f.type))}${Array.isArray(f.options)&&f.options.length?' · '+esc(f.options.join(' · ')):''}</span></div>`).join('')}</div>`:'';
-    return `<article class="approval-form-question"><div class="approval-form-question-head"><span class="approval-form-question-number">${String(i+1).padStart(2,'0')}</span><div><h3>${esc(q.text||'(pergunta sem texto)')}</h3><span class="pill pill-gray">${esc(approvalQuestionTypeLabel(q.type))}</span></div></div>${optionMarkup}${fieldMarkup}</article>`;
+    const currencyMarkup=currency?`<div class="approval-form-currency">Autocomplete monetário · faixa de ${esc(formatCurrencyBRL(currencyConfig.min))} a ${esc(formatCurrencyBRL(currencyConfig.max))} · intervalo ${esc(formatCurrencyBRL(currencyConfig.step))}</div>`:'';
+    return `<article class="approval-form-question"><div class="approval-form-question-head"><span class="approval-form-question-number">${String(i+1).padStart(2,'0')}</span><div><h3>${esc(q.text||'(pergunta sem texto)')}</h3><span class="pill pill-gray">${esc(currency?questionTypeLabel({type:q.type,currencyMode:'BRL'}):approvalQuestionTypeLabel(q.type))}</span></div></div>${optionMarkup}${currencyMarkup}${fieldMarkup}</article>`;
   }).join('')}</div>`;
 }
 function clientApprovalRequestLinkMarkup(request){

@@ -2133,6 +2133,38 @@ const ABRANGENCIA_CFG={
   nacional:{multiState:true,multiCity:true},
 };
 
+/* O Supabase normalmente devolve estados como text[] e cidades como jsonb,
+   mas pesquisas antigas/legadas podem chegar como texto serializado. O
+   editor trabalha sempre com uma forma única para não perder a abrangência
+   ao reabrir e salvar um rascunho. */
+function normalizeGeoStates(value){
+  let raw=value;
+  if(typeof raw==='string'){
+    try{raw=JSON.parse(raw);}catch(_){raw=raw.split(/[;,]/);}
+  }
+  if(!Array.isArray(raw))raw=[];
+  const known=new Set((BR_ESTADOS||[]).map(state=>String(state.sigla||'').toUpperCase()));
+  return [...new Set(raw.map(item=>String(item??'').trim().toUpperCase()).filter(item=>item&&(known.size===0||known.has(item))))];
+}
+function normalizeGeoCities(value){
+  let raw=value;
+  if(typeof raw==='string'){
+    try{raw=JSON.parse(raw);}catch(_){raw={};}
+  }
+  if(!raw||typeof raw!=='object'||Array.isArray(raw))return {};
+  return Object.fromEntries(Object.entries(raw).map(([uf,list])=>{
+    const key=String(uf||'').trim().toUpperCase();
+    const values=Array.isArray(list)?list:[list];
+    return [key,[...new Set(values.map(city=>String(city??'').trim()).filter(Boolean))]];
+  }).filter(([uf,list])=>uf&&list.length));
+}
+function normalizeSurveyGeo(data){
+  const cidades=normalizeGeoCities(data?.cidades);
+  const estados=normalizeGeoStates(data?.estados);
+  Object.keys(cidades).forEach(uf=>{if(!estados.includes(uf))estados.push(uf);});
+  return {estados,cidades};
+}
+
 function blankSurveyData(){
   return {name:'',tipo:'Eleitoral / intenção de voto',dataIni:'',dataFim:'',abrangencia:'estadual',estados:[],cidades:{},
     pop:1000000,err:'0.03',conf:'1.96',prop:50,price:5,priceRemote:8,clientPrice:12,clientes:[],
@@ -2203,7 +2235,7 @@ function surveyRowToSnapshot(row,questionRows,clientCompanyNames,teamNames){
   return {
     id:row.id,
     name:row.name,tipo:row.tipo||'',dataIni:row.data_ini||'',dataFim:row.data_fim||'',
-    abrangencia:row.abrangencia||'estadual',estados:row.estados||[],cidades:row.cidades||{},
+    abrangencia:row.abrangencia||'estadual',estados:normalizeSurveyGeo(row).estados,cidades:normalizeSurveyGeo(row).cidades,
     pop:row.populacao||0,
     err:row.margem_erro!=null?String(row.margem_erro):'0.03',
     conf:row.nivel_confianca!=null?String(row.nivel_confianca):'1.96',
@@ -2504,6 +2536,9 @@ function wizSave(){
     const tipoEl=document.getElementById('w-tipo');if(tipoEl)WIZ.data.tipo=tipoEl.value;
     if(g('w-data-ini')!=null)WIZ.data.dataIni=g('w-data-ini');
     if(g('w-data-fim')!=null)WIZ.data.dataFim=g('w-data-fim');
+    const abrangenciaEl=document.getElementById('w-abrangencia');
+    if(abrangenciaEl)WIZ.data.abrangencia=abrangenciaEl.value||'estadual';
+    wizNormalizeGeoForScope();
     if(g('w-orientation-template')!=null)WIZ.data.orientationMessage=g('w-orientation-template');
   }
   if(WIZ.step===3){
@@ -2598,8 +2633,15 @@ function wizGeoRenderCidades(){
   }
 }
 function wizAbrangenciaChange(v){
-  const cfg=ABRANGENCIA_CFG[v]||ABRANGENCIA_CFG.estadual;
-  WIZ.data.abrangencia=v;
+  WIZ.data.abrangencia=v||'estadual';
+  wizNormalizeGeoForScope();
+  wizGeoRender();
+}
+function wizNormalizeGeoForScope(){
+  const cfg=ABRANGENCIA_CFG[WIZ.data.abrangencia]||ABRANGENCIA_CFG.estadual;
+  const geo=normalizeSurveyGeo(WIZ.data);
+  WIZ.data.estados=geo.estados;
+  WIZ.data.cidades=geo.cidades;
   if(!cfg.multiState&&WIZ.data.estados.length>1){WIZ.data.estados=WIZ.data.estados.slice(0,1);}
   if(!cfg.multiCity){
     const uf=WIZ.data.estados[0];
@@ -2608,7 +2650,6 @@ function wizAbrangenciaChange(v){
   }else{
     Object.keys(WIZ.data.cidades).forEach(uf=>{if(!WIZ.data.estados.includes(uf))delete WIZ.data.cidades[uf];});
   }
-  wizGeoRender();
 }
 function wizToggleEstado(uf){
   const i=WIZ.data.estados.indexOf(uf);
@@ -3998,10 +4039,11 @@ async function surveyEdit(idx){
   if(settingsError){alert('Não foi possível carregar as orientações desta pesquisa. A edição foi interrompida para não sobrescrever a mensagem atual. Detalhe: '+settingsError.message);return;}
   WIZ.editIndex=idx;WIZ.editArmed=true;WIZ.step=1;
   const linkedClientes=s.clientes||clienteUsers().filter(c=>(c.surveys||[]).includes(s.name)).map(c=>c.company);
+  const geo=normalizeSurveyGeo(s);
   WIZ.data=JSON.parse(JSON.stringify({
     name:s.name,
     tipo:s.tipo||'Eleitoral / intenção de voto',dataIni:s.dataIni||'',dataFim:s.dataFim||'',
-    abrangencia:s.abrangencia||'estadual',estados:s.estados||[],cidades:s.cidades||{},
+    abrangencia:s.abrangencia||'estadual',estados:geo.estados,cidades:geo.cidades,
     pop:s.pop,err:s.err,conf:s.conf,prop:s.prop,price:s.price,priceRemote:s.priceRemote,clientes:linkedClientes,
     formStarted:s.formStarted!==false,formApprovalRequired:!!s.formApprovalRequired,questions:s.questions||[],clientPrice:s.clientPrice!=null?s.clientPrice:12,quotas:s.quotas||{},quotaOff:s.quotaOff||{},remote:s.remote||{},clientReleaseById:s.clientReleaseById||{},minimumCollectionSeconds:s.minimumCollectionSeconds||null,
     orientationMessage:settings?.orientation_message_template||surveyInitialOrientationDefaultTemplate()

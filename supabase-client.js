@@ -10,6 +10,7 @@ const SUPABASE_URL = 'https://soejywbqjgqsrluhbyit.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_-OZqiZaw-SfAqNY4SppQKw_USrZiOqa';
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+window.PP_SUPABASE_CLIENT = sb;
 
 /* Cliente "descartável", sem sessão persistida — usado só para criar o login
    (auth.signUp) de um novo usuário sem derrubar a sessão de quem está

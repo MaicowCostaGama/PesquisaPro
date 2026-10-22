@@ -55,6 +55,9 @@ const NAV_META={
 let CURRENT_PROFILE=null; // linha da tabela "profiles" do usuário logado
 const APP_BUILD_VERSION=document.querySelector('meta[name="pesquisapro-app-version"]')?.content||'20261021182300';
 let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCHER_UPDATE_TIMER=null,RESEARCHER_VERSION_MONITOR=null,RESEARCHER_UPDATE_CHECKING=false;
+function isCollectionTestUser(profile=CURRENT_PROFILE){
+  return profile?.role==='pesq'&&profile?.status==='ativo'&&profile?.is_collection_test_user===true;
+}
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
 let RESEARCHER_PROFILE_CITIES_LOADED=false;
@@ -440,10 +443,10 @@ async function afterLogin(user){
   PUSH_STATUS='unknown';PUSH_STATUS_LOADING=false;PUSH_SCHEMA_MISSING=false;PUSH_SW_REGISTRATION=null;RESEARCHER_ALERT_PREFS={email_enabled:false,push_enabled:false};RESEARCHER_ALERT_PREFS_LOADED=false;RESEARCHER_ALERT_PREFS_LOADING=false;RESEARCHER_ALERT_PREFS_SAVING=false;RESEARCHER_ALERT_PREFS_SCHEMA_MISSING=false;RESEARCHER_ALERT_PREFS_ERROR=false;MY_COMMUNICATIONS=[];MY_COMMUNICATIONS_LOADED=false;MY_COMMUNICATIONS_LOADING=false;MY_SURVEY_RESEARCHER_MESSAGES=[];MY_SURVEY_RESEARCHER_MESSAGES_LOADED=false;MY_SURVEY_RESEARCHER_MESSAGES_LOADING=false;MY_SURVEY_RESEARCHER_MESSAGES_SCHEMA_MISSING=false;MY_SURVEY_RESEARCHER_MESSAGES_LAST_LOADED=0;MY_SURVEY_RESEARCHER_MESSAGES_LOAD_ERROR=false;
   ACTIVE_CAMPAIGN_ID=null;CLIENT_SURVEY_VIEW_ID=null;CLIENT_SURVEY_FILTER='all';
   PAYMENTS=[];PAYMENTS_LOADED=false;PAYMENTS_LOADING=false;PAYMENT_RECEIPTS=[];PAYMENT_RECEIPTS_LOADED=false;PAYMENT_RECEIPTS_LOADING=false;PAYMENT_RECEIPTS_SCHEMA_MISSING=false;PAYMENT_RECEIPTS_DELETE_SCHEMA_MISSING=false;
-  const profileFields='id,name,email,phone,role,status,cpf,cpf_cnpj,pf_pj,birth,cidade,rua,numero,cep,contact_person,doc_url,doc_foto_url,doc_comprovante_url,pix_key,pix_doc,pix_bank,pix_ag,pix_acc,results_released,approved_at,commission_rate,commission_rate_with_indicator,recruiter_code,recruiter_capture_value,badge_public_token,badge_photo_path';
+  const profileFields='id,name,email,phone,role,status,cpf,cpf_cnpj,pf_pj,birth,cidade,rua,numero,cep,contact_person,doc_url,doc_foto_url,doc_comprovante_url,pix_key,pix_doc,pix_bank,pix_ag,pix_acc,results_released,approved_at,commission_rate,commission_rate_with_indicator,recruiter_code,recruiter_capture_value,badge_public_token,badge_photo_path,is_collection_test_user';
   let {data:profile,error}=await sb.from('profiles').select(profileFields).eq('id',user.id).single();
-  if(error && /badge_public_token|badge_photo_path|column/i.test(error.message||'')){
-    const fallbackFields=profileFields.replace(',badge_public_token,badge_photo_path','');
+  if(error && /badge_public_token|badge_photo_path|is_collection_test_user|column/i.test(error.message||'')){
+    const fallbackFields=profileFields.replace(',badge_public_token,badge_photo_path,is_collection_test_user','');
     const fallback=await sb.from('profiles').select(fallbackFields).eq('id',user.id).single();
     profile=fallback.data;error=fallback.error;
   }
@@ -2500,7 +2503,7 @@ function surveySample(s){
    estiver carregada (collection_events reais), usa a contagem de verdade;
    antes disso cai no valor gravado na própria pesquisa (histórico/seed). */
 function surveyCollectedCount(s){
-  if(COLLECT_EVENTS_LOADED)return COLLECT_EVENTS.filter(e=>e.surveyId===s.id&&e.status==='valid').length;
+  if(COLLECT_EVENTS_LOADED)return COLLECT_EVENTS.filter(e=>e.surveyId===s.id&&e.status==='valid'&&!e.calibration).length;
   return s.collected||0;
 }
 const STATUS_PILL={
@@ -4953,7 +4956,7 @@ function collectionOrientationCountMarkup(name){
 function collectionTeamRows(s,team){
   return team.length?team.map(name=>{
     const user=collectionOrientationResearcher(name),phone=user?.phone||'';
-    const validCount=COLLECT_EVENTS_LOADED?eventsForSurveyIdx(COLLECT_IDX).filter(e=>e.name===name&&e.status==='valid').length:null;
+    const validCount=COLLECT_EVENTS_LOADED?eventsForSurveyIdx(COLLECT_IDX).filter(e=>e.name===name&&e.status==='valid'&&!e.calibration).length:null;
     const wa='https://wa.me/'+whatsappDigits(phone);
     return `<tr>
       <td><div style="display:flex;align-items:center;gap:9px"><div class="avatar" style="width:28px;height:28px;font-size:11px">${esc(initialsOf(name))}</div>${esc(name)}</div></td>
@@ -5311,7 +5314,7 @@ function collectEvolutionLabel(key,mode){
   return mode==='month'?date.toLocaleDateString('pt-BR',{month:'short',year:'numeric'}).replace('.',''):date.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'});
 }
 function collectEvolutionSeries(idx,mode){
-  const valid=eventsForSurveyIdx(idx).filter(event=>event.status==='valid'&&Number.isFinite(Number(event.ts)));
+  const valid=eventsForSurveyIdx(idx).filter(event=>event.status==='valid'&&!event.calibration&&Number.isFinite(Number(event.ts)));
   const counts=new Map();
   valid.forEach(event=>{const key=collectEvolutionKey(event.ts,mode);counts.set(key,(counts.get(key)||0)+1);});
   const keys=[...counts.keys()].sort();
@@ -5539,7 +5542,7 @@ function collectStatusCounts(idx){
   const s=SURVEYS[idx];if(!s)return{valid:0,rejected:0,loaded:false};
   if(!COLLECT_EVENTS_LOADED)return{valid:surveyCollectedCount(s),rejected:0,loaded:false};
   const events=eventsForSurveyIdx(idx);
-  return {valid:events.filter(event=>event.status==='valid').length,rejected:events.filter(event=>event.status==='rejected').length,loaded:true};
+  return {valid:events.filter(event=>event.status==='valid'&&!event.calibration).length,rejected:events.filter(event=>event.status==='rejected'&&!event.calibration).length,loaded:true};
 }
 function refreshCollectCount(idx){
   const s=SURVEYS[idx];if(!s)return;
@@ -6131,6 +6134,7 @@ PAGES['app-collect']=()=>{
   <div class="collect-app-grid">
     <div class="card collect-app-main">
       <div id="acollectSurveyLabelWrap" class="card-t" style="margin-bottom:10px">Pesquisa: <span id="acollectSurveyLabel">—</span></div>
+      ${isCollectionTestUser()?'<div class="collection-test-banner" role="status"><strong>Modo de teste autorizado</strong><span>Esta entrevista serve apenas para validar o formulário. Ela será marcada como calibração e não entrará em metas, pagamentos ou resultados.</span></div>':''}
       <div id="geoStatus" class="offline-banner">🛰️ Verificando localização…</div>
       <div id="acollectSurveyPicker"></div>
       <div id="acollectQuotas"><div class="empty" style="padding:10px 0">Carregando cotas…</div></div>
@@ -6293,13 +6297,13 @@ async function acollectValidateLocation(){
   if(!s||!Number.isFinite(GEO.lat)||!Number.isFinite(GEO.lng))return {ok:false,message:'A localização atual não está disponível. Aguarde o GPS ficar ativo e tente novamente.'};
   const previous=acollectPreviousCollection(s.id);
   const distance=previous?distMeters(GEO.lat,GEO.lng,previous.lat,previous.lng):null;
-  if(distance!=null&&distance<15){
+  if(!isCollectionTestUser()&&distance!=null&&distance<15){
     ACOLLECT_LOCATION_CHECK={status:'blocked',city:'',state:'',formatted:'',distanceM:distance};
     return {ok:false,message:COLLECT_TOO_CLOSE_MESSAGE,detail:'Distância calculada: '+fmtDist(distance)+' da coleta anterior desta pesquisa.'};
   }
   const {hasTargets}=acollectSurveyHasAreaTargets(s);
   let place={city:'',state:'',formatted:''};
-  if(hasTargets){
+  if(hasTargets&&!isCollectionTestUser()){
     try{place=await acollectReverseGeocodeCurrentLocation();}
     catch(ex){
       ACOLLECT_LOCATION_CHECK={status:'blocked',city:'',state:'',formatted:'',distanceM:distance};
@@ -6348,11 +6352,13 @@ function stopAcollectQuotaLive(){
   if(ACOLLECT_QUOTA_TIMER){clearInterval(ACOLLECT_QUOTA_TIMER);ACOLLECT_QUOTA_TIMER=null;}
 }
 
-/* pesquisas em campo onde este pesquisador está mesmo na equipe — o filtro
-   por nome é o que garante isso no ambiente de teste offline (que não
-   aplica RLS de verdade); em produção o RLS já restringe isso sozinho */
+/* Pesquisas em campo onde este pesquisador está mesmo na equipe. O usuário
+   autorizado para teste recebe um conjunto separado: pode abrir qualquer
+   pesquisa não arquivada com formulário iniciado, mas todas as entrevistas
+   são marcadas como calibração e ficam fora de metas, pagamentos e relatórios. */
 function acollectMySurveys(){
   if(!CURRENT_PROFILE)return[];
+  if(isCollectionTestUser())return SURVEYS.filter(s=>!s.archivedAt&&['rascunho','campo'].includes(s.status)&&s.formStarted===true);
   return SURVEYS.filter(s=>!s.archivedAt&&s.status==='campo'&&(s.team||[]).includes(CURRENT_PROFILE.name));
 }
 function renderAcollectSurveyPicker(){
@@ -6361,7 +6367,9 @@ function renderAcollectSurveyPicker(){
   if(!wrap)return;
   const mine=acollectMySurveys();
   if(!mine.length){
-    wrap.innerHTML='<div class="empty" style="padding:10px 0">Você não está atribuído a nenhuma pesquisa em campo no momento.</div>';
+    wrap.innerHTML=isCollectionTestUser()
+      ?'<div class="empty" style="padding:10px 0">Nenhuma pesquisa com formulário pronto para teste está disponível no momento.</div>'
+      :'<div class="empty" style="padding:10px 0">Você não está atribuído a nenhuma pesquisa em campo no momento.</div>';
     ACOLLECT_SURVEY_ID=null;
     const quotasEl=document.getElementById('acollectQuotas');if(quotasEl)quotasEl.innerHTML='';
     if(lbl)lbl.textContent='—';
@@ -6427,7 +6435,7 @@ function renderAcollectQuotas(){
     '<div style="font-size:11px;color:var(--ink3);margin-bottom:10px">Toque numa cota disponível para escolher · cotas já preenchidas ficam bloqueadas automaticamente</div>'+
     ACOLLECT_QUOTA_LIST.map((q,qi)=>{
       const done=ACOLLECT_QUOTA_COUNTS[q.label]||0;
-      const full=done>=q.target;
+      const full=done>=q.target&&!isCollectionTestUser();
       const selected=ACOLLECT_SELECTED_QUOTA===q.label;
       const pct=Math.min(100,Math.round(done/q.target*100));
       const color=full?'var(--teal)':'var(--accent)';
@@ -7036,7 +7044,7 @@ async function acollectStart(){
     if(btn){btn.disabled=true;btn.textContent='Verificando cota…';}
     ACOLLECT_QUOTA_COUNTS=await loadQuotaCounts(ACOLLECT_SURVEY_ID);
     const doneNow=ACOLLECT_QUOTA_COUNTS[quotaEntry.label]||0;
-    if(doneNow>=quotaEntry.target){
+    if(doneNow>=quotaEntry.target&&!isCollectionTestUser()){
       ACOLLECT_SELECTED_QUOTA=null;
       renderAcollectQuotas();
       alert('Essa cota acabou de bater a meta (preenchida agora há pouco). Escolha outra cota disponível.');
@@ -7178,6 +7186,7 @@ async function acollectSubmit(){
   const elapsedSeconds=Math.max(0,Math.round(elapsedMs/1000));
   const flags=[];
   if(elapsedMs<ACOLLECT_MIN_SECONDS*1000)flags.push('Tempo de aplicação muito curto');
+  if(isCollectionTestUser())flags.push('Coleta de teste autorizada — calibração');
   const quotaLabel=ACOLLECT_SELECTED_QUOTA||null;
   const eventPayload={
     survey_id:ACOLLECT_SURVEY_ID,
@@ -7191,7 +7200,7 @@ async function acollectSubmit(){
     synced:true,
     flags,
     status:'valid',
-    is_calibration:false,
+    is_calibration:isCollectionTestUser(),
   };
   if(ACOLLECT_RECORDING_FEATURE_AVAILABLE===true){
     eventPayload.recording_reservation_id=ACOLLECT_RECORDING_RESERVATION_ID;
@@ -8981,7 +8990,7 @@ function profileRowToUser(row){
   if(row.role==='cliente')return {...base,company:row.name,cpfCnpj:row.cpf_cnpz||row.cpf_cnpj||'',pfpj:row.pf_pj||'pj',birth:row.birth||'',
     contact:row.contact_person||'',cidade:row.cidade||'',rua:row.rua||'',numero:row.numero||'',cep:row.cep||'',
     surveys:[],resultsReleased:!!row.results_released};
-  if(row.role==='pesq')return {...base,cpf:row.cpf||'',birth:row.birth||'',escolaridade:row.escolaridade||'',cidade:row.cidade||'',rua:row.rua||'',numero:row.numero||'',cep:row.cep||'',
+  if(row.role==='pesq')return {...base,isCollectionTestUser:row.is_collection_test_user===true,cpf:row.cpf||'',birth:row.birth||'',escolaridade:row.escolaridade||'',cidade:row.cidade||'',rua:row.rua||'',numero:row.numero||'',cep:row.cep||'',
     docFoto:row.doc_foto_url||'',docComprovante:row.doc_comprovante_url||'',
     cidadesAtuacao:(row.profile_cidades_atuacao||[]).map(c=>c.cidade),
     pixKey:row.pix_key||'',pixDoc:row.pix_doc||'',pixBank:row.pix_bank||'',pixAg:row.pix_ag||'',pixAcc:row.pix_acc||''};
@@ -9030,8 +9039,8 @@ function loadUsersIfNeeded(options={}){
   const request=(async()=>{
     let loaded=false;
     try{
-      let result=await sb.from('profiles').select('id,name,email,phone,role,status,cpf,cpf_cnpj,pf_pj,birth,escolaridade,cidade,rua,numero,cep,contact_person,doc_url,doc_foto_url,doc_comprovante_url,pix_key,pix_doc,pix_bank,pix_ag,pix_acc,results_released,approved_at,commission_rate,commission_rate_with_indicator,recruiter_code,recruiter_capture_value,profile_cidades_atuacao(cidade)').order('created_at',{ascending:false});
-      if(result.error&&/escolaridade|schema cache|column .* does not exist/i.test(result.error.message||'')){
+      let result=await sb.from('profiles').select('id,name,email,phone,role,status,cpf,cpf_cnpj,pf_pj,birth,escolaridade,cidade,rua,numero,cep,contact_person,doc_url,doc_foto_url,doc_comprovante_url,pix_key,pix_doc,pix_bank,pix_ag,pix_acc,results_released,approved_at,commission_rate,commission_rate_with_indicator,recruiter_code,recruiter_capture_value,is_collection_test_user,profile_cidades_atuacao(cidade)').order('created_at',{ascending:false});
+      if(result.error&&/escolaridade|is_collection_test_user|schema cache|column .* does not exist/i.test(result.error.message||'')){
         PROFILE_SCHOOLING_SCHEMA_MISSING=true;
         result=await sb.from('profiles').select('id,name,email,phone,role,status,cpf,cpf_cnpj,pf_pj,birth,cidade,rua,numero,cep,contact_person,doc_url,doc_foto_url,doc_comprovante_url,pix_key,pix_doc,pix_bank,pix_ag,pix_acc,results_released,approved_at,commission_rate,commission_rate_with_indicator,recruiter_code,recruiter_capture_value,profile_cidades_atuacao(cidade)').order('created_at',{ascending:false});
       }
@@ -11105,7 +11114,7 @@ PAGES['my-earnings']=()=>{
   const rowsData=participatedSurveyIds.map(surveyId=>{
     const p=paymentBySurvey.get(surveyId)||(()=>{
       const events=COLLECT_EVENTS.filter(event=>event.researcherId===myId&&event.surveyId===surveyId);
-      return {id:null,surveyId,researcherId:myId,name:CURRENT_PROFILE?.name||'',valid:events.filter(event=>event.status==='valid').length,rejected:events.filter(event=>event.status==='rejected').length,status:'pendente'};
+      return {id:null,surveyId,researcherId:myId,name:CURRENT_PROFILE?.name||'',valid:events.filter(event=>event.status==='valid'&&!event.calibration).length,rejected:events.filter(event=>event.status==='rejected'&&!event.calibration).length,status:'pendente'};
     })();
     const s=SURVEYS.find(x=>x.id===p.surveyId);
     const archived=!!s?.archivedAt||!s;

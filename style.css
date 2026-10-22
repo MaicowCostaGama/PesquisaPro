@@ -2699,3 +2699,10 @@ body.system-message-gate-open{overflow:hidden}
 .acollect-notice-gate-video-status{margin:9px 0 0;color:#5d6e81;font-size:12px;line-height:1.45}
 .acollect-notice-gate-video-status.is-ready{color:#116b5d;font-weight:700}
 @media(max-width:540px){.acollect-notice-gate-video{max-height:220px}.acollect-notice-gate-training{padding:11px}}
+
+/* v211 — modo de teste autorizado para coleta */
+.collection-test-banner{display:flex;align-items:flex-start;gap:10px;margin:0 0 12px;padding:11px 13px;border:1px solid #bfdbfe;border-radius:12px;background:#eff6ff;color:#1e3a8a;font-size:12px;line-height:1.45}
+.collection-test-banner::before{content:'🧪';font-size:17px;line-height:1.2}
+.collection-test-banner strong{display:block;font-size:12.5px;color:#1d4ed8}
+.collection-test-banner span{display:block;color:#1e40af}
+@media(max-width:760px){.collection-test-banner{font-size:11.5px;padding:10px 11px}}

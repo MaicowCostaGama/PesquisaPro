@@ -2706,3 +2706,20 @@ body.system-message-gate-open{overflow:hidden}
 .collection-test-banner strong{display:block;font-size:12.5px;color:#1d4ed8}
 .collection-test-banner span{display:block;color:#1e40af}
 @media(max-width:760px){.collection-test-banner{font-size:11.5px;padding:10px 11px}}
+
+/* v214 — contenção responsiva da coleta em celulares e Safari com modo desktop */
+@media (max-width:860px), (hover:none) and (pointer:coarse){
+  #app.show{grid-template-columns:minmax(0,1fr);grid-template-rows:60px minmax(0,1fr)}
+  .main{width:100%;max-width:100%;min-width:0;padding:16px 12px;overflow-x:hidden}
+  #main>.page{width:100%;max-width:100%;min-width:0;overflow-x:hidden}
+  .collect-app-grid{grid-template-columns:minmax(0,1fr);width:100%;min-width:0;gap:12px}
+  .collect-app-grid>*,.collect-app-main{width:100%;max-width:100%;min-width:0}
+  .collection-test-banner{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:start;gap:8px}
+  .collection-test-banner strong,.collection-test-banner span{grid-column:2;min-width:0;overflow-wrap:anywhere;word-break:normal}
+  #acollectSurveyLabelWrap,#acollectSurveyPicker,#acollectQuotas,#acollectForm,#acollectRecording,#acollectMsg,#geoHint{width:100%;max-width:100%;min-width:0;overflow-wrap:anywhere}
+  #acollectSurveyLabelWrap{white-space:normal}
+  .offline-banner,.online-banner{min-width:0;overflow-wrap:anywhere}
+  .quota-choice>div{min-width:0}
+  .quota-choice>div>span:first-child{min-width:0;overflow-wrap:anywhere}
+  .collect-step-hint{display:flex;flex-direction:column;gap:4px;min-width:0;line-height:1.45}
+}

@@ -6,6 +6,8 @@
   'use strict';
   const MAX_SUGGESTIONS=20;
   const MAX_REMOTE_RESULTS=40;
+  const REMOTE_PAGE_SIZE=1000;
+  const REMOTE_MAX_ROWS=10000;
   const queries=new Map();
   const sources=new Map();
   const remoteResults=new Map();
@@ -48,26 +50,27 @@
   function clearQuery(mode,qid,fieldIndex){queries.delete(key(mode,qid,fieldIndex));remoteResults.delete(key(mode,qid,fieldIndex));remoteSequence.set(key(mode,qid,fieldIndex),(remoteSequence.get(key(mode,qid,fieldIndex))||0)+1);}
   function wrapper(mode,qid,fieldIndex){return root.document?.querySelector(`[data-q-autocomplete="${mode}:${qid}:${fieldIndex==null?'':fieldIndex}"]`);}
   function sourceKey(mode,qid,fieldIndex){return key(mode,qid,fieldIndex);}
-  function remotePattern(value){
-    /* Impede que % e _ digitados virem curingas adicionais no ilike. */
-    return `%${String(value??'').replace(/[\\%_]/g,'\\$&')}%`;
-  }
   async function searchRemote(mode,qid,fieldIndex,query){
-    if(!String(query||'').trim()||fieldIndex!=null||!['single','multi'].includes(mode))return;
+    if(normalize(query).length<2||fieldIndex!=null||!['single','multi'].includes(mode))return;
     const client=root.PP_SUPABASE_CLIENT;
     if(!client?.from)return;
     const searchKey=sourceKey(mode,qid,fieldIndex),sequence=(remoteSequence.get(searchKey)||0)+1;
     remoteSequence.set(searchKey,sequence);
     try{
-      const result=await client.from('survey_question_options')
-        .select('label,position')
-        .eq('question_id',String(qid))
-        .ilike('label',remotePattern(query))
-        .order('position',{ascending:true})
-        .limit(MAX_REMOTE_RESULTS);
+      const rows=[];
+      for(let from=0;from<REMOTE_MAX_ROWS;from+=REMOTE_PAGE_SIZE){
+        const result=await client.from('survey_question_options')
+          .select('label,position')
+          .eq('question_id',String(qid))
+          .order('position',{ascending:true})
+          .range(from,from+REMOTE_PAGE_SIZE-1);
+        if(result.error)throw result.error;
+        const page=result.data||[];rows.push(...page);
+        if(page.length<REMOTE_PAGE_SIZE)break;
+        if(remoteSequence.get(searchKey)!==sequence||currentQuery(mode,qid,fieldIndex)!==String(query??''))return;
+      }
       if(remoteSequence.get(searchKey)!==sequence||currentQuery(mode,qid,fieldIndex)!==String(query??''))return;
-      if(result.error)throw result.error;
-      remoteResults.set(searchKey,{query:String(query??''),items:(result.data||[]).map(row=>({label:row.label,index:Number(row.position)}))});
+      remoteResults.set(searchKey,{query:String(query??''),items:rows.map(row=>({label:row.label,index:Number(row.position)}))});
       renderSuggestions(mode,qid,fieldIndex);
     }catch(error){
       if(remoteSequence.get(searchKey)===sequence)remoteResults.set(searchKey,{query:String(query??''),items:[]});
@@ -123,5 +126,5 @@
   function focus(mode,qid,fieldIndex){renderSuggestions(mode,qid,fieldIndex);}
   function select(mode,qid,fieldIndex,label,index){callExisting(mode,qid,fieldIndex,label,index);}
   function clearAll(){queries.clear();sources.clear();remoteResults.clear();remoteSequence.clear();}
-  root.PP_QUESTION_OPTIONS_AUTOCOMPLETE={MAX_SUGGESTIONS,MAX_REMOTE_RESULTS,input,focus,select,clearAll,mount,renderSuggestions,filtered,normalize,searchRemote};
+  root.PP_QUESTION_OPTIONS_AUTOCOMPLETE={MAX_SUGGESTIONS,MAX_REMOTE_RESULTS,REMOTE_PAGE_SIZE,REMOTE_MAX_ROWS,input,focus,select,clearAll,mount,renderSuggestions,filtered,normalize,searchRemote};
 })(window);

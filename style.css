@@ -2723,3 +2723,16 @@ body.system-message-gate-open{overflow:hidden}
   .quota-choice>div>span:first-child{min-width:0;overflow-wrap:anywhere}
   .collect-step-hint{display:flex;flex-direction:column;gap:4px;min-width:0;line-height:1.45}
 }
+
+/* v215 — motivo da reprovação visível para o pesquisador */
+.researcher-rejection-item{padding:13px 0;border-bottom:1px solid var(--line)}
+.researcher-rejection-item:last-child{border-bottom:0}
+.researcher-rejection-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.researcher-rejection-head>div{min-width:0;display:flex;flex-direction:column;gap:2px}
+.researcher-rejection-head b{font-size:13px;color:var(--ink);overflow-wrap:anywhere}
+.researcher-rejection-head div span{font-size:11.5px;color:var(--ink3);overflow-wrap:anywhere}
+.researcher-rejection-reason{display:flex;flex-direction:column;gap:4px;margin-top:10px;padding:10px 12px;border:1px solid #fecaca;border-left:4px solid #dc2626;border-radius:10px;background:#fff7f7;color:#7f1d1d}
+.researcher-rejection-reason span{font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#b42318}
+.researcher-rejection-reason strong{font-size:13px;line-height:1.45;color:#7f1d1d;overflow-wrap:anywhere}
+.researcher-rejection-note{margin-top:7px;color:var(--ink3);font-size:10.5px;line-height:1.45}
+@media(max-width:640px){.researcher-rejection-head{flex-direction:column;gap:7px}.researcher-rejection-head .pill{align-self:flex-start}.researcher-rejection-reason{padding:9px 10px}}

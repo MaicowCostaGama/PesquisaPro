@@ -11262,15 +11262,14 @@ function renderMyRejected(){
   if(!rej.length){el.innerHTML='<div class="empty">Nenhuma coleta reprovada até agora.</div>';return;}
   el.innerHTML=rej.map(e=>{
     const s=SURVEYS.find(x=>x.id===e.surveyId);
-    return `<div style="padding:10px 0;border-bottom:1px solid var(--line)">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-        <b style="font-size:13px">${esc(s?s.name:'Pesquisa')}</b>
-        <span class="pill pill-red">✕ Reprovada</span>
-      </div>
-      <div style="font-size:11.5px;color:var(--ink3);margin-top:2px">${esc(e.cota)} · ${new Date(e.ts).toLocaleString('pt-BR')}</div>
-      <div style="font-size:12.5px;margin-top:4px"><b>Motivo:</b> ${esc(e.rejectReason||'—')}</div>
-      ${String(e.rejectReason||'').toLocaleLowerCase('pt-BR').includes('tempo mínimo')||String(e.rejectReason||'').toLocaleLowerCase('pt-BR').includes('tempo minimo')?'<div class="collection-rejection-tag">Regra automática de qualidade do formulário</div>':''}
-    </div>`;
+    const reason=String(e.rejectReason||'').trim();
+    const automatic=/tempo mínimo|tempo minimo/i.test(reason);
+    return `<article class="researcher-rejection-item">
+      <div class="researcher-rejection-head"><div><b>${esc(s?s.name:'Pesquisa')}</b><span>${esc(e.cota||'Sem cota')} · ${new Date(e.ts).toLocaleString('pt-BR')}</span></div><span class="pill pill-red">✕ Reprovada</span></div>
+      <div class="researcher-rejection-reason"><span>Por que foi reprovada?</span><strong>${esc(reason||'Motivo ainda não informado pela auditoria.')}</strong></div>
+      ${automatic?'<div class="collection-rejection-tag">Regra automática de qualidade do formulário</div>':''}
+      <div class="researcher-rejection-note">Confira este motivo antes de realizar uma nova entrevista. Em caso de dúvida, procure a coordenação.</div>
+    </article>`;
   }).join('');
 }
 

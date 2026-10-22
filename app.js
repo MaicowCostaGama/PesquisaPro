@@ -2444,8 +2444,42 @@ async function syncSurveyTeam(surveyId,researcherNames){
     if(error)throw new Error('Não foi possível salvar a equipe: '+error.message);
   }
 }
-const SURVEY_JOIN_SELECT_LEGACY='*, survey_questions(*, survey_question_options(*)), survey_clients(client_id, results_released), survey_team(researcher_id)';
-const SURVEY_JOIN_SELECT='*, survey_questions(*, survey_question_options(*), survey_question_fields(*)), survey_clients(client_id, results_released), survey_team(researcher_id)';
+const SURVEY_JOIN_SELECT_LEGACY='*, survey_questions(*), survey_clients(client_id, results_released), survey_team(researcher_id)';
+const SURVEY_JOIN_SELECT='*, survey_questions(*, survey_question_fields(*)), survey_clients(client_id, results_released), survey_team(researcher_id)';
+/* O PostgREST limita cada resposta ao lote configurado do projeto (comum:
+   1.000 linhas). Opções importadas do Excel podem chegar a 10.000 por
+   pergunta; por isso são carregadas separadamente e paginadas, em vez de
+   depender de um relacionamento aninhado que corta a lista no primeiro lote. */
+const SURVEY_OPTIONS_PAGE_SIZE=1000;
+const SURVEY_OPTIONS_MAX_ROWS=100000;
+async function loadSurveyQuestionOptions(questionRows){
+  const ids=[...new Set((questionRows||[]).map(row=>row?.id).filter(Boolean).map(String))];
+  const byQuestion=new Map(ids.map(id=>[id,[]]));
+  if(!ids.length)return byQuestion;
+  let from=0,total=0;
+  while(true){
+    const result=await sb.from('survey_question_options')
+      .select('*')
+      .in('question_id',ids)
+      .order('question_id',{ascending:true})
+      .order('position',{ascending:true})
+      .range(from,from+SURVEY_OPTIONS_PAGE_SIZE-1);
+    if(result.error)throw new Error('Não foi possível carregar as opções das perguntas: '+result.error.message);
+    const rows=result.data||[];
+    rows.forEach(row=>{const list=byQuestion.get(String(row.question_id));if(list)list.push(row);});
+    total+=rows.length;
+    if(rows.length<SURVEY_OPTIONS_PAGE_SIZE)break;
+    from+=rows.length;
+    if(total>=SURVEY_OPTIONS_MAX_ROWS)throw new Error('A pesquisa possui opções demais para carregar com segurança.');
+  }
+  return byQuestion;
+}
+function attachSurveyQuestionOptions(rows,byQuestion){
+  (rows||[]).forEach(row=>(row.survey_questions||[]).forEach(question=>{
+    question.survey_question_options=byQuestion.get(String(question.id))||[];
+  }));
+  return rows||[];
+}
 function idsToClientCompanies(ids){return ids.map(id=>{const c=USERS.find(u=>u.id===id);return c?(c.company||c.name):null;}).filter(Boolean);}
 function idsToResearcherNames(ids){return ids.map(id=>{const u=USERS.find(x=>x.id===id);return u?u.name:null;}).filter(Boolean);}
 async function reloadSurveySnapshot(surveyId){
@@ -2457,6 +2491,8 @@ async function reloadSurveySnapshot(surveyId){
   const {data,error}=result;
   if(error||!data)throw new Error(error?error.message:'Pesquisa não encontrada depois de salvar.');
   const qRows=(data.survey_questions||[]).slice().sort((a,b)=>a.position-b.position);
+  const optionMap=await loadSurveyQuestionOptions(qRows);
+  attachSurveyQuestionOptions([data],optionMap);
   const companyNames=idsToClientCompanies((data.survey_clients||[]).map(sc=>sc.client_id));
   const teamNames=idsToResearcherNames((data.survey_team||[]).map(t=>t.researcher_id));
   return surveyRowToSnapshot(data,qRows,companyNames,teamNames);
@@ -2473,7 +2509,11 @@ async function loadSurveysIfNeeded(){
     }
     const {data,error}=result;
     if(error)throw new Error(error.message||'Não foi possível consultar as pesquisas.');
-    SURVEYS=(data||[]).map(row=>{
+    const surveyRows=data||[];
+    const allQuestionRows=surveyRows.reduce((all,row)=>all.concat(row.survey_questions||[]),[]);
+    const optionMap=await loadSurveyQuestionOptions(allQuestionRows);
+    attachSurveyQuestionOptions(surveyRows,optionMap);
+    SURVEYS=surveyRows.map(row=>{
       const qRows=(row.survey_questions||[]).slice().sort((a,b)=>a.position-b.position);
       const companyNames=idsToClientCompanies((row.survey_clients||[]).map(sc=>sc.client_id));
       const teamNames=idsToResearcherNames((row.survey_team||[]).map(t=>t.researcher_id));

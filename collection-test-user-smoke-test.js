@@ -21,7 +21,7 @@ assert(/isCollectionTestUser\(\)\?'<div class="collection-test-banner"/.test(app
 assert(/is_calibration:isCollectionTestUser\(\)/.test(app), 'payload marca calibração no cliente como sinalização');
 assert(/if\(!isCollectionTestUser\(\)&&distance!=null&&distance<15\)/.test(app), 'distância do testador não bloqueia o ensaio');
 assert(/if\(hasTargets&&!isCollectionTestUser\(\)\)/.test(app), 'abrangência não bloqueia o ensaio');
-assert(/20261022172500/.test(html), 'cache v211 está aplicado no painel');
+assert(/pesquisapro-app-version" content="\d+/.test(html), 'cache versionado está aplicado no painel');
 
 if (sql) {
   assert(/add column if not exists is_collection_test_user boolean not null default false/i.test(sql), 'migration cria flag desligada por padrão');

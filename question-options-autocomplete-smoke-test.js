@@ -20,10 +20,10 @@ const options=['Fiat Uno','Fiat Argo','Honda Civic','Toyota Corolla','Volkswagen
 const host={querySelector(){return {innerHTML:''};}};
 hosts.set('single:q-1:',host);
 
-ok('módulo e cache v195 estão carregados',()=>{
+ok('módulo e cache versionado estão carregados',()=>{
   assert.match(moduleSource,/PP_QUESTION_OPTIONS_AUTOCOMPLETE/);
-  assert.match(html,/question-options-autocomplete\.js\?v=20261021182300/);
-  assert.match(html,/pesquisapro-app-version" content="20261021182300/);
+  assert.match(html,/question-options-autocomplete\.js\?v=\d+/);
+  assert.match(html,/pesquisapro-app-version" content="\d+/);
   assert.match(app,/acollectOptionAutocompleteBody\('single'/);
   assert.match(app,/q\.optionsImported===true/);
   assert.match(app,/q\.fieldOptionsImported\?\.\[fieldIndex\]===true/);

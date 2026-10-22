@@ -4148,7 +4148,7 @@ function surveyInvitationGroupText(groupLink,compact=false){
     :'O link do grupo WhatsApp será disponibilizado no seu painel antes da primeira coleta.';
 }
 function surveyInvitationSiteUrl(){return 'https://www.pesquisa-pro.com/app.html';}
-function surveyTrainingVideoUrl(){return 'https://files.manuscdn.com/user_upload_by_module/session_file/310519663067279939/eRSQOsqQYTCEppwp.mp4';}
+function surveyTrainingVideoUrl(){return 'https://files.manuscdn.com/user_upload_by_module/session_file/310519663067279939/rPIxhxCeZodagzpK.mp4';}
 function whatsappInviteCountMarkup(invite){
   if(!invite)return '';
   const count=Math.max(0,Number(invite.whatsapp_sent_count)||0);
@@ -4215,30 +4215,39 @@ function surveyInvitationWhatsappMessage(s,u,link,groupLink=''){
     'PesquisaPro — Pesquisa, coleta e auditoria de campo.';
 }
 function surveyInitialOrientationDefaultTemplate(){
-  return 'Olá, {{pesquisador}}! Aqui estão as orientações iniciais da PesquisaPro para a pesquisa "{{pesquisa}}".\n\n'+
-    '*Antes de começar:*\n'+
-    '• Acesse {{site}} e entre no aplicativo PesquisaPro;\n'+
-    '• Selecione a pesquisa e confira a cota disponível antes de iniciar;\n'+
-    '• Mantenha o GPS do celular ativo e permita a localização quando solicitado;\n'+
-    '• Faça a coleta somente dentro da cidade ou região autorizada pela pesquisa. Fora da área, o aplicativo não permitirá iniciar;\n'+
-    '• {{grupo}}\n\n'+
-    '*Regras da coleta:*\n'+
-    '• Aborde somente pessoas dentro do perfil definido no formulário;\n'+
-    '• Leia as perguntas e registre exatamente o que a pessoa responder;\n'+
-    '• Não invente, replique, acelere ou preencha entrevistas sem falar com o entrevistado;\n'+
-    '• O sistema bloqueia o início se a nova coleta estiver a menos de 15 metros da coleta válida anterior desta mesma pesquisa. Coletas de pesquisas diferentes não entram nessa comparação, mas a cidade ou região, o tempo mínimo e as demais regras continuam valendo;\n'+
-    '• Respeite o tempo mínimo calculado para o formulário. Coletas abaixo do mínimo serão rejeitadas e não serão contabilizadas para pagamento;\n'+
-    '• Preserve a privacidade e nunca fotografe documentos;\n\n'+
-    '*Controle de qualidade e confirmação gravada:*\n'+
-    'O georreferenciamento, o horário e os dados da coleta podem ser verificados. Algumas entrevistas solicitarão que, no final, o entrevistado grave com sua voz a confirmação de que a entrevista realmente ocorreu e de que foram feitas todas as perguntas.\n\n'+
-    'Todas as entrevistas realizadas após as 21:00 devem ter gravação de confirmação do entrevistado no final. Explique o pedido com transparência e solicite a autorização antes de gravar.\n\n'+
-    'Lembre-se: alguém pagou pela informação correta e você recebe por coletar esta informação. Quando todas as partes realizam a prática correta, todos ganham.\n\n'+
-    '*Ranking e continuidade dos convites:*\n'+
-    'O aplicativo mantém a aba Seu Ranking, onde você poderá ver sua nota e os motivos do resultado. A nota considera qualidade das respostas (30%), integridade da coleta (30%), duração da entrevista (20%) e distância entre coletas (20%). Notas menores que 80 reduzem a prioridade para novos convites; notas muito baixas podem fazer com que você deixe de ser convidado para novas coletas. O ranking é um indicador de qualidade e não substitui a análise da equipe.\n\n'+
-    'A única forma de continuar recebendo convites para trabalhar é realizar entrevistas de verdade: falar com o entrevistado, registrar respostas fiéis e respeitar o formulário e todos os controles. Entrevistas inventadas, duplicadas ou feitas para burlar as regras podem ser rejeitadas, não gerar pagamento e levar ao desligamento da operação.\n\n'+
-    '*Assista a este vídeo para entender como fazer as coletas corretamente e as regras para serem consideradas aptas:*\n{{video}}\n\n'+
-    'Entrevistas que não respeitem o perfil, a cidade ou região, a distância mínima, o tempo ou as regras poderão ser anuladas e não serão consideradas nos resultados ou no pagamento. A mensagem de reprovação por tempo mínimo é: “Tempo de coleta não corresponde ao tempo mínimo necessário a uma coleta real.” Pesquisadores que insistirem em descumprir as regras ou tentarem burlar os controles poderão ser desligados da operação.\n\n'+
-    'Em caso de dúvida, pare a coleta e fale com a equipe PesquisaPro. Boa coleta: precisa, respeitosa e fiel à opinião do entrevistado.';
+  return `Olá, {{pesquisador}}! Você foi vinculado à pesquisa "{{pesquisa}}", de proteção veicular no Rio de Janeiro. Estas orientações são obrigatórias e devem ser lidas antes da primeira coleta.
+
+*O objetivo da abordagem:*
+• Você está realizando uma pesquisa de opinião, não vendendo proteção veicular. Não prometa cobertura, preço, aprovação ou qualquer benefício; explique a finalidade da pesquisa e respeite a decisão da pessoa.
+• Entreviste somente pessoas reais que estejam dentro do perfil e das cotas informadas. Nunca invente, replique ou preencha uma entrevista sem conversar com o entrevistado.
+
+*Antes de iniciar:*
+• Acesse {{site}}, entre no aplicativo PesquisaPro e leia todos os avisos da pesquisa; confirme a leitura antes de iniciar.
+• Confira a cota disponível e faça a coleta somente dentro da cidade ou região autorizada pela pesquisa. Fora da área, o aplicativo não permitirá iniciar.
+• Mantenha o GPS ativo, permita a localização e siga as orientações do grupo oficial: {{grupo}}
+
+*Como conduzir a entrevista:*
+• Leia cada pergunta exatamente como aparece no formulário, sem resumir, sugerir ou alterar o sentido. Registre fielmente a resposta dada.
+• Seja respeitoso, não pressione o entrevistado e não peça documentos, fotos ou dados desnecessários. Preserve a privacidade.
+• Respeite o tempo mínimo calculado para o formulário. Coletas abaixo do mínimo podem ser rejeitadas e não serão contabilizadas para pagamento.
+• O sistema bloqueia o início se a nova coleta estiver a menos de 15 metros da coleta válida anterior desta mesma pesquisa. Coletas de pesquisas diferentes não entram nessa comparação, mas a cidade ou região, o perfil, o tempo e as cotas continuam valendo.
+
+*Confirmação gravada e regra após 21h:*
+Algumas entrevistas solicitarão que, no final, o entrevistado grave com sua voz a confirmação de que a entrevista realmente ocorreu e de que foram feitas todas as perguntas. Explique o motivo e peça autorização antes de gravar.
+
+Todas as entrevistas realizadas após as 21:00 devem ter gravação de confirmação do entrevistado no final, no fuso de Brasília, limitada a 12 segundos. Após as 21h, sem essa gravação a entrevista não pode ser enviada. Se houver recusa, falha no microfone ou problema técnico, cancele a entrevista ou use um dispositivo compatível. Não tente contornar a regra.
+
+*Envio e auditoria:*
+Antes de enviar, revise as respostas e confirme que a localização está disponível. O georreferenciamento, o horário, a duração e as respostas podem ser verificados em auditoria. Entrevistas reprovadas não entram nos resultados e não serão contabilizadas para pagamento. Quando a duração ficar abaixo do mínimo, o motivo informado será: “Tempo de coleta não corresponde ao tempo mínimo necessário a uma coleta real.”
+
+*Ranking e continuidade:*
+No Seu Ranking, você verá sua nota: respostas 30%, integridade 30%, duração 20% e distância 20%. Notas menores que 80 reduzem a prioridade para novos convites e notas muito baixas podem interromper novos convites. A única forma de continuar recebendo convites para trabalhar é realizar entrevistas de verdade, registrar respostas fiéis e respeitar todos os controles. As coletas poderão ser anuladas, não gerar pagamento e os pesquisadores poderão ser desligados da operação em caso de descumprimento.
+
+*Vídeo obrigatório de treinamento:*
+Assista a este vídeo para entender como fazer as coletas corretamente e as regras para serem consideradas aptas:
+{{video}}
+
+Lembre-se: alguém pagou pela informação correta e você recebe por coletar esta informação. Em caso de dúvida, pare a coleta e fale com a equipe PesquisaPro. Boa coleta, com respeito, precisão e transparência!`;
 }
 function surveyInitialOrientationWhatsappMessage(s,u,groupLink='',template=''){
   const groupLine=groupLink?'Entre no grupo oficial antes da primeira coleta: '+groupLink:'O link do grupo oficial será disponibilizado no seu painel antes da primeira coleta.';
@@ -6536,7 +6545,7 @@ function renderAcollectRecording(){
     el.innerHTML=`<div class="recording-consent-card">
       <div class="recording-consent-title">${ACOLLECT_RECORDING_MANDATORY_AFTER_CUTOFF?'Confirmação final obrigatória após 21h':'Confirmação final de qualidade'}</div>
       <p>Esta entrevista foi selecionada para uma confirmação curta em áudio. Explique ao entrevistado que a gravação não registra o questionário inteiro, será usada somente para verificar se a pesquisa foi realizada corretamente e ficará disponível apenas para a gestão.</p>
-      <p class="recording-prompt">Pergunte: “Você confirma que esta pesquisa foi realizada corretamente e que respondeu às perguntas de forma voluntária?”</p>
+      <p class="recording-prompt"><b>Faça esta pergunta ao entrevistado:</b> “Você aceitaria gravar com sua voz uma confirmação de que eu realizei a pesquisa de verdade? É apenas para avaliarem meu desempenho. Se você aceitar, diga: ‘Confirmo que a pesquisa foi feita de verdade.’”</p>
       <label class="recording-check"><input type="checkbox" id="acollectRecordingConsent" onchange="acollectRecordingConsentChanged(this.checked)"> O entrevistado autorizou a gravação desta confirmação final.</label>
       <div class="recording-consent-actions"><button type="button" class="btn-ghost" onclick="${ACOLLECT_RECORDING_MANDATORY_AFTER_CUTOFF?'acollectCancel()':'acollectRecordingDecline()'}">${ACOLLECT_RECORDING_MANDATORY_AFTER_CUTOFF?'Cancelar entrevista':'Recusar / enviar sem áudio'}</button><button type="button" class="btn-primary" id="acollectRecordingStartBtn" disabled onclick="acollectRecordingStart()">● Gravar confirmação</button></div>
     </div>`;

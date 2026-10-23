@@ -105,6 +105,12 @@ function resetSessionPanelData(){
   APP_DATA_SESSION_REQUESTS.forEach(request=>request.cancel());
   APP_DATA_SESSION_EPOCH++;APP_DATA_SESSION_REQUESTS.clear();
   window.PP_RESEARCHER_DASHBOARD?.reset();
+  window.PP_COLLECTION_DATA?.reset();window.PP_COLLECTION_LOADING?.reset();
+  ACOLLECT_SURVEY_ID=null;ACOLLECT_SELECTED_QUOTA=null;ACOLLECT_START_LOADING=false;
+  ACOLLECT_IN_PROGRESS=false;ACOLLECT_SUBMITTING=false;ACOLLECT_STARTED_AT=null;ACOLLECT_ANSWERS={};
+  ACOLLECT_QUOTA_COUNTS={};ACOLLECT_QUOTA_LIST=[];
+  if(typeof acollectResetRecordingState==='function')acollectResetRecordingState();
+  stopAcollectQuotaLive();
   SURVEYS=[];SURVEYS_LOADED=false;SURVEYS_LOADING=false;SURVEYS_LOAD_ERROR='';
   PAYMENTS=[];PAYMENTS_LOADED=false;PAYMENTS_LOADING=false;
   MY_CONTRACT=null;MY_CONTRACT_LOADED=false;MY_CONTRACT_LOADING=false;
@@ -695,6 +701,7 @@ function go(key){
   });
   if(previousKey!==key&&['users','finance'].includes(key)&&['admin','admpro','coord','gerente'].includes(CURRENT_PROFILE?.role))USERS_LOADED=false;
   if(window.PP_ROUTE_MODULES&&!window.PP_ROUTE_MODULES.prepare(key,previousKey))return;
+  window.PP_COLLECTION_LOADING?.navigate(key,previousKey);
   if(window._beforeRender)window._beforeRender(key);
   document.getElementById('main').innerHTML=PAGES[key]?PAGES[key]():'<div class="empty">Em construção</div>';
   updateCampaignSwitcherButton();
@@ -2518,18 +2525,22 @@ async function insertSurveyQuestionOptionsInBatches(rows){
     if(result.error)throw new Error('Não foi possível salvar as opções: '+result.error.message);
   }
 }
-async function loadSurveyQuestionOptions(questionRows){
+async function loadSurveyQuestionOptions(questionRows,{signal}={}){
   const ids=[...new Set((questionRows||[]).map(row=>row?.id).filter(Boolean).map(String))];
   const byQuestion=new Map(ids.map(id=>[id,[]]));
   if(!ids.length)return byQuestion;
   let from=0,total=0;
   while(true){
-    const result=await sb.from('survey_question_options')
+    if(signal?.aborted)throw new Error('Carregamento do questionário cancelado.');
+    let query=sb.from('survey_question_options')
       .select('*')
       .in('question_id',ids)
       .order('question_id',{ascending:true})
       .order('position',{ascending:true})
       .range(from,from+SURVEY_OPTIONS_PAGE_SIZE-1);
+    if(signal)query=query.abortSignal(signal);
+    const result=await query;
+    if(signal?.aborted)throw new Error('Carregamento do questionário cancelado.');
     if(result.error)throw new Error('Não foi possível carregar as opções das perguntas: '+result.error.message);
     const rows=result.data||[];
     rows.forEach(row=>{const list=byQuestion.get(String(row.question_id));if(list)list.push(row);});
@@ -6228,6 +6239,10 @@ async function auditToggleCalibration(id){
    eletronicamente o contrato-quadro (ver bloco "CONTRATO-QUADRO DO
    PESQUISADOR" logo abaixo) — sem isso, mostra uma tela de bloqueio com
    link para "Meu contrato" em vez do formulário de coleta. */
+function acollectData(){return CURRENT_PROFILE?.role==='pesq'?window.PP_COLLECTION_DATA:null;}
+function acollectCurrentSurvey(surveyId=ACOLLECT_SURVEY_ID){
+  const data=acollectData();return data?data.survey(surveyId):SURVEYS.find(x=>x.id===surveyId);
+}
 PAGES['app-collect']=()=>{
   if(!CURRENT_PROFILE)return head('Coletar (app)','Georreferenciamento obrigatório · envio direto ao servidor')+'<div class="empty">Faça login para coletar.</div>';
   if(!CONTRACT_SETTINGS_LOADED){loadContractSettingsIfNeeded();return head('Coletar (app)','Georreferenciamento obrigatório · envio direto ao servidor')+'<div class="empty">Verificando a versão do contrato…</div>'; }
@@ -6251,6 +6266,7 @@ PAGES['app-collect']=()=>{
       ${isCollectionTestUser()?'<div class="collection-test-banner" role="status"><strong>Modo de teste autorizado</strong><span>Esta entrevista serve apenas para validar o formulário. Ela será marcada como calibração e não entrará em metas, pagamentos ou resultados.</span></div>':''}
       <div id="geoStatus" class="offline-banner">🛰️ Verificando localização…</div>
       <div id="acollectSurveyPicker"></div>
+      <div id="acollectLoadStatus"></div>
       <div id="acollectQuotas"><div class="empty" style="padding:10px 0">Carregando cotas…</div></div>
       <div id="acollectForm"></div>
       <div id="acollectRecording"></div>
@@ -6268,6 +6284,7 @@ PAGES['app-collect']=()=>{
           <li><span class="ck">✓</span>O pesquisador só enxerga e escolhe as cotas desta pesquisa que ainda faltam</li>
           <li><span class="ck">✓</span>Entrevista muito rápida (menos de 1 min entre iniciar e enviar) é sinalizada para a auditoria</li>
           <li><span class="ck">✓</span>Em aproximadamente 20% das entrevistas, o app pode solicitar uma confirmação final curta em áudio, sempre com autorização do entrevistado</li>
+          <li><span class="ck">✓</span>Após 21h, no horário de Brasília, a confirmação gravada do entrevistado no final é obrigatória em todas as entrevistas. Sem áudio, o envio permanece bloqueado.</li>
         </ul>
         <div style="font-size:11px;color:var(--ink3);margin-top:8px">Ainda não implementado: funcionamento 100% offline com fila de sincronização — por enquanto é preciso ter internet no momento de enviar a coleta (o GPS em si funciona sem internet).</div>
       </div>
@@ -6317,6 +6334,7 @@ function surveyQuotas(s){
 
 let ACOLLECT_SURVEY_ID=null,ACOLLECT_QUOTA_COUNTS={},ACOLLECT_QUOTA_LIST=[];
 let ACOLLECT_SELECTED_QUOTA=null,ACOLLECT_IN_PROGRESS=false,ACOLLECT_SUBMITTING=false,ACOLLECT_STARTED_AT=null;
+let ACOLLECT_START_LOADING=false;
 let ACOLLECT_TICK=null;
 let ACOLLECT_ANSWERS={}; /* {questionDbId: {value, locked}} — respostas de verdade da entrevista em andamento */
 let ACOLLECT_RANKING_DRAG=null;
@@ -6333,6 +6351,7 @@ function acollectIsAfterRecordingCutoff(date=new Date()){
   catch(ex){return date.getHours()>=ACOLLECT_RECORDING_CUTOFF_HOUR;}
 }
 function acollectPreviousCollection(surveyId=ACOLLECT_SURVEY_ID){
+  if(acollectData())return acollectData().previous(surveyId);
   const myId=CURRENT_PROFILE?.id;
   if(!myId||!surveyId)return null;
   return COLLECT_EVENTS.filter(event=>event.researcherId===myId&&event.surveyId===surveyId&&event.status!=='rejected'&&Number.isFinite(event.lat)&&Number.isFinite(event.lng))
@@ -6407,7 +6426,8 @@ async function acollectServerStartValidation(s){
   }
 }
 async function acollectValidateLocation(){
-  const s=SURVEYS.find(x=>x.id===ACOLLECT_SURVEY_ID);
+  if(acollectData()&&acollectData().state('previous',ACOLLECT_SURVEY_ID).status!=='ready')return {ok:false,message:'A coleta anterior ainda não pôde ser conferida. Atualize essa verificação antes de iniciar ou enviar.'};
+  const s=acollectCurrentSurvey();
   if(!s||!Number.isFinite(GEO.lat)||!Number.isFinite(GEO.lng))return {ok:false,message:'A localização atual não está disponível. Aguarde o GPS ficar ativo e tente novamente.'};
   const previous=acollectPreviousCollection(s.id);
   const distance=previous?distMeters(GEO.lat,GEO.lng,previous.lat,previous.lng):null;
@@ -6439,6 +6459,7 @@ async function acollectValidateLocation(){
 
 async function initGeoCollect(){
   requestGeo();
+  if(acollectData()){const result=window.PP_COLLECTION_LOADING.mount();startAcollectQuotaLive();return result;}
   if(!SURVEYS_LOADED)await loadSurveysIfNeeded();
   if(!COLLECT_EVENTS_LOADED)await loadCollectEventsIfNeeded();
   renderAcollectSurveyPicker();
@@ -6458,6 +6479,11 @@ function startAcollectQuotaLive(){
     if(!ACOLLECT_SURVEY_ID)return;
     const onKey=document.querySelector('.nav-item.on');
     if(!onKey||onKey.dataset.key!=='app-collect')return; // já saiu da tela — para de bater no banco à toa
+    if(acollectData()){
+      if(ACOLLECT_IN_PROGRESS||ACOLLECT_START_LOADING||acollectData().state('quotas',ACOLLECT_SURVEY_ID).status==='error')return;
+      await acollectData().loadQuotas(ACOLLECT_SURVEY_ID,{force:true}).catch(()=>{});
+      return;
+    }
     ACOLLECT_QUOTA_COUNTS=await loadQuotaCounts(ACOLLECT_SURVEY_ID);
     renderAcollectQuotas();
   },20000);
@@ -6476,6 +6502,7 @@ function acollectMySurveys(){
   return SURVEYS.filter(s=>!s.archivedAt&&s.status==='campo'&&(s.teamIds||[]).includes(CURRENT_PROFILE.id));
 }
 function renderAcollectSurveyPicker(){
+  if(acollectData())return window.PP_COLLECTION_LOADING.picker();
   const wrap=document.getElementById('acollectSurveyPicker');
   const lbl=document.getElementById('acollectSurveyLabel');
   if(!wrap)return;
@@ -6499,11 +6526,12 @@ function renderAcollectSurveyPicker(){
     </select></div>`;
 }
 async function acollectPickSurvey(id){
-  if(ACOLLECT_IN_PROGRESS){alert('Termine ou cancele a entrevista em andamento antes de trocar de pesquisa.');renderAcollectSurveyPicker();return;}
+  if(ACOLLECT_IN_PROGRESS||ACOLLECT_START_LOADING){alert('Aguarde a validação ou termine a entrevista antes de trocar de pesquisa.');renderAcollectSurveyPicker();return;}
   ACOLLECT_SURVEY_ID=id;
   ACOLLECT_SELECTED_QUOTA=null;
   acollectClearTerminationNotice();
   acollectResetRecordingState();
+  if(acollectData())return window.PP_COLLECTION_LOADING.prepare(id);
   renderAcollectSurveyPicker();
   await acollectLoadQuotasForCurrent();
 }
@@ -6517,6 +6545,13 @@ async function loadQuotaCounts(surveyId){
   }catch(ex){console.error('Erro de conexão ao carregar progresso das cotas:',ex);return{};}
 }
 async function acollectLoadQuotasForCurrent(){
+  if(acollectData()){
+    const data=acollectData(),owner=CURRENT_PROFILE,id=ACOLLECT_SURVEY_ID;
+    if(!id)return;
+    await data.loadQuotas(id,{force:true}).catch(()=>{});
+    if(owner===CURRENT_PROFILE&&id===ACOLLECT_SURVEY_ID)window.PP_COLLECTION_LOADING.refresh();
+    return;
+  }
   const el=document.getElementById('acollectQuotas');
   if(!el)return;
   if(!ACOLLECT_SURVEY_ID){el.innerHTML='';renderAcollectActionState();return;}
@@ -6527,7 +6562,7 @@ async function acollectLoadQuotasForCurrent(){
 function renderAcollectQuotas(){
   const el=document.getElementById('acollectQuotas');
   if(!el)return;
-  const s=SURVEYS.find(x=>x.id===ACOLLECT_SURVEY_ID);
+  const s=acollectCurrentSurvey();
   if(!s){el.innerHTML='';ACOLLECT_QUOTA_LIST=[];renderAcollectActionState();return;}
   ACOLLECT_QUOTA_LIST=surveyQuotas(s);
   if(!ACOLLECT_QUOTA_LIST.length){
@@ -6553,7 +6588,7 @@ function renderAcollectQuotas(){
       const selected=ACOLLECT_SELECTED_QUOTA===q.label;
       const pct=Math.min(100,Math.round(done/q.target*100));
       const color=full?'var(--teal)':'var(--accent)';
-      const clickable=!full&&!ACOLLECT_IN_PROGRESS;
+      const clickable=!full&&!ACOLLECT_IN_PROGRESS&&!ACOLLECT_START_LOADING;
       const cardAttrs=clickable
         ?`role="button" tabindex="0" aria-pressed="${selected?'true':'false'}" aria-label="Selecionar cota ${esc(q.label)}" onclick="acollectSelectQuotaIdx(${qi})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();acollectSelectQuotaIdx(${qi})}"`
         :`aria-disabled="true"`;
@@ -6566,7 +6601,7 @@ function renderAcollectQuotas(){
   renderAcollectActionState();
 }
 function acollectSelectQuotaIdx(qi){
-  if(ACOLLECT_IN_PROGRESS)return;
+  if(ACOLLECT_IN_PROGRESS||ACOLLECT_START_LOADING)return;
   const q=ACOLLECT_QUOTA_LIST[qi];if(!q)return;
   ACOLLECT_SELECTED_QUOTA=q.label;
   renderAcollectQuotas();
@@ -6577,7 +6612,7 @@ function acollectClearTerminationNotice(){
   if(el)el.innerHTML='';
 }
 function acollectConditionLabels(qDbId,value,optionIndex){
-  const s=SURVEYS.find(x=>x.id===ACOLLECT_SURVEY_ID);
+  const s=acollectCurrentSurvey();
   const q=(s?.questions||[]).find(item=>item.dbId===qDbId);
   if(!q||!['single','multi'].includes(q.type))return[];
   if(optionIndex!=null){
@@ -6665,12 +6700,12 @@ function acollectRankingSetOrder(qDbId,order){
   renderAcollectForm();renderAcollectActionState();
 }
 function acollectRankingMove(qDbId,from,to){
-  const s=SURVEYS.find(x=>x.id===ACOLLECT_SURVEY_ID),q=(s?.questions||[]).find(item=>item.dbId===qDbId);if(!q)return;
+  const s=acollectCurrentSurvey(),q=(s?.questions||[]).find(item=>item.dbId===qDbId);if(!q)return;
   const order=acollectRankingOrder(q,ACOLLECT_ANSWERS[qDbId]);if(from<0||to<0||from>=order.length||to>=order.length)return;
   [order[from],order[to]]=[order[to],order[from]];acollectRankingSetOrder(qDbId,order);
 }
 function acollectRankingDragStart(ev,qDbId,index){ACOLLECT_RANKING_DRAG={qDbId,index};if(ev?.dataTransfer){ev.dataTransfer.effectAllowed='move';ev.dataTransfer.setData('text/plain',String(index));}}
-function acollectRankingDrop(ev,qDbId,to){if(ev?.preventDefault)ev.preventDefault();const d=ACOLLECT_RANKING_DRAG;if(!d||d.qDbId!==qDbId){ACOLLECT_RANKING_DRAG=null;return;}const s=SURVEYS.find(x=>x.id===ACOLLECT_SURVEY_ID),q=(s?.questions||[]).find(item=>item.dbId===qDbId);if(q){const order=acollectRankingOrder(q,ACOLLECT_ANSWERS[qDbId]);const [moved]=order.splice(d.index,1);order.splice(Math.max(0,Math.min(to,order.length)),0,moved);acollectRankingSetOrder(qDbId,order);}ACOLLECT_RANKING_DRAG=null;}
+function acollectRankingDrop(ev,qDbId,to){if(ev?.preventDefault)ev.preventDefault();const d=ACOLLECT_RANKING_DRAG;if(!d||d.qDbId!==qDbId){ACOLLECT_RANKING_DRAG=null;return;}const s=acollectCurrentSurvey(),q=(s?.questions||[]).find(item=>item.dbId===qDbId);if(q){const order=acollectRankingOrder(q,ACOLLECT_ANSWERS[qDbId]);const [moved]=order.splice(d.index,1);order.splice(Math.max(0,Math.min(to,order.length)),0,moved);acollectRankingSetOrder(qDbId,order);}ACOLLECT_RANKING_DRAG=null;}
 function acollectRankingDragEnd(){ACOLLECT_RANKING_DRAG=null;}
 function acollectResetRecordingState(){
   if(ACOLLECT_RECORDING_STOP_TIMER){clearTimeout(ACOLLECT_RECORDING_STOP_TIMER);ACOLLECT_RECORDING_STOP_TIMER=null;}
@@ -6829,7 +6864,7 @@ function acollectRecordingRetake(){
 /* perguntas ainda sem resposta (todas exceto "resposta aberta", que é
    opcional) — usado para travar o botão "Concluir e enviar" */
 function acollectMissingRequired(){
-  const s=SURVEYS.find(x=>x.id===ACOLLECT_SURVEY_ID);
+  const s=acollectCurrentSurvey();
   if(!s)return[];
   const flow=window.PP_CONDITIONAL_FLOW;
   const questions=flow?.visibleQuestions?flow.visibleQuestions(s.questions||[],ACOLLECT_ANSWERS):(s.questions||[]);
@@ -6877,7 +6912,7 @@ function renderAcollectForm(){
   const el=document.getElementById('acollectForm');
   if(!el)return;
   if(!ACOLLECT_IN_PROGRESS){el.innerHTML='';return;}
-  const s=SURVEYS.find(x=>x.id===ACOLLECT_SURVEY_ID);
+  const s=acollectCurrentSurvey();
   if(!s){el.innerHTML='';return;}
   const flow=window.PP_CONDITIONAL_FLOW;
   const qs=(flow?.visibleQuestions?flow.visibleQuestions(s.questions||[],ACOLLECT_ANSWERS):(s.questions||[])).filter(q=>q.dbId);
@@ -6989,7 +7024,7 @@ function acollectNoticeGateConsentChanged(checked){
 function acollectRenderNoticeGate(errorMessage=''){
   const overlay=acollectNoticeGateElement(),content=document.getElementById('acollectNoticeGateContent');
   const message=ACOLLECT_NOTICE_GATE_MESSAGES[0];if(!message)return;
-  const survey=SURVEYS.find(s=>s.id===ACOLLECT_NOTICE_GATE_SURVEY_ID);
+  const survey=acollectCurrentSurvey(ACOLLECT_NOTICE_GATE_SURVEY_ID);
   const total=ACOLLECT_NOTICE_GATE_MESSAGES.length;
   ACOLLECT_NOTICE_GATE_VIDEO_REQUIRED=acollectMessageRequiresTrainingVideo(message);
   ACOLLECT_NOTICE_GATE_VIDEO_WATCHED=false;
@@ -7102,14 +7137,15 @@ function renderAcollectActionState(){
   }
   if(actionsEl)actionsEl.innerHTML='';
   btn.style.display='';
-  const active=geoOk&&hasSurvey&&hasQuota;
+  const dataReady=!acollectData()||window.PP_COLLECTION_LOADING.ready();
+  const active=geoOk&&hasSurvey&&hasQuota&&dataReady&&!ACOLLECT_START_LOADING;
   btn.disabled=!active;
   btn.style.opacity=active?'1':'.5';
   btn.style.cursor=active?'pointer':'not-allowed';
   if(hint){
-    const hintState=!geoOk?'is-blocked':!hasSurvey?'is-blocked':!hasQuota?'is-blocked':'is-ready';
-    const hintTitle=!geoOk?'Ative a localização':!hasSurvey?'Nenhuma pesquisa disponível':!hasQuota?'1º selecione uma cota':'Cota selecionada — agora inicie a coleta';
-    const hintText=!geoOk?geoStatusUi().hint:!hasSurvey?'Não há pesquisa em campo atribuída a você.':!hasQuota?'Toque em uma cota disponível acima para liberar o botão.':'Confira a cota selecionada e toque em “Iniciar coleta”.';
+    const hintState=!geoOk||!hasSurvey||!hasQuota||!dataReady||ACOLLECT_START_LOADING?'is-blocked':'is-ready';
+    const hintTitle=ACOLLECT_START_LOADING?'Validando o início da entrevista':!geoOk?'Ative a localização':!hasSurvey?'Nenhuma pesquisa disponível':!dataReady?'Aguarde a preparação da pesquisa':!hasQuota?'1º selecione uma cota':'Cota selecionada — agora inicie a coleta';
+    const hintText=ACOLLECT_START_LOADING?'A pesquisa e a cota ficam bloqueadas durante a validação.':!geoOk?geoStatusUi().hint:!hasSurvey?'Não há pesquisa em campo atribuída a você.':!dataReady?'Questionário, cotas e coleta anterior precisam ser conferidos. Em caso de erro, use Tentar novamente.':!hasQuota?'Toque em uma cota disponível acima para liberar o botão.':'Confira a cota selecionada e toque em “Iniciar coleta”.';
     hint.className='collect-step-hint '+hintState;
     hint.innerHTML='<strong>'+hintTitle+'</strong><span>'+hintText+'</span>';
   }
@@ -7120,6 +7156,12 @@ function renderAcollectActionState(){
    cota bem nesse intervalo. É essa checagem, não só a cor do card, que
    efetivamente trava a coleta quando a cota já bateu a meta. */
 async function acollectStart(){
+  if(ACOLLECT_START_LOADING||ACOLLECT_IN_PROGRESS)return;
+  if(acollectData()&&!window.PP_COLLECTION_LOADING.ready()){window.PP_COLLECTION_LOADING.refresh();return;}
+  const startingProfile=CURRENT_PROFILE,startingId=ACOLLECT_SURVEY_ID;
+  const startStillCurrent=()=>CURRENT_PROFILE===startingProfile&&ACOLLECT_SURVEY_ID===startingId&&document.querySelector('.nav-item.on')?.dataset.key==='app-collect';
+  ACOLLECT_START_LOADING=true;
+  try{
   if(GEO.status!=='granted'||!ACOLLECT_SURVEY_ID)return;
   if(CURRENT_PROFILE?.role==='pesq'&&CURRENT_PROFILE.status!=='ativo'){
     alert('Seu acesso ao PesquisaPro está encerrado. Não é possível iniciar novas coletas.');
@@ -7145,7 +7187,13 @@ async function acollectStart(){
   }
   const startButton=document.getElementById('startCollectBtn');
   if(startButton){startButton.disabled=true;startButton.textContent='Validando localização…';}
+  if(acollectData()){
+    try{await acollectData().loadPrevious(startingId,{force:true});}
+    catch(ex){acollectIntegrityMessage('Não foi possível conferir sua coleta anterior. Tente atualizar essa verificação.');return;}
+    if(!startStillCurrent())return;
+  }
   const locationCheck=await acollectValidateLocation();
+  if(!startStillCurrent())return;
   if(!locationCheck.ok){
     if(startButton){startButton.disabled=false;startButton.textContent='Iniciar coleta';}
     acollectIntegrityMessage(locationCheck.message,locationCheck.detail||'');
@@ -7156,7 +7204,11 @@ async function acollectStart(){
   if(quotaEntry){
     const btn=document.getElementById('startCollectBtn');
     if(btn){btn.disabled=true;btn.textContent='Verificando cota…';}
-    ACOLLECT_QUOTA_COUNTS=await loadQuotaCounts(ACOLLECT_SURVEY_ID);
+    if(acollectData()){
+      try{ACOLLECT_QUOTA_COUNTS=await acollectData().loadQuotas(startingId,{force:true});}
+      catch(ex){acollectIntegrityMessage('Não foi possível conferir as cotas agora. A entrevista não foi iniciada.');return;}
+    }else ACOLLECT_QUOTA_COUNTS=await loadQuotaCounts(ACOLLECT_SURVEY_ID);
+    if(!startStillCurrent())return;
     const doneNow=ACOLLECT_QUOTA_COUNTS[quotaEntry.label]||0;
     if(doneNow>=quotaEntry.target&&!isCollectionTestUser()){
       ACOLLECT_SELECTED_QUOTA=null;
@@ -7166,8 +7218,10 @@ async function acollectStart(){
     }
     renderAcollectQuotas();
   }
+  if(!startStillCurrent())return;
   acollectResetRecordingState();
   await acollectReserveRecording();
+  if(!startStillCurrent())return;
   if(ACOLLECT_RECORDING_MANDATORY_AFTER_CUTOFF){
     ACOLLECT_RECORDING_REQUIRED=true;
     if(ACOLLECT_RECORDING_FEATURE_AVAILABLE)ACOLLECT_RECORDING_STATUS='awaiting_consent';
@@ -7182,6 +7236,9 @@ async function acollectStart(){
   renderAcollectForm();
   renderAcollectRecording();
   renderAcollectActionState();
+  }finally{
+    if(CURRENT_PROFILE===startingProfile){ACOLLECT_START_LOADING=false;renderAcollectActionState();window.PP_COLLECTION_LOADING?.refresh();}
+  }
 }
 function acollectCancel(){
   ACOLLECT_IN_PROGRESS=false;
@@ -7198,6 +7255,13 @@ function acollectCancel(){
   window.PP_SYSTEM_MESSAGES?.load(true);
 }
 async function loadCollectEventsForced(){
+  if(acollectData()){
+    const data=acollectData(),id=ACOLLECT_SURVEY_ID;
+    // Leitura de 6 registros visuais e 1 anterior; não marca um histórico parcial como completo.
+    await Promise.allSettled([data.loadRecent({force:true}),data.loadPrevious(id,{force:true})]);
+    COLLECT_EVENTS_LOADED=false;
+    return;
+  }
   const profile=CURRENT_PROFILE,generation=COLLECTION_EVENTS_SESSION_GENERATION;
   try{
     const {data,error}=await fetchCollectionEvents({ownOnly:selectedRole==='pesq'});
@@ -7211,7 +7275,7 @@ async function loadCollectEventsForced(){
    escala/número usam value_number; o resto usa value_text.
    Perguntas abertas sem resposta simplesmente não geram linha (são opcionais). */
 function acollectBuildAnswerRows(eventId){
-  const s=SURVEYS.find(x=>x.id===ACOLLECT_SURVEY_ID);
+  const s=acollectCurrentSurvey();
   if(!s)return[];
   const rows=[];
   const flow=window.PP_CONDITIONAL_FLOW;
@@ -7373,8 +7437,7 @@ async function acollectSubmit(){
   renderAcollectRecording();
   window.PP_RESEARCHER_DASHBOARD?.invalidate('payments');
   PAYMENTS_LOADED=false; // financeiro recalculado no banco (gatilho) — recarrega na próxima visita
-  await loadCollectEventsForced();
-  ACOLLECT_QUOTA_COUNTS=await loadQuotaCounts(ACOLLECT_SURVEY_ID);
+  await Promise.all([loadCollectEventsForced(),acollectLoadQuotasForCurrent()]);
   renderAcollectQuotas();
   renderGeoLog();
   const msg=document.getElementById('acollectMsg');
@@ -7436,9 +7499,16 @@ function renderGeoLog(){
   const el=document.getElementById('geoLog');
   if(!el)return;
   const myId=CURRENT_PROFILE&&CURRENT_PROFILE.id;
-  const mine=COLLECT_EVENTS.filter(e=>e.researcherId===myId).sort((a,b)=>b.ts-a.ts).slice(0,6);
+  const data=acollectData();
+  if(data&&data.state('recent').status!=='ready'){
+    const status=data.state('recent');
+    el.innerHTML=status.status==='error'?'<div class="callout warn">Não foi possível carregar suas últimas entrevistas. <button class="btn btn-out" onclick="window.PP_COLLECTION_LOADING.retry(\'recent\')">Tentar novamente</button></div>':'<div class="empty" style="padding:14px 0">Carregando suas últimas entrevistas…</div>';
+    return;
+  }
+  const source=data?data.recent():COLLECT_EVENTS;
+  const mine=source.filter(e=>e.researcherId===myId).sort((a,b)=>b.ts-a.ts).slice(0,6);
   el.innerHTML=mine.length?mine.map(g=>{
-    const s=SURVEYS.find(x=>x.id===g.surveyId);
+    const s=data?(data.surveys().find(x=>x.id===g.surveyId)||data.survey(g.surveyId)):SURVEYS.find(x=>x.id===g.surveyId);
     const statusBadge=g.status==='rejected'?' <span class="pill pill-red">✕ Reprovada</span>':g.status==='pending_recording'?' <span class="pill pill-amber">Áudio pendente · não contabilizada</span>':g.calibration?' <span class="pill pill-blue">◎ Calibração</span>':'';
     const rejectionReason=g.status==='rejected'?String(g.rejectReason||'').trim()||'Motivo não informado pela auditoria.':'';
     return `<div class="researcher-collection-log-item">

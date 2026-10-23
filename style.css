@@ -263,6 +263,13 @@
   .q-pair-hint,.q-ranking-hint{padding:6px 0 0 36px;color:var(--ink3);font-size:11px;line-height:1.4}
   .collect-termination-card{display:flex;flex-direction:column;gap:5px;margin:10px 0;padding:13px 14px;border:1.5px solid var(--red);border-radius:12px;background:var(--red-l);color:#991b1b;font-size:12px;line-height:1.5;box-shadow:0 4px 12px rgba(220,38,38,.08)}
   .collect-termination-card strong{font-size:13px;color:var(--red);letter-spacing:.1px}
+  .collection-load-stages{display:grid;gap:6px;margin:10px 0}
+  .collection-load-stage{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);font-size:12px}
+  .collection-load-stage strong{flex:1 1 180px;font-weight:600}
+  .collection-load-stage span{color:var(--ink3)}
+  .collection-load-stage small{flex-basis:100%;color:var(--red);overflow-wrap:anywhere}
+  .collection-load-stage .btn{font-size:11px;padding:5px 9px}
+  .collection-load-ready{margin:8px 0;color:var(--ink3);font-size:12px}
   .q-order-controls{display:flex;align-items:center;gap:3px;flex-shrink:0}
   .q-order-btn{width:28px;height:28px;border:1px solid var(--line);border-radius:7px;background:#fff;color:var(--ink2);font-size:15px;line-height:1;transition:background .15s var(--ease),border-color .15s var(--ease),color .15s var(--ease),transform .15s var(--ease)}
   .q-order-btn:hover:not(:disabled){border-color:var(--brand);background:var(--brand-l);color:var(--brand-d);transform:translateY(-1px)}

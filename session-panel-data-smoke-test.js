@@ -15,6 +15,7 @@ const context={window:{PP_RESEARCHER_DASHBOARD:{reset:()=>{}}},CURRENT_PROFILE:{
   MY_COMMUNICATIONS:[],MY_COMMUNICATIONS_LOADED:false,MY_COMMUNICATIONS_LOADING:false,
   MY_SURVEY_RESEARCHER_MESSAGES:[],MY_SURVEY_RESEARCHER_MESSAGES_LOADED:false,MY_SURVEY_RESEARCHER_MESSAGES_LOADING:false,MY_SURVEY_RESEARCHER_MESSAGES_LAST_LOADED:0,
   document:{querySelector:()=>null},go:()=>{},
+  stopAcollectQuotaLive:()=>{},
   loadUsersIfNeeded:()=>Promise.resolve(true),refreshClientSurveyLinks:()=>{},
   SURVEY_JOIN_SELECT:'*',SURVEY_JOIN_SELECT_LEGACY:'*',
   loadSurveyQuestionOptions:()=>Promise.resolve(new Map()),attachSurveyQuestionOptions:()=>{},

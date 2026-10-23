@@ -8486,8 +8486,9 @@ function surveyFormPdfData(source){
     abrangencia:data.abrangencia||'estadual',estados:Array.isArray(data.estados)?data.estados:[],cidades:data.cidades||{},
     pop:Number(data.pop)||0,questions:Array.isArray(data.questions)?data.questions.map((q,index)=>({
       text:String(q.text||''),type:q.type||'single',opts:Array.isArray(q.opts)?q.opts.map(v=>String(v??'')):[],
+      optionsImported:q.optionsImported===true,
       endsInterview:Array.isArray(q.endsInterview)?q.endsInterview.map(Boolean):[],
-      fields:Array.isArray(q.fields)?q.fields.map(field=>({label:String(field.label||''),type:field.type||'open',options:Array.isArray(field.options)?field.options.map(v=>String(v??'')):[]})):[],
+      fields:Array.isArray(q.fields)?q.fields.map((field,fi)=>({label:String(field.label||''),type:field.type||'open',options:Array.isArray(field.options)?field.options.map(v=>String(v??'')):[],optionsImported:q.fieldOptionsImported?.[fi]===true})):[],
     })):[],clientes:Array.isArray(data.clientes)?data.clientes.map(v=>String(v||'')).filter(Boolean):[]
   };
 }
@@ -8499,6 +8500,10 @@ function surveyFormPdfGeo(data){
   return location.join(' · ')||'—';
 }
 function surveyFormPdfQuestionKind(q){return questionTypeLabel(q);}
+function surveyFormPdfImportedOptionsSummary(options){
+  const count=(Array.isArray(options)?options:[]).filter(option=>String(option??'').trim()).length;
+  return count.toLocaleString('pt-BR')+' '+(count===1?'opção de escolha disponível (importada do Excel).':'opções de escolha disponíveis (importadas do Excel).');
+}
 function surveyFormPdfPage(doc,y,title,subtitle){
   const H=doc.internal.pageSize.getHeight();
   if(y+20>H-20){doc.addPage();return reportsPdfHeader(doc,title,subtitle);}
@@ -8534,10 +8539,18 @@ function surveyFormPdfWriteQuestion(doc,data,q,index,y){
     doc.setDrawColor(51,65,85);doc.setLineWidth(.45);doc.rect(M+3,y-3.4,3.2,3.2,'S');
     doc.setTextColor(51,65,85);doc.setFont('helvetica','normal');doc.setFontSize(9.5);doc.text(lines,M+9,y,{lineHeightFactor:.9});y+=lines.length*4.5+2;
   };
+  const importedOptionsLine=options=>{
+    doc.setFont('helvetica','normal');doc.setFontSize(9.5);
+    const lines=doc.splitTextToSize(surveyFormPdfImportedOptionsSummary(options),bodyW-6);
+    if(y+lines.length*4.8+4>H-20){doc.addPage();y=reportsPdfHeader(doc,title,subtitle);}
+    doc.setTextColor(51,65,85);doc.setFont('helvetica','normal');doc.setFontSize(9.5);
+    doc.text(lines,M+3,y,{lineHeightFactor:.95});y+=lines.length*4.8+3;
+  };
   if(Q_HAS_OPTS(q.type)){
-    q.opts.filter(option=>option.trim()).forEach((option,oi)=>optionLine(option,q.endsInterview[oi]?'encerrar entrevista':''));
+    if(q.optionsImported===true)importedOptionsLine(q.opts);
+    else q.opts.filter(option=>option.trim()).forEach((option,oi)=>optionLine(option,q.endsInterview[oi]?'encerrar entrevista':''));
   }else if(q.type==='pair'){
-    const fields=q.fields.length===2?q.fields:DEFAULT_PAIR_FIELDS();fields.forEach((field,fi)=>{y=surveyFormPdfPage(doc,y,title,subtitle);doc.setTextColor(15,42,86);doc.setFont('helvetica','bold');doc.setFontSize(9.5);doc.text((fi+1)+'. '+(field.label||'Resposta '+(fi+1)),M+3,y);y+=6;if(Q_CLOSED_FIELD_TYPES.includes(field.type)){(field.options||[]).filter(option=>option.trim()).forEach(option=>optionLine(option));}else{doc.setDrawColor(148,163,184);doc.line(M+3,y, W-M-3,y);y+=9;}});
+    const fields=q.fields.length===2?q.fields:DEFAULT_PAIR_FIELDS();fields.forEach((field,fi)=>{y=surveyFormPdfPage(doc,y,title,subtitle);doc.setTextColor(15,42,86);doc.setFont('helvetica','bold');doc.setFontSize(9.5);doc.text((fi+1)+'. '+(field.label||'Resposta '+(fi+1)),M+3,y);y+=6;if(Q_CLOSED_FIELD_TYPES.includes(field.type)){if(field.optionsImported===true)importedOptionsLine(field.options);else (field.options||[]).filter(option=>option.trim()).forEach(option=>optionLine(option));}else{doc.setDrawColor(148,163,184);doc.line(M+3,y, W-M-3,y);y+=9;}});
   }else if(q.type==='scale'){optionLine('Péssima    ① ② ③ ④ ⑤    Ótima');}
   else if(q.type==='scale10'){optionLine('Péssima    1  2  3  4  5  6  7  8  9  10    Ótima');}
   else if(q.type==='nps'){optionLine('0  1  2  3  4  5  6  7  8  9  10');}
@@ -8556,7 +8569,7 @@ async function surveyFormPdfDownload(index){
     await loadLocalAsset('jspdf');const jsPDF=window.jspdf?.jsPDF;if(!jsPDF)throw new Error('Gerador PDF indisponível.');
     const logoData=await reportsLoadCoverLogo();const doc=new jsPDF({unit:'mm',format:'a4'});
     surveyFormPdfCover(doc,data,logoData);doc.addPage();let y=reportsPdfHeader(doc,'Formulário da pesquisa',data.name);
-    doc.setTextColor(51,65,85);doc.setFont('helvetica','normal');doc.setFontSize(9.5);y=surveyFormPdfWriteLines(doc,'Este documento reproduz as perguntas e opções cadastradas na PesquisaPro para revisão e envio ao cliente.',16,y,178,9.5,4.8)+10;
+    doc.setTextColor(51,65,85);doc.setFont('helvetica','normal');doc.setFontSize(9.5);y=surveyFormPdfWriteLines(doc,'Este documento reproduz as perguntas e opções cadastradas na PesquisaPro para revisão e envio ao cliente. Listas importadas do Excel são representadas pela quantidade de opções de escolha disponíveis.',16,y,178,9.5,4.8)+10;
     data.questions.forEach((q,qi)=>{y=surveyFormPdfWriteQuestion(doc,data,q,qi,y);});reportsPdfFooter(doc);
     const safe=data.name.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/gi,'-').replace(/^-|-$/g,'').toLowerCase()||'pesquisa';
     const url=URL.createObjectURL(doc.output('blob'));const a=document.createElement('a');a.href=url;a.download='formulario-pesquisapro-'+safe+'.pdf';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);

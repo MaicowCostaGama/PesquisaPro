@@ -82,6 +82,38 @@ let RESEARCHER_LINK_TOKEN=null,RESEARCHER_LINK_CONTEXT=null,RESEARCHER_LINK_LOAD
 let ADMIN_APPROVAL_STATUS_BY_CLIENT={},ADMIN_APPROVAL_STATUS_LOADING={},ADMIN_APPROVAL_STATUS_LOADED={};
 let STAFF_NAV_PENDING_COUNTS=null,STAFF_NAV_PENDING_LOADING=false,STAFF_NAV_PENDING_LAST_LOADED=0,STAFF_NAV_PENDING_TIMER=null,STAFF_NAV_PENDING_REFRESH_TIMER=null,STAFF_NAV_PENDING_GENERATION=0;
 
+/* Cada carregador só pode publicar dados na sessão que iniciou a consulta. */
+let APP_DATA_SESSION_EPOCH=0;
+const APP_DATA_SESSION_REQUESTS=new Map();
+function beginSessionDataRequest(name,options={},onAbort=()=>{}){
+  const owner=CURRENT_PROFILE,epoch=APP_DATA_SESSION_EPOCH;
+  const controller=new AbortController();
+  const token={owner,epoch,cancel:()=>controller.abort()};APP_DATA_SESSION_REQUESTS.set(name,token);
+  const owns=()=>CURRENT_PROFILE===owner&&APP_DATA_SESSION_EPOCH===epoch&&APP_DATA_SESSION_REQUESTS.get(name)===token;
+  const valid=()=>owns()&&!controller.signal.aborted;
+  controller.signal.addEventListener('abort',()=>{if(owns())onAbort();},{once:true});
+  options.signal?.addEventListener('abort',token.cancel,{once:true});
+  if(options.signal?.aborted)controller.abort();
+  return {owner,valid,signal:controller.signal,query:query=>query.abortSignal(controller.signal),
+    render:()=>options.render!==false&&valid()};
+}
+function cancelSessionDataRequest(name){
+  const request=APP_DATA_SESSION_REQUESTS.get(name);
+  if(request?.owner===CURRENT_PROFILE&&request.epoch===APP_DATA_SESSION_EPOCH)request.cancel();
+}
+function resetSessionPanelData(){
+  APP_DATA_SESSION_REQUESTS.forEach(request=>request.cancel());
+  APP_DATA_SESSION_EPOCH++;APP_DATA_SESSION_REQUESTS.clear();
+  window.PP_RESEARCHER_DASHBOARD?.reset();
+  SURVEYS=[];SURVEYS_LOADED=false;SURVEYS_LOADING=false;SURVEYS_LOAD_ERROR='';
+  PAYMENTS=[];PAYMENTS_LOADED=false;PAYMENTS_LOADING=false;
+  MY_CONTRACT=null;MY_CONTRACT_LOADED=false;MY_CONTRACT_LOADING=false;
+  CONTRACT_SETTINGS_LOADED=false;CONTRACT_SETTINGS_LOADING=false;
+  MY_INVITES=[];MY_INVITES_LOADED=false;MY_INVITES_LOADING=false;MY_INVITES_LOAD_PROMISE=null;MY_INVITE_RESPONDING=null;
+  MY_COMMUNICATIONS=[];MY_COMMUNICATIONS_LOADED=false;MY_COMMUNICATIONS_LOADING=false;
+  MY_SURVEY_RESEARCHER_MESSAGES=[];MY_SURVEY_RESEARCHER_MESSAGES_LOADED=false;MY_SURVEY_RESEARCHER_MESSAGES_LOADING=false;MY_SURVEY_RESEARCHER_MESSAGES_LAST_LOADED=0;
+}
+
 function researcherUpdateVersionFromHtml(html){
   const match=String(html||'').match(/name=["']pesquisapro-app-version["'][^>]*content=["']([^"']+)["']/i);
   return match?.[1]||'';
@@ -155,35 +187,38 @@ function pushKeyToUint8Array(base64String){
   const rawData=window.atob(base64),output=new Uint8Array(rawData.length);
   for(let i=0;i<rawData.length;++i)output[i]=rawData.charCodeAt(i);return output;
 }
-async function loadPushStatusIfNeeded(){
+async function loadPushStatusIfNeeded(options={}){
   if(PUSH_STATUS!=='unknown'||PUSH_STATUS_LOADING||!CURRENT_PROFILE?.id||CURRENT_PROFILE.role!=='pesq')return;
+  const request=beginSessionDataRequest('push',options,()=>{PUSH_STATUS_LOADING=false;});
   if(!pushBrowserSupported()||!window.PP_PUSH_PUBLIC_KEY){
     PUSH_STATUS=pushBrowserSupported()?'unavailable':'unsupported';
-    queueMicrotask(()=>{if(CURRENT_PROFILE?.role==='pesq'&&document.querySelector('.nav-item.on')?.dataset.key==='dashboard-pesq')go('dashboard-pesq');});
+    if(request.render())queueMicrotask(()=>{if(request.valid()&&document.querySelector('.nav-item.on')?.dataset.key==='dashboard-pesq')go('dashboard-pesq');});
     return;
   }
   PUSH_STATUS_LOADING=true;
   try{
     const registration=await navigator.serviceWorker.getRegistration();
     const local=await registration?.pushManager?.getSubscription();
-    const {data,error}=await sb.from('push_subscriptions').select('endpoint').eq('user_id',CURRENT_PROFILE.id).limit(100);
+    if(!request.valid())return;
+    const {data,error}=await request.query(sb.from('push_subscriptions').select('endpoint').eq('user_id',request.owner.id).limit(100));
+    if(!request.valid())return;
     if(error){if(/push_subscriptions|relation .* does not exist|schema cache/i.test(error.message||''))PUSH_SCHEMA_MISSING=true;throw error;}
     PUSH_STATUS=local&&(data||[]).some(row=>row.endpoint===local.endpoint)?'enabled':'disabled';
-  }catch(ex){console.error('Não foi possível consultar o push:',ex);if(PUSH_SCHEMA_MISSING)PUSH_STATUS='unavailable';}
-  finally{PUSH_STATUS_LOADING=false;if(CURRENT_PROFILE?.role==='pesq'&&document.querySelector('.nav-item.on')?.dataset.key==='dashboard-pesq')go('dashboard-pesq');}
+  }catch(ex){if(request.valid()){console.error('Não foi possível consultar o push:',ex);if(PUSH_SCHEMA_MISSING)PUSH_STATUS='unavailable';}}
+  finally{if(request.valid()){PUSH_STATUS_LOADING=false;if(request.render()&&document.querySelector('.nav-item.on')?.dataset.key==='dashboard-pesq')go('dashboard-pesq');}}
 }
-function loadResearcherAlertPreferencesIfNeeded(){
+function loadResearcherAlertPreferencesIfNeeded(options={}){
   if(RESEARCHER_ALERT_PREFS_LOADED||RESEARCHER_ALERT_PREFS_LOADING||!CURRENT_PROFILE?.id||CURRENT_PROFILE.role!=='pesq')return Promise.resolve();
   RESEARCHER_ALERT_PREFS_LOADING=true;
-  const identity=CURRENT_PROFILE.id;
+  const request=beginSessionDataRequest('preferences',options,()=>{RESEARCHER_ALERT_PREFS_LOADING=false;});
   return (async()=>{
     try{
-      const {data,error}=await sb.from('researcher_alert_preferences').select('email_enabled,push_enabled').eq('researcher_id',identity).maybeSingle();
+      const {data,error}=await request.query(sb.from('researcher_alert_preferences').select('email_enabled,push_enabled').eq('researcher_id',request.owner.id).maybeSingle());
+      if(!request.valid())return;
       if(error){if(/researcher_alert_preferences|schema cache|does not exist/i.test(error.message||''))RESEARCHER_ALERT_PREFS_SCHEMA_MISSING=true;throw error;}
-      if(CURRENT_PROFILE?.id!==identity)return;
       RESEARCHER_ALERT_PREFS={email_enabled:data?.email_enabled===true,push_enabled:data?.push_enabled===true};
-    }catch(ex){if(CURRENT_PROFILE?.id!==identity)return;RESEARCHER_ALERT_PREFS_ERROR=!RESEARCHER_ALERT_PREFS_SCHEMA_MISSING;console.error('Não foi possível consultar as preferências de alertas:',ex);}
-    finally{if(CURRENT_PROFILE?.id===identity){RESEARCHER_ALERT_PREFS_LOADING=false;RESEARCHER_ALERT_PREFS_LOADED=true;if(document.querySelector('.nav-item.on')?.dataset.key==='dashboard-pesq')go('dashboard-pesq');}}
+    }catch(ex){if(request.valid()){RESEARCHER_ALERT_PREFS_ERROR=!RESEARCHER_ALERT_PREFS_SCHEMA_MISSING;console.error('Não foi possível consultar as preferências de alertas:',ex);}}
+    finally{if(request.valid()){RESEARCHER_ALERT_PREFS_LOADING=false;RESEARCHER_ALERT_PREFS_LOADED=true;if(request.render()&&document.querySelector('.nav-item.on')?.dataset.key==='dashboard-pesq')go('dashboard-pesq');}}
   })();
 }
 async function saveResearcherAlertPreferences(){
@@ -243,34 +278,38 @@ function researcherAlertPreferencesCard(){
   if(!RESEARCHER_ALERT_PREFS_LOADED)return '<section class="card mb researcher-alert-prefs"><div class="card-t">Preferências de alertas</div><p>Carregando…</p></section>';
   return `<section class="card mb researcher-alert-prefs"><div class="card-t">Preferências de alertas</div><p>Receba um lembrete apenas quando um convite ainda não tiver resposta ou uma orientação ainda não tiver confirmação. Os textos completos e a confirmação permanecem no aplicativo.</p><label><input id="researcher-alert-email" type="checkbox" ${RESEARCHER_ALERT_PREFS.email_enabled?'checked':''}> Quero receber lembretes por e-mail no endereço verificado da minha conta.</label><label><input id="researcher-alert-push" type="checkbox" ${RESEARCHER_ALERT_PREFS.push_enabled?'checked':''} ${PUSH_STATUS==='enabled'||RESEARCHER_ALERT_PREFS.push_enabled?'':'disabled'}> Quero receber alertas Push nos dispositivos inscritos.</label><small>${PUSH_STATUS==='enabled'?'Push inscrito neste dispositivo.':'Ative o Push neste dispositivo antes de habilitar sua preferência; se ele já estava ativo em outro aparelho, você pode desligá-lo aqui.'} Você pode desligar os lembretes quando quiser; isso não oculta mensagens internas.</small><button type="button" class="btn btn-out" onclick="saveResearcherAlertPreferences()" ${RESEARCHER_ALERT_PREFS_SAVING?'disabled':''}>${RESEARCHER_ALERT_PREFS_SAVING?'Salvando…':'Salvar preferências'}</button></section>`;
 }
-function loadMySurveyCommunicationsIfNeeded(){
+function loadMySurveyCommunicationsIfNeeded(options={}){
   if(MY_COMMUNICATIONS_LOADED||MY_COMMUNICATIONS_LOADING||!CURRENT_PROFILE?.id||CURRENT_PROFILE.role!=='pesq')return Promise.resolve();
   MY_COMMUNICATIONS_LOADING=true;
+  const request=beginSessionDataRequest('communications',options,()=>{MY_COMMUNICATIONS_LOADING=false;});
   return (async()=>{
     try{
-      const {data,error}=await sb.rpc('get_my_survey_communications');
+      const {data,error}=await request.query(sb.rpc('get_my_survey_communications'));
+      if(!request.valid())return;
       if(error){if(/get_my_survey_communications|function .* does not exist|schema cache/i.test(error.message||''))return;throw error;}
       MY_COMMUNICATIONS=data||[];MY_COMMUNICATIONS_LOADED=true;
-    }catch(ex){console.error('Não foi possível carregar grupos das pesquisas:',ex);}
-    finally{MY_COMMUNICATIONS_LOADING=false;if(document.querySelector('.nav-item.on')?.dataset.key==='dashboard-pesq')go('dashboard-pesq');}
+    }catch(ex){if(request.valid())console.error('Não foi possível carregar grupos das pesquisas:',ex);}
+    finally{if(request.valid()){MY_COMMUNICATIONS_LOADING=false;if(request.render()&&document.querySelector('.nav-item.on')?.dataset.key==='dashboard-pesq')go('dashboard-pesq');}}
   })();
 }
-function loadMySurveyResearcherMessagesIfNeeded(){
+function loadMySurveyResearcherMessagesIfNeeded(options={}){
   if(MY_SURVEY_RESEARCHER_MESSAGES_LOADING||!CURRENT_PROFILE?.id||CURRENT_PROFILE.role!=='pesq'||MY_SURVEY_RESEARCHER_MESSAGES_SCHEMA_MISSING)return Promise.resolve();
   if(MY_SURVEY_RESEARCHER_MESSAGES_LOADED&&Date.now()-MY_SURVEY_RESEARCHER_MESSAGES_LAST_LOADED<60000)return Promise.resolve();
   MY_SURVEY_RESEARCHER_MESSAGES_LOADING=true;
+  const request=beginSessionDataRequest('messages',options,()=>{MY_SURVEY_RESEARCHER_MESSAGES_LOADING=false;});
   return (async()=>{
     try{
       MY_SURVEY_RESEARCHER_MESSAGES_LOAD_ERROR=false;
-      const selectMessages=fields=>sb.from('survey_researcher_message_recipients').select(fields).eq('researcher_id',CURRENT_PROFILE.id).order('created_at',{ascending:false}).limit(100);
+      const selectMessages=fields=>request.query(sb.from('survey_researcher_message_recipients').select(fields).eq('researcher_id',request.owner.id).order('created_at',{ascending:false}).limit(100));
       let {data,error}=await selectMessages('message_id,read_at,acknowledged_at,created_at,message:survey_researcher_messages(id,survey_id,sender_name,body,created_at)');
+      if(!request.valid())return;
       if(error&&/acknowledged_at/i.test(error.message||''))({data,error}=await selectMessages('message_id,read_at,created_at,message:survey_researcher_messages(id,survey_id,sender_name,body,created_at)'));
+      if(!request.valid())return;
       if(error){if(/survey_researcher_message|relation .* does not exist|schema cache/i.test(error.message||''))MY_SURVEY_RESEARCHER_MESSAGES_SCHEMA_MISSING=true;throw error;}
       MY_SURVEY_RESEARCHER_MESSAGES=(data||[]).filter(row=>row.message).sort((a,b)=>new Date(b.message.created_at||b.created_at)-new Date(a.message.created_at||a.created_at));
-      MY_SURVEY_RESEARCHER_MESSAGES_LOADED=true;
-      MY_SURVEY_RESEARCHER_MESSAGES_LAST_LOADED=Date.now();
-    }catch(ex){console.error('Não foi possível carregar os avisos das pesquisas:',ex);MY_SURVEY_RESEARCHER_MESSAGES_LOAD_ERROR=!MY_SURVEY_RESEARCHER_MESSAGES_SCHEMA_MISSING;MY_SURVEY_RESEARCHER_MESSAGES_LOADED=true;MY_SURVEY_RESEARCHER_MESSAGES_LAST_LOADED=Date.now();}
-    finally{MY_SURVEY_RESEARCHER_MESSAGES_LOADING=false;if(document.querySelector('.nav-item.on')?.dataset.key==='dashboard-pesq')go('dashboard-pesq');}
+      MY_SURVEY_RESEARCHER_MESSAGES_LOADED=true;MY_SURVEY_RESEARCHER_MESSAGES_LAST_LOADED=Date.now();
+    }catch(ex){if(request.valid()){console.error('Não foi possível carregar os avisos das pesquisas:',ex);MY_SURVEY_RESEARCHER_MESSAGES_LOAD_ERROR=!MY_SURVEY_RESEARCHER_MESSAGES_SCHEMA_MISSING;MY_SURVEY_RESEARCHER_MESSAGES_LOADED=true;MY_SURVEY_RESEARCHER_MESSAGES_LAST_LOADED=Date.now();}}
+    finally{if(request.valid()){MY_SURVEY_RESEARCHER_MESSAGES_LOADING=false;if(request.render()&&document.querySelector('.nav-item.on')?.dataset.key==='dashboard-pesq')go('dashboard-pesq');}}
   })();
 }
 function refreshMySurveyResearcherMessages(){
@@ -281,12 +320,12 @@ function refreshMySurveyResearcherMessages(){
 document.addEventListener('visibilitychange',()=>{
   if(!document.hidden&&CURRENT_PROFILE?.role==='pesq'&&document.querySelector('.nav-item.on')?.dataset.key==='dashboard-pesq')loadMySurveyResearcherMessagesIfNeeded();
 });
-function mySurveyResearcherMessagesMarkup(){
+function mySurveyResearcherMessagesMarkup(surveys=SURVEYS){
   if(MY_SURVEY_RESEARCHER_MESSAGES_SCHEMA_MISSING)return '<section class="card mb researcher-survey-messages-card"><div class="card-t">Avisos das pesquisas</div><div class="callout warn">Os avisos internos ainda não estão ativados. A gestão precisa executar a migration <code>deploy/mensagens-pesquisa-pesquisadores.sql</code> no Supabase.</div></section>';
   if(MY_SURVEY_RESEARCHER_MESSAGES_LOAD_ERROR)return '<section class="card mb researcher-survey-messages-card"><div class="card-t">Avisos das pesquisas</div><div class="callout warn">Não foi possível consultar os avisos agora. Os dados exibidos podem estar desatualizados. <button type="button" class="btn btn-out" onclick="refreshMySurveyResearcherMessages()">Tentar novamente</button></div></section>';
   if(!MY_SURVEY_RESEARCHER_MESSAGES_LOADED)return '<section class="card mb researcher-survey-messages-card"><div class="card-t">Avisos das pesquisas</div><div class="empty" style="padding:14px 0">Carregando avisos da gestão…</div></section>';
   const rows=MY_SURVEY_RESEARCHER_MESSAGES.map(row=>{
-    const message=row.message||{},survey=SURVEYS.find(item=>item.id===message.survey_id),unread=!row.read_at;
+    const message=row.message||{},survey=surveys.find(item=>item.id===message.survey_id),unread=!row.read_at;
     return `<article class="researcher-survey-message ${unread?'is-unread':''}"><div class="researcher-survey-message-head"><div><span class="eyebrow">${unread?'NOVO AVISO':'AVISO DA PESQUISA'}</span><strong>${esc(survey?.name||'Pesquisa')}</strong></div><time>${esc(new Date(message.created_at||row.created_at).toLocaleString('pt-BR'))}</time></div><p>${esc(message.body||'').replace(/\n/g,'<br>')}</p><div class="researcher-survey-message-foot"><span>Enviado por ${esc(message.sender_name||'Equipe PesquisaPro')}</span>${row.acknowledged_at?'<span class="pill pill-green">Leitura confirmada</span>':unread?`<button type="button" class="btn-ghost" onclick="markMySurveyResearcherMessageRead(${jsArg(message.id)})">Marcar como lido</button>`:'<span class="pill pill-gray">Lido · confirme antes de coletar</span>'}</div></article>`;
   }).join('');
   return `<section class="card mb researcher-survey-messages-card"><div class="researcher-survey-messages-heading"><div><div class="card-t">Avisos das pesquisas</div><div class="card-d">Mensagens internas da gestão. Marcar como lido aqui não substitui confirmar a leitura antes de iniciar a próxima coleta da pesquisa.</div></div><button type="button" class="btn btn-out" onclick="refreshMySurveyResearcherMessages()" ${MY_SURVEY_RESEARCHER_MESSAGES_LOADING?'disabled':''}>Atualizar avisos</button><span class="pill ${MY_SURVEY_RESEARCHER_MESSAGES.some(row=>!row.read_at)?'pill-amber':'pill-green'}">${MY_SURVEY_RESEARCHER_MESSAGES.filter(row=>!row.read_at).length} não lido${MY_SURVEY_RESEARCHER_MESSAGES.filter(row=>!row.read_at).length===1?'':'s'}</span></div>${rows||'<div class="researcher-survey-messages-empty"><span>✉</span><div><b>Nenhum aviso novo</b><small>Quando a gestão enviar uma mensagem para sua equipe, ela aparecerá aqui.</small></div></div>'}</section>`;
@@ -434,6 +473,8 @@ async function requestOwnPasswordReset(){
 
 async function afterLogin(user){
   resetCollectionEventCache();
+  resetSessionPanelData();
+  CURRENT_PROFILE=null;
   stopResearcherVersionMonitor();
   stopStaffNavPendingMonitor();
   RESEARCHER_PROFILE_SAVING=false;RESEARCHER_PROFILE_SAVE_OPERATION=null;RESEARCHER_PROFILE_FORM_DRAFT=null;RESEARCHER_PIX_FORM_DRAFT=null;
@@ -492,6 +533,7 @@ async function afterLogin(user){
 
 async function logout(){
   resetCollectionEventCache();
+  resetSessionPanelData();
   if(window.PP_CLIENT_ORIGINAL_EXCEL)window.PP_CLIENT_ORIGINAL_EXCEL.reset();
   if(window.PP_REPORT_WHATSAPP)window.PP_REPORT_WHATSAPP.reset();
   if(window.PP_USER_ACTIVATION)window.PP_USER_ACTIVATION.reset();
@@ -639,6 +681,7 @@ function go(key){
   if(window.PP_SYSTEM_MESSAGES&&!window.PP_SYSTEM_MESSAGES.guardNavigation(key))return;
   if(staffNavPendingEnabled())refreshStaffNavPendingCounts();
   const previousKey=document.querySelector('.nav-item.on')?.dataset.key;
+  window.PP_RESEARCHER_DASHBOARD?.onNavigate(key,previousKey);
   if(previousKey==='client-results'&&key!=='client-results'){window.PP_CLIENT_REPORTS?.reset();window.PP_TABULATION?.reset();}
   if(key!=='reports'&&window.PP_SIMPLE_TABULATION){if(!window.PP_SIMPLE_TABULATION.canLeave())return;window.PP_SIMPLE_TABULATION.reset();}
   if(key!=='reports'&&window.PP_REPORT_WHATSAPP)window.PP_REPORT_WHATSAPP.reset();
@@ -651,6 +694,7 @@ function go(key){
     if(active)n.setAttribute('aria-current','page');else n.removeAttribute('aria-current');
   });
   if(previousKey!==key&&['users','finance'].includes(key)&&['admin','admpro','coord','gerente'].includes(CURRENT_PROFILE?.role))USERS_LOADED=false;
+  if(window.PP_ROUTE_MODULES&&!window.PP_ROUTE_MODULES.prepare(key,previousKey))return;
   if(window._beforeRender)window._beforeRender(key);
   document.getElementById('main').innerHTML=PAGES[key]?PAGES[key]():'<div class="empty">Em construção</div>';
   updateCampaignSwitcherButton();
@@ -1494,37 +1538,50 @@ function researcherStartCollection(surveyId){
 }
 
 PAGES['dashboard-pesq']=()=>{
-  if(!CONTRACT_SETTINGS_LOADED){loadContractSettingsIfNeeded();return head('Meu painel','Acompanhe suas metas e ganhos')+'<div class="empty">Carregando a versão vigente do contrato…</div>';}
-  if(!SURVEYS_LOADED)loadSurveysIfNeeded();
-  if(!PAYMENTS_LOADED)loadPaymentsIfNeeded();
-  if(!MY_CONTRACT_LOADED)loadMyContractIfNeeded();
-  if(!MY_INVITES_LOADED)loadMyInvitesIfNeeded();
-  loadPushStatusIfNeeded();
-  loadResearcherAlertPreferencesIfNeeded();
-  loadMySurveyCommunicationsIfNeeded();
-  loadMySurveyResearcherMessagesIfNeeded();
+  const fast=CURRENT_PROFILE?.role==='pesq'?window.PP_RESEARCHER_DASHBOARD:null;
+  if(fast){
+    fast.ensure();
+    fast.loadAuxiliary('contract-settings',loadContractSettingsIfNeeded,()=>CONTRACT_SETTINGS_LOADED);
+    if(CONTRACT_SETTINGS_LOADED)fast.loadAuxiliary('contract',loadMyContractIfNeeded,()=>MY_CONTRACT_LOADED);
+    fast.loadAuxiliary('invites',loadMyInvitesIfNeeded,()=>MY_INVITES_LOADED);
+    fast.loadAuxiliary('push',loadPushStatusIfNeeded,()=>PUSH_STATUS!=='unknown'&&!PUSH_STATUS_LOADING);
+    fast.loadAuxiliary('preferences',loadResearcherAlertPreferencesIfNeeded,()=>RESEARCHER_ALERT_PREFS_LOADED||RESEARCHER_ALERT_PREFS_SCHEMA_MISSING||RESEARCHER_ALERT_PREFS_ERROR);
+    fast.loadAuxiliary('communications',loadMySurveyCommunicationsIfNeeded,()=>MY_COMMUNICATIONS_LOADED);
+    fast.loadAuxiliary('messages',loadMySurveyResearcherMessagesIfNeeded,()=>MY_SURVEY_RESEARCHER_MESSAGES_SCHEMA_MISSING||(MY_SURVEY_RESEARCHER_MESSAGES_LOADED&&Date.now()-MY_SURVEY_RESEARCHER_MESSAGES_LAST_LOADED<60000));
+  }else{
+    if(!CONTRACT_SETTINGS_LOADED){loadContractSettingsIfNeeded();return head('Meu painel','Acompanhe suas metas e ganhos')+'<div class="empty">Carregando a versão vigente do contrato…</div>';}
+    if(!SURVEYS_LOADED)loadSurveysIfNeeded();
+    if(!PAYMENTS_LOADED)loadPaymentsIfNeeded();
+    if(!MY_CONTRACT_LOADED)loadMyContractIfNeeded();
+    if(!MY_INVITES_LOADED)loadMyInvitesIfNeeded();
+    loadPushStatusIfNeeded();loadResearcherAlertPreferencesIfNeeded();
+    loadMySurveyCommunicationsIfNeeded();loadMySurveyResearcherMessagesIfNeeded();
+  }
+  const dashboardSurveys=fast?fast.surveys():SURVEYS;
+  const dashboardPayments=fast?fast.payments():PAYMENTS;
   const primeiroNome=(CURRENT_PROFILE&&CURRENT_PROFILE.name)?CURRENT_PROFILE.name.trim().split(' ')[0]:'';
   const subtitulo=primeiroNome?('Olá '+primeiroNome+' — acompanhe suas metas e ganhos'):'Acompanhe suas metas e ganhos';
-  if(!SURVEYS_LOADED||!PAYMENTS_LOADED){
+  if(!fast&&(!SURVEYS_LOADED||!PAYMENTS_LOADED)){
     return head('Meu painel',subtitulo)+'<div class="empty">Carregando seus dados…</div>';
   }
+  const earningsReady=fast?(fast.ready('surveys')&&fast.ready('payments')):true;
   const myId=CURRENT_PROFILE&&CURRENT_PROFILE.id;
-  const myPayments=PAYMENTS.filter(p=>p.researcherId===myId&&!SURVEYS.find(x=>x.id===p.surveyId)?.archivedAt);
-  const visibleMyInvites=(MY_INVITES||[]).filter(inv=>!SURVEYS.find(x=>x.id===inv.survey_id)?.archivedAt);
+  const myPayments=dashboardPayments.filter(p=>p.researcherId===myId&&!dashboardSurveys.find(x=>x.id===p.surveyId)?.archivedAt);
+  const visibleMyInvites=(MY_INVITES||[]).filter(inv=>!dashboardSurveys.find(x=>x.id===inv.survey_id)?.archivedAt);
   const aReceber=myPayments.filter(p=>p.status==='aprovado').reduce((sum,p)=>{
-    const s=SURVEYS.find(x=>x.id===p.surveyId);return sum+p.valid*(s?+s.price:0);
+    const s=dashboardSurveys.find(x=>x.id===p.surveyId);return sum+p.valid*(s?+s.price:0);
   },0);
   const ganhosEmAnalise=myPayments.filter(p=>p.status!=='aprovado').reduce((sum,p)=>{
-    const s=SURVEYS.find(x=>x.id===p.surveyId);return sum+p.valid*(s?+s.price:0);
+    const s=dashboardSurveys.find(x=>x.id===p.surveyId);return sum+p.valid*(s?+s.price:0);
   },0);
   const entrevistasAprovadas=myPayments.reduce((sum,p)=>sum+(Number(p.valid)||0),0);
-  const surveysMine=acollectMySurveys();
-  const earningsHtml=`<section class="researcher-earnings-hero" aria-labelledby="researcher-earnings-title"><div class="researcher-earnings-copy"><span class="eyebrow">SEU DESEMPENHO</span><h2 id="researcher-earnings-title">Ganhos com pesquisas</h2><p>Valor das entrevistas aprovadas pela auditoria.</p><strong class="researcher-earnings-value">${brl(aReceber)}</strong></div><div class="researcher-earnings-side"><div class="researcher-earnings-metric"><span>Entrevistas aprovadas</span><strong>${entrevistasAprovadas}</strong></div><div class="researcher-earnings-metric"><span>Em análise</span><strong>${brl(ganhosEmAnalise)}</strong></div><button class="btn btn-ghost" type="button" onclick="go('my-earnings')">Ver meus ganhos →</button></div></section>`;
+  const surveysMine=fast?dashboardSurveys.filter(s=>!s.archivedAt&&(isCollectionTestUser()?['rascunho','campo'].includes(s.status)&&s.formStarted:s.status==='campo'&&s.teamIds.includes(myId))):acollectMySurveys();
+  const earningsHtml=earningsReady?`<section class="researcher-earnings-hero" aria-labelledby="researcher-earnings-title"><div class="researcher-earnings-copy"><span class="eyebrow">SEU DESEMPENHO</span><h2 id="researcher-earnings-title">Ganhos com pesquisas</h2><p>Valor das entrevistas aprovadas pela auditoria.</p><strong class="researcher-earnings-value">${brl(aReceber)}</strong></div><div class="researcher-earnings-side"><div class="researcher-earnings-metric"><span>Entrevistas aprovadas</span><strong>${entrevistasAprovadas}</strong></div><div class="researcher-earnings-metric"><span>Em análise</span><strong>${brl(ganhosEmAnalise)}</strong></div><button class="btn btn-ghost" type="button" onclick="go('my-earnings')">Ver meus ganhos →</button></div></section>`:fast.statusMarkup(fast.ready('payments')?'surveys':'payments','Ganhos com pesquisas');
   const invitesHtml=(MY_INVITES_LOADED&&visibleMyInvites.length)?`<div class="card mb">
     <div class="card-t">Convite${visibleMyInvites.length>1?'s':''} para pesquisa${visibleMyInvites.length>1?'s':''}</div>
     <div class="card-d">Você foi convidado(a) pelo administrador — aceite para entrar na equipe e liberar a coleta.</div>
     ${visibleMyInvites.map(inv=>{
-      const sv=SURVEYS.find(x=>x.id===inv.survey_id);
+      const sv=dashboardSurveys.find(x=>x.id===inv.survey_id);
       const busy=MY_INVITE_RESPONDING===inv.id;
       const focused=INVITE_FOCUS_ID===inv.id;
       return `<div class="approve-row ${focused?'invite-focus':''}">
@@ -1538,9 +1595,10 @@ PAGES['dashboard-pesq']=()=>{
   </div>`:'';
   return head('Meu painel',subtitulo)+`
   ${earningsHtml}
-  ${mySurveyResearcherMessagesMarkup()}
+  ${fast?fast.auxiliaryNotice():''}
+  ${mySurveyResearcherMessagesMarkup(dashboardSurveys)}
   ${mySurveyCommunicationsMarkup()}
-  ${researcherAvailableSurveysMarkup(surveysMine)}
+  ${fast&&!fast.ready('surveys')?fast.statusMarkup('surveys','Pesquisas disponíveis para coleta'):researcherAvailableSurveysMarkup(surveysMine)}
   ${invitesHtml}
   ${researcherPushCard()}
   ${researcherAlertPreferencesCard()}
@@ -2258,7 +2316,7 @@ function surveyRowToSnapshot(row,questionRows,clientCompanyNames,teamNames){
     minimumCollectionSeconds:Number.isFinite(Number(row.minimum_collection_seconds))&&Number(row.minimum_collection_seconds)>0?Math.round(Number(row.minimum_collection_seconds)):null,
     collected:row.collected||0,status:row.status||'rascunho',archivedAt:row.archived_at||null,
     created:fmtRelativo(row.created_at),createdAt:row.created_at||null,
-    team:teamNames||[],coord:'',isNew:false,
+    team:teamNames||[],teamIds:(row.survey_team||[]).map(member=>member.researcher_id),coord:'',isNew:false,
   };
 }
 function snapshotToSurveyRow(d){
@@ -2508,18 +2566,23 @@ async function reloadSurveySnapshot(surveyId){
 async function loadSurveysIfNeeded(){
   if(SURVEYS_LOADED||SURVEYS_LOADING)return;
   SURVEYS_LOADING=true;
+  const request=beginSessionDataRequest('full-surveys');
   try{
     await loadUsersIfNeeded(); // precisa dos nomes reais para resolver clientes/equipe vinculados
+    if(!request.valid())return;
     let result=await sb.from('surveys').select(SURVEY_JOIN_SELECT).order('created_at',{ascending:false});
+    if(!request.valid())return;
     if(result.error&&/survey_question_fields|schema cache|relation .* does not exist/i.test(result.error.message||'')){
       SURVEY_NEW_FORMAT_SCHEMA_MISSING=true;
       result=await sb.from('surveys').select(SURVEY_JOIN_SELECT_LEGACY).order('created_at',{ascending:false});
     }
+    if(!request.valid())return;
     const {data,error}=result;
     if(error)throw new Error(error.message||'Não foi possível consultar as pesquisas.');
     const surveyRows=data||[];
     const allQuestionRows=surveyRows.reduce((all,row)=>all.concat(row.survey_questions||[]),[]);
     const optionMap=await loadSurveyQuestionOptions(allQuestionRows);
+    if(!request.valid())return;
     attachSurveyQuestionOptions(surveyRows,optionMap);
     SURVEYS=surveyRows.map(row=>{
       const qRows=(row.survey_questions||[]).slice().sort((a,b)=>a.position-b.position);
@@ -2530,9 +2593,11 @@ async function loadSurveysIfNeeded(){
     SURVEYS_LOAD_ERROR='';
     SURVEYS_LOADED=true;
   }catch(ex){
+    if(!request.valid())return;
     SURVEYS_LOAD_ERROR=ex?.message||'Não foi possível carregar as pesquisas. Verifique a conexão e tente novamente.';
     console.error('Erro ao carregar pesquisas:',ex);
   }
+  if(!request.valid())return;
   SURVEYS_LOADING=false;
   refreshClientSurveyLinks();
   const onKey=document.querySelector('.nav-item.on');
@@ -6137,6 +6202,7 @@ async function auditReject(id){
     }catch(ex){alert('Não foi possível reprovar: '+ex.message);return;}
     e.status='rejected';e.rejectReason=trimmed;e.rejectedAt=new Date(rejectedAtIso).getTime();
   }
+  window.PP_RESEARCHER_DASHBOARD?.invalidate('payments');
   PAYMENTS_LOADED=false; // financeiro recalculado no banco — recarrega na próxima visita
   renderAudit(idx);
 }
@@ -6407,7 +6473,7 @@ function stopAcollectQuotaLive(){
 function acollectMySurveys(){
   if(!CURRENT_PROFILE)return[];
   if(isCollectionTestUser())return SURVEYS.filter(s=>!s.archivedAt&&['rascunho','campo'].includes(s.status)&&s.formStarted===true);
-  return SURVEYS.filter(s=>!s.archivedAt&&s.status==='campo'&&(s.team||[]).includes(CURRENT_PROFILE.name));
+  return SURVEYS.filter(s=>!s.archivedAt&&s.status==='campo'&&(s.teamIds||[]).includes(CURRENT_PROFILE.id));
 }
 function renderAcollectSurveyPicker(){
   const wrap=document.getElementById('acollectSurveyPicker');
@@ -7305,6 +7371,7 @@ async function acollectSubmit(){
   if(formEl)formEl.innerHTML='';
   acollectResetRecordingState();
   renderAcollectRecording();
+  window.PP_RESEARCHER_DASHBOARD?.invalidate('payments');
   PAYMENTS_LOADED=false; // financeiro recalculado no banco (gatilho) — recarrega na próxima visita
   await loadCollectEventsForced();
   ACOLLECT_QUOTA_COUNTS=await loadQuotaCounts(ACOLLECT_SURVEY_ID);
@@ -10645,12 +10712,16 @@ function paymentReceiptMigrationNotice(){
 async function loadPaymentsIfNeeded(){
   if(PAYMENTS_LOADED||PAYMENTS_LOADING)return;
   PAYMENTS_LOADING=true;
+  const request=beginSessionDataRequest('full-payments');
   await loadUsersIfNeeded();
+  if(!request.valid())return;
   try{
     const {data,error}=await sb.from('payments').select('*');
+    if(!request.valid())return;
     if(!error){PAYMENTS=(data||[]).map(paymentRowToEntry);PAYMENTS_LOADED=true;}
     else console.error('Erro ao carregar financeiro:',error);
-  }catch(ex){console.error('Erro de conexão ao carregar financeiro:',ex);}
+  }catch(ex){if(request.valid())console.error('Erro de conexão ao carregar financeiro:',ex);}
+  if(!request.valid())return;
   PAYMENTS_LOADING=false;
   const onKey=document.querySelector('.nav-item.on');
   const k=onKey&&onKey.dataset.key;
@@ -11663,17 +11734,20 @@ const PRIVACY_POLICY_HASH='1b3088a5f69ddcae9f5dc24b93695335e690091d06493ff803e0e
 const PRIVACY_CONTRACT_VERSION='v3-2026-pesquisador';
 function contractUsesPrivacyPolicy(){return CONTRACT_VERSION===PRIVACY_CONTRACT_VERSION;}
 let CONTRACT_SETTINGS_LOADED=false,CONTRACT_SETTINGS_LOADING=false;
-async function loadContractSettingsIfNeeded(){
+async function loadContractSettingsIfNeeded(options={}){
   if(CONTRACT_SETTINGS_LOADED||CONTRACT_SETTINGS_LOADING)return;
   CONTRACT_SETTINGS_LOADING=true;
+  const request=beginSessionDataRequest('contract-settings',options,()=>{CONTRACT_SETTINGS_LOADING=false;});
   try{
-    const {data,error}=await sb.rpc('get_current_contract_version');
+    const {data,error}=await request.query(sb.rpc('get_current_contract_version'));
+    if(!request.valid())return;
     if(!error&&data){CONTRACT_VERSION=typeof data==='string'?data:(data.current_version||data[0]?.current_version||CONTRACT_VERSION);}
     else if(error)console.warn('Versão persistente indisponível; usando a versão local:',error.message);
-  }catch(ex){console.warn('Não foi possível carregar a versão vigente:',ex.message);}
+  }catch(ex){if(request.valid())console.warn('Não foi possível carregar a versão vigente:',ex.message);}
+  if(!request.valid())return;
   CONTRACT_SETTINGS_LOADED=true;CONTRACT_SETTINGS_LOADING=false;
   const k=document.querySelector('.nav-item.on')?.dataset.key;
-  if(k==='contracts'||k==='my-contract'||k==='app-collect'||k==='dashboard'||k==='dashboard-pesq')go(k);
+  if(request.render()&&['contracts','my-contract','app-collect','dashboard','dashboard-pesq'].includes(k))go(k);
 }
 function resetContractCachesForVersion(){
   ALL_CONTRACTS=[];ALL_CONTRACTS_LOADED=false;ALL_CONTRACTS_LOADING=false;
@@ -11800,41 +11874,48 @@ function contractRowToEntry(row){
   return {id:row.id,version:row.contract_version,fullName:row.full_name,cpf:row.cpf,
     hash:row.content_hash,ip:row.ip_address,userAgent:row.user_agent,privacyPolicyVersion:row.privacy_policy_version,privacyPolicyHash:row.privacy_policy_hash,privacyPolicyAcceptedAt:row.privacy_policy_accepted_at,ts:row.accepted_at?new Date(row.accepted_at).getTime():Date.now()};
 }
-async function loadMyContractIfNeeded(){
+async function loadMyContractIfNeeded(options={}){
   if(MY_CONTRACT_LOADED||MY_CONTRACT_LOADING)return;
   if(!CURRENT_PROFILE){MY_CONTRACT_LOADED=true;return;}
   MY_CONTRACT_LOADING=true;
+  const request=beginSessionDataRequest('contract',options,()=>{MY_CONTRACT_LOADING=false;});
+  const version=CONTRACT_VERSION;
   try{
-    const {data,error}=await sb.from('researcher_contracts').select('*')
-      .eq('researcher_id',CURRENT_PROFILE.id).eq('contract_version',CONTRACT_VERSION);
+    const {data,error}=await request.query(sb.from('researcher_contracts').select('*')
+      .eq('researcher_id',request.owner.id).eq('contract_version',version));
+    if(!request.valid()||CONTRACT_VERSION!==version)return;
     if(!error){MY_CONTRACT=(data&&data[0])?contractRowToEntry(data[0]):null;MY_CONTRACT_LOADED=true;}
     else console.error('Erro ao carregar contrato:',error);
-  }catch(ex){console.error('Erro de conexão ao carregar contrato:',ex);}
+  }catch(ex){if(request.valid())console.error('Erro de conexão ao carregar contrato:',ex);}
+  if(!request.valid())return;
   MY_CONTRACT_LOADING=false;
-  const onKey=document.querySelector('.nav-item.on');
-  const k=onKey&&onKey.dataset.key;
-  if(k==='app-collect'||k==='my-contract'||k==='dashboard-pesq')go(k);
+  const k=document.querySelector('.nav-item.on')?.dataset.key;
+  if(request.render()&&['app-collect','my-contract','dashboard-pesq'].includes(k))go(k);
 }
 /* ---- convites de equipe recebidos no aplicativo (aceitar/recusar em "Meu
    painel" ou "Meus dados") — o administrador também pode enviar o convite
    diretamente pelo aplicativo ou abrir a mensagem completa no WhatsApp. ---- */
 let MY_INVITES=[],MY_INVITES_LOADED=false,MY_INVITES_LOADING=false,MY_INVITES_LOAD_PROMISE=null;
-function loadMyInvitesIfNeeded(){
+function loadMyInvitesIfNeeded(options={}){
   if(MY_INVITES_LOADED)return Promise.resolve();
   if(MY_INVITES_LOAD_PROMISE)return MY_INVITES_LOAD_PROMISE;
   if(!CURRENT_PROFILE){MY_INVITES_LOADED=true;return Promise.resolve();}
   MY_INVITES_LOADING=true;
+  const request=beginSessionDataRequest('invites',options,()=>{MY_INVITES_LOADING=false;MY_INVITES_LOAD_PROMISE=null;});
   MY_INVITES_LOAD_PROMISE=(async()=>{
     try{
-      const {data,error}=await sb.from('survey_invites').select('*')
-        .eq('researcher_id',CURRENT_PROFILE.id).eq('status','pendente');
+      const {data,error}=await request.query(sb.from('survey_invites').select('*')
+        .eq('researcher_id',request.owner.id).eq('status','pendente'));
+      if(!request.valid())return;
       if(!error){MY_INVITES=data||[];MY_INVITES_LOADED=true;}
       else console.error('Erro ao carregar convites:',error);
-    }catch(ex){console.error('Erro de conexão ao carregar convites:',ex);}
+    }catch(ex){if(request.valid())console.error('Erro de conexão ao carregar convites:',ex);}
     finally{
-      MY_INVITES_LOADING=false;MY_INVITES_LOAD_PROMISE=null;
-      const onKey=document.querySelector('.nav-item.on');
-      if(onKey&&['dashboard-pesq','researcher-profile'].includes(onKey.dataset.key))go(onKey.dataset.key);
+      if(request.valid()){
+        MY_INVITES_LOADING=false;MY_INVITES_LOAD_PROMISE=null;
+        const onKey=document.querySelector('.nav-item.on');
+        if(request.render()&&onKey&&['dashboard-pesq','researcher-profile'].includes(onKey.dataset.key))go(onKey.dataset.key);
+      }
     }
   })();
   return MY_INVITES_LOAD_PROMISE;
@@ -11857,12 +11938,13 @@ async function respondMyInvite(inviteId,accept){
       if(legacy.error)throw new Error(legacy.error.message);
     }else detail=detailed.data;
     MY_INVITES=MY_INVITES.filter(i=>i.id!==inviteId);
+    window.PP_RESEARCHER_DASHBOARD?.invalidate('surveys');
     if(accept){
       // o convite aceito grava o vínculo direto no banco (survey_team) — só
       // precisamos recarregar as pesquisas pra essa passar a aparecer nas
       // cotas/coleta desta conta.
       SURVEYS_LOADED=false;
-      await loadSurveysIfNeeded();
+      if(currentKey!=='dashboard-pesq'||!window.PP_RESEARCHER_DASHBOARD)await loadSurveysIfNeeded();
       MY_COMMUNICATIONS_LOADED=false;MY_COMMUNICATIONS=[];
       await loadMySurveyCommunicationsIfNeeded();
       MY_SURVEY_RESEARCHER_MESSAGES_LOADED=false;MY_SURVEY_RESEARCHER_MESSAGES_LAST_LOADED=0;

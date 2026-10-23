@@ -19,6 +19,10 @@ O sistema (`app.html`) usa o Supabase por CDN para autenticação e dados. As bi
 
 A página de login não carrega Chart.js, qrcode.js ou Leaflet. O mapa também injeta o CSS do Leaflet somente quando é aberto. O Supabase continua exigindo internet para login e persistência dos dados.
 
+Desde a melhoria de 23/10/2026, `route-modules.js` também carrega os seis módulos de relatórios somente antes das telas Relatórios, Andamento e Resultados do cliente. O carregamento mantém a ordem das dependências, não executa o mesmo arquivo duas vezes e descarta continuações de navegação de uma sessão ou tela anterior. Mensagens obrigatórias e os módulos utilizados pela coleta permanecem no caminho inicial.
+
+O `researcher-dashboard-data.js` mantém um resumo separado para o painel do pesquisador. Ele consulta pesquisas sem perguntas/opções e pagamentos somente da conta autenticada, com paginação, cancelamento após 15 segundos e nova tentativa explícita. Pesquisas disponíveis podem aparecer enquanto os ganhos ainda estão carregando. Falhas não são mostradas como saldo zero. O resumo não marca o questionário completo como carregado; GPS, cotas, tempo mínimo e confirmação gravada após 21h continuam sendo verificados pelo fluxo original da coleta. Não é necessário executar uma nova migration para esta melhoria.
+
 ## Como abrir/testar
 
 Coloque todos os arquivos (`index.html`, `app.html`, `style.css`, `app.js`, `supabase-client.js` e as pastas `fonts/`, `assets/` e `vendor/`) na mesma pasta e abra o `index.html` no navegador — essa é a página inicial. O botão "Entrar" leva ao sistema (`app.html`), e de lá dá para voltar pelo link "← Voltar ao site" (na tela de login) ou clicando na logo (dentro do painel). A página inicial não depende do Supabase. Para login e persistência, o `app.html` precisa de internet; gráficos, QR Code e mapa usam os arquivos locais e são baixados sob demanda.

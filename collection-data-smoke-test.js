@@ -222,7 +222,7 @@ async function selectedSurveyAndCacheTest() {
   assert.equal(env.api.state('survey', 's1').status, 'ready');
   await env.api.loadSurvey('s1');
   assert.equal(env.calls.filter(call => call.table === 'surveys').length, 1, 'snapshot pronto dentro do TTL deve ser reutilizado');
-  assert.deepEqual(env.callbacks, [['survey', 's1'], ['survey', 's1']], 'callbacks devem identificar o início e a conclusão do recurso carregado');
+  assert.deepEqual(env.callbacks, [['survey', 's1'], ['survey', 's1'], ['survey', 's1']], 'callbacks devem identificar o início, progresso e conclusão do recurso carregado');
 }
 
 async function indexPaginationAndAuthorizationTest() {

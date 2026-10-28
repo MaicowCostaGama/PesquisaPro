@@ -12,6 +12,8 @@
   const MAX_INDEX_ROWS = 100000;
   const CACHE_TTL_MS = 30000;
   const OPERATION_TIMEOUT_MS = 15000;
+  const SURVEY_OPERATION_TIMEOUT_MS = 120000;
+  const SURVEY_IDLE_TIMEOUT_MS = 30000;
   const RESOURCE_NAMES = new Set(['index', 'survey', 'previous', 'recent', 'quotas']);
 
   let onChange = null;
@@ -35,6 +37,7 @@
       status: 'idle',
       error: null,
       value: null,
+      progress: null,
       updatedAt: 0,
       promise: null,
       controller: null,
@@ -191,6 +194,7 @@
     return {
       status: record.status,
       error: record.error ? errorMessage(record.error) : null,
+      ...(record.progress ? { progress: { ...record.progress } } : {}),
     };
   }
 
@@ -210,6 +214,7 @@
     record.status = 'idle';
     record.error = null;
     record.value = null;
+    record.progress = null;
     record.updatedAt = 0;
     record.promise = null;
     record.controller = null;
@@ -251,6 +256,7 @@
     record.generation = 0;
     record.status = hadValue ? 'ready' : 'idle';
     record.error = null;
+    record.progress = null;
     if (controller) {
       try { controller.abort(); } catch (error) { /* noop */ }
     }
@@ -277,6 +283,7 @@
     record.updatedAt = 0;
     record.status = 'idle';
     record.error = null;
+    record.progress = null;
     notify(name, name === 'index' || name === 'recent' ? undefined : id, owner, generation);
     return true;
   }
@@ -293,26 +300,50 @@
     const controller = newAbortController();
     let timedOut = false;
     let timer = null;
+    let idleTimer = null;
+    let rejectIdle = null;
+    const isSurvey = name === 'survey';
+    const timeoutMs = isSurvey ? SURVEY_OPERATION_TIMEOUT_MS : OPERATION_TIMEOUT_MS;
     record.status = 'loading';
     record.error = null;
+    record.progress = null;
     record.controller = controller;
     record.owner = owner;
     record.generation = generation;
     record.token = token;
 
-    const timeoutError = makeError('Tempo esgotado ao carregar dados da coleta (15s).', 'CollectionDataTimeoutError');
+    const timeoutError = makeError('Tempo esgotado ao carregar dados da coleta (' + (timeoutMs / 1000) + 's).', 'CollectionDataTimeoutError');
+    const armIdleTimer = () => {
+      if (!isSurvey || !rejectIdle || controller.signal.aborted || record.token !== token) return;
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        timedOut = true;
+        try { controller.abort(); } catch (error) { /* noop */ }
+        rejectIdle(makeError('O carregamento do questionário ficou sem resposta por 30s. Verifique sua conexão e tente novamente.', 'CollectionDataTimeoutError'));
+      }, SURVEY_IDLE_TIMEOUT_MS);
+    };
+    const reportProgress = optionsLoaded => {
+      if (controller.signal.aborted || !isCurrent(owner, generation) || record.token !== token) return;
+      armIdleTimer();
+      record.progress = { optionsLoaded: Math.max(0, Number(optionsLoaded) || 0) };
+      notify(name, id, owner, generation);
+    };
     const operation = (async () => {
       let workerPromise;
       try {
-        workerPromise = Promise.resolve().then(() => worker(controller.signal));
+        workerPromise = Promise.resolve().then(() => worker(controller.signal, reportProgress));
         const timeoutPromise = new Promise((resolve, reject) => {
           timer = setTimeout(() => {
             timedOut = true;
             try { controller.abort(); } catch (error) { /* noop */ }
             reject(timeoutError);
-          }, OPERATION_TIMEOUT_MS);
+          }, timeoutMs);
         });
-        const value = await Promise.race([workerPromise, timeoutPromise]);
+        const waits = [workerPromise, timeoutPromise];
+        if (isSurvey) {
+          waits.push(new Promise((resolve, reject) => { rejectIdle = reject; armIdleTimer(); }));
+        }
+        const value = await Promise.race(waits);
         if (controller.signal.aborted || !isCurrent(owner, generation) || record.token !== token) return null;
         record.value = value;
         record.updatedAt = Date.now();
@@ -322,14 +353,19 @@
         return value;
       } catch (error) {
         if (timer) clearTimeout(timer);
+        if (idleTimer) clearTimeout(idleTimer);
         if (!timedOut && (controller.signal.aborted || isAbortError(error))) return null;
         if (!isCurrent(owner, generation) || record.token !== token) return null;
+        // Uma página com erro deve cancelar as demais, nunca instalar dados parciais.
+        try { controller.abort(); } catch (abortError) { /* noop */ }
         record.status = 'error';
         record.error = error instanceof Error ? error : makeError(errorMessage(error) || 'Não foi possível carregar os dados da coleta.');
         notify(name, id, owner, generation);
         throw record.error;
       } finally {
         if (timer) clearTimeout(timer);
+        if (idleTimer) clearTimeout(idleTimer);
+        rejectIdle = null;
         /* Um cancelPending/reset pode já ter removido a operação do record. */
         if (record.token === token) {
           record.promise = null;
@@ -412,7 +448,7 @@
   }
 
   function questionRowsFrom(row) {
-    return (row?.survey_questions || []).slice().sort((a, b) => Number(a?.position || 0) - Number(b?.position || 0));
+    return (row?.survey_questions || []).filter(question => question?.is_active !== false).sort((a, b) => Number(a?.position || 0) - Number(b?.position || 0));
   }
 
   function surveyAuthorized(snapshot, profile) {
@@ -423,7 +459,7 @@
     return snapshot.status === 'campo' && Array.isArray(snapshot.teamIds) && snapshot.teamIds.includes(profileId(profile));
   }
 
-  async function fetchSurvey(id, signal) {
+  async function fetchSurvey(id, signal, reportProgress) {
     const profile = requireProfile();
     const client = getClient();
     if (!client?.from) throw makeError('Cliente Supabase indisponível.', 'CollectionDataClientError');
@@ -448,7 +484,8 @@
     if (!loadOptions || !attachOptions || !toSnapshot) {
       throw makeError('Helpers de questionário indisponíveis para carregar a pesquisa completa.', 'CollectionDataDependencyError');
     }
-    const optionMap = await loadOptions(questionRows, { signal });
+    reportProgress(0);
+    const optionMap = await loadOptions(questionRows, { signal, pageConcurrency: 3, onProgress: reportProgress });
     attachOptions([row], optionMap);
     const snapshot = toSnapshot(row, questionRows, [], []);
     if (!surveyAuthorized(snapshot, profile)) {
@@ -617,6 +654,8 @@
     return {
       cacheTtlMs: CACHE_TTL_MS,
       operationTimeoutMs: OPERATION_TIMEOUT_MS,
+      surveyOperationTimeoutMs: SURVEY_OPERATION_TIMEOUT_MS,
+      surveyIdleTimeoutMs: SURVEY_IDLE_TIMEOUT_MS,
       indexPageSize: INDEX_PAGE_SIZE,
       sessionGeneration,
       resources: Array.from(RESOURCE_NAMES),

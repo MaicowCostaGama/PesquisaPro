@@ -17,7 +17,10 @@
   function stage(name,title,id=ACOLLECT_SURVEY_ID){
     const status=state(name,id);
     const label=status.status==='ready'?'Pronto':status.status==='error'?'Não foi possível carregar':status.status==='loading'?'Carregando…':'Aguardando…';
+    const progress=name==='survey'&&status.status==='loading'&&status.progress?
+      '<small>Carregando opções do questionário · '+esc(Number(status.progress.optionsLoaded||0).toLocaleString('pt-BR'))+' opções recebidas</small>':'';
     return '<div class="collection-load-stage"><strong>'+esc(title)+'</strong><span>'+label+'</span>'+
+      progress+
       (status.status==='error'?'<small>'+esc(status.error||'Verifique sua conexão.')+'</small>'+retryButton(name):'')+'</div>';
   }
   function statusMarkup(){

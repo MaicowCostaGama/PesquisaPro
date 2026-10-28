@@ -63,6 +63,10 @@ function environment(){
   assert.deepStrictEqual(parallel.calls.map(call=>call.name).sort(),['index','previous','quotas','recent','survey']);
   assert(parallel.elements.startCollectBtn.disabled,'início bloqueado enquanto dados obrigatórios estão pendentes');
   assert(parallel.elements.acollectLoadStatus.innerHTML.includes('Questionário da pesquisa'));
+  parallel.state('survey','s1').progress={optionsLoaded:3000};
+  parallel.context.PP_COLLECTION_LOADING.refresh('survey','s1');
+  assert(parallel.elements.acollectLoadStatus.innerHTML.includes('3.000 opções recebidas'),'progresso das opções deve ser visível');
+  assert(parallel.elements.startCollectBtn.disabled,'progresso parcial não pode liberar o início');
   parallel.resolve('survey','s1',{id:'s1',name:'Pesquisa escolhida',status:'campo',teamIds:['p1'],questions:[{dbId:'q1'}]});
   parallel.resolve('previous','s1',null);parallel.resolve('quotas','s1',{});await tick();
   parallel.context.ACOLLECT_SELECTED_QUOTA='Cota A';parallel.context.renderAcollectActionState();

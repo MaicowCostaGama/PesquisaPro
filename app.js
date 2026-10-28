@@ -2525,31 +2525,44 @@ async function insertSurveyQuestionOptionsInBatches(rows){
     if(result.error)throw new Error('Não foi possível salvar as opções: '+result.error.message);
   }
 }
-async function loadSurveyQuestionOptions(questionRows,{signal}={}){
+async function loadSurveyQuestionOptions(questionRows,{signal,pageConcurrency=1,onProgress}={}){
   const ids=[...new Set((questionRows||[]).map(row=>row?.id).filter(Boolean).map(String))];
   const byQuestion=new Map(ids.map(id=>[id,[]]));
   if(!ids.length)return byQuestion;
-  let from=0,total=0;
-  while(true){
+  const concurrency=Math.max(1,Math.min(3,Math.floor(Number(pageConcurrency)||1)));
+  let from=0,total=0,received=0;
+  const readPage=async offset=>{
     if(signal?.aborted)throw new Error('Carregamento do questionário cancelado.');
     let query=sb.from('survey_question_options')
       .select('*')
       .in('question_id',ids)
       .order('question_id',{ascending:true})
       .order('position',{ascending:true})
-      .range(from,from+SURVEY_OPTIONS_PAGE_SIZE-1);
+      .order('id',{ascending:true})
+      .range(offset,offset+SURVEY_OPTIONS_PAGE_SIZE-1);
     if(signal)query=query.abortSignal(signal);
     const result=await query;
     if(signal?.aborted)throw new Error('Carregamento do questionário cancelado.');
     if(result.error)throw new Error('Não foi possível carregar as opções das perguntas: '+result.error.message);
     const rows=result.data||[];
-    rows.forEach(row=>{const list=byQuestion.get(String(row.question_id));if(list)list.push(row);});
-    total+=rows.length;
-    if(rows.length<SURVEY_OPTIONS_PAGE_SIZE)break;
-    from+=rows.length;
-    if(total>=SURVEY_OPTIONS_MAX_ROWS)throw new Error('A pesquisa possui opções demais para carregar com segurança.');
+    if(!Array.isArray(rows))throw new Error('Retorno inválido ao carregar as opções das perguntas.');
+    received+=rows.length;
+    if(typeof onProgress==='function')onProgress(received);
+    return rows;
+  };
+  while(from<SURVEY_OPTIONS_MAX_ROWS){
+    const count=Math.min(concurrency,Math.ceil((SURVEY_OPTIONS_MAX_ROWS-from)/SURVEY_OPTIONS_PAGE_SIZE));
+    const pages=await Promise.all(Array.from({length:count},(_,index)=>readPage(from+index*SURVEY_OPTIONS_PAGE_SIZE)));
+    // Promise.all mantém a ordem dos intervalos mesmo quando a rede responde fora de ordem.
+    for(const rows of pages){
+      rows.forEach(row=>{const list=byQuestion.get(String(row.question_id));if(list)list.push(row);});
+      total+=rows.length;
+      if(rows.length<SURVEY_OPTIONS_PAGE_SIZE)return byQuestion;
+      from+=SURVEY_OPTIONS_PAGE_SIZE;
+      if(total>=SURVEY_OPTIONS_MAX_ROWS)throw new Error('A pesquisa possui opções demais para carregar com segurança.');
+    }
   }
-  return byQuestion;
+  throw new Error('A pesquisa possui opções demais para carregar com segurança.');
 }
 function attachSurveyQuestionOptions(rows,byQuestion){
   (rows||[]).forEach(row=>(row.survey_questions||[]).forEach(question=>{

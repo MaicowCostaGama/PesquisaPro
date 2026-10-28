@@ -58,6 +58,17 @@ let RESEARCHER_UPDATE_PENDING=false,RESEARCHER_UPDATE_TARGET_VERSION='',RESEARCH
 function isCollectionTestUser(profile=CURRENT_PROFILE){
   return profile?.role==='pesq'&&profile?.status==='ativo'&&profile?.is_collection_test_user===true;
 }
+/* Identidade de teste é administrativa, nunca inferida pelo nome. O histórico
+   continua de teste mesmo com o perfil inativo; não apagar GPS ou evidências. */
+function isCollectionTestEvent(event){
+  if(!event)return false;
+  if(event.isTestCollection===true||event.is_collection_test===true)return true;
+  if((event.calibration===true||event.is_calibration===true)&&(event.flags||[]).some(flag=>String(flag).trim()==='Coleta de teste autorizada — calibração'))return true;
+  const researcherId=event.researcherId||event.researcher_id;
+  if(!researcherId)return false;
+  if(CURRENT_PROFILE?.id===researcherId&&(CURRENT_PROFILE?.is_collection_test_user===true||CURRENT_PROFILE?.isCollectionTestUser===true))return true;
+  return USERS.some(user=>user.id===researcherId&&(user.isCollectionTestUser===true||user.is_collection_test_user===true));
+}
 let RESEARCHER_PROFILE_CITIES=[];
 let RESEARCHER_PROFILE_CITIES_DRAFT=[];
 let RESEARCHER_PROFILE_CITIES_LOADED=false;
@@ -5624,6 +5635,7 @@ let _collectMap=null,_collectMarkerLayer=null;
    telas (mesmo "shape" de antes, quando os dados eram simulados) */
 function collectionEventRowToEntry(row){
   const u=USERS.find(x=>x.id===row.researcher_id);
+  const isTestCollection=isCollectionTestEvent(row);
   return{
     id:row.id,
     surveyId:row.survey_id,
@@ -5638,7 +5650,8 @@ function collectionEventRowToEntry(row){
     status:row.status||'valid',
     rejectReason:row.reject_reason||null,
     rejectedAt:row.rejected_at?new Date(row.rejected_at).getTime():null,
-    calibration:!!row.is_calibration,
+    isTestCollection,
+    calibration:!!row.is_calibration||isTestCollection,
     recordingRequired:!!row.recording_required,
     recordingConsent:row.recording_consent===true?true:row.recording_consent===false?false:null,
     recordingStatus:row.recording_status||'not_selected',
@@ -5673,7 +5686,9 @@ async function loadCollectEventsIfNeeded(){
 }
 function eventsForSurveyIdx(idx){
   const s=SURVEYS[idx];if(!s)return[];
-  return COLLECT_EVENTS.filter(e=>e.surveyId===s.id);
+  // Cache bruto preservado para o histórico privado. Coleta oficial nunca
+  // inclui testes, nem nas reprovações, no feed ou na auditoria operacional.
+  return COLLECT_EVENTS.filter(e=>e.surveyId===s.id&&!isCollectionTestEvent(e));
 }
 function collectStatusCounts(idx){
   const s=SURVEYS[idx];if(!s)return{valid:0,rejected:0,loaded:false};
@@ -5793,6 +5808,7 @@ function collectMapReadFilters(){
 function collectMapFilterEvents(events){
   const f=_collectMapFilters;
   let out=events.filter(e=>
+    !isCollectionTestEvent(e)&&
     (f.researcher==='all'||e.name===f.researcher)&&
     (!f.researcherQuery||String(e.name||'').toLocaleLowerCase('pt-BR').includes(f.researcherQuery))
   );
@@ -6232,6 +6248,7 @@ async function auditReject(id){
 }
 async function auditToggleCalibration(id){
   const e=COLLECT_EVENTS.find(x=>x.id===id);if(!e)return;
+  if(isCollectionTestEvent(e)){alert('Esta entrevista é um teste autorizado e não pode ser incluída na coleta oficial. O registro permanece preservado.');return;}
   const next=!e.calibration;
   try{
     const {error}=await sb.from('collection_events').update({is_calibration:next}).eq('id',id);
@@ -7731,7 +7748,7 @@ function reportsGeoReset(){reportsGeoStop();RP_GEO_CACHE={surveyId:null,profile:
 function reportsGeoStatus(event){return event.status==='rejected'?'rejected':event.calibration?'calibration':event.status==='valid'?'valid':'pending';}
 function reportsGeoStatusLabel(status){return {valid:'Válidas',rejected:'Reprovadas',calibration:'Calibração',pending:'Pendentes'}[status]||'Outras';}
 function reportsGeoNormalizeRows(rows){
-  return rows.map(row=>{
+  return rows.filter(row=>!isCollectionTestEvent(row)).map(row=>{
     const present=value=>value!=null&&String(value).trim()!=='';
     const lat=Number(row.lat),lng=Number(row.lng);
     const hasGps=present(row.lat)&&present(row.lng)&&Number.isFinite(lat)&&Number.isFinite(lng)&&Math.abs(lat)<=90&&Math.abs(lng)<=180&&!(lat===0&&lng===0);
@@ -7739,6 +7756,7 @@ function reportsGeoNormalizeRows(rows){
   });
 }
 function reportsGeoModel(events,filters){
+  events=events.filter(event=>!isCollectionTestEvent(event));
   const filtered=events.filter(event=>(filters.researcher==='all'||event.researcherId===filters.researcher)&&(filters.status==='all'||reportsGeoStatus(event)===filters.status));
   const areas=new Map(),counts={valid:0,rejected:0,calibration:0,pending:0};
   events.forEach(event=>counts[reportsGeoStatus(event)]++);
@@ -7773,6 +7791,9 @@ async function reportsGeoLoad(force=false){
   const active=()=>RP_GEO_OPERATION===operation&&CURRENT_PROFILE===profile&&reportsGeoAllowed()&&clientReportsViewSurvey()?.id===survey.id&&document.getElementById('rp-georeferencing')===wrap;
   const button=document.getElementById('rp-geo-refresh');if(button){button.disabled=true;button.textContent='Atualizando…';}
   try{
+    // Perfil/UUID identifica também os testes antigos anteriores à marcação.
+    if(CURRENT_PROFILE?.role!=='cliente')await loadUsersIfNeeded();
+    if(!active())return;
     const {data,error}=CURRENT_PROFILE?.role==='cliente'?await reportsReadAllPages(()=>sb.rpc('client_report_geo_v172',{p_survey_id:survey.id},{count:'exact'}).order('occurred_at',{ascending:false}).order('id')):await fetchCollectionEvents({surveyId:survey.id});
     if(!active())return;
     if(error)throw error;
@@ -10996,6 +11017,7 @@ function financeStatementPaymentsSection(payment,survey,options={}){
   return `<section class="finance-statement-payments finance-statement-section"><div class="finance-statement-section-head"><div><h3>Pagamentos realizados e comprovantes</h3><p>Confira cada repasse, valor, data, referência e arquivo anexado. Ações de edição ficam disponíveis somente para a gestão.</p></div><span class="pill pill-green">${receipts.length}</span></div><div class="finance-statement-payment-summary"><span>Total lançado <b>${brl(received)}</b></span><span>Saldo aprovado a pagar <b>${brl(balance)}</b></span></div><div class="finance-statement-payment-list">${body}</div>${registerButton?`<div class="finance-statement-payment-footer">${registerButton}</div>`:''}</section>`;
 }
 function financeStatementRender(researcher, survey, payment, events, options={}){
+  events=events.filter(event=>!isCollectionTestEvent(event));
   const isAuditCollectionStatus=event=>['audit','auditoria','em_auditoria','pending_audit','pending_recording','under_review'].includes(String(event?.status||'').toLocaleLowerCase('pt-BR').replace(/[ -]/g,'_'))||event?.audit===true||event?.underAudit===true;
   const validEvents=events.filter(event=>event.status==='valid'&&!isAuditCollectionStatus(event)).sort((a,b)=>a.ts-b.ts);
   const auditEvents=events.filter(isAuditCollectionStatus).sort((a,b)=>a.ts-b.ts);

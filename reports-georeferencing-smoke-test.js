@@ -24,10 +24,15 @@ class MarkerStub{constructor(options){this.options=options;this.listeners={};mar
 class InfoStub{setContent(value){this.content=value;}open(){}close(){this.closed=true;}}
 class BoundsStub{extend(){}getCenter(){return {lat:-23,lng:-46};}}
 const google={maps:{Map:MapStub,Marker:MarkerStub,InfoWindow:InfoStub,LatLngBounds:BoundsStub,event:{clearInstanceListeners(){}}}};
-const context={clientReportsViewSurvey:()=>survey,clientReportsFullAllowed:()=>false,CURRENT_PROFILE:{id:'staff',role:'admin'},USERS:[{id:'r1',name:'Pesquisador <Teste>'}],document:{getElementById:id=>elements[id]||null},window:{google},google,Date,console,esc:value=>String(value).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char])),googleBalloonIcon:color=>({color}),googleMapErrorText:()=> 'Não foi possível carregar Google Maps.',reportsCurrentSurvey:()=>survey,fetchCollectionEvents:async options=>{request=options;return result;},loadGoogleMaps:async()=>{}};
+const context={clientReportsViewSurvey:()=>survey,clientReportsFullAllowed:()=>false,CURRENT_PROFILE:{id:'staff',role:'admin'},USERS:[{id:'r1',name:'Pesquisador <Teste>'}],loadUsersIfNeeded:async()=>{},document:{getElementById:id=>elements[id]||null},window:{google},google,Date,console,esc:value=>String(value).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char])),googleBalloonIcon:color=>({color}),googleMapErrorText:()=> 'Não foi possível carregar Google Maps.',reportsCurrentSurvey:()=>survey,fetchCollectionEvents:async options=>{request=options;return result;},loadGoogleMaps:async()=>{}};
 vm.createContext(context);
+const helperStart=app.indexOf('function isCollectionTestEvent('),helperEnd=app.indexOf('\nlet RESEARCHER_PROFILE_CITIES',helperStart);
+assert(helperStart>=0&&helperEnd>helperStart,'helper de isolamento não encontrado');
+vm.runInContext(app.slice(helperStart,helperEnd),context);
 vm.runInContext(geoModule+'\nthis.geo={allowed:reportsGeoAllowed,normalize:reportsGeoNormalizeRows,model:reportsGeoModel,markup:reportsGeoMarkup,load:reportsGeoLoad,render:reportsGeoRender,filters:reportsGeoApplyFilters,reset:reportsGeoReset,stop:reportsGeoStop,map:reportsGeoRenderMap};',context);
 const run=code=>vm.runInContext(code,context),geo=context.geo;
+assert.strictEqual(run('isCollectionTestEvent({is_collection_test:true})'),true);
+assert.strictEqual(run('isCollectionTestEvent({researcher_id:"r1"})'),false);
 const row=(id,overrides={})=>({id,survey_id:'survey-a',researcher_id:'r1',status:'valid',is_calibration:false,lat:-23.551234,lng:-46.633789,occurred_at:'2026-10-12T12:00:00Z',...overrides});
 (async()=>{
   const rows=[row('valid'),row('rejected',{status:'rejected'}),row('calibration',{is_calibration:true}),row('pending',{status:'pending_recording'}),row('missing',{lat:null}),row('invalid',{lat:95}),row('zero',{lat:0,lng:0}),row('blank',{lng:''}),row('another',{researcher_id:'r2',lat:-22,lng:-43})];
@@ -57,7 +62,7 @@ const row=(id,overrides={})=>({id,survey_id:'survey-a',researcher_id:'r1',status
   geo.map(many);assert.equal(run('RP_GEO_MAP_STATE.markers.length'),6001);
   // Uma resposta antiga não pode entrar na pesquisa nova.
   let resolve;context.fetchCollectionEvents=()=>new Promise(r=>resolve=r);
-  const oldLoad=geo.load(true);survey={id:'survey-b',name:'Outra pesquisa',status:'active'};elements['rp-georeferencing'].dataset.surveyId='survey-b';
+  const oldLoad=geo.load(true);await new Promise(resolveTick=>setImmediate(resolveTick));survey={id:'survey-b',name:'Outra pesquisa',status:'active'};elements['rp-georeferencing'].dataset.surveyId='survey-b';
   resolve({data:[row('stale')],error:null});await oldLoad;assert.strictEqual(run('RP_GEO_CACHE.events'),previous);
   // O reset remove dados e marcadores; perfis sem liberação não recebem dados da gestão.
   geo.reset();assert.equal(run('RP_GEO_CACHE.events.length'),0);assert.equal(run('RP_GEO_MAP_STATE'),null);

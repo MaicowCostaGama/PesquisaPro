@@ -28,6 +28,10 @@ function context({cap=1000,total=1001,withoutCount=false,failOffset=null,repeat=
     SURVEYS:[{id:'survey'}],USERS:[],document:{querySelector:()=>null,getElementById:()=>null},
     refreshCollectCount(){},refreshCollectionTeamRows(){},renderLiveFeed(){},refreshCollectionTeamFunnelLive(){},
     go(){},calls,rows});
+  const helperStart=app.indexOf('function isCollectionTestEvent(');
+  const helperEnd=app.indexOf('\nlet RESEARCHER_PROFILE_CITIES',helperStart);
+  assert(helperStart>=0&&helperEnd>helperStart,'helper de isolamento não encontrado');
+  vm.runInContext(app.slice(helperStart,helperEnd),c);
   const a=app.indexOf('const COLLECT_EVENT_SELECT_BASE='),b=app.indexOf('\nasync function loadCollectionRecordingsForEvents',a);
   vm.runInContext(app.slice(a,b)+'\nlet COLLECT_EVENTS=[],COLLECT_EVENTS_LOADED=false,COLLECT_EVENTS_LOADING=false;const COLLECT_IDX=0;async function loadCollectionRecordingsForEvents(){}',c);
   const m=app.indexOf('function collectionEventRowToEntry('),n=app.indexOf('\nfunction initCollectLive(',m);
@@ -40,6 +44,8 @@ function context({cap=1000,total=1001,withoutCount=false,failOffset=null,repeat=
 (async()=>{
   // A consulta antiga retorna só os 1.000 mais recentes. O registro mais antigo é do Centro.
   const c=context();
+  assert.equal(vm.runInContext('isCollectionTestEvent({is_collection_test:true})',c),true);
+  assert.equal(vm.runInContext('isCollectionTestEvent({id:"ordinary",researcher_id:"unknown"})',c),false);
   const before=c.rows.slice(0,1000).filter(r=>r.quota_label==='Centro').length;
   assert.equal(before,46,'reprodução: Centro deve perder uma coleta no retorno truncado');
   let result=await vm.runInContext('fetchCollectionEvents({surveyId:"survey"})',c);

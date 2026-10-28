@@ -6,9 +6,15 @@ const app = fs.readFileSync('app.js', 'utf8');
 const start = app.indexOf('function collectMapFilterEvents');
 const end = app.indexOf('function collectMapApplyFilters');
 assert(start >= 0 && end > start, 'função de filtro não encontrada');
-const context = {_collectMapFilters:{researcher:'all',status:'all',latest:false}};
+const context = {_collectMapFilters:{researcher:'all',status:'all',latest:false},USERS:[],CURRENT_PROFILE:null};
 vm.createContext(context);
+const helperStart = app.indexOf('function isCollectionTestEvent(');
+const helperEnd = app.indexOf('\nlet RESEARCHER_PROFILE_CITIES', helperStart);
+assert(helperStart >= 0 && helperEnd > helperStart, 'helper de isolamento não encontrado');
+vm.runInContext(app.slice(helperStart, helperEnd), context);
 vm.runInContext(`${app.slice(start,end)}\nthis.filter=collectMapFilterEvents;`, context);
+assert.strictEqual(vm.runInContext('isCollectionTestEvent({isTestCollection:true})',context),true);
+assert.strictEqual(vm.runInContext('isCollectionTestEvent({researcher_id:"unknown"})',context),false);
 const events = [
   {name:'João',status:'valid',calibration:false,synced:true,ts:3},
   {name:'João',status:'valid',calibration:false,synced:true,ts:2},

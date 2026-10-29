@@ -2753,3 +2753,20 @@ body.system-message-gate-open{overflow:hidden}
 .researcher-collection-log-reason b{font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;color:#b42318}
 .researcher-collection-log-reason span{font-size:11px;overflow-wrap:anywhere}
 @media(max-width:640px){.researcher-collection-log-item{grid-template-columns:16px minmax(0,1fr);gap:7px}.researcher-collection-log-item>span:last-child{grid-column:2;justify-self:end;margin-top:-2px}.researcher-collection-log-reason{margin-top:5px}}
+
+/* Desistência do entrevistado — ocorrência neutra, fora dos indicadores. */
+.withdrawal-controls{display:flex;flex-direction:column;align-items:stretch;gap:8px;margin-top:14px;padding-top:14px;border-top:1px solid var(--line);min-width:0}
+.withdrawal-controls small,.withdrawal-history p,.withdrawal-pending p{font-size:12px;line-height:1.55;color:var(--ink3);overflow-wrap:anywhere}
+.withdrawal-controls .btn,.withdrawal-history .btn,.withdrawal-pending .btn,.withdrawal-quick .btn{white-space:normal;min-height:44px;height:auto;max-width:100%}
+.withdrawal-pending{padding:14px;border:1px solid #cbd5e1;border-left:4px solid #64748b;border-radius:12px;background:#f8fafc;color:#334155;margin:10px 0}
+.withdrawal-pending strong{display:block;font-size:14px;line-height:1.4;overflow-wrap:anywhere}
+.withdrawal-error{color:#92400e!important}
+.withdrawal-history{min-width:0;margin-top:14px}
+.withdrawal-history summary{cursor:pointer;font-weight:700;font-size:13px;line-height:1.5;overflow-wrap:anywhere}
+.withdrawal-history>p{margin:10px 0}
+.withdrawal-history-item{display:flex;flex-direction:column;gap:4px;padding:12px 0;border-bottom:1px solid var(--line);font-size:12px;overflow-wrap:anywhere}
+.withdrawal-history-item time,.withdrawal-history-item small{font-size:11px;color:var(--ink3)}
+.withdrawal-history-pages{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+.withdrawal-quick{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:10px 0;flex-wrap:wrap}
+.withdrawal-quick small{font-size:11px;color:var(--ink3);line-height:1.4}
+@media(max-width:640px){.withdrawal-controls .btn,.withdrawal-quick .btn{width:100%}.withdrawal-history{padding:16px}.withdrawal-quick{align-items:stretch;flex-direction:column}}

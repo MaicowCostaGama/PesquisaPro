@@ -116,6 +116,7 @@ function resetSessionPanelData(){
   APP_DATA_SESSION_REQUESTS.forEach(request=>request.cancel());
   APP_DATA_SESSION_EPOCH++;APP_DATA_SESSION_REQUESTS.clear();
   window.PP_RESEARCHER_DASHBOARD?.reset();
+  window.PP_ADMIN_NAV_DATA?.reset();window.PP_ADMIN_NAV_UI?.reset();
   window.PP_COLLECTION_DATA?.reset();window.PP_COLLECTION_LOADING?.reset();
   ACOLLECT_SURVEY_ID=null;ACOLLECT_SELECTED_QUOTA=null;ACOLLECT_START_LOADING=false;
   ACOLLECT_IN_PROGRESS=false;ACOLLECT_SUBMITTING=false;ACOLLECT_STARTED_AT=null;ACOLLECT_ANSWERS={};
@@ -123,6 +124,7 @@ function resetSessionPanelData(){
   if(typeof acollectResetRecordingState==='function')acollectResetRecordingState();
   stopAcollectQuotaLive();
   SURVEYS=[];SURVEYS_LOADED=false;SURVEYS_LOADING=false;SURVEYS_LOAD_ERROR='';
+  SURVEYS_LOAD_PROMISE=null;
   PAYMENTS=[];PAYMENTS_LOADED=false;PAYMENTS_LOADING=false;
   MY_CONTRACT=null;MY_CONTRACT_LOADED=false;MY_CONTRACT_LOADING=false;
   CONTRACT_SETTINGS_LOADED=false;CONTRACT_SETTINGS_LOADING=false;
@@ -699,6 +701,8 @@ function go(key){
   if(staffNavPendingEnabled())refreshStaffNavPendingCounts();
   const previousKey=document.querySelector('.nav-item.on')?.dataset.key;
   window.PP_RESEARCHER_DASHBOARD?.onNavigate(key,previousKey);
+  window.PP_ADMIN_NAV_UI?.onNavigate(key,previousKey);
+  window.PP_ADMIN_NAV_DATA?.onNavigate(key,previousKey);
   if(previousKey==='client-results'&&key!=='client-results'){window.PP_CLIENT_REPORTS?.reset();window.PP_TABULATION?.reset();}
   if(key!=='reports'&&window.PP_SIMPLE_TABULATION){if(!window.PP_SIMPLE_TABULATION.canLeave())return;window.PP_SIMPLE_TABULATION.reset();}
   if(key!=='reports'&&window.PP_REPORT_WHATSAPP)window.PP_REPORT_WHATSAPP.reset();
@@ -1130,6 +1134,7 @@ function quota(label,done,total,color){
 
 /* ============ DASHBOARD (admin/coord/gerente) ============ */
 PAGES.dashboard=()=>{
+  if(window.PP_ADMIN_NAV_UI?.enabled())return window.PP_ADMIN_NAV_UI.dashboard();
   if(!CONTRACT_SETTINGS_LOADED){loadContractSettingsIfNeeded();return head('Painel geral','Visão geral das operações do sistema')+'<div class="empty">Carregando a versão vigente do contrato…</div>';}
   if(!USERS_LOADED)loadUsersIfNeeded();
   if(['admin','admpro'].includes(selectedRole)&&!SIGNUPS_LOADED)loadSignupsIfNeeded();
@@ -2264,6 +2269,7 @@ let SURVEYS=[];
 let SURVEYS_LOADED=false;
 let SURVEYS_LOADING=false;
 let SURVEYS_LOAD_ERROR='';
+let SURVEYS_LOAD_PROMISE=null;
 let SURVEY_END_CONDITION_SCHEMA_MISSING=false;
 let SURVEY_NEW_FORMAT_SCHEMA_MISSING=false;
 
@@ -2598,7 +2604,15 @@ async function reloadSurveySnapshot(surveyId){
   const teamNames=idsToResearcherNames((data.survey_team||[]).map(t=>t.researcher_id));
   return surveyRowToSnapshot(data,qRows,companyNames,teamNames);
 }
-async function loadSurveysIfNeeded(){
+function loadSurveysIfNeeded(){
+  if(SURVEYS_LOAD_PROMISE)return SURVEYS_LOAD_PROMISE;
+  const operation=loadFullSurveysIfNeeded();
+  SURVEYS_LOAD_PROMISE=operation;
+  const clear=()=>{if(SURVEYS_LOAD_PROMISE===operation)SURVEYS_LOAD_PROMISE=null;};
+  operation.then(clear,clear);
+  return operation;
+}
+async function loadFullSurveysIfNeeded(){
   if(SURVEYS_LOADED||SURVEYS_LOADING)return;
   SURVEYS_LOADING=true;
   const request=beginSessionDataRequest('full-surveys');
@@ -4104,6 +4118,7 @@ function surveysLoadState(title,subtitle){
   return head(title,subtitle)+'<div class="empty" role="status">Carregando pesquisas do banco de dados…</div>';
 }
 PAGES.surveys=()=>{
+  if(window.PP_ADMIN_NAV_UI?.enabled())return window.PP_ADMIN_NAV_UI.list('surveys');
   if(!SURVEYS_LOADED){
     return surveysLoadState('Minhas pesquisas','Pesquisas em desenvolvimento (rascunho e em campo).');
   }
@@ -4126,6 +4141,7 @@ PAGES.surveys=()=>{
 };
 
 PAGES['surveys-done']=()=>{
+  if(window.PP_ADMIN_NAV_UI?.enabled())return window.PP_ADMIN_NAV_UI.list('surveys-done');
   if(!SURVEYS_LOADED){
     return surveysLoadState('Pesquisas concluídas','Pesquisas encerradas — acesse a coleta completa e os relatórios sem reabrir.');
   }
@@ -4148,6 +4164,7 @@ PAGES['surveys-done']=()=>{
 };
 
 PAGES['surveys-archived']=()=>{
+  if(window.PP_ADMIN_NAV_UI?.enabled())return window.PP_ADMIN_NAV_UI.list('surveys-archived');
   if(!SURVEYS_LOADED)return surveysLoadState('Pesquisas arquivadas','Histórico preservado fora das listas operacionais.');
   const archived=SURVEYS.map((s,idx)=>({s,idx})).filter(x=>!!x.s.archivedAt);
   const rows=archived.map(x=>surveyRow(x.s,x.idx,{archived:true})).join('')
@@ -12272,6 +12289,7 @@ function disposeDashboardCharts(){
   _dashChart=null;_finChart=null;
 }
 function drawDash(){
+  if(window.PP_ADMIN_NAV_UI?.enabled())return window.PP_ADMIN_NAV_UI.drawDashboard();
   const c=document.getElementById('dashChart');if(!c)return;
   if(typeof Chart==='undefined'){
     loadLocalAsset('chart').then(()=>{if(document.getElementById('dashChart')===c)drawDash();}).catch(()=>{});

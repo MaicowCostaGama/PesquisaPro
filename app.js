@@ -118,6 +118,7 @@ function resetSessionPanelData(){
   window.PP_RESEARCHER_DASHBOARD?.reset();
   window.PP_ADMIN_NAV_DATA?.reset();window.PP_ADMIN_NAV_UI?.reset();
   window.PP_COLLECTION_DATA?.reset();window.PP_COLLECTION_LOADING?.reset();
+  window.PP_QUESTION_NONRESPONSE?.reset();
   window.PP_COLLECTION_WITHDRAWALS?.reset();
   ACOLLECT_SURVEY_ID=null;ACOLLECT_SELECTED_QUOTA=null;ACOLLECT_START_LOADING=false;
   ACOLLECT_IN_PROGRESS=false;ACOLLECT_SUBMITTING=false;ACOLLECT_STARTED_AT=null;ACOLLECT_ANSWERS={};
@@ -2319,7 +2320,7 @@ function surveyRowToSnapshot(row,questionRows,clientCompanyNames,teamNames){
     const currencyConfig=currencyMode?normalizeCurrencyConfig(logic?.currency):null;
     const flowPosition=logic?.position&&Number.isFinite(Number(logic.position.x))&&Number.isFinite(Number(logic.position.y))
       ?{x:Number(logic.position.x),y:Number(logic.position.y)}:null;
-    return {id:localId,position:Number.isFinite(Number(q.position))?Number(q.position):qi,dbId:q.id,text:q.text||'',type:q.type||'single',difficulty:Math.min(5,Math.max(1,Number(q.difficulty)||3)),opts:opts.map(o=>o.label||''),endsInterview:opts.map(o=>!!o.ends_interview),routeTargets,directTarget,flowPosition,optionsImported,fieldOptionsImported,currencyMode,currencyConfig,fields:fields.length===2?fields:DEFAULT_PAIR_FIELDS(),isRegion:!!q.is_region};
+    return {id:localId,position:Number.isFinite(Number(q.position))?Number(q.position):qi,dbId:q.id,text:q.text||'',type:q.type||'single',difficulty:Math.min(5,Math.max(1,Number(q.difficulty)||3)),opts:opts.map(o=>o.label||''),endsInterview:opts.map(o=>!!o.ends_interview),routeTargets,directTarget,flowPosition,optionsImported,fieldOptionsImported,currencyMode,currencyConfig,fields:fields.length===2?fields:DEFAULT_PAIR_FIELDS(),isRegion:!!q.is_region,allowNonresponse:q.allow_nonresponse===true};
   });
   const dbToLocal=new Map(questions.map(question=>[String(question.dbId),String(question.id)]));
   questions.forEach(question=>{
@@ -3263,6 +3264,7 @@ function qRender(){
         ${delBtn}
       </div>
       ${body}
+      ${window.PP_QUESTION_NONRESPONSE?.editorControl(q)||''}
       ${flowCtl}
     </div>`;
   }).join('');
@@ -5309,7 +5311,7 @@ function collectDetail(idx){
   const mapResearcherOptions=mapResearchers.map(name=>`<option value="${esc(name)}">${esc(name)}</option>`).join('');
   const researcherSearchMarkup=`<div class="collect-researcher-search" role="search" aria-label="Buscar coletas por pesquisador"><label><span>Buscar pesquisador</span><input id="collectResearcherSearch" type="search" value="${esc(_collectMapFilters.researcherQuery||'')}" placeholder="Digite o nome do pesquisador" list="collectResearcherOptions" oninput="collectApplyResearcherSearch(this.value)" autocomplete="off"><datalist id="collectResearcherOptions">${mapResearchers.map(name=>`<option value="${esc(name)}"></option>`).join('')}</datalist></label><button type="button" class="btn btn-out" onclick="collectClearResearcherSearch()">Limpar</button><span id="collectResearcherSearchSummary" class="collect-researcher-search-summary">Todas as coletas</span></div>`;
   return head('Coleta e campo — '+s.name,s.status==='encerrada'?'Consulta completa da pesquisa concluída — sem reabrir a coleta':'Pesquisadores vinculados a esta pesquisa',
-    '<button class="btn btn-out" onclick="collectBack()">'+(COLLECT_RETURN_PAGE==='surveys-done'?'← Concluídas':'← Pesquisas')+'</button><button type="button" class="btn btn-out" disabled title="Exportação bruta indisponível; não gera CSV/SPSS">Exportar dados · indisponível</button>')+`
+    '<button class="btn btn-out" onclick="collectBack()">'+(COLLECT_RETURN_PAGE==='surveys-done'?'← Concluídas':'← Pesquisas')+'</button>'+(window.PP_QUESTION_NONRESPONSE?.manageButton(s)||'')+'<button type="button" class="btn btn-out" disabled title="Exportação bruta indisponível; não gera CSV/SPSS">Exportar dados · indisponível</button>')+`
   <div class="grid g5" style="margin-bottom:16px">
     ${stat('Pesquisadores',String(team.length),'vinculados','☺','#2563eb')}
     ${stat('Coletado',collected.toLocaleString('pt-BR'),'de '+sample.toLocaleString('pt-BR'),'✓','#059669','collectCollectedStat')}
@@ -6705,7 +6707,8 @@ function acollectEndByCondition(qDbId,value,optionIndex){
    cota escolhida já vem pré-preenchida e travada, para não haver contradição
    entre a cota escolhida e a resposta) ---- */
 function acollectSetAnswer(qDbId,value,rerenderForm,optionIndex){
-  ACOLLECT_ANSWERS[qDbId]={...(ACOLLECT_ANSWERS[qDbId]||{}),value};
+  if(ACOLLECT_SUBMITTING||window.PP_COLLECTION_WITHDRAWALS?.active())return;
+  ACOLLECT_ANSWERS[qDbId]={...(ACOLLECT_ANSWERS[qDbId]||{}),value,isNonresponse:false};
   /* botões de escala precisam de um novo render para mostrar qual ficou
      marcado; campos de texto/número/data NÃO são re-renderizados aqui para
      não perder o foco/cursor a cada tecla digitada — o próprio campo já
@@ -6715,6 +6718,7 @@ function acollectSetAnswer(qDbId,value,rerenderForm,optionIndex){
   if(!ended)renderAcollectActionState();
 }
 function acollectToggleMultiAnswer(qDbId,label,optionIndex){
+  if(ACOLLECT_SUBMITTING||window.PP_COLLECTION_WITHDRAWALS?.active())return;
   const cur=(ACOLLECT_ANSWERS[qDbId]&&Array.isArray(ACOLLECT_ANSWERS[qDbId].value))?ACOLLECT_ANSWERS[qDbId].value.slice():[];
   const i=cur.indexOf(label);
   if(i>=0)cur.splice(i,1);else cur.push(label);
@@ -6728,16 +6732,18 @@ function acollectPairField(qDbId,fieldIndex){
   return {current,fields};
 }
 function acollectSetPairField(qDbId,fieldIndex,value){
+  if(ACOLLECT_SUBMITTING||window.PP_COLLECTION_WITHDRAWALS?.active())return;
   const {current,fields}=acollectPairField(qDbId,fieldIndex);
   fields[fieldIndex]=value;
-  ACOLLECT_ANSWERS[qDbId]={...current,value:fields};
+  ACOLLECT_ANSWERS[qDbId]={...current,value:fields,isNonresponse:false};
   renderAcollectActionState();
 }
 function acollectTogglePairMulti(qDbId,fieldIndex,label){
+  if(ACOLLECT_SUBMITTING||window.PP_COLLECTION_WITHDRAWALS?.active())return;
   const {current,fields}=acollectPairField(qDbId,fieldIndex);
   const values=Array.isArray(fields[fieldIndex])?fields[fieldIndex].slice():[];
   const index=values.indexOf(label);if(index>=0)values.splice(index,1);else values.push(label);
-  fields[fieldIndex]=values;ACOLLECT_ANSWERS[qDbId]={...current,value:fields};
+  fields[fieldIndex]=values;ACOLLECT_ANSWERS[qDbId]={...current,value:fields,isNonresponse:false};
   renderAcollectActionState();
 }
 function acollectRankingOptions(q){return (q?.opts||[]).map(value=>String(value||'').trim()).filter(Boolean);}
@@ -6746,8 +6752,9 @@ function acollectRankingOrder(q,a){
   return [...saved.filter(value=>options.includes(value)),...options.filter(value=>!saved.includes(value))];
 }
 function acollectRankingSetOrder(qDbId,order){
+  if(ACOLLECT_SUBMITTING||window.PP_COLLECTION_WITHDRAWALS?.active())return;
   const current=ACOLLECT_ANSWERS[qDbId]||{};
-  ACOLLECT_ANSWERS[qDbId]={...current,value:order.slice()};
+  ACOLLECT_ANSWERS[qDbId]={...current,value:order.slice(),isNonresponse:false};
   renderAcollectForm();renderAcollectActionState();
 }
 function acollectRankingMove(qDbId,from,to){
@@ -6930,9 +6937,10 @@ function acollectMissingRequired(){
   if(!s)return[];
   const flow=window.PP_CONDITIONAL_FLOW;
   const questions=flow?.visibleQuestions?flow.visibleQuestions(s.questions||[],ACOLLECT_ANSWERS):(s.questions||[]);
-  return questions.filter(q=>q.type!=='open').filter(q=>{
+  return questions.filter(q=>q.type!=='open'||ACOLLECT_ANSWERS[q.dbId]?.isNonresponse===true).filter(q=>{
     if(!q.dbId)return false; // pergunta sem id real (não deveria acontecer) — não trava o envio por ela
     const a=ACOLLECT_ANSWERS[q.dbId];
+    if(a?.isNonresponse===true)return !window.PP_QUESTION_NONRESPONSE?.allowed(q,s,a);
     if(q.type==='pair'){
       const fields=Array.isArray(a?.value)?a.value:[];
       return (q.fields||DEFAULT_PAIR_FIELDS()).some((field,index)=>{
@@ -6985,7 +6993,9 @@ function renderAcollectForm(){
       const a=ACOLLECT_ANSWERS[q.dbId];
       const locked=a&&a.locked;
       let body='';
-      if(q.type==='single'&&isCurrencyQuestion(q)){
+      if(a?.isNonresponse===true){
+        body=window.PP_QUESTION_NONRESPONSE?.allowed(q,s,a)?'<p class="nonresponse-selected">O entrevistado preferiu não responder. Nenhum valor numérico ou alternativa foi atribuído.</p>':'<p class="nonresponse-error">Esta pergunta não permite não resposta. Escolha uma resposta válida para continuar.</p>';
+      }else if(q.type==='single'&&isCurrencyQuestion(q)){
         body=acollectCurrencyBody(q,a,locked);
       }else if(q.type==='single'){
         body=acollectOptionAutocompleteBody('single',q.dbId,null,q.opts||[],a&&a.value!=null?[a.value]:[],locked,q.optionsImported===true);
@@ -7014,6 +7024,7 @@ function renderAcollectForm(){
       return `<div class="q-card" style="padding:9px 10px;margin-bottom:7px">
         <div style="font-size:12px;font-weight:600;margin-bottom:5px">${esc(q.text||'(pergunta sem texto)')}${locked?' <span style="color:var(--teal);font-weight:400">· definida pela cota escolhida</span>':''}</div>
         ${body}
+        ${window.PP_QUESTION_NONRESPONSE?.control(q,a,s)||''}
       </div>`;
     }).join('');
 }
@@ -7354,6 +7365,12 @@ function acollectBuildAnswerRows(eventId){
   const questions=flow?.visibleQuestions?flow.visibleQuestions(s.questions||[],ACOLLECT_ANSWERS):(s.questions||[]);
   questions.filter(q=>q.dbId).forEach(q=>{
     const a=ACOLLECT_ANSWERS[q.dbId];
+    if(a?.isNonresponse===true){
+      if(!window.PP_QUESTION_NONRESPONSE?.allowed(q,s,a))throw new Error('Não resposta não permitida nesta pergunta. Atualize o formulário antes de enviar.');
+      const nonresponseRows=window.PP_QUESTION_NONRESPONSE.answerRows(q,eventId,a);
+      if(!nonresponseRows.length)throw new Error('Não foi possível associar a não resposta aos campos desta pergunta.');
+      rows.push(...nonresponseRows);return;
+    }
     if(!a||a.value===''||a.value==null||(Array.isArray(a.value)&&a.value.length===0))return;
     if(q.type==='multi'&&isCurrencyQuestion(q)){
       a.value.forEach(value=>{const numeric=Number(value);if(Number.isFinite(numeric))rows.push({collection_event_id:eventId,question_id:q.dbId,value_number:numeric,value_text:formatCurrencyBRL(numeric)});});
@@ -7434,6 +7451,7 @@ async function acollectSubmit(){
   )){
     alert(ACOLLECT_RECORDING_MANDATORY_AFTER_CUTOFF?'Após 21h, a confirmação final gravada é obrigatória antes de finalizar.':'Conclua a confirmação final ou escolha enviar sem áudio antes de finalizar.');return;
   }
+  if(acollectMissingRequired().length){alert('Confira as perguntas obrigatórias antes de enviar.');renderAcollectActionState();return;}
   ACOLLECT_SUBMITTING=true;
   renderAcollectActionState();
   const elapsedMs=Date.now()-ACOLLECT_STARTED_AT;
@@ -7456,6 +7474,8 @@ async function acollectSubmit(){
     status:'valid',
     is_calibration:isCollectionTestUser(),
   };
+  const nonresponseIds=window.PP_QUESTION_NONRESPONSE?.declaredQuestionIds?.(acollectCurrentSurvey(),ACOLLECT_ANSWERS)||[];
+  if(nonresponseIds.length)eventPayload.nonresponse_question_ids=nonresponseIds;
   if(ACOLLECT_RECORDING_FEATURE_AVAILABLE===true){
     eventPayload.recording_reservation_id=ACOLLECT_RECORDING_RESERVATION_ID;
     eventPayload.recording_consent=ACOLLECT_RECORDING_CONSENT;
@@ -7486,6 +7506,10 @@ async function acollectSubmit(){
   }catch(ex){
     ACOLLECT_SUBMITTING=false;
     renderAcollectActionState();
+    if(nonresponseIds.length&&/nonresponse|nonresponse_question_ids|is_nonresponse/i.test(ex.message||'')){
+      alert('O servidor não autorizou a marcação “Não respondeu”. A configuração pode ter mudado ou ainda não estar instalada. A entrevista continua em andamento: confira com a coordenação ou use “Responder esta pergunta” para preencher a resposta antes de reenviar.');
+      return;
+    }
     alert('Não foi possível enviar a coleta agora ('+ex.message+'). A entrevista continua em andamento — tente enviar de novo quando tiver internet.');
     return;
   }

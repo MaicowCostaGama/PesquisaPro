@@ -7,6 +7,7 @@ const sql=fs.readFileSync('deploy/contador-orientacoes-whatsapp-coleta.sql','utf
 for(const token of [
   'surveyInitialOrientationWhatsappMessage',
   'surveyInitialOrientationDefaultTemplate',
+  'surveyCommunicationWithoutGroups',
   'surveyTrainingVideoUrl',
   'orientation_message_template',
   'teamOrientationMessageMarkup',
@@ -19,7 +20,6 @@ for(const token of [
   'Avisos obrigatórios da PesquisaPro',
   '{{pesquisador}}',
   '{{pesquisa}}',
-  '{{grupo}}',
   '{{site}}',
   '{{video}}',
   'collectionTeamRows',
@@ -37,8 +37,11 @@ for(const token of [
   'poderão ser anuladas',
   'poderão ser desligados da operação',
   'Orientações iniciais:',
-  'id="collectTeamBody"'
+  'id="collectTeamBody"',
+  'openResearcherSurveyChat'
 ])assert(app.includes(token),'app sem '+token);
+assert(/function\s+surveyInitialOrientationWhatsappMessage\s*\(\s*s\s*,\s*u\s*,\s*template\s*=\s*['"]['"]\s*\)/.test(app),'orientação WhatsApp deve aceitar somente pesquisa, pesquisador e modelo');
+for(const token of ['surveyInvitationGroupText','teamWhatsappGroupUrl','whatsapp_group_url','COLLECT_SURVEY_ORIENTATION_GROUP','{{grupo}}','Entrar no grupo do WhatsApp'])assert(!app.includes(token),'app ainda contém comunicação por grupos: '+token);
 for(const token of ['collection-orientation-btn','collection-orientation-count','collection-orientation-callout'])assert(css.includes(token),'CSS sem '+token);
 for(const token of [
   'create table if not exists public.survey_orientation_whatsapp_sends',
@@ -61,5 +64,6 @@ const editableSql=fs.readFileSync('deploy/orientacoes-iniciais-editaveis.sql','u
 assert(editableSql.includes('add column if not exists orientation_message_template'),'migration editável sem coluna');
 assert(!/drop table|drop column|truncate|delete from/i.test(editableSql),'migration editável contém operação destrutiva');
 assert(!/drop table|drop column|truncate|delete from/i.test(sql),'migration contém operação destrutiva');
-assert(html.includes('app.js?v=20261022160000'),'cache não atualizado');
-console.log('Collection orientation WhatsApp smoke test: PASS — mensagem, botão, contador por pesquisador, RPCs e RLS verificados.');
+const version=html.match(/name="pesquisapro-app-version" content="(\d+)"/)?.[1];
+assert(version&&html.includes(`app.js?v=${version}`),'cache do app não acompanha a versão');
+console.log('Collection orientation WhatsApp smoke test: PASS — orientação sem grupos, sanitizador, WhatsApp/chat individual, contador, RPCs e RLS verificados.');

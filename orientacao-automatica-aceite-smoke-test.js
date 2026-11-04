@@ -6,7 +6,7 @@ const sql=fs.readFileSync(path.join(root,'deploy/orientacao-automatica-aceite.sq
 const videoUpdatePath=path.join(root,'deploy/orientacao-video-obrigatorio-v210.sql');
 const videoUpdate=fs.existsSync(videoUpdatePath)?fs.readFileSync(videoUpdatePath,'utf8'):'';
 const ok=(assertion,message)=>{if(!assertion)throw new Error(message)};
-for(const text of ['id="w-orientation-template"','surveyInitialOrientationDefaultTemplate()','validateSurveyOrientationTemplate(d.orientationMessage,d.name)','orientation_message_template:orientationTemplate','async function surveyEdit(idx)','select(\'orientation_message_template\')'])ok(app.includes(text),'Wizard deve apresentar, validar, carregar e salvar orientações reais: '+text);
+for(const text of ['id="w-orientation-template"','surveyCommunicationWithoutGroups','surveyInitialOrientationDefaultTemplate()','validateSurveyOrientationTemplate(d.orientationMessage,d.name)','orientation_message_template:orientationTemplate','async function surveyEdit(idx)','select(\'orientation_message_template\')'])ok(app.includes(text),'Wizard deve apresentar, sanitizar, validar, carregar e salvar orientações reais: '+text);
 for(const text of ['send_pending_survey_initial_orientations','collectionFunnelEntries(idx).accepted.length','COLLECT_INAPP_ORIENTATION_STATUS===\'ready\'','COLLECT_BATCH_ORIENTATION_SENDING','MY_SURVEY_RESEARCHER_MESSAGES_LOADED=false'])ok(app.includes(text),'Ação em lote e caixa de entrada devem ser reais: '+text);
 ok(app.includes('Confirme a leitura antes de iniciar a coleta')||app.includes('confirme a leitura antes de iniciar a coleta'),'Convite aceito orienta leitura antes da coleta');
 ok(css.includes('.wiz-orientation-card')&&css.includes('.collection-funnel-bulk-orientation'),'Novo formulário e ação em lote devem ter layout responsivo');
@@ -15,7 +15,8 @@ ok(/pg_advisory_xact_lock/i.test(sql)&&/exists\s*\(\s*select\s+1\s+from\s+public
 ok((/after\s+insert/i.test(sql)&&/after\s+update/i.test(sql))||/after\s+(?:insert\s+or\s+update|update\s+or\s+insert)/i.test(sql),'Aceite deve acionar trigger de INSERT e UPDATE');
 ok(!/(?:drop table|truncate|delete from public\.)/i.test(sql),'Migration não pode apagar dados de produção');
 ok(!/\binsert\s+into\s+public\.survey_researcher_messages\s*\n?\s*select\s+.*from\s+public\.survey_invites/i.test(sql),'Migration não pode enviar em massa ao ser instalada');
-const funcs=['surveyInvitationSiteUrl','surveyTrainingVideoUrl','surveyInitialOrientationDefaultTemplate','surveyInitialOrientationWhatsappMessage','validateSurveyOrientationTemplate'];
+for(const text of ['surveyInvitationGroupText','teamWhatsappGroupUrl','whatsapp_group_url','COLLECT_SURVEY_ORIENTATION_GROUP','{{grupo}}'])ok(!app.includes(text),'app ainda contém referência de grupo: '+text);
+const funcs=['surveyInvitationSiteUrl','surveyTrainingVideoUrl','surveyCommunicationWithoutGroups','surveyInitialOrientationDefaultTemplate','surveyInitialOrientationWhatsappMessage','validateSurveyOrientationTemplate'];
 const source=funcs.map(name=>{let start=app.indexOf('function '+name+'(');ok(start>=0,'Função ausente: '+name);let end=app.indexOf('\n}',start);ok(end>=0,'Corpo da função ausente: '+name);return app.slice(start,end+2)}).join('\n');
 const ctx={};vm.createContext(ctx);vm.runInContext(source,ctx);
 const def=ctx.surveyInitialOrientationDefaultTemplate();
@@ -28,6 +29,10 @@ else ok(sqlDefault,'A migration histórica deve manter o modelo SQL identificáv
 if(videoUpdate)ok(videoUpdate.includes('rPIxhxCeZodagzpK.mp4'),'Patch v210 sem URL do vídeo atual');
 const preview=ctx.validateSurveyOrientationTemplate(def,'Pesquisa de exemplo');
 ok(preview===def,'Padrão deveria passar na validação e ficar editável');
+const legacy=`GPS ativo; entre no grupo oficial: https://chat.whatsapp.com/${'A'.repeat(45)}\n21:00; link do grupo: https://chat.whatsapp.com/${'B'.repeat(45)} {{grupo}}`;
+const sanitized=ctx.surveyCommunicationWithoutGroups(legacy);
+ok(!/grupo|chat\.whatsapp\.com|\{\{grupo\}\}/i.test(sanitized),'Sanitizador deveria remover grupo e link oficial, sem apagar o restante');
+ok(/GPS|21:00/i.test(sanitized),'Sanitizador removeu regra preservada de GPS/21h');
 let rejected=false;try{ctx.validateSurveyOrientationTemplate('','Pesquisa de exemplo')}catch{rejected=true}ok(rejected,'Não pode salvar modelo vazio');
 rejected=false;try{ctx.validateSurveyOrientationTemplate('A'.repeat(3801),'Pesquisa de exemplo')}catch{rejected=true}ok(rejected,'Modelo excessivo deve ser recusado');
 rejected=false;try{ctx.validateSurveyOrientationTemplate('A'.repeat(3470),'Pesquisa de exemplo')}catch{rejected=true}ok(rejected,'Texto extenso que extrapola com avisos obrigatórios deve ser recusado');

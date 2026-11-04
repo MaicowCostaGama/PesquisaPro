@@ -128,6 +128,7 @@ function environment(){
   notice.context.surveyTrainingVideoUrl=()=>'';notice.context.acollectNoticeGateUpdateConfirm=()=>{};
   notice.context.document.body={classList:{add:()=>{}}};
   notice.elements.acollectNoticeGateContent={innerHTML:'',querySelector:()=>null};notice.elements.acollectNoticeGateConfirm={textContent:''};
+  vm.runInContext(block('function surveyCommunicationWithoutGroups(value){','function surveyInitialOrientationDefaultTemplate(){'),notice.context);
   vm.runInContext(block("function acollectRenderNoticeGate(errorMessage=''){",'async function acollectFetchPendingNotices'),notice.context);
   notice.context.acollectRenderNoticeGate();
   assert(notice.elements.acollectNoticeGateContent.innerHTML.includes('<strong>Pesquisa escolhida</strong>'));

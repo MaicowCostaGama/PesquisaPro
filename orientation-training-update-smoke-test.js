@@ -7,6 +7,7 @@ const video='assets/pesquisa-pro-orientacoes-coleta.mp4';
 for(const token of [
   'surveyInitialOrientationDefaultTemplate',
   'surveyInitialOrientationWhatsappMessage',
+  'surveyCommunicationWithoutGroups',
   'surveyTrainingVideoUrl',
   'rPIxhxCeZodagzpK.mp4',
   'cidade ou região autorizada',
@@ -26,7 +27,10 @@ for(const token of [
   'poderão ser desligados da operação',
   '08','Respeite a distância','Respeite o tempo mínimo'
 ]) assert(app.includes(token),`app sem ${token}`);
-assert(html.includes('app.js?v=20261022160000'),'cache do app não atualizado');
+assert(/function\s+surveyInitialOrientationWhatsappMessage\s*\(\s*s\s*,\s*u\s*,\s*template\s*=\s*['"]['"]\s*\)/.test(app),'assinatura de orientação WhatsApp deve excluir grupo');
+for(const token of ['surveyInvitationGroupText','teamWhatsappGroupUrl','whatsapp_group_url','COLLECT_SURVEY_ORIENTATION_GROUP','{{grupo}}'])assert(!app.includes(token),'app ainda contém referência de grupo: '+token);
+const version=html.match(/name="pesquisapro-app-version" content="(\d+)"/)?.[1];
+assert(version&&html.includes(`app.js?v=${version}`),'cache do app não acompanha a versão');
 assert(fs.existsSync(video),'vídeo local não foi incluído');
 const stat=fs.statSync(video);
 assert(stat.size>30*1024*1024,`vídeo revisado muito pequeno: ${stat.size}`);

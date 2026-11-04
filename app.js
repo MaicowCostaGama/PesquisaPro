@@ -2165,7 +2165,7 @@ function renderDistributionOutput(out,rows,canvasId,setChart,prevChart){
 const WIZ={step:1,total:7,editIndex:null,
   data:{name:'',tipo:'Eleitoral / intenção de voto',dataIni:'',dataFim:'',abrangencia:'estadual',estados:[],cidades:{},
     pop:1000000,err:'0.03',conf:'1.96',prop:50,price:5,priceRemote:8,clientPrice:12,clientes:[],
-    formStarted:false,questions:[],quotas:{},quotaOff:{},remote:{},clientReleaseById:{},minimumCollectionSeconds:null,orientationMessage:''}};
+    formStarted:false,questions:[],quotas:{},quotaOff:{},remote:{},clientReleaseById:{},minimumCollectionSeconds:null,minimumCollectionDistanceM:15,orientationMessage:''}};
 let WIZ_QID=1;
 const Q_TYPES={single:'Escolha única',multi:'Múltipla escolha',ranking:'Ranking de preferências',pair:'Duas respostas',scale:'Escala 1–5',scale10:'Escala 1–10',nps:'NPS 0–10',open:'Resposta aberta',number:'Número',date:'Data'};
 const Q_TYPE_CHOICES=[['single','Escolha única'],['multi','Múltipla escolha'],['currency_single','Valor em moeda · escolha única'],['currency_multi','Valores em moeda · múltipla'],['ranking','Ranking de preferências'],['pair','Duas respostas'],['scale','Escala 1–5'],['scale10','Escala 1–10'],['nps','NPS 0–10'],['open','Resposta aberta'],['number','Número'],['date','Data']];
@@ -2261,7 +2261,7 @@ function normalizeSurveyGeo(data){
 function blankSurveyData(){
   return {name:'',tipo:'Eleitoral / intenção de voto',dataIni:'',dataFim:'',abrangencia:'estadual',estados:[],cidades:{},
     pop:1000000,err:'0.03',conf:'1.96',prop:50,price:5,priceRemote:8,clientPrice:12,clientes:[],
-    formStarted:false,questions:[],quotas:{},quotaOff:{},remote:{},clientReleaseById:{},minimumCollectionSeconds:null,
+    formStarted:false,questions:[],quotas:{},quotaOff:{},remote:{},clientReleaseById:{},minimumCollectionSeconds:null,minimumCollectionDistanceM:15,
     orientationMessage:surveyInitialOrientationDefaultTemplate()};
 }
 
@@ -2341,6 +2341,7 @@ function surveyRowToSnapshot(row,questionRows,clientCompanyNames,teamNames){
     clientReleaseById:Object.fromEntries((row.survey_clients||[]).filter(sc=>sc.client_id).map(sc=>[sc.client_id,!!sc.results_released])),
     formStarted:!!row.form_started,formApprovalRequired:!!row.form_approval_required,questions,quotas,quotaOff,remote,
     minimumCollectionSeconds:Number.isFinite(Number(row.minimum_collection_seconds))&&Number(row.minimum_collection_seconds)>0?Math.round(Number(row.minimum_collection_seconds)):null,
+    minimumCollectionDistanceM:row.minimum_collection_distance_m!=null&&Number.isInteger(Number(row.minimum_collection_distance_m))&&Number(row.minimum_collection_distance_m)>=0?Number(row.minimum_collection_distance_m):15,
     collected:row.collected||0,status:row.status||'rascunho',archivedAt:row.archived_at||null,
     created:fmtRelativo(row.created_at),createdAt:row.created_at||null,
     team:teamNames||[],teamIds:(row.survey_team||[]).map(member=>member.researcher_id),coord:'',isNew:false,
@@ -2354,6 +2355,7 @@ function snapshotToSurveyRow(d){
     proporcao:+d.prop||50,price:+d.price||0,price_remote:+d.priceRemote||0,client_price:+d.clientPrice||0,
     form_started:!!d.formStarted,status:d.status||'rascunho',form_approval_required:!!d.formApprovalRequired,
     minimum_collection_seconds:Number.isFinite(Number(d.minimumCollectionSeconds))&&Number(d.minimumCollectionSeconds)>0?Math.round(Number(d.minimumCollectionSeconds)):null,
+    minimum_collection_distance_m:surveyMinimumDistanceMeters({minimumCollectionDistanceM:d.minimumCollectionDistanceM}),
   };
 }
 /* atualiza perguntas/opções sem apagar perguntas que já possuem respostas.
@@ -2734,6 +2736,15 @@ function wizSave(){
       return false;
     }
     WIZ.data.minimumCollectionSeconds=seconds;
+    const distanceRaw=String(g('wiz-minimum-distance-input')??'15').trim();
+    const distance=Number(distanceRaw);
+    if(distanceRaw===''||!Number.isInteger(distance)||distance<0||distance>10000){
+      const input=document.getElementById('wiz-minimum-distance-input');
+      if(input)input.focus();
+      alert('Informe uma distância inteira entre 0 e 10.000 metros. Use 0 para desativar a trava.');
+      return false;
+    }
+    WIZ.data.minimumCollectionDistanceM=distance;
   }
   if(WIZ.step===3){
     WIZ.data.pop=+g('w-pop');WIZ.data.err=g('w-err');WIZ.data.conf=g('w-conf');WIZ.data.prop=+g('w-prop');
@@ -2762,7 +2773,7 @@ WIZ_BODY[1]=()=>`<div class="card" style="max-width:640px">
     </select>
   </div>
   <div id="wiz-geo"></div>
-  <div class="wiz-orientation-card"><label class="lbl" for="w-orientation-template">Orientações iniciais por aplicativo</label><p class="card-d">Enviadas automaticamente a cada pesquisador que aceitar esta pesquisa. O modelo atual já está sugerido: revise e personalize antes de salvar. Cada pesquisador confirma a leitura antes de iniciar a coleta.</p><textarea class="inp" id="w-orientation-template" rows="12" maxlength="3800" required>${esc(surveyCommunicationWithoutGroups(WIZ.data.orientationMessage)||surveyInitialOrientationDefaultTemplate())}</textarea><p class="card-d">Até 3.800 caracteres no modelo; a mensagem final, com nome e links inseridos, deve caber em 4.000. Use <code>{{pesquisador}}</code>, <code>{{pesquisa}}</code>, <code>{{site}}</code> e <code>{{video}}</code>. Regras de integridade e gravação final após 21:00 são obrigatórias.</p></div>
+  <div class="wiz-orientation-card"><label class="lbl" for="w-orientation-template">Orientações iniciais por aplicativo</label><p class="card-d">Enviadas automaticamente a cada pesquisador que aceitar esta pesquisa. O modelo atual já está sugerido: revise e personalize antes de salvar. Cada pesquisador confirma a leitura antes de iniciar a coleta.</p><textarea class="inp" id="w-orientation-template" rows="12" maxlength="3800" required>${esc(surveyCommunicationWithoutGroups(WIZ.data.orientationMessage)||surveyInitialOrientationDefaultTemplate())}</textarea><p class="card-d">Até 3.800 caracteres no modelo; a mensagem final, com nome e links inseridos, deve caber em 4.000. Use <code>{{pesquisador}}</code>, <code>{{pesquisa}}</code>, <code>{{site}}</code>, <code>{{video}}</code> e <code>{{distancia}}</code> para preencher o valor configurado nesta pesquisa. Regras de integridade e gravação final após 21:00 são obrigatórias.</p></div>
   ${wizNav(true)}</div>`;
 
 /* ---- abrangência geográfica: estado(s) e cidade(s) ---- */
@@ -2923,6 +2934,19 @@ function wizMinimumDurationMarkup(){
     <div class="wiz-audit-duration-note"><b>Como usar:</b> mantenha a sugestão quando ela representar o formulário ou informe um valor maior quando a abordagem exigir apresentação, leitura, deslocamento interno ou explicações adicionais. O valor fica salvo junto da pesquisa e pode ser revisado antes da publicação.</div>
   </section>`;
 }
+function surveyMinimumDistanceMeters(s){
+  const raw=s?.minimumCollectionDistanceM??s?.minimum_collection_distance_m;
+  if(raw==null||String(raw).trim()==='')return 15;
+  const value=Number(raw);
+  return Number.isInteger(value)&&value>=0&&value<=10000?value:15;
+}
+function wizMinimumDistanceMarkup(){
+  const distance=surveyMinimumDistanceMeters(WIZ.data);
+  return `<section class="wiz-minimum-distance-card" aria-labelledby="wiz-minimum-distance-title">
+    <div><span class="eyebrow">DISTÂNCIA ENTRE COLETAS</span><h3 id="wiz-minimum-distance-title">Distância mínima entre entrevistas desta pesquisa</h3><p>A nova coleta será comparada com todas as coletas válidas e não calibradas desta pesquisa, de qualquer pesquisador. Coletas reprovadas e entrevistas de teste não contam.</p></div>
+    <label class="wiz-minimum-distance-control" for="wiz-minimum-distance-input"><span>Distância mínima</span><span class="wiz-minimum-distance-input-row"><input class="inp" id="wiz-minimum-distance-input" type="number" min="0" max="10000" step="1" value="${distance}" aria-describedby="wiz-minimum-distance-help"><span>metros</span></span><small id="wiz-minimum-distance-help">Use 0 para desativar a trava de distância nesta pesquisa. O padrão é 15 m.</small></label>
+  </section>`;
+}
 function wizMinimumDurationPreview(raw){
   const automatic=surveyAutomaticMinimumSeconds(WIZ.data),value=wizMinimumDurationValue(raw),text=String(raw??'').trim();
   const invalid=text!==''&&value===null;
@@ -2947,11 +2971,13 @@ function wizMinimumDurationRefresh(){
 
 WIZ_BODY[2]=()=>{
   const durationCard=wizMinimumDurationMarkup();
+  const distanceCard=wizMinimumDistanceMarkup();
   if(!WIZ.data.formStarted){
     return `<div class="card" style="max-width:760px">
       <div class="card-t">Formulário</div>
       <div class="card-d">Monte o questionário desta pesquisa. As perguntas viram variáveis para cotas e cruzamentos.</div>
       ${durationCard}
+      ${distanceCard}
       <div class="form-start">
         <div class="fs-ico">❒</div>
         <div class="fs-title">Nenhum formulário ainda</div>
@@ -2969,6 +2995,8 @@ WIZ_BODY[2]=()=>{
     <button class="btn btn-out" style="margin-left:auto" onclick="qLoadExample()">Carregar exemplo</button>
     <button class="btn btn-out" onclick="qClear()">Limpar tudo</button></div>
   <div class="card-d" style="margin-top:6px">Crie as perguntas desta pesquisa. As variáveis aqui ficam disponíveis para cotas e cruzamentos.</div>
+  ${durationCard}
+  ${distanceCard}
   <div class="q-condition-hint"><span aria-hidden="true">↳</span> O fluxo agora possui uma aba própria. No mapa, arraste os nós e arraste o ponto de uma resposta até outro nó para criar caminhos diferentes.</div>
   <div class="q-editor-tabs" role="tablist" aria-label="Editor da pesquisa">
     <button type="button" class="q-editor-tab" id="q-tab-questions" role="tab" aria-controls="q-questions-panel" onclick="qSetEditorTab('questions')">Perguntas <span class="q-editor-tab-count" id="q-tab-question-count"></span></button>
@@ -3938,7 +3966,7 @@ async function wizCreate(){
   const isNew=WIZ.editIndex==null;
   const existingSurvey=!isNew?SURVEYS[WIZ.editIndex]:null;
   let orientationTemplate;
-  try{orientationTemplate=validateSurveyOrientationTemplate(d.orientationMessage,d.name);}catch(ex){alert(ex.message);WIZ.step=1;wizRender();return;}
+  try{orientationTemplate=validateSurveyOrientationTemplate(d.orientationMessage,d.name,d.minimumCollectionDistanceM);}catch(ex){alert(ex.message);WIZ.step=1;wizRender();return;}
   const row=snapshotToSurveyRow(d);
   if(existingSurvey?.status)row.status=existingSurvey.status;
   const busyBtn=document.querySelector('#wizBody .btn-fill');
@@ -3956,6 +3984,11 @@ async function wizCreate(){
         const {form_approval_required,minimum_collection_seconds,...legacyRow}=row;
         result=await sb.from('surveys').insert(legacyRow).select().single();
       }
+      if(result.error&&/minimum_collection_distance_m/i.test(result.error.message||'')){
+        if(Number(row.minimum_collection_distance_m)!==15)throw new Error('A distância definida requer a migration deploy/distancia-minima-coleta-por-pesquisa-20261104.sql no Supabase. A configuração escolhida não foi descartada.');
+        const {minimum_collection_distance_m,...legacyRow}=row;
+        result=await sb.from('surveys').insert(legacyRow).select().single();
+      }
       if(result.error)throw new Error(result.error.message);
       surveyId=result.data.id;
     }else{
@@ -3967,6 +4000,11 @@ async function wizCreate(){
       }
       if(result.error&&/form_approval_required|schema cache|column .* does not exist/i.test(result.error.message||'')){
         const {form_approval_required,minimum_collection_seconds,...legacyRow}=row;
+        result=await sb.from('surveys').update(legacyRow).eq('id',surveyId);
+      }
+      if(result.error&&/minimum_collection_distance_m/i.test(result.error.message||'')){
+        if(Number(row.minimum_collection_distance_m)!==15)throw new Error('A distância definida requer a migration deploy/distancia-minima-coleta-por-pesquisa-20261104.sql no Supabase. A configuração escolhida não foi descartada.');
+        const {minimum_collection_distance_m,...legacyRow}=row;
         result=await sb.from('surveys').update(legacyRow).eq('id',surveyId);
       }
       if(result.error)throw new Error(result.error.message);
@@ -4031,6 +4069,7 @@ function wizReview(){
     ${row('Margem de erro / confiança','±'+(+d.err*100)+'% · '+({'1.645':'90%','1.96':'95%','2.576':'99%'}[d.conf]))}
     ${row('Amostra (com folga)',nadj.toLocaleString('pt-BR')+' coletas')}
     ${row('Tempo mínimo de auditoria',fmtInterviewDuration(surveyEffectiveMinimumSeconds(d))+' · '+(Number.isFinite(Number(d.minimumCollectionSeconds))&&Number(d.minimumCollectionSeconds)>=30?'ajuste manual':'sugestão automática'))}
+    ${row('Distância mínima entre coletas',surveyMinimumDistanceMeters(d)===0?'Desativada':fmtDist(surveyMinimumDistanceMeters(d))+' · toda a equipe nesta pesquisa')}
     ${row('Preço por formulário (pesquisador)','R$ '+(+d.price).toFixed(2)+' (remota R$ '+(+d.priceRemote).toFixed(2)+')')}
     ${row('Preço por formulário (cliente)','R$ '+(+(d.clientPrice||0)).toFixed(2))}
     ${row('Custo estimado','R$ '+(nadj*d.price).toLocaleString('pt-BR',{maximumFractionDigits:0}))}
@@ -4294,7 +4333,7 @@ async function surveyEdit(idx){
     tipo:s.tipo||'Eleitoral / intenção de voto',dataIni:s.dataIni||'',dataFim:s.dataFim||'',
     abrangencia:s.abrangencia||'estadual',estados:geo.estados,cidades:geo.cidades,
     pop:s.pop,err:s.err,conf:s.conf,prop:s.prop,price:s.price,priceRemote:s.priceRemote,clientes:linkedClientes,
-    formStarted:s.formStarted!==false,formApprovalRequired:!!s.formApprovalRequired,questions:s.questions||[],clientPrice:s.clientPrice!=null?s.clientPrice:12,quotas:s.quotas||{},quotaOff:s.quotaOff||{},remote:s.remote||{},clientReleaseById:s.clientReleaseById||{},minimumCollectionSeconds:s.minimumCollectionSeconds||null,
+    formStarted:s.formStarted!==false,formApprovalRequired:!!s.formApprovalRequired,questions:s.questions||[],clientPrice:s.clientPrice!=null?s.clientPrice:12,quotas:s.quotas||{},quotaOff:s.quotaOff||{},remote:s.remote||{},clientReleaseById:s.clientReleaseById||{},minimumCollectionSeconds:s.minimumCollectionSeconds||null,minimumCollectionDistanceM:surveyMinimumDistanceMeters(s),
     orientationMessage:surveyCommunicationWithoutGroups(settings?.orientation_message_template)||surveyInitialOrientationDefaultTemplate()
   }));
   WIZ_QID=(WIZ.data.questions.reduce((m,q)=>Math.max(m,q.id),0)||0)+1;
@@ -4452,6 +4491,18 @@ function surveyCommunicationWithoutGroups(value){
   }).join('\n');
   return text.replace(/[ \t]+$/gm,'').replace(/\n{3,}/g,'\n\n').trim();
 }
+function surveyInitialOrientationDistanceText(s){
+  const distance=surveyMinimumDistanceMeters(s||{});
+  if(distance===0)return 'A trava de distância mínima entre coletas está desativada nesta pesquisa; GPS e área autorizada continuam obrigatórios.';
+  return `O sistema bloqueia uma nova coleta a menos de ${fmtDist(distance)} da coleta válida mais próxima desta pesquisa, realizada por qualquer pesquisador. Coletas reprovadas e calibrações de teste não entram na comparação.`;
+}
+function surveyOrientationReplaceLegacyDistanceRules(template){
+  const numericDistance=/\b\d+(?:[.,]\d+)?\s*(?:m|metros?)\b|\bquinze\s+metros\b/i;
+  const distanceContext=/dist[âa]ncia|raio|coleta|entrevista/i;
+  return String(template||'').split('\n').map(line=>line.split(/(?<=[.!?;])\s+/u).map(sentence=>
+    numericDistance.test(sentence)&&distanceContext.test(sentence)?'• {{distancia}}':sentence
+  ).join(' ')).join('\n');
+}
 function surveyInitialOrientationDefaultTemplate(){
   return `Olá, {{pesquisador}}! Você foi vinculado à pesquisa "{{pesquisa}}", de proteção veicular no Rio de Janeiro. Estas orientações são obrigatórias e devem ser lidas antes da primeira coleta.
 
@@ -4468,7 +4519,7 @@ function surveyInitialOrientationDefaultTemplate(){
 • Leia cada pergunta exatamente como aparece no formulário, sem resumir, sugerir ou alterar o sentido. Registre fielmente a resposta dada.
 • Seja respeitoso, não pressione o entrevistado e não peça documentos, fotos ou dados desnecessários. Preserve a privacidade.
 • Respeite o tempo mínimo calculado para o formulário. Coletas abaixo do mínimo podem ser rejeitadas e não serão contabilizadas para pagamento.
-• O sistema bloqueia o início se a nova coleta estiver a menos de 15 metros da coleta válida anterior desta mesma pesquisa. Coletas de pesquisas diferentes não entram nessa comparação, mas a cidade ou região, o perfil, o tempo e as cotas continuam valendo.
+• {{distancia}}
 
 *Confirmação gravada e regra após 21h:*
 Algumas entrevistas solicitarão que, no final, o entrevistado grave com sua voz a confirmação de que a entrevista realmente ocorreu e de que foram feitas todas as perguntas. Explique o motivo e peça autorização antes de gravar.
@@ -4492,13 +4543,15 @@ function surveyInitialOrientationWhatsappMessage(s,u,template=''){
     pesquisador:u?.name||'pesquisador(a)',
     pesquisa:s?.name||'Pesquisa',
     site:surveyInvitationSiteUrl(),
-    video:surveyTrainingVideoUrl()
+    video:surveyTrainingVideoUrl(),
+    distancia:surveyInitialOrientationDistanceText(s)
   };
-  const source=surveyCommunicationWithoutGroups(template).trim()||surveyInitialOrientationDefaultTemplate();
-  let message=source.replace(/\{\{\s*(pesquisador|pesquisa|site|video)\s*\}\}/gi,(_,key)=>values[String(key).toLowerCase()]||'');
+  let source=surveyCommunicationWithoutGroups(template).trim()||surveyInitialOrientationDefaultTemplate();
+  source=surveyOrientationReplaceLegacyDistanceRules(source);
+  let message=source.replace(/\{\{\s*(pesquisador|pesquisa|site|video|distancia)\s*\}\}/gi,(_,key)=>values[String(key).toLowerCase()]||'');
   const mandatoryBlocks=[];
   if(!/cidade ou região autorizada|fora da (?:cidade|área)|fora da região/i.test(message))mandatoryBlocks.push('Faça a coleta somente dentro da cidade ou região autorizada pela pesquisa. Fora da área, o aplicativo não permitirá iniciar.');
-  if(!/menos de 15 metros|15 metros|quinze metros/i.test(message))mandatoryBlocks.push('O sistema bloqueia o início se a nova coleta estiver a menos de 15 metros da coleta válida anterior desta mesma pesquisa. Coletas de pesquisas diferentes não entram nessa comparação.');
+  if(!message.includes(values.distancia))mandatoryBlocks.push(values.distancia);
   if(!/tempo mínimo calculado|abaixo do mínimo|tempo mínimo necessário/i.test(message))mandatoryBlocks.push('Respeite o tempo mínimo calculado para o formulário. Coletas abaixo do mínimo serão rejeitadas e não serão contabilizadas para pagamento.');
   if(!/algumas entrevistas solicitarão/i.test(message))mandatoryBlocks.push('Algumas entrevistas solicitarão que, no final, o entrevistado grave com sua voz a confirmação de que a entrevista realmente ocorreu e de que foram feitas todas as perguntas.');
   if(!/todas as entrevistas realizadas após as 21:00/i.test(message))mandatoryBlocks.push('Todas as entrevistas realizadas após as 21:00 devem ter gravação de confirmação do entrevistado no final.');
@@ -4510,12 +4563,12 @@ function surveyInitialOrientationWhatsappMessage(s,u,template=''){
   if(!message.includes(surveyTrainingVideoUrl()))mandatoryBlocks.push('Assista a este vídeo para entender como fazer as coletas corretamente e as regras para serem consideradas aptas: '+surveyTrainingVideoUrl());
   return mandatoryBlocks.length?message+'\n\n*Avisos obrigatórios da PesquisaPro:*\n'+mandatoryBlocks.join('\n\n'):message;
 }
-function validateSurveyOrientationTemplate(template,surveyName){
+function validateSurveyOrientationTemplate(template,surveyName,distanceM=15){
   const text=surveyCommunicationWithoutGroups(template).trim();
   if(!text)throw new Error('Defina as orientações iniciais antes de salvar a pesquisa. O modelo atual está disponível como sugestão.');
   if(text.length>3800)throw new Error('O modelo de orientações deve ter até 3.800 caracteres. Resuma-o antes de salvar.');
   const longResearcherName='Pesquisador(a) '+('Nome '.repeat(19));
-  const preview=surveyInitialOrientationWhatsappMessage({name:String(surveyName||'Pesquisa')},{name:longResearcherName},text);
+  const preview=surveyInitialOrientationWhatsappMessage({name:String(surveyName||'Pesquisa'),minimumCollectionDistanceM:distanceM},{name:longResearcherName},text);
   if(preview.length>4000)throw new Error('Após inserir nome, link e avisos obrigatórios, a mensagem ultrapassaria 4.000 caracteres. Resuma o modelo para garantir o envio pelo aplicativo.');
   return text;
 }
@@ -5518,9 +5571,12 @@ function collectEvolutionRefresh(){
 /* ===== Coleta de campo: mapa, feed e auditoria (dados reais, tabela collection_events) ===== */
 const COLLECT_COLORS=['#2563eb','#059669','#ea580c','#7c3aed','#dc2626','#d97706'];
 const COLLECT_MIN_DURATION_REJECTION_MESSAGE='Tempo de coleta não corresponde ao tempo mínimo necessário a uma coleta real';
-const COLLECT_TOO_CLOSE_MESSAGE='Esta coleta está muito próxima da anterior e isso compromete a qualidade da pesquisa, entreviste em um local mais distante';
 const COLLECT_OUTSIDE_AREA_MESSAGE='Esta coleta está fora da cidade ou região determinada pela pesquisa e não pode ser realizada aqui.';
 const COLLECT_AREA_CONFIRMATION_MESSAGE='Não foi possível confirmar a cidade ou região da localização atual. Ative o GPS e tente novamente.';
+function acollectTooCloseMessage(s=acollectCurrentSurvey()){
+  const minDistance=surveyMinimumDistanceMeters(s);
+  return `Esta coleta está muito próxima de outra entrevista válida desta pesquisa. O local precisa ficar a pelo menos ${fmtDist(minDistance)} de qualquer coleta válida da equipe.`;
+}
 const COLLECT_EVENT_SELECT_BASE='id,survey_id,researcher_id,quota_label,lat,lng,accuracy_m,occurred_at,synced,flags,status,reject_reason,rejected_at,is_calibration';
 const COLLECT_EVENT_SELECT_DURATION=COLLECT_EVENT_SELECT_BASE+',duration_seconds';
 const COLLECT_EVENT_SELECT=COLLECT_EVENT_SELECT_DURATION+',recording_reservation_id,recording_required,recording_consent,recording_status,recording_error,recording_created_at';
@@ -6023,10 +6079,12 @@ function auditMinimumDurationMarkup(s){
   const automatic=surveyAutomaticMinimumSeconds(s),override=Number(s?.minimumCollectionSeconds),effective=surveyEffectiveMinimumSeconds(s);
   const hasOverride=Number.isFinite(override)&&override>=30;
   const questionCount=(s?.questions||[]).length;
+  const minDistance=surveyMinimumDistanceMeters(s);
   return `<div class="card mb audit-minimum-duration-card" id="auditMinimumRule">
     <div class="audit-minimum-duration-head"><div><div class="map-eyebrow">REGRA DE QUALIDADE</div><div class="card-t">Tempo mínimo para esta coleta</div><div class="card-d">A duração começa ao iniciar a entrevista e termina em “Concluir e enviar”. A regra é aplicada no banco: coletas abaixo do tempo efetivo são mantidas no histórico, mas entram como <b>reprovadas</b> e não geram pagamento.</div></div><span class="audit-minimum-badge">${fmtInterviewDuration(effective)}</span></div>
     <div class="audit-minimum-duration-grid"><div><span class="audit-minimum-label">Cálculo automático do formulário</span><strong>${fmtInterviewDuration(automatic)}</strong><small>${questionCount} pergunta${questionCount===1?'':'s'} · dificuldade 1 a 5</small></div><div><label class="audit-minimum-label" for="auditMinimumDurationInput">Ajuste manual opcional</label><div class="audit-minimum-input-row"><input class="inp" id="auditMinimumDurationInput" type="number" min="30" max="3600" step="5" value="${hasOverride?override:''}" placeholder="${automatic}" aria-describedby="auditMinimumDurationHelp"><span>segundos</span></div><small id="auditMinimumDurationHelp">${hasOverride?'Valor manual ativo. Limpe o campo para voltar ao cálculo automático.':'Deixe vazio para usar o cálculo automático.'}</small></div><div class="audit-minimum-current"><span class="audit-minimum-label">Regra aplicada agora</span><strong>${fmtInterviewDuration(effective)}</strong><small>${hasOverride?'Manual':'Automática'}</small></div></div>
     <div class="audit-minimum-duration-actions"><button type="button" class="btn btn-fill" onclick="saveAuditMinimumDuration(${s?SURVEYS.indexOf(s):'null'})">Salvar tempo mínimo</button><span class="audit-minimum-duration-note">O pesquisador verá o motivo completo no histórico de coletas reprovadas.</span></div>
+    <section class="audit-minimum-distance" id="auditMinimumDistanceRule" aria-labelledby="auditMinimumDistanceTitle"><div><div class="audit-minimum-label">REGRA DE ESPAÇAMENTO</div><h3 id="auditMinimumDistanceTitle">Distância mínima entre coletas válidas</h3><p>Aplica-se a toda a pesquisa, comparando com coletas válidas de qualquer pesquisador. Reprovações e calibrações de teste são ignoradas.</p></div><label for="auditMinimumDistanceInput"><span class="audit-minimum-label">Distância mínima</span><span class="audit-minimum-input-row"><input class="inp" id="auditMinimumDistanceInput" type="number" min="0" max="10000" step="1" value="${minDistance}" aria-describedby="auditMinimumDistanceHelp"><span>metros</span></span><small id="auditMinimumDistanceHelp">Use 0 para desativar a trava. Padrão: 15 m.</small></label><div class="audit-minimum-duration-actions"><button type="button" class="btn btn-fill" onclick="saveAuditMinimumDistance(${s?SURVEYS.indexOf(s):'null'})">Salvar distância mínima</button></div></section>
   </div>`;
 }
 async function saveAuditMinimumDuration(idx){
@@ -6042,6 +6100,18 @@ async function saveAuditMinimumDuration(idx){
     const wrap=document.getElementById('auditMinimumRule');if(wrap)wrap.outerHTML=auditMinimumDurationMarkup(s);
     alert(s.minimumCollectionSeconds?`Tempo mínimo manual salvo: ${fmtInterviewDuration(s.minimumCollectionSeconds)}.`:'Tempo mínimo automático reativado com base no formulário.');
   }catch(ex){alert('Não foi possível salvar o tempo mínimo. Execute a migration tempo-minimo-coleta-auditoria.sql no Supabase e tente novamente. Detalhe: '+ex.message);}
+}
+async function saveAuditMinimumDistance(idx){
+  const s=SURVEYS[idx];if(!s)return;
+  const input=document.getElementById('auditMinimumDistanceInput'),raw=String(input?.value??'').trim(),distance=Number(raw);
+  if(raw===''||!Number.isInteger(distance)||distance<0||distance>10000){alert('Informe uma distância inteira entre 0 e 10.000 metros. Use 0 para desativar a trava.');input?.focus();return;}
+  try{
+    const {data,error}=await sb.rpc('save_survey_minimum_collection_distance',{p_survey_id:s.id,p_distance_m:distance});
+    if(error)throw new Error(error.message);
+    s.minimumCollectionDistanceM=data!=null&&Number.isInteger(Number(data))?Number(data):distance;
+    const wrap=document.getElementById('auditMinimumRule');if(wrap)wrap.outerHTML=auditMinimumDurationMarkup(s);
+    alert(s.minimumCollectionDistanceM===0?'A trava de distância mínima foi desativada nesta pesquisa.':`Distância mínima salva: ${fmtDist(s.minimumCollectionDistanceM)} entre coletas válidas de toda a equipe.`);
+  }catch(ex){alert('Não foi possível salvar a distância mínima. Execute a migration deploy/distancia-minima-coleta-por-pesquisa-20261104.sql no Supabase e tente novamente. Detalhe: '+ex.message);}
 }
 async function loadAuditRecordingUrl(eventId){
   const rec=COLLECTION_RECORDINGS[eventId];
@@ -6393,13 +6463,6 @@ function acollectIsAfterRecordingCutoff(date=new Date()){
   try{return Number(new Intl.DateTimeFormat('en-US',{hour:'numeric',hour12:false,timeZone:'America/Sao_Paulo'}).format(date))>=ACOLLECT_RECORDING_CUTOFF_HOUR;}
   catch(ex){return date.getHours()>=ACOLLECT_RECORDING_CUTOFF_HOUR;}
 }
-function acollectPreviousCollection(surveyId=ACOLLECT_SURVEY_ID){
-  if(acollectData())return acollectData().previous(surveyId);
-  const myId=CURRENT_PROFILE?.id;
-  if(!myId||!surveyId)return null;
-  return COLLECT_EVENTS.filter(event=>event.researcherId===myId&&event.surveyId===surveyId&&event.status!=='rejected'&&Number.isFinite(event.lat)&&Number.isFinite(event.lng))
-    .sort((a,b)=>b.ts-a.ts)[0]||null;
-}
 function acollectGoogleAddressComponent(results,types){
   /* O Google costuma listar o bairro antes do município. Procurar por
      prioridade evita comparar "Lapa", "Moema" etc. com "São Paulo/SP". */
@@ -6448,16 +6511,17 @@ function acollectIntegrityMessage(message,detail=''){
   alert(message);
 }
 async function acollectServerStartValidation(s){
-  if(!s?.id||!CURRENT_PROFILE?.id)return {ok:true};
+  if(!s?.id)return {ok:false,message:'Não foi possível identificar a pesquisa. Atualize a lista antes de iniciar.'};
+  if(!CURRENT_PROFILE?.id)return {ok:false,message:'Não foi possível validar sua sessão. Entre novamente no aplicativo.'};
   try{
-    const {data,error}=await sb.rpc('validate_collection_start',{p_survey_id:s.id,p_lat:GEO.lat,p_lng:GEO.lng});
+    const {data,error}=await sb.rpc('validate_collection_start_with_distance',{p_survey_id:s.id,p_lat:GEO.lat,p_lng:GEO.lng});
     if(error){
-      if(/validate_collection_start|function .* does not exist|schema cache|column .* does not exist/i.test(error.message||''))return {ok:true,schemaMissing:true};
+      if(/validate_collection_start_with_distance|function .* does not exist|schema cache/i.test(error.message||''))return {ok:false,message:'A regra de distância da pesquisa ainda não está instalada no servidor. Avise a coordenação para aplicar a migration de distância mínima.'};
       throw new Error(error.message);
     }
     const row=Array.isArray(data)?data[0]:data;
     if(row?.allowed===false){
-      if(row.code==='too_close')return {ok:false,message:COLLECT_TOO_CLOSE_MESSAGE,detail:Number.isFinite(Number(row.distance_m))?'Distância calculada: '+fmtDist(Number(row.distance_m))+' da coleta anterior desta pesquisa.':''};
+      if(row.code==='too_close')return {ok:false,message:acollectTooCloseMessage(s),detail:Number.isFinite(Number(row.distance_m))?'Distância calculada: '+fmtDist(Number(row.distance_m))+' da coleta válida mais próxima desta pesquisa.':''};
       if(row.code==='survey_archived')return {ok:false,message:'Esta pesquisa está arquivada e não aceita novas coletas.'};
       if(row.code==='not_authorized')return {ok:false,message:'Esta pesquisa não está disponível para o seu perfil de pesquisador.'};
       return {ok:false,message:'Não foi possível liberar esta coleta. Confira a pesquisa e tente novamente.'};
@@ -6469,15 +6533,9 @@ async function acollectServerStartValidation(s){
   }
 }
 async function acollectValidateLocation(){
-  if(acollectData()&&acollectData().state('previous',ACOLLECT_SURVEY_ID).status!=='ready')return {ok:false,message:'A coleta anterior ainda não pôde ser conferida. Atualize essa verificação antes de iniciar ou enviar.'};
   const s=acollectCurrentSurvey();
   if(!s||!Number.isFinite(GEO.lat)||!Number.isFinite(GEO.lng))return {ok:false,message:'A localização atual não está disponível. Aguarde o GPS ficar ativo e tente novamente.'};
-  const previous=acollectPreviousCollection(s.id);
-  const distance=previous?distMeters(GEO.lat,GEO.lng,previous.lat,previous.lng):null;
-  if(!isCollectionTestUser()&&distance!=null&&distance<15){
-    ACOLLECT_LOCATION_CHECK={status:'blocked',city:'',state:'',formatted:'',distanceM:distance};
-    return {ok:false,message:COLLECT_TOO_CLOSE_MESSAGE,detail:'Distância calculada: '+fmtDist(distance)+' da coleta anterior desta pesquisa.'};
-  }
+  const distance=null;
   const {hasTargets}=acollectSurveyHasAreaTargets(s);
   let place={city:'',state:'',formatted:''};
   if(hasTargets&&!isCollectionTestUser()){
@@ -7259,11 +7317,6 @@ async function acollectStart(){
   }
   const startButton=document.getElementById('startCollectBtn');
   if(startButton){startButton.disabled=true;startButton.textContent='Validando localização…';}
-  if(acollectData()){
-    try{await acollectData().loadPrevious(startingId,{force:true});}
-    catch(ex){acollectIntegrityMessage('Não foi possível conferir sua coleta anterior. Tente atualizar essa verificação.');return;}
-    if(!startStillCurrent())return;
-  }
   const locationCheck=await acollectValidateLocation();
   if(!startStillCurrent())return;
   if(!locationCheck.ok){
@@ -7329,9 +7382,10 @@ function acollectCancel(){
 }
 async function loadCollectEventsForced(){
   if(acollectData()){
-    const data=acollectData(),id=ACOLLECT_SURVEY_ID;
-    // Leitura de 6 registros visuais e 1 anterior; não marca um histórico parcial como completo.
-    await Promise.allSettled([data.loadRecent({force:true}),data.loadPrevious(id,{force:true})]);
+    const data=acollectData();
+    // Recarrega o histórico visual curto. A distância é verificada no servidor,
+    // sem baixar uma coleta anterior da pesquisa inteira para o navegador.
+    await Promise.allSettled([data.loadRecent({force:true})]);
     COLLECT_EVENTS_LOADED=false;
     return;
   }
@@ -7391,7 +7445,7 @@ function acollectBuildAnswerRows(eventId){
    concluída rápido demais para ter sido aplicada de verdade (menos de
    ACOLLECT_MIN_SECONDS entre "Iniciar" e "Concluir e enviar") — fica visível
    para o staff na aba Auditoria. */
-async function acollectUploadRecording(eventId){
+async function acollectUploadRecording(eventId,checkFinalStatus=false){
   if(!ACOLLECT_RECORDING_REQUIRED||ACOLLECT_RECORDING_CONSENT!==true)return{ok:true};
   if(ACOLLECT_RECORDING_STATUS!=='ready'||!ACOLLECT_RECORDING_BLOB){
     const {error}=await sb.rpc('mark_collection_recording_failed',{p_collection_event_id:eventId,p_error:ACOLLECT_RECORDING_ERROR||'Confirmação autorizada sem áudio disponível'});
@@ -7409,6 +7463,10 @@ async function acollectUploadRecording(eventId){
   if(attachError){
     await sb.rpc('mark_collection_recording_failed',{p_collection_event_id:eventId,p_error:attachError.message});
     return{ok:false,error:attachError.message};
+  }
+  if(checkFinalStatus){
+    const {data:event,error:statusError}=await sb.from('collection_events').select('status,reject_reason').eq('id',eventId).maybeSingle();
+    if(!statusError&&event?.status==='rejected')return{ok:true,rejectedReason:String(event.reject_reason||'Coleta reprovada automaticamente por integridade de distância; registro e gravação preservados para auditoria.')};
   }
   return{ok:true};
 }
@@ -7491,13 +7549,18 @@ async function acollectSubmit(){
     }
     if(error)throw new Error(error.message);
     eventId=data.id;
-    if(data.status==='rejected')serverRejectedReason=COLLECT_MIN_DURATION_REJECTION_MESSAGE;
+    if(data.status==='rejected')serverRejectedReason=String(data.reject_reason||COLLECT_MIN_DURATION_REJECTION_MESSAGE);
     serverPendingAudio=data.status==='pending_recording';
   }catch(ex){
     ACOLLECT_SUBMITTING=false;
     renderAcollectActionState();
     if(nonresponseIds.length&&/nonresponse|nonresponse_question_ids|is_nonresponse/i.test(ex.message||'')){
       alert('O servidor não autorizou a marcação “Não respondeu”. A configuração pode ter mudado ou ainda não estar instalada. A entrevista continua em andamento: confira com a coordenação ou use “Responder esta pergunta” para preencher a resposta antes de reenviar.');
+      return;
+    }
+    if(/^too_close:/i.test(ex.message||'')){
+      const threshold=surveyMinimumDistanceMeters(acollectCurrentSurvey());
+      acollectIntegrityMessage(acollectTooCloseMessage(acollectCurrentSurvey()),'Outra coleta válida desta pesquisa foi registrada nessa área enquanto você entrevistava. Nenhuma coleta oficial foi gravada; as respostas permanecem abertas para uma nova tentativa em local mais distante (limite configurado: '+fmtDist(threshold)+').');
       return;
     }
     alert('Não foi possível enviar a coleta agora ('+ex.message+'). A entrevista continua em andamento — tente enviar de novo quando tiver internet.');
@@ -7517,7 +7580,8 @@ async function acollectSubmit(){
   }
   let recordingResult={ok:true};
   if(ACOLLECT_RECORDING_REQUIRED&&ACOLLECT_RECORDING_CONSENT===true){
-    recordingResult=await acollectUploadRecording(eventId);
+    recordingResult=await acollectUploadRecording(eventId,serverPendingAudio);
+    if(recordingResult.rejectedReason)serverRejectedReason=recordingResult.rejectedReason;
   }
   ACOLLECT_IN_PROGRESS=false;ACOLLECT_SUBMITTING=false;ACOLLECT_STARTED_AT=null;ACOLLECT_SELECTED_QUOTA=null;ACOLLECT_ANSWERS={};
   if(ACOLLECT_TICK){clearInterval(ACOLLECT_TICK);ACOLLECT_TICK=null;}

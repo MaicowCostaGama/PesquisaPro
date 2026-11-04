@@ -33,9 +33,10 @@ if(sql){
     'new.duration_seconds < v_minimum'
   ])assert(sql.includes(token),`SQL sem ${token}`);
 }
-assert(html.includes('pesquisapro-app-version" content="20261022154500'),'versão do painel não atualizada');
-assert(html.includes('style.css?v=20261022154500'),'cache do CSS não atualizado');
-assert(html.includes('app.js?v=20261022154500'),'cache do app não atualizado');
+const version=html.match(/pesquisapro-app-version" content="(\d+)"/);
+assert(version,'versão do painel não está declarada');
+assert(html.includes(`style.css?v=${version[1]}`),'cache do CSS não corresponde à versão declarada');
+assert(html.includes(`app.js?v=${version[1]}`),'cache do app não corresponde à versão declarada');
 if(sql)assert(!/drop\s+table|drop\s+column|truncate|delete\s+from/i.test(sql),'migration contém operação destrutiva');
 
 function automatic(questions){

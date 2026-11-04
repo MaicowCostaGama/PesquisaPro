@@ -55,5 +55,5 @@ if(migration&&correction){
   assert(!/drop\s+table|drop\s+column|truncate|delete\s+from/i.test(migration),'migration contém operação destrutiva');
   assert(!/drop\s+table|drop\s+column|truncate|delete\s+from/i.test(correction),'migration corretiva contém operação destrutiva');
 }
-assert(html.includes('app.js?v=20261022154500'),'cache não atualizado');
+assert(/app\.js\?v=\d+/.test(html),'cache versionado não está presente');
 console.log(`Collection minimum duration smoke test: PASS — dificuldade, cálculo, ajuste, trigger seguro e ${migration&&correction?'migrations locais verificadas':'execução pública sem migrations SQL verificada'}.`);

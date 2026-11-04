@@ -2786,3 +2786,18 @@ body.system-message-gate-open{overflow:hidden}
 .nonresponse-config-row label{font-size:13px;line-height:1.5;display:flex;align-items:center;gap:10px;min-height:44px;cursor:pointer}.nonresponse-config-row input{width:20px;height:20px;flex-shrink:0}
 .nonresponse-error,.nonresponse-message{padding:10px;border-radius:8px;font-size:12px;line-height:1.6;overflow-wrap:anywhere}.nonresponse-error{color:#991b1b;background:#fef2f2}.nonresponse-message{color:#166534;background:#f0fdf4}
 @media(max-width:640px){.nonresponse-modal{padding:8px}.nonresponse-modal>section{padding:16px;max-height:94dvh}.nonresponse-modal-head{align-items:flex-start}.nonresponse-modal-head h2{font-size:17px}.nonresponse-control .btn,.nonresponse-editor-note .btn{width:100%}}
+
+
+/* Distância mínima entre coletas por pesquisa — mantém o controle junto à regra de tempo. */
+.wiz-minimum-distance-card{display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,310px);gap:20px;align-items:center;max-width:900px;margin:18px 0 22px;padding:20px 22px;border:1px solid #cbdaf0;border-radius:16px;background:linear-gradient(135deg,#f7faff,#fff)}
+.wiz-minimum-distance-card h3,.audit-minimum-distance h3{margin:5px 0 7px;font-size:16px;color:var(--ink,#15233b)}
+.wiz-minimum-distance-card p,.audit-minimum-distance p{margin:0;color:var(--ink3,#667085);font-size:13px;line-height:1.55}
+.wiz-minimum-distance-control{display:flex;flex-direction:column;gap:7px;color:var(--ink2,#344054);font-size:13px;font-weight:650}
+.wiz-minimum-distance-input-row{display:flex;align-items:center;gap:9px}
+.wiz-minimum-distance-input-row .inp{max-width:160px}
+.wiz-minimum-distance-input-row>span{color:var(--ink3,#667085);font-weight:500}
+.wiz-minimum-distance-control small,.audit-minimum-distance small{color:var(--ink3,#667085);font-size:11.5px;font-weight:400;line-height:1.45}
+.audit-minimum-distance{display:grid;grid-template-columns:minmax(0,1fr) minmax(210px,290px);gap:14px 22px;align-items:center;margin-top:18px;padding:18px 0 0;border-top:1px solid #e5eaf2}
+.audit-minimum-distance>label{display:flex;flex-direction:column;gap:7px;font-size:13px}
+.audit-minimum-distance .audit-minimum-duration-actions{grid-column:1/-1;margin-top:0}
+@media(max-width:700px){.wiz-minimum-distance-card,.audit-minimum-distance{grid-template-columns:minmax(0,1fr);gap:14px;padding:16px}.audit-minimum-distance{padding:16px 0 0}.audit-minimum-distance .audit-minimum-duration-actions{grid-column:auto}.wiz-minimum-distance-input-row .inp{max-width:none;flex:1}}

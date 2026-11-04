@@ -277,8 +277,8 @@ async function historyAndQuotasTest() {
   assert.equal(JSON.stringify(previous), JSON.stringify({ id: 'e1', surveyId: 's1', researcherId: 'p1', status: 'valid', lat: -20.1, lng: -44.2, ts: Date.parse('2026-10-23T12:00:00Z') }));
   assert.equal(env.api.previous('s1').id, 'e1');
   const previousCall = env.calls.find(call => call.table === 'collection_events' && call.limit === 1);
-  assert.deepEqual(previousCall.eq, [['survey_id', 's1'], ['researcher_id', 'p1']]);
-  assert.deepEqual(previousCall.neq, [['status', 'rejected']]);
+  assert.deepEqual(previousCall.eq, [['survey_id', 's1'], ['status', 'valid'], ['is_calibration', false]]);
+  assert.equal(previousCall.neq, undefined);
   assert.deepEqual(previousCall.not, [['lat', 'is', null], ['lng', 'is', null]]);
 
   const recent = await env.api.loadRecent({ force: true });

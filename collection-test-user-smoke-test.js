@@ -19,7 +19,7 @@ assert(/profile\?\.role==='pesq'&&profile\?\.status==='ativo'&&profile\?\.is_col
 assert(/if\(isCollectionTestUser\(\)\)return SURVEYS\.filter\(s=>!s\.archivedAt&&\['rascunho','campo'\]\.includes\(s\.status\)&&s\.formStarted===true\)/.test(app), 'lista inclui rascunho/campo somente com formulário iniciado');
 assert(/isCollectionTestUser\(\)\?'<div class="collection-test-banner"/.test(app), 'banner de modo de teste aparece na coleta');
 assert(/is_calibration:isCollectionTestUser\(\)/.test(app), 'payload marca calibração no cliente como sinalização');
-assert(/if\(!isCollectionTestUser\(\)&&distance!=null&&distance<15\)/.test(app), 'distância do testador não bloqueia o ensaio');
+assert(app.includes("sb.rpc('validate_collection_start_with_distance'")&&!app.includes('distance<15'), 'distância é validada no servidor sem bloqueio local do testador');
 assert(/if\(hasTargets&&!isCollectionTestUser\(\)\)/.test(app), 'abrangência não bloqueia o ensaio');
 assert(/pesquisapro-app-version" content="\d+/.test(html), 'cache versionado está aplicado no painel');
 

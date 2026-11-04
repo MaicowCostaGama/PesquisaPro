@@ -11,7 +11,7 @@
   function surveys(){return (data()?.surveys()||[]).filter(item=>allowed(item)&&!unavailable.has(item.id));}
   function state(name,id=ACOLLECT_SURVEY_ID){return data()?.state(name,id)||{status:'idle',error:''};}
   function ready(){
-    return !!data()?.survey(ACOLLECT_SURVEY_ID)&&['survey','previous','quotas'].every(name=>state(name).status==='ready')&&CONTRACT_SETTINGS_LOADED&&MY_CONTRACT_LOADED&&!!MY_CONTRACT;
+    return !!data()?.survey(ACOLLECT_SURVEY_ID)&&['survey','quotas'].every(name=>state(name).status==='ready')&&CONTRACT_SETTINGS_LOADED&&MY_CONTRACT_LOADED&&!!MY_CONTRACT;
   }
   function retryButton(name){return '<button type="button" class="btn btn-out" onclick="window.PP_COLLECTION_LOADING.retry(\''+name+'\')">Tentar novamente</button>';}
   function stage(name,title,id=ACOLLECT_SURVEY_ID){
@@ -25,9 +25,9 @@
   }
   function statusMarkup(){
     const hasId=!!ACOLLECT_SURVEY_ID;
-    if(ready()&&state('index',null).status==='ready')return '<div class="collection-load-ready" role="status">Dados da pesquisa carregados · questionário, cotas e coleta anterior conferidos.</div>';
+    if(ready()&&state('index',null).status==='ready')return '<div class="collection-load-ready" role="status">Dados da pesquisa carregados · questionário e cotas conferidos. A distância é validada no servidor antes de iniciar e enviar.</div>';
     return '<div class="collection-load-stages" role="status" aria-live="polite">'+stage('index','Pesquisas disponíveis',null)+
-      (hasId?stage('survey','Questionário da pesquisa')+stage('quotas','Cotas atuais')+stage('previous','Verificação da coleta anterior'):'')+'</div>';
+      (hasId?stage('survey','Questionário da pesquisa')+stage('quotas','Cotas atuais'):'')+'</div>';
   }
   function picker(){
     const wrap=document.getElementById('acollectSurveyPicker'),label=document.getElementById('acollectSurveyLabel');
@@ -95,7 +95,6 @@
     const loader=data();
     const work=Promise.allSettled([
       loader.loadSurvey(id,{force:forceMetadata}),
-      loader.loadPrevious(id,{force:true}),
       loader.loadQuotas(id,{force:true})
     ]).then(results=>{
       if(owner!==CURRENT_PROFILE||token!==navigation||id!==ACOLLECT_SURVEY_ID)return;
@@ -132,7 +131,7 @@
     const id=ACOLLECT_SURVEY_ID;if(!id)return;
     const owner=CURRENT_PROFILE,token=navigation;
     loader.invalidate(name,id);
-    const operation=name==='survey'?loader.loadSurvey(id,{force:true}):name==='previous'?loader.loadPrevious(id,{force:true}):loader.loadQuotas(id,{force:true});
+    const operation=name==='survey'?loader.loadSurvey(id,{force:true}):loader.loadQuotas(id,{force:true});
     operation.catch(error=>{if(name==='survey'&&error?.name==='CollectionDataAuthorizationError')return recoverAuthorization(id,owner,token);});refresh();
   }
   function navigate(key,previousKey){

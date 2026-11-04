@@ -3,6 +3,7 @@ const assert=require('assert');
 const app=fs.readFileSync('app.js','utf8');
 const sql=fs.readFileSync('deploy/corrigir-gravacao-noturna-e-recuperar-audios.sql','utf8');
 const old=fs.readFileSync('deploy/gravacao-confirmacao-20pct.sql','utf8');
+const distanceSql=fs.readFileSync('deploy/distancia-minima-coleta-por-pesquisa-20261104.sql','utf8');
 assert.strictEqual('confirmations/'.length,14,'prefixo do bucket tem 14 caracteres');
 assert(old.includes("left(coalesce(p_storage_path,''), 13) <> 'confirmations/'"),'regressão reproduzida no SQL antigo');
 assert(sql.includes('left(p_storage_path,length(v_prefix)) <> v_prefix'),'attach confere prefixo completo e identidade');
@@ -11,6 +12,7 @@ assert(sql.includes("coalesce((metadata->>'size')::bigint,0)>0"),'arquivo não v
 assert(sql.includes("new.status := 'pending_recording'"),'insert noturno fica sem crédito até anexo');
 assert(sql.includes("status=case when status='pending_recording' then 'valid' else status end"),'áudio recuperado promove pendente sem reaprovar reprovação');
 assert(sql.includes('old.status <> \'valid\' and new.status = \'valid\''),'reaprovação de noite exige áudio');
+assert(distanceSql.includes("new.status := 'rejected'")&&distanceSql.includes("new.reject_reason := 'Coleta a menos da distância mínima"),'promoção noturna próxima preserva o áudio como reprovação auditável');
 assert(sql.includes("extract(hour from now() at time zone 'America/Sao_Paulo') >= 21"),'servidor aplica horário local');
 assert(sql.includes("extract(hour from r.created_at at time zone 'America/Sao_Paulo') >= 21"),'reserva criada à noite mantém exigência após meia-noite');
 assert(sql.includes('create or replace function public.recover_collection_recording'),'recuperação individual disponível');
@@ -20,6 +22,7 @@ assert(sql.includes('collection_recording_recovery_log'),'ação administrativa 
 assert(sql.includes('not public.is_staff()'),'RPC apenas para gestão');
 assert(!/\b(delete\s+from|truncate\s+table|drop\s+table)\b/i.test(sql),'migração não apaga dados');
 assert(app.includes("serverPendingAudio=data.status==='pending_recording'"),'pesquisador recebe estado pendente');
+assert(app.includes('acollectUploadRecording(eventId,serverPendingAudio)')&&app.includes("select('status,reject_reason')"),'app confere e explica a reprovação após anexar áudio noturno');
 assert(app.includes('NÃO conta como válida nem gera pagamento'),'falha de gravação não é vendida como coleta válida');
 assert(app.includes('Recuperar áudio do armazenamento'),'gestão pode auditar objeto órfão');
 assert(app.includes('Áudio pendente · não contabilizada'),'auditoria distingue sincronização e validade');

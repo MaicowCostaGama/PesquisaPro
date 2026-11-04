@@ -507,15 +507,15 @@
   }
 
   async function fetchPrevious(id, signal) {
-    const profile = requireProfile();
+    requireProfile();
     const client = getClient();
     if (!client?.from) throw makeError('Cliente Supabase indisponível.', 'CollectionDataClientError');
     if (id == null || String(id) === '') throw makeError('Identificador de pesquisa ausente.');
     let query = client.from('collection_events')
       .select('id,survey_id,researcher_id,status,lat,lng,occurred_at')
       .eq('survey_id', id)
-      .eq('researcher_id', profile.id)
-      .neq('status', 'rejected')
+      .eq('status', 'valid')
+      .eq('is_calibration', false)
       .not('lat', 'is', null)
       .not('lng', 'is', null)
       .order('occurred_at', { ascending: false })

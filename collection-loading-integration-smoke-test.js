@@ -53,14 +53,14 @@ function environment(){
   function reject(name,id,errorName='Error'){set(name,id,'error','Falha simulada');const pending=promises.get(key(name,id));promises.delete(key(name,id));const error=new Error('Falha simulada');error.name=errorName;pending?.reject(error);callback?.(name,id);}
   function ready(){
     snapshots.set('s1',{id:'s1',name:'Pesquisa escolhida',status:'campo',teamIds:['p1'],questions:[{dbId:'q1',opts:['Sim'],endsInterview:[false]}]});
-    for(const name of ['survey','previous','quotas'])set(name,'s1','ready');
+    for(const name of ['survey','quotas'])set(name,'s1','ready');
     counts.set('s1',{});context.ACOLLECT_SELECTED_QUOTA='Cota A';context.ACOLLECT_QUOTA_LIST=[{label:'Cota A',target:10}];
   }
   return {context,elements,data,state,set,calls,promises,resolve,reject,ready,snapshots};
 }
 (async()=>{
   const parallel=environment();parallel.context.PP_COLLECTION_LOADING.mount();await tick();
-  assert.deepStrictEqual(parallel.calls.map(call=>call.name).sort(),['index','previous','quotas','recent','survey']);
+  assert.deepStrictEqual(parallel.calls.map(call=>call.name).sort(),['index','quotas','recent','survey']);
   assert(parallel.elements.startCollectBtn.disabled,'início bloqueado enquanto dados obrigatórios estão pendentes');
   assert(parallel.elements.acollectLoadStatus.innerHTML.includes('Questionário da pesquisa'));
   parallel.state('survey','s1').progress={optionsLoaded:3000};
@@ -68,13 +68,13 @@ function environment(){
   assert(parallel.elements.acollectLoadStatus.innerHTML.includes('3.000 opções recebidas'),'progresso das opções deve ser visível');
   assert(parallel.elements.startCollectBtn.disabled,'progresso parcial não pode liberar o início');
   parallel.resolve('survey','s1',{id:'s1',name:'Pesquisa escolhida',status:'campo',teamIds:['p1'],questions:[{dbId:'q1'}]});
-  parallel.resolve('previous','s1',null);parallel.resolve('quotas','s1',{});await tick();
+  parallel.resolve('quotas','s1',{});await tick();
   parallel.context.ACOLLECT_SELECTED_QUOTA='Cota A';parallel.context.renderAcollectActionState();
   assert(!parallel.elements.startCollectBtn.disabled,'lista e histórico visual não devem bloquear dados essenciais já prontos');
   assert.strictEqual(parallel.context.acollectCurrentSurvey().questions[0].dbId,'q1','formulário não pode usar snapshot global de outra finalidade');
   parallel.set('previous','s1','error');parallel.context.renderAcollectActionState();
-  assert(parallel.elements.startCollectBtn.disabled,'erro de coleta anterior deve bloquear');
-  parallel.set('previous','s1','ready');parallel.set('quotas','s1','error');parallel.context.renderAcollectActionState();
+  assert(!parallel.elements.startCollectBtn.disabled,'cache de coleta anterior não pode bloquear; a distância é verificada pelo servidor');
+  parallel.set('quotas','s1','error');parallel.context.renderAcollectActionState();
   assert(parallel.elements.startCollectBtn.disabled,'erro de cotas não pode virar coleta livre');
 
   const failure=environment();failure.ready();
@@ -84,12 +84,12 @@ function environment(){
   assert(!failure.context.ACOLLECT_IN_PROGRESS);assert(!failure.context.ACOLLECT_START_LOADING);
   assert(!failure.calls.some(call=>call.name==='recording'),'não reservar gravação nem iniciar antes de validar cota');
 
-  const previousFailure=environment();previousFailure.ready();
-  previousFailure.data.loadPrevious=()=>Promise.reject(new Error('Sem internet'));
-  await previousFailure.context.acollectStart();assert(!previousFailure.context.ACOLLECT_IN_PROGRESS);
-  assert(!previousFailure.calls.some(call=>call.name==='recording'));
+  const distanceFailure=environment();distanceFailure.ready();
+  distanceFailure.context.acollectValidateLocation=()=>Promise.resolve({ok:false,message:'Distância mínima não validada'});
+  await distanceFailure.context.acollectStart();assert(!distanceFailure.context.ACOLLECT_IN_PROGRESS);
+  assert(!distanceFailure.calls.some(call=>call.name==='recording'),'a validação server-side deve bloquear coleta e reserva de áudio');
 
-  const night=environment();night.ready();night.data.loadPrevious=()=>Promise.resolve(null);night.data.loadQuotas=()=>Promise.resolve({});
+  const night=environment();night.ready();night.data.loadQuotas=()=>Promise.resolve({});
   night.context.acollectReserveRecording=()=>{night.context.ACOLLECT_RECORDING_MANDATORY_AFTER_CUTOFF=true;return Promise.resolve();};
   await night.context.acollectStart();
   assert(night.context.ACOLLECT_IN_PROGRESS);assert(night.context.ACOLLECT_RECORDING_REQUIRED);
@@ -100,9 +100,9 @@ function environment(){
   const switcher=environment();switcher.context.PP_COLLECTION_LOADING.prepare('s1');
   switcher.context.PP_COLLECTION_LOADING.prepare('s2');await tick();
   switcher.resolve('survey','s2',{id:'s2',name:'Atual',status:'campo',teamIds:['p1'],questions:[]});
-  switcher.resolve('previous','s2',null);switcher.resolve('quotas','s2',{});
+  switcher.resolve('quotas','s2',{});
   switcher.resolve('survey','s1',{id:'s1',name:'Antiga',status:'campo',teamIds:['p1'],questions:[]});
-  switcher.resolve('previous','s1',null);switcher.resolve('quotas','s1',{});await tick();
+  switcher.resolve('quotas','s1',{});await tick();
   assert.strictEqual(switcher.context.ACOLLECT_SURVEY_ID,'s2');
   assert.strictEqual(switcher.elements.acollectSurveyLabel.textContent,'Atual');
 
@@ -110,12 +110,12 @@ function environment(){
   fallback.context.PP_COLLECTION_LOADING.mount();await tick();fallback.resolve('index',undefined,[]);await tick();
   assert.strictEqual(fallback.context.ACOLLECT_SURVEY_ID,'s2','pesquisa retirada do índice deve dar lugar à primeira autorizada');
   fallback.resolve('survey','s2',{id:'s2',name:'Disponível',status:'campo',teamIds:['p1'],questions:[]});
-  fallback.resolve('previous','s2',null);fallback.resolve('quotas','s2',{});await tick();
+  fallback.resolve('quotas','s2',{});await tick();
   assert(fallback.context.PP_COLLECTION_LOADING.ready());
 
   const revoked=environment();revoked.data.surveys().push({id:'s1',name:'Antiga',status:'campo',teamIds:['p1']},{id:'s2',name:'Nova',status:'campo',teamIds:['p1']});
   revoked.context.PP_COLLECTION_LOADING.mount();await tick();revoked.resolve('index',undefined,[]);await tick();
-  revoked.reject('survey','s1','CollectionDataAuthorizationError');revoked.resolve('previous','s1',null);revoked.resolve('quotas','s1',{});await tick();
+  revoked.reject('survey','s1','CollectionDataAuthorizationError');revoked.resolve('quotas','s1',{});await tick();
   assert.strictEqual(revoked.context.ACOLLECT_SURVEY_ID,null,'não continuar exibindo pesquisa sem autorização');
   revoked.resolve('index',undefined,[]);await tick();
   assert.strictEqual(revoked.context.ACOLLECT_SURVEY_ID,'s2','mesmo índice atrasado não pode recolocar a pesquisa com autorização negada');
@@ -135,6 +135,9 @@ function environment(){
   assert(!notice.elements.acollectNoticeGateContent.innerHTML.includes('Nome global errado'),'aviso não pode identificar uma pesquisa pelo store legado');
   const start=app.slice(app.indexOf('async function acollectStart(){'),app.indexOf('function acollectCancel()'));
   for(const token of ['acollectRequireNoticesBeforeStart','acollectValidateLocation','quotaEntry.target','acollectReserveRecording','ACOLLECT_RECORDING_MANDATORY_AFTER_CUTOFF'])assert(start.includes(token),token);
+  assert(!start.includes('loadPrevious('),'o início não deve depender da coleta anterior local: distância é validada pelo servidor');
+  const forcedRefresh=app.slice(app.indexOf('async function loadCollectEventsForced(){'),app.indexOf('function acollectBuildAnswerRows(',app.indexOf('async function loadCollectEventsForced(){')));
+  assert(forcedRefresh&&!forcedRefresh.includes('data.loadPrevious('),'o histórico curto após envio não deve carregar a coleta anterior');
   const form=block('function renderAcollectForm(){','function acollectStartTicking(){');assert(form.includes('acollectCurrentSurvey()'));
   assert(app.includes('Todas as entrevistas realizadas após as 21:00 devem ter gravação de confirmação do entrevistado no final'));
   console.log('Collection loading integration: PASS — carga paralela, bloqueios em falha, snapshot escolhido, seleção tardia e áudio noturno preservados.');

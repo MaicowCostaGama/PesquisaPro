@@ -502,6 +502,7 @@ async function afterLogin(user){
   RESEARCHER_PROFILE_CITIES=[];RESEARCHER_PROFILE_CITIES_DRAFT=[];RESEARCHER_PROFILE_CITIES_LOADED=false;RESEARCHER_PROFILE_CITIES_LOADING=false;
   USERS=[];USERS_LOADED=false;USERS_LOADING=false;_usersLoadPromise=null;
   chatStopRealtime();CHAT_CHANNELS=[];CHAT_CHANNELS_LOADED=false;CHAT_CHANNELS_LOADING=false;CHAT_SCHEMA_MISSING=false;CHAT_ACTIVE_CHANNEL_ID=null;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=false;CHAT_MESSAGES_LOADING=false;CHAT_SUPPORT_CHANNEL_ID=null;CHAT_SUPPORT_READY=false;CHAT_SUPPORT_LOADING=false;
+  chatResetResearcherLocationCache();
   PUSH_STATUS='unknown';PUSH_STATUS_LOADING=false;PUSH_SCHEMA_MISSING=false;PUSH_SW_REGISTRATION=null;RESEARCHER_ALERT_PREFS={email_enabled:false,push_enabled:false};RESEARCHER_ALERT_PREFS_LOADED=false;RESEARCHER_ALERT_PREFS_LOADING=false;RESEARCHER_ALERT_PREFS_SAVING=false;RESEARCHER_ALERT_PREFS_SCHEMA_MISSING=false;RESEARCHER_ALERT_PREFS_ERROR=false;MY_COMMUNICATIONS=[];MY_COMMUNICATIONS_LOADED=false;MY_COMMUNICATIONS_LOADING=false;MY_SURVEY_RESEARCHER_MESSAGES=[];MY_SURVEY_RESEARCHER_MESSAGES_LOADED=false;MY_SURVEY_RESEARCHER_MESSAGES_LOADING=false;MY_SURVEY_RESEARCHER_MESSAGES_SCHEMA_MISSING=false;MY_SURVEY_RESEARCHER_MESSAGES_LAST_LOADED=0;MY_SURVEY_RESEARCHER_MESSAGES_LOAD_ERROR=false;
   ACTIVE_CAMPAIGN_ID=null;CLIENT_SURVEY_VIEW_ID=null;CLIENT_SURVEY_FILTER='all';
   PAYMENTS=[];PAYMENTS_LOADED=false;PAYMENTS_LOADING=false;PAYMENT_RECEIPTS=[];PAYMENT_RECEIPTS_LOADED=false;PAYMENT_RECEIPTS_LOADING=false;PAYMENT_RECEIPTS_SCHEMA_MISSING=false;PAYMENT_RECEIPTS_DELETE_SCHEMA_MISSING=false;
@@ -566,6 +567,7 @@ async function logout(){
   await sb.auth.signOut();
   chatStopRealtime();
   CHAT_CHANNELS=[];CHAT_CHANNELS_LOADED=false;CHAT_CHANNELS_LOADING=false;CHAT_SCHEMA_MISSING=false;CHAT_ACTIVE_CHANNEL_ID=null;CHAT_MESSAGES=[];CHAT_MESSAGES_LOADED=false;CHAT_MESSAGES_LOADING=false;CHAT_SUPPORT_CHANNEL_ID=null;CHAT_SUPPORT_READY=false;CHAT_SUPPORT_LOADING=false;CHAT_PENDING_SURVEY_ID=null;
+  chatResetResearcherLocationCache();
   RESEARCHER_PROFILE_CITIES=[];RESEARCHER_PROFILE_CITIES_DRAFT=[];RESEARCHER_PROFILE_CITIES_LOADED=false;MY_INVITES=[];MY_INVITES_LOADED=false;MY_INVITES_LOADING=false;MY_INVITE_LOAD_PROMISE=null;MY_INVITE_RESPONDING=null;PUSH_STATUS='unknown';PUSH_STATUS_LOADING=false;PUSH_SCHEMA_MISSING=false;PUSH_SW_REGISTRATION=null;RESEARCHER_ALERT_PREFS={email_enabled:false,push_enabled:false};RESEARCHER_ALERT_PREFS_LOADED=false;RESEARCHER_ALERT_PREFS_LOADING=false;RESEARCHER_ALERT_PREFS_SAVING=false;RESEARCHER_ALERT_PREFS_SCHEMA_MISSING=false;RESEARCHER_ALERT_PREFS_ERROR=false;MY_COMMUNICATIONS=[];MY_COMMUNICATIONS_LOADED=false;MY_COMMUNICATIONS_LOADING=false;MY_SURVEY_RESEARCHER_MESSAGES=[];MY_SURVEY_RESEARCHER_MESSAGES_LOADED=false;MY_SURVEY_RESEARCHER_MESSAGES_LOADING=false;MY_SURVEY_RESEARCHER_MESSAGES_SCHEMA_MISSING=false;MY_SURVEY_RESEARCHER_MESSAGES_LAST_LOADED=0;MY_SURVEY_RESEARCHER_MESSAGES_LOAD_ERROR=false;CLIENT_APPROVAL_REQUEST_ID=null;CLIENT_APPROVAL_REQUEST=null;CLIENT_APPROVAL_LOADING=false;CLIENT_APPROVAL_RESPONDING=false;CLIENT_APPROVAL_SCHEMA_MISSING=false;RESEARCHER_LINK_TOKEN=null;RESEARCHER_LINK_CONTEXT=null;RESEARCHER_LINK_LOADING=false;RESEARCHER_LINK_ACCEPTING=false;
   PAYMENTS=[];PAYMENTS_LOADED=false;PAYMENTS_LOADING=false;PAYMENT_RECEIPTS=[];PAYMENT_RECEIPTS_LOADED=false;PAYMENT_RECEIPTS_LOADING=false;PAYMENT_RECEIPTS_SCHEMA_MISSING=false;PAYMENT_RECEIPTS_DELETE_SCHEMA_MISSING=false;
   COLLECT_INAPP_ORIENTATION_COUNTS={};COLLECT_INAPP_ORIENTATION_STATUS='idle';COLLECT_INAPP_ORIENTATION_LOADING=false;COLLECT_BATCH_ORIENTATION_SENDING=false;COLLECT_IDX=null;COLLECT_RETURN_PAGE='collect';closeSurveyResearcherMessageModal();reportsOpenReset();
@@ -766,6 +768,7 @@ let CHAT_REALTIME_CHANNEL=null,CHAT_SENDING=false,CHAT_NEW_AUDIENCE_TYPE='all',C
 let CHAT_SUPPORT_CHANNEL_ID=null,CHAT_SUPPORT_READY=false,CHAT_SUPPORT_LOADING=false;
 let CHAT_CHANNEL_STATUS_LOADED=false,CHAT_CHANNEL_STATUS_LOADING=false,CHAT_CHANNEL_STATUS_ERROR=false,CHAT_CHANNEL_LAST_MESSAGES={};
 let CHAT_RESPONSE_FILTER='needs_response';
+let CHAT_RESEARCHER_LOCATION_CACHE={},CHAT_RESEARCHER_LOCATION_LOADING=new Set();
 const CHAT_STAFF_ROLES=['admin','coord','gerente','admpro'];
 const CHAT_AUDIENCE_LABELS={all:'Todos os usuários',region:'Região',state:'Estado',city:'Cidade',survey:'Pesquisa',support:'Atendimento privado'};
 const CHAT_REGIONS=['Norte','Nordeste','Centro-Oeste','Sudeste','Sul'];
@@ -779,6 +782,48 @@ function chatChannelDescription(channel){
   return chatAudienceLabel(channel.audience_type)+': '+(channel.audience_value||'—');
 }
 function chatIsStaffProfile(){return CHAT_STAFF_ROLES.includes(CURRENT_PROFILE?.role);}
+function chatCanViewResearcherLocations(){return ['admin','admpro'].includes(CURRENT_PROFILE?.role);}
+function chatResetResearcherLocationCache(){CHAT_RESEARCHER_LOCATION_CACHE={};CHAT_RESEARCHER_LOCATION_LOADING=new Set();}
+function chatResearcherLocationMarkup(profileId,className='chat-researcher-location'){
+  if(!chatCanViewResearcherLocations()||!profileId||!Object.prototype.hasOwnProperty.call(CHAT_RESEARCHER_LOCATION_CACHE,profileId))return '';
+  const entry=CHAT_RESEARCHER_LOCATION_CACHE[profileId];
+  if(!entry?.isResearcher)return '';
+  const cities=entry.cities||[];
+  const text=cities.length?(cities.length===1?'Cidade de atuação: ':'Cidades de atuação: ')+cities.join(' · '):'Cidade de atuação não disponível';
+  return `<span class="${className}">${esc(text)}</span>`;
+}
+async function chatLoadResearcherLocations(profileIds){
+  if(!chatCanViewResearcherLocations())return;
+  const ids=[...new Set((profileIds||[]).filter(id=>typeof id==='string'&&id&&!Object.prototype.hasOwnProperty.call(CHAT_RESEARCHER_LOCATION_CACHE,id)&&!CHAT_RESEARCHER_LOCATION_LOADING.has(id)))];
+  if(!ids.length)return;
+  ids.forEach(id=>CHAT_RESEARCHER_LOCATION_LOADING.add(id));
+  const session=CURRENT_PROFILE;
+  try{
+    const locationsById={};
+    for(let i=0;i<ids.length;i+=80){
+      const batch=ids.slice(i,i+80);
+      const {data,error}=await sb.from('profiles').select('id,role,profile_cidades_atuacao(cidade)').in('id',batch);
+      if(error)throw new Error(error.message);
+      (data||[]).forEach(row=>{
+        const cities=[...new Set((row.profile_cidades_atuacao||[]).map(item=>item?.cidade).filter(Boolean).map(value=>{
+          const part=locationParts(value);return part?part.city+(part.uf?'/'+part.uf:''):String(value).trim();
+        }).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+        locationsById[row.id]={isResearcher:row.role==='pesq',cities};
+      });
+    }
+    if(CURRENT_PROFILE!==session)return;
+    ids.forEach(id=>{CHAT_RESEARCHER_LOCATION_CACHE[id]=locationsById[id]||{isResearcher:false,cities:[]};});
+  }catch(ex){
+    ids.forEach(id=>CHAT_RESEARCHER_LOCATION_LOADING.delete(id));
+    console.warn('Não foi possível carregar as cidades de atuação para a comunicação:',ex);
+    return;
+  }
+  ids.forEach(id=>CHAT_RESEARCHER_LOCATION_LOADING.delete(id));
+  chatRefreshChannelList();
+  chatRenderMessages();
+  const key=document.querySelector('.nav-item.on')?.dataset.key;
+  if(key==='communication')go('communication');
+}
 function chatRememberLatestMessage(message){
   if(!message?.channel_id)return;
   const current=CHAT_CHANNEL_LAST_MESSAGES[message.channel_id];
@@ -835,11 +880,11 @@ function chatChannelListMarkup(){
     const message=chatIsStaffProfile()&&CHAT_RESPONSE_FILTER==='needs_response'?'Nenhuma conversa aguardando resposta.':chatIsStaffProfile()&&CHAT_RESPONSE_FILTER==='awaiting_return'?'Nenhuma conversa aguardando retorno.':'Nenhum canal disponível para seu perfil.';
     return `<div class="chat-empty-small">${message}</div>`;
   }
-  return channels.map(channel=>{const status=chatIsStaffProfile()?chatChannelResponseStatus(channel):null;return `<button type="button" class="chat-channel-item ${CHAT_ACTIVE_CHANNEL_ID===channel.id?'is-active':''}" onclick="chatOpenChannel('${channel.id}')"><span class="chat-channel-icon">${channel.audience_type==='survey'?'⌁':channel.audience_type==='support'?'◉':'✉'}</span><span class="chat-channel-copy"><b>${esc(channel.name)}</b>${status?`<span class="chat-channel-status chat-channel-status-${status.replace(/_/g,'-')}" data-response-status="${status}">${chatChannelResponseLabel(status)}</span>`:''}<small>${esc(chatChannelDescription(channel))}</small>${channel.last_message_at?`<time>${esc(new Date(channel.last_message_at).toLocaleString('pt-BR'))}</time>`:''}</span></button>`;}).join('');
+  return channels.map(channel=>{const status=chatIsStaffProfile()?chatChannelResponseStatus(channel):null;return `<button type="button" class="chat-channel-item ${CHAT_ACTIVE_CHANNEL_ID===channel.id?'is-active':''}" onclick="chatOpenChannel('${channel.id}')"><span class="chat-channel-icon">${channel.audience_type==='survey'?'⌁':channel.audience_type==='support'?'◉':'✉'}</span><span class="chat-channel-copy"><b>${esc(channel.name)}</b>${status?`<span class="chat-channel-status chat-channel-status-${status.replace(/_/g,'-')}" data-response-status="${status}">${chatChannelResponseLabel(status)}</span>`:''}<small>${esc(chatChannelDescription(channel))}</small>${channel.audience_type==='support'?chatResearcherLocationMarkup(channel.private_user_id,'chat-channel-location'):''}${channel.last_message_at?`<time>${esc(new Date(channel.last_message_at).toLocaleString('pt-BR'))}</time>`:''}</span></button>`;}).join('');
 }
 function chatMessageMarkup(message){
   const own=message.sender_id===CURRENT_PROFILE?.id;
-  return `<article class="chat-message ${own?'is-own':''}" data-chat-message-id="${esc(message.id)}"><div class="chat-message-avatar">${esc(initialsOf(message.sender_name))}</div><div class="chat-message-content"><div class="chat-message-meta"><b>${own?'Você':esc(message.sender_name)}</b><time>${esc(new Date(message.created_at).toLocaleString('pt-BR'))}</time></div><p>${esc(surveyCommunicationWithoutGroups(message.body)).replace(/\n/g,'<br>')}</p></div></article>`;
+  return `<article class="chat-message ${own?'is-own':''}" data-chat-message-id="${esc(message.id)}"><div class="chat-message-avatar">${esc(initialsOf(message.sender_name))}</div><div class="chat-message-content"><div class="chat-message-meta"><b>${own?'Você':esc(message.sender_name)}</b>${message.sender_role==='pesq'?chatResearcherLocationMarkup(message.sender_id,'chat-message-location'):''}<time>${esc(new Date(message.created_at).toLocaleString('pt-BR'))}</time></div><p>${esc(surveyCommunicationWithoutGroups(message.body)).replace(/\n/g,'<br>')}</p></div></article>`;
 }
 function chatRenderMessages(){
   const box=document.getElementById('chat-messages');if(!box)return;
@@ -884,6 +929,7 @@ async function loadChatChannelsIfNeeded(){
   CHAT_CHANNELS_LOADING=false;
   const key=document.querySelector('.nav-item.on')?.dataset.key;
   if(key==='communication')go('communication');
+  if(chatIsStaffProfile())chatLoadResearcherLocations(CHAT_CHANNELS.filter(channel=>channel.audience_type==='support').map(channel=>channel.private_user_id));
 }
 async function loadChatChannelStatusesIfNeeded(){
   if(!chatIsStaffProfile()||CHAT_CHANNEL_STATUS_LOADED||CHAT_CHANNEL_STATUS_LOADING)return;
@@ -915,6 +961,7 @@ async function loadChatMessagesIfNeeded(){
     const {data,error}=await sb.from('chat_messages').select('*').eq('channel_id',CHAT_ACTIVE_CHANNEL_ID).order('created_at',{ascending:true}).limit(500);
     if(error){if(/chat_messages|relation .* does not exist|schema cache/i.test(error.message||''))CHAT_SCHEMA_MISSING=true;throw error;}
     CHAT_MESSAGES=data||[];CHAT_MESSAGES.forEach(chatRememberLatestMessage);CHAT_CHANNEL_STATUS_LOADED=chatIsStaffProfile()?true:CHAT_CHANNEL_STATUS_LOADED;CHAT_MESSAGES_LOADED=true;
+    if(chatIsStaffProfile())chatLoadResearcherLocations(CHAT_MESSAGES.filter(message=>message.sender_role==='pesq').map(message=>message.sender_id));
     await sb.rpc('chat_mark_read',{p_channel_id:CHAT_ACTIVE_CHANNEL_ID});
   }catch(ex){console.error('Erro ao carregar mensagens:',ex);if(CHAT_SCHEMA_MISSING)CHAT_MESSAGES_LOADED=true;}
   CHAT_MESSAGES_LOADING=false;
@@ -929,6 +976,7 @@ function chatStartRealtime(){
       if(!CHAT_CHANNELS.some(channel=>channel.id===message.channel_id))return;
       const channel=CHAT_CHANNELS.find(item=>item.id===message.channel_id);if(channel)channel.last_message_at=message.created_at;
       chatRememberLatestMessage(message);
+      if(chatIsStaffProfile()&&message.sender_role==='pesq')chatLoadResearcherLocations([message.sender_id]);
       if(message.channel_id===CHAT_ACTIVE_CHANNEL_ID)chatAppendMessage(message);
       else chatRefreshChannelList();
       if(chatIsStaffProfile()&&CHAT_CHANNEL_STATUS_LOADED&&CHAT_RESPONSE_FILTER!=='all'&&CHAT_ACTIVE_CHANNEL_ID===message.channel_id&&chatChannelResponseStatus(channel)!==CHAT_RESPONSE_FILTER){
@@ -1017,7 +1065,7 @@ PAGES.communication=()=>{
   const visibleChannels=chatVisibleChannels();
   const emptyRoomTitle=chatIsStaffProfile()&&CHAT_RESPONSE_FILTER==='needs_response'?'Nenhuma conversa aguardando resposta':chatIsStaffProfile()&&CHAT_RESPONSE_FILTER==='awaiting_return'?'Nenhuma conversa aguardando retorno':'Selecione um canal';
   const emptyRoomHint=chatIsStaffProfile()&&CHAT_RESPONSE_FILTER!=='all'?'Troque o filtro acima para consultar outras conversas.':'Escolha uma conversa na lista ao lado para visualizar e enviar mensagens.';
-  const activeRoom=active?`<header class="chat-room-header"><div><span class="eyebrow">${esc(chatAudienceLabel(active.audience_type))}</span><h2>${esc(active.name)}</h2><p>${esc(chatChannelDescription(active))}</p></div><span class="chat-live-pill"><i></i> Atualização ao vivo</span></header><div id="chat-messages" class="chat-messages" aria-live="polite">${CHAT_MESSAGES.length?CHAT_MESSAGES.map(chatMessageMarkup).join(''):'<div class="chat-empty-room"><span>✉</span><b>Nenhuma mensagem ainda</b><small>Envie a primeira mensagem para iniciar esta conversa.</small></div>'}</div><form class="chat-compose" onsubmit="event.preventDefault();chatSendMessage()"><textarea id="chat-message-input" class="inp" rows="2" maxlength="4000" placeholder="Escreva sua dúvida ou mensagem para a equipe PesquisaPro…" aria-label="Mensagem" onkeydown="chatHandleKeydown(event)"></textarea><button class="btn btn-fill" type="submit" ${CHAT_SENDING?'disabled':''}>Enviar</button></form>`:`<div class="chat-empty-room chat-no-selection"><span>✉</span><b>${emptyRoomTitle}</b><small>${emptyRoomHint}</small></div>`;
+  const activeRoom=active?`<header class="chat-room-header"><div><span class="eyebrow">${esc(chatAudienceLabel(active.audience_type))}</span><h2>${esc(active.name)}</h2><p>${esc(chatChannelDescription(active))}</p>${active.audience_type==='support'?chatResearcherLocationMarkup(active.private_user_id,'chat-room-location'):''}</div><span class="chat-live-pill"><i></i> Atualização ao vivo</span></header><div id="chat-messages" class="chat-messages" aria-live="polite">${CHAT_MESSAGES.length?CHAT_MESSAGES.map(chatMessageMarkup).join(''):'<div class="chat-empty-room"><span>✉</span><b>Nenhuma mensagem ainda</b><small>Envie a primeira mensagem para iniciar esta conversa.</small></div>'}</div><form class="chat-compose" onsubmit="event.preventDefault();chatSendMessage()"><textarea id="chat-message-input" class="inp" rows="2" maxlength="4000" placeholder="Escreva sua dúvida ou mensagem para a equipe PesquisaPro…" aria-label="Mensagem" onkeydown="chatHandleKeydown(event)"></textarea><button class="btn btn-fill" type="submit" ${CHAT_SENDING?'disabled':''}>Enviar</button></form>`:`<div class="chat-empty-room chat-no-selection"><span>✉</span><b>${emptyRoomTitle}</b><small>${emptyRoomHint}</small></div>`;
   const panelLabel=isPrivateSupport?'Atendimento':'Canais';
   const panelDescription=isPrivateSupport?'Sua conversa privada com a equipe PesquisaPro.':chatIsStaffProfile()?'Use a triagem acima para priorizar as conversas.':'Você vê somente os canais permitidos para seu perfil.';
   return head('Comunicação',isPrivateSupport?'Fale diretamente com a equipe PesquisaPro':'Converse com equipes, pesquisadores e participantes de cada pesquisa')+`<div class="chat-page">${supportNotice}${chatCreatePanel()}${chatResponseTriageMarkup()}<div class="chat-layout"><aside class="card chat-channel-panel"><div class="chat-panel-heading"><div><div class="card-t">${panelLabel}</div><div class="card-d">${panelDescription}</div></div><span class="pill pill-blue">${visibleChannels.length}</span></div><div id="chat-channel-list" class="chat-channel-list">${chatChannelListMarkup()}</div></aside><section class="card chat-room-panel">${activeRoom}</section></div></div>`;

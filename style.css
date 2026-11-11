@@ -2801,3 +2801,11 @@ body.system-message-gate-open{overflow:hidden}
 .audit-minimum-distance>label{display:flex;flex-direction:column;gap:7px;font-size:13px}
 .audit-minimum-distance .audit-minimum-duration-actions{grid-column:1/-1;margin-top:0}
 @media(max-width:700px){.wiz-minimum-distance-card,.audit-minimum-distance{grid-template-columns:minmax(0,1fr);gap:14px;padding:16px}.audit-minimum-distance{padding:16px 0 0}.audit-minimum-distance .audit-minimum-duration-actions{grid-column:auto}.wiz-minimum-distance-input-row .inp{max-width:none;flex:1}}
+
+
+/* Cidade de atuação do pesquisador exibida no atendimento privado. */
+.chat-channel-location,.chat-room-location,.chat-message-location{display:inline-flex;align-items:center;gap:4px;color:#52677f;font-size:10.5px;line-height:1.4}
+.chat-channel-location{padding:2px 7px;border-radius:999px;background:#f0f6ff;color:#315d92;width:max-content;max-width:100%;overflow-wrap:anywhere}
+.chat-room-location{margin-top:6px;padding:5px 9px;border:1px solid #d8e7f7;border-radius:9px;background:#f6faff;color:#285b96;font-weight:700}
+.chat-message-location{font-weight:600;color:#315d92}
+@media(max-width:560px){.chat-message-meta{align-items:flex-start;flex-wrap:wrap}.chat-message-location{flex-basis:100%;order:3}.chat-channel-location{white-space:normal}}

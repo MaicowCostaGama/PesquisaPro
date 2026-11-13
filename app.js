@@ -5385,8 +5385,8 @@ function collectList(){
     <tbody>${rows}</tbody></table>
   </div>`;
 }
-function collectOpen(i,returnPage='collect'){COLLECT_RETURN_PAGE=returnPage==='surveys-done'?'surveys-done':'collect';COLLECT_IDX=i;COLLECT_ARMED=true;AUDIT_INTERNAL_VIEW='flagged';AUDIT_FLAGGED_COUNT=0;COLLECT_ORIENTATION_COUNTS={};COLLECT_ORIENTATION_COUNTS_STATUS='loading';COLLECT_ORIENTATION_COUNTS_LOADING=false;COLLECT_INAPP_ORIENTATION_COUNTS={};COLLECT_INAPP_ORIENTATION_STATUS='idle';COLLECT_INAPP_ORIENTATION_LOADING=false;COLLECT_TEAM_INVITES=[];COLLECT_TEAM_INVITES_LOADED=false;COLLECT_TEAM_INVITES_LOADING=false;COLLECT_TEAM_INVITES_LOAD_ERROR=false;COLLECT_FUNNEL_TAB='available';COLLECT_FUNNEL_SEARCH={available:'',invited:'',accepted:'',team:''};COLLECT_EVOLUTION_MODE='day';disposeCollectEvolutionChart();_collectMapFilters={researcher:'all',researcherQuery:'',status:'all',latest:false};_collectMapFocusId=null;_collectMapDidFit=false;go('collect');}
-function collectBack(){const returnPage=COLLECT_RETURN_PAGE;COLLECT_RETURN_PAGE='collect';COLLECT_IDX=null;COLLECT_ORIENTATION_COUNTS={};COLLECT_ORIENTATION_COUNTS_STATUS='idle';COLLECT_ORIENTATION_COUNTS_LOADING=false;COLLECT_INAPP_ORIENTATION_COUNTS={};COLLECT_INAPP_ORIENTATION_STATUS='idle';COLLECT_INAPP_ORIENTATION_LOADING=false;COLLECT_TEAM_INVITES=[];COLLECT_TEAM_INVITES_LOADED=false;COLLECT_TEAM_INVITES_LOADING=false;COLLECT_TEAM_INVITES_LOAD_ERROR=false;disposeCollectEvolutionChart();_collectMapFocusId=null;go(returnPage);}
+function collectOpen(i,returnPage='collect'){COLLECT_RETURN_PAGE=returnPage==='surveys-done'?'surveys-done':'collect';COLLECT_IDX=i;COLLECT_ARMED=true;AUDIT_INTERNAL_VIEW='flagged';AUDIT_FLAGGED_COUNT=0;COLLECT_ORIENTATION_COUNTS={};COLLECT_ORIENTATION_COUNTS_STATUS='loading';COLLECT_ORIENTATION_COUNTS_LOADING=false;COLLECT_INAPP_ORIENTATION_COUNTS={};COLLECT_INAPP_ORIENTATION_STATUS='idle';COLLECT_INAPP_ORIENTATION_LOADING=false;COLLECT_TEAM_INVITES=[];COLLECT_TEAM_INVITES_LOADED=false;COLLECT_TEAM_INVITES_LOADING=false;COLLECT_TEAM_INVITES_LOAD_ERROR=false;COLLECT_FUNNEL_TAB='available';COLLECT_FUNNEL_SEARCH={available:'',invited:'',accepted:'',team:''};COLLECT_EVOLUTION_MODE='day';disposeCollectEvolutionChart();_collectMapFilters={researcher:'all',researcherQuery:'',status:'all',latest:false};_collectMapFocusId=null;_collectMapOnlyEventId=null;_collectMapSingleEventRestore=null;_collectMapDidFit=false;go('collect');}
+function collectBack(){const returnPage=COLLECT_RETURN_PAGE;COLLECT_RETURN_PAGE='collect';COLLECT_IDX=null;COLLECT_ORIENTATION_COUNTS={};COLLECT_ORIENTATION_COUNTS_STATUS='idle';COLLECT_ORIENTATION_COUNTS_LOADING=false;COLLECT_INAPP_ORIENTATION_COUNTS={};COLLECT_INAPP_ORIENTATION_STATUS='idle';COLLECT_INAPP_ORIENTATION_LOADING=false;COLLECT_TEAM_INVITES=[];COLLECT_TEAM_INVITES_LOADED=false;COLLECT_TEAM_INVITES_LOADING=false;COLLECT_TEAM_INVITES_LOAD_ERROR=false;disposeCollectEvolutionChart();_collectMapFocusId=null;_collectMapOnlyEventId=null;_collectMapSingleEventRestore=null;go(returnPage);}
 let COLLECT_ARMED=false;
 function collectDetail(idx){
   const s=SURVEYS[idx];if(!s)return collectList();
@@ -5448,6 +5448,7 @@ function collectDetail(idx){
 
   <div id="collectTabMapa" style="display:none">
     <div class="map-panel card mb">
+      <div id="collectMapSingleEventNotice" class="collect-map-single-event-notice" role="status" hidden></div>
       <div class="map-panel-head">
         <div><div class="map-eyebrow">MONITORAMENTO DE CAMPO</div><div class="card-t">Mapa de coletas</div><div class="card-d" id="collectMapSummary">Carregando pontos georreferenciados…</div></div>
         <div class="map-panel-actions"><button class="btn btn-out" onclick="collectMapFit()">⌖ Enquadrar pontos</button><button class="btn btn-out" onclick="collectMapRefresh()">↻ Atualizar</button></div>
@@ -5461,8 +5462,8 @@ function collectDetail(idx){
       <div class="map-panel-foot"><div class="map-legend"><span><i class="map-dot map-dot-latest"></i>Última coleta</span><span><i class="map-dot map-dot-history"></i>Histórico</span><span><i class="map-dot map-dot-rejected"></i>Reprovada</span><span><i class="map-dot map-dot-calibration"></i>Calibração</span></div><div class="map-note" id="collectMapNote">Clique em um ponto para ver o detalhe.</div></div>
     </div>
     <div class="card">
-      <div class="card-t">Últimas coletas</div>
-      <div class="card-d">Atualizado automaticamente a cada 20 segundos. Use os filtros do mapa para investigar uma equipe ou status específico.</div>
+      <div class="card-t" id="collectMapFeedTitle">Últimas coletas</div>
+      <div class="card-d" id="collectMapFeedDescription">Atualizado automaticamente a cada 20 segundos. Use os filtros do mapa para investigar uma equipe ou status específico.</div>
       <div id="liveFeed"></div>
     </div>
   </div>
@@ -5521,6 +5522,7 @@ function collectTab(btn,which){
   });
   if(which==='mapa'){
     renderCollectMap(COLLECT_IDX);
+    renderLiveFeed(COLLECT_IDX);
     setTimeout(()=>{if(_collectMap)_collectMap.invalidateSize();if(_collectMapFocusId)focusCollectMapEvent(_collectMapFocusId);},120);
   }
   if(which==='auditoria'){renderAudit(COLLECT_IDX);}
@@ -5889,13 +5891,14 @@ function stopCollectLive(){
 const COLLECT_MAP_LAYERS={street:'roadmap',sat:'satellite'};
 let _collectMapKind='street',_collectMapTileLayer=null;
 let _collectMapMarkerLayer=[],_collectMapInfoWindow=null,_collectMapFocusMarker=null;
-let _collectMapDidFit=false,_collectMapFocusId=null;
+let _collectMapDidFit=false,_collectMapFocusId=null,_collectMapOnlyEventId=null,_collectMapSingleEventRestore=null;
 let _collectMapFilters={researcher:'all',researcherQuery:'',status:'all',latest:false};
 function collectResearcherFilterEvents(events){
   const query=String(_collectMapFilters.researcherQuery||'').trim().toLocaleLowerCase('pt-BR');
   return !query?events:events.filter(e=>String(e.name||'').toLocaleLowerCase('pt-BR').includes(query));
 }
 function collectApplyResearcherSearch(value){
+  if(_collectMapOnlyEventId)return;
   _collectMapFilters.researcherQuery=String(value||'').trim().toLocaleLowerCase('pt-BR');
   _collectMapDidFit=false;
   const total=eventsForSurveyIdx(COLLECT_IDX).length;
@@ -5925,6 +5928,7 @@ function collectMapFilterEvents(events){
   const f=_collectMapFilters;
   let out=events.filter(e=>
     !isCollectionTestEvent(e)&&
+    (!_collectMapOnlyEventId||e.id===_collectMapOnlyEventId)&&
     (f.researcher==='all'||e.name===f.researcher)&&
     (!f.researcherQuery||String(e.name||'').toLocaleLowerCase('pt-BR').includes(f.researcherQuery))
   );
@@ -5939,6 +5943,7 @@ function collectMapFilterEvents(events){
   return out;
 }
 function collectMapApplyFilters(){
+  if(_collectMapOnlyEventId)return;
   collectMapReadFilters();
   _collectMapDidFit=false;
   renderCollectMap(COLLECT_IDX);
@@ -5946,6 +5951,34 @@ function collectMapApplyFilters(){
 function collectMapFit(){
   _collectMapDidFit=false;
   renderCollectMap(COLLECT_IDX);
+}
+function collectMapSingleEventControls(disabled){
+  ['collectResearcherSearch','collectMapResearcher','collectMapStatus','collectMapLatest'].forEach(id=>{const control=document.getElementById(id);if(control)control.disabled=!!disabled;});
+  const clearButton=document.querySelector('.collect-researcher-search button');if(clearButton)clearButton.disabled=!!disabled;
+}
+function collectMapUpdateSingleEventNotice(){
+  const notice=document.getElementById('collectMapSingleEventNotice');if(!notice)return;
+  const event=_collectMapOnlyEventId?eventsForSurveyIdx(COLLECT_IDX).find(item=>item.id===_collectMapOnlyEventId):null;
+  const title=document.getElementById('collectMapFeedTitle'),description=document.getElementById('collectMapFeedDescription');
+  if(title)title.textContent=event?'Coleta selecionada':'Últimas coletas';
+  if(description)description.textContent=event?'Exibindo apenas a coleta selecionada.':'Atualizado automaticamente a cada 20 segundos. Use os filtros do mapa para investigar uma equipe ou status específico.';
+  if(!event){notice.innerHTML='';notice.hidden=true;collectMapSingleEventControls(false);return;}
+  notice.hidden=false;
+  notice.innerHTML=`<span><b>Visão individual:</b> exibindo somente a coleta de ${esc(event.name)}${event.cota?' · '+esc(event.cota):''} · ${esc(new Date(event.ts).toLocaleString('pt-BR'))}.</span><button type="button" class="btn btn-out" onclick="collectMapClearSingleEvent()">Mostrar mapa completo</button>`;
+  collectMapSingleEventControls(true);
+}
+function collectMapClearSingleEvent(){
+  _collectMapOnlyEventId=null;_collectMapFocusId=null;
+  if(_collectMapSingleEventRestore){
+    _collectMapFilters={..._collectMapSingleEventRestore.filters};
+    const search=document.getElementById('collectResearcherSearch');if(search)search.value=_collectMapSingleEventRestore.mapSearch||'';
+    const researcher=document.getElementById('collectMapResearcher');if(researcher)researcher.value=_collectMapSingleEventRestore.researcher||'all';
+    const status=document.getElementById('collectMapStatus');if(status)status.value=_collectMapSingleEventRestore.status||'all';
+    const latest=document.getElementById('collectMapLatest');if(latest)latest.checked=!!_collectMapSingleEventRestore.latest;
+    _collectMapSingleEventRestore=null;
+  }else _collectMapFilters={researcher:'all',researcherQuery:'',status:'all',latest:false};
+  _collectMapDidFit=false;collectMapUpdateSingleEventNotice();
+  if(COLLECT_IDX!=null){renderCollectMap(COLLECT_IDX);renderLiveFeed(COLLECT_IDX);}
 }
 function collectMapRefresh(){
   if(COLLECT_IDX==null)return;
@@ -5977,13 +6010,14 @@ function mapDisplayPoint(e,events){
 }
 function renderCollectMap(idx){
   if(_collectMapFocusMarker){_collectMapFocusMarker.setMap(null);_collectMapFocusMarker=null;}
+  collectMapUpdateSingleEventNotice();
   const mapEl=document.getElementById('collectMap');if(!mapEl)return;const mapLoading=document.getElementById('collectMapLoading');
   if(!window.google?.maps?.Map){if(mapLoading){mapLoading.textContent='Preparando Google Maps…';mapLoading.style.display='flex';}loadGoogleMaps().then(()=>{if(document.getElementById('collectMap')===mapEl)renderCollectMap(idx);}).catch(error=>{if(mapLoading){mapLoading.textContent=googleMapErrorText(error);mapLoading.style.display='flex';}});return;}
   if(mapLoading)mapLoading.style.display='none';
   if(!_collectMap||_collectMap._ppElement!==mapEl){if(_collectMapMarkerLayer){_collectMapMarkerLayer.forEach(marker=>marker.setMap(null));}_collectMapMarkerLayer=[];_collectMapDidFit=false;_collectMap=new google.maps.Map(mapEl,{center:{lat:-18.5,lng:-44.9},zoom:6,mapTypeId:COLLECT_MAP_LAYERS[_collectMapKind],mapTypeControl:true,fullscreenControl:true,streetViewControl:false,gestureHandling:'greedy'});_collectMap._ppElement=mapEl;_collectMapInfoWindow=new google.maps.InfoWindow();}
   _collectMapMarkerLayer.forEach(marker=>marker.setMap(null));_collectMapMarkerLayer=[];const s=SURVEYS[idx];if(!s)return;const team=s.team||[];const colorFor=name=>COLLECT_COLORS[team.indexOf(name)%COLLECT_COLORS.length]||'#2563eb';const surveyEvents=eventsForSurveyIdx(idx),allEvents=surveyEvents.filter(collectMapHasGps);const filtered=collectMapFilterEvents(allEvents);const events=filtered,displayPositions=collectMapDisplayPositions(events);const withoutGps=collectMapFilterEvents(surveyEvents).filter(e=>!collectMapHasGps(e)).length;const shown=events.length,total=filtered.length,latestTsByName={},latestIdByName={};allEvents.forEach(e=>{if(!(e.name in latestTsByName)||e.ts>latestTsByName[e.name]){latestTsByName[e.name]=e.ts;latestIdByName[e.name]=e.id;}});
   events.forEach(e=>{const color=colorFor(e.name),isLatest=latestIdByName[e.name]===e.id,markerState=e.status==='rejected'?'is-rejected':e.calibration?'is-calibration':isLatest?'is-latest':'is-history',position=displayPositions.get(e.id),marker=new google.maps.Marker({map:_collectMap,position:{lat:position[0],lng:position[1]},icon:googleMarkerIcon(color,markerState==='is-latest'?10:8),title:`${e.name} · ${e.cota||'Sem cota'}`});marker.addListener('click',()=>goToAuditFromMap(e.id));marker.addListener('mouseover',()=>{_collectMapInfoWindow.setContent(buildMapPopup(e,isLatest));_collectMapInfoWindow.open({map:_collectMap,anchor:marker});});_collectMapMarkerLayer.push(marker);});
-  const researchers=new Set(events.map(e=>e.name));const summary=document.getElementById('collectMapSummary');if(summary)summary.textContent=shown?`${shown} ponto${shown===1?'':'s'} visível${shown===1?'':'is'} · ${researchers.size} pesquisador${researchers.size===1?'':'es'} · histórico completo`:'Nenhum ponto corresponde aos filtros atuais.';const note=document.getElementById('collectMapNote');if(note)note.textContent=`Mostrando todas as ${shown.toLocaleString('pt-BR')} coletas com GPS válido após os filtros${withoutGps?`; ${withoutGps.toLocaleString('pt-BR')} sem localização válida`:''}. Clique em um ponto para abrir a coleta na auditoria.`;const pts=events.map(e=>{const point=displayPositions.get(e.id);return {lat:point[0],lng:point[1]};});if(pts.length&&!_collectMapDidFit){try{const bounds=new google.maps.LatLngBounds();pts.forEach(point=>bounds.extend(point));if(pts.length===1){_collectMap.setCenter(pts[0]);_collectMap.setZoom(17);}else _collectMap.fitBounds(bounds,{top:70,right:70,bottom:70,left:70});_collectMapDidFit=true;}catch(e){}}
+  const researchers=new Set(events.map(e=>e.name)),singleEvent=!!_collectMapOnlyEventId;const summary=document.getElementById('collectMapSummary');if(summary)summary.textContent=singleEvent?'Visão individual · somente a coleta selecionada':shown?`${shown} ponto${shown===1?'':'s'} visível${shown===1?'':'is'} · ${researchers.size} pesquisador${researchers.size===1?'':'es'} · histórico completo`:'Nenhum ponto corresponde aos filtros atuais.';const note=document.getElementById('collectMapNote');if(note)note.textContent=singleEvent?'Apenas a coleta selecionada está visível. Use “Mostrar mapa completo” para retornar.':`Mostrando todas as ${shown.toLocaleString('pt-BR')} coletas com GPS válido após os filtros${withoutGps?`; ${withoutGps.toLocaleString('pt-BR')} sem localização válida`:''}. Clique em um ponto para abrir a coleta na auditoria.`;const pts=events.map(e=>{const point=displayPositions.get(e.id);return {lat:point[0],lng:point[1]};});if(pts.length&&!_collectMapDidFit){try{const bounds=new google.maps.LatLngBounds();pts.forEach(point=>bounds.extend(point));if(pts.length===1){_collectMap.setCenter(pts[0]);_collectMap.setZoom(17);}else _collectMap.fitBounds(bounds,{top:70,right:70,bottom:70,left:70});_collectMapDidFit=true;}catch(e){}}
 }
 function buildMapTooltip(e,isLatest){
   const state=e.status==='rejected'?'Reprovada':e.status==='pending_recording'?'Áudio pendente · não contabilizada':e.calibration?'Calibração':isLatest?'Última coleta':'Coleta registrada';
@@ -6038,10 +6072,20 @@ function goToAuditFromMap(id){
 }
 function goToMapFromAudit(id){
   const e=COLLECT_EVENTS.find(x=>x.id===id);if(!e||COLLECT_IDX==null)return;
+  if(!_collectMapSingleEventRestore){
+    _collectMapSingleEventRestore={
+      filters:{..._collectMapFilters},
+      mapSearch:document.getElementById('collectResearcherSearch')?.value||'',
+      researcher:document.getElementById('collectMapResearcher')?.value||'all',
+      status:document.getElementById('collectMapStatus')?.value||'all',
+      latest:!!document.getElementById('collectMapLatest')?.checked
+    };
+  }
+  _collectMapOnlyEventId=id;
   _collectMapFocusId=id;
-  _collectMapFilters={researcher:e.name||'all',researcherQuery:String(e.name||'').toLocaleLowerCase('pt-BR'),status:'all',latest:false};
-  const search=document.getElementById('collectMapResearcherSearch');if(search)search.value=e.name||'';
-  const researcher=document.getElementById('collectMapResearcher');if(researcher)researcher.value=e.name||'all';
+  _collectMapFilters={researcher:'all',researcherQuery:'',status:'all',latest:false};
+  const search=document.getElementById('collectResearcherSearch');if(search)search.value='';
+  const researcher=document.getElementById('collectMapResearcher');if(researcher)researcher.value='all';
   const status=document.getElementById('collectMapStatus');if(status)status.value='all';
   const latest=document.getElementById('collectMapLatest');if(latest)latest.checked=false;
   const mapBtn=document.getElementById('collectTabMapaBtn')||document.querySelectorAll('#collectTabSeg button')[1];
@@ -6053,6 +6097,7 @@ function focusCollectMapEvent(id){
   const e=COLLECT_EVENTS.find(x=>x.id===id);
   if(!e||!Number.isFinite(e.lat)||!Number.isFinite(e.lng))return;
   if(!_collectMap||!window.google?.maps?.Marker){setTimeout(()=>focusCollectMapEvent(id),220);return;}
+  _collectMapMarkerLayer.forEach(item=>item.setMap(null));_collectMapMarkerLayer=[];
   const position={lat:e.lat,lng:e.lng};
   _collectMap.setCenter(position);_collectMap.setZoom(17);
   const marker=new google.maps.Marker({map:_collectMap,position,icon:googleBalloonIcon('#f97316'),title:`Coleta selecionada · ${e.name}`,zIndex:999});
@@ -6063,7 +6108,7 @@ function focusCollectMapEvent(id){
 
 function renderLiveFeed(idx){
   const el=document.getElementById('liveFeed');if(!el)return;
-  const events=eventsForSurveyIdx(idx).slice(0,8);
+  const source=eventsForSurveyIdx(idx),events=(_collectMapOnlyEventId?source.filter(e=>e.id===_collectMapOnlyEventId):source).slice(0,8);
   el.innerHTML=events.map(e=>`
     <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:12.5px">
       <div class="avatar" style="width:26px;height:26px;font-size:10.5px;flex-shrink:0">${esc(initialsOf(e.name))}</div>

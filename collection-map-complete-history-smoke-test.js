@@ -13,7 +13,7 @@ class MarkerStub{constructor(options){this.options=options;this.listeners={};mar
 class InfoStub{setContent(){}open(){}}
 class BoundsStub{extend(){}}
 const google={maps:{Map:MapStub,Marker:MarkerStub,InfoWindow:InfoStub,LatLngBounds:BoundsStub}};
-const context={_collectMapFocusMarker:null,_collectMap:null,_collectMapMarkerLayer:[],_collectMapDidFit:false,_collectMapKind:'street',_collectMapInfoWindow:null,COLLECT_MAP_LAYERS:{street:'roadmap',sat:'satellite'},COLLECT_COLORS:['#2563eb'],SURVEYS:[{id:'survey',team:['Pesquisador de teste']}],eventsForSurveyIdx:()=>events,collectMapFilterEvents:values=>values,google,window:{google},document:{getElementById:id=>nodes[id]},googleMarkerIcon:()=>({}),buildMapPopup:()=>'',goToAuditFromMap:id=>opened=id,loadGoogleMaps:async()=>{},googleMapErrorText:()=>'',console};
+const context={_collectMapFocusMarker:null,_collectMap:null,_collectMapMarkerLayer:[],_collectMapDidFit:false,_collectMapKind:'street',_collectMapInfoWindow:null,_collectMapOnlyEventId:null,COLLECT_MAP_LAYERS:{street:'roadmap',sat:'satellite'},COLLECT_COLORS:['#2563eb'],SURVEYS:[{id:'survey',team:['Pesquisador de teste']}],eventsForSurveyIdx:()=>events,collectMapFilterEvents:values=>values,collectMapUpdateSingleEventNotice:()=>{},google,window:{google},document:{getElementById:id=>nodes[id]},googleMarkerIcon:()=>({}),buildMapPopup:()=>'',goToAuditFromMap:id=>opened=id,loadGoogleMaps:async()=>{},googleMapErrorText:()=>'',console};
 vm.createContext(context);vm.runInContext(app.slice(start,end)+'\nthis.helpers={hasGps:collectMapHasGps,positions:collectMapDisplayPositions,display:mapDisplayPoint,render:renderCollectMap};',context);
 context.helpers.render(0);
 assert.equal(context._collectMapMarkerLayer.length,1177,'mapa ainda corta o histórico');

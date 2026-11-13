@@ -2809,3 +2809,11 @@ body.system-message-gate-open{overflow:hidden}
 .chat-room-location{margin-top:6px;padding:5px 9px;border:1px solid #d8e7f7;border-radius:9px;background:#f6faff;color:#285b96;font-weight:700}
 .chat-message-location{font-weight:600;color:#315d92}
 @media(max-width:560px){.chat-message-meta{align-items:flex-start;flex-wrap:wrap}.chat-message-location{flex-basis:100%;order:3}.chat-channel-location{white-space:normal}}
+
+
+/* Modo individual acionado por “Ver no mapa” na auditoria. */
+.collect-map-single-event-notice{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;padding:10px 12px;border:1px solid #bfdbfe;border-radius:12px;background:#eff6ff;color:#1e3a5f;font-size:12px;line-height:1.5}
+.collect-map-single-event-notice[hidden]{display:none}
+.collect-map-single-event-notice .btn{flex:0 0 auto;white-space:nowrap}
+.map-toolbar :disabled,.collect-researcher-search :disabled{opacity:.65;cursor:not-allowed}
+@media(max-width:640px){.collect-map-single-event-notice{align-items:stretch;flex-direction:column}.collect-map-single-event-notice .btn{width:100%}}

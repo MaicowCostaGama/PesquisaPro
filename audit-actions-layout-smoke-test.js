@@ -33,8 +33,9 @@ for (const token of [
   assert(css.includes(token), `estilo de auditoria ausente: ${token}`);
 }
 
-assert(html.includes('style.css?v=20261020191000'), 'cache do CSS da auditoria não foi atualizado');
-assert(html.includes('app.js?v=20261020191000'), 'cache do app da auditoria não foi atualizado');
+const version = html.match(/name="pesquisapro-app-version" content="([^"]+)"/)?.[1];
+assert(version&&html.includes(`style.css?v=${version}`), 'cache do CSS da auditoria não acompanha a versão declarada');
+assert(version&&html.includes(`app.js?v=${version}`), 'cache do app da auditoria não acompanha a versão declarada');
 assert(app.includes("onclick=\"auditReject('${e.id}')\""), 'ação de reprovação ausente');
 assert(app.includes("onclick=\"auditToggleCalibration('${e.id}')\""), 'ação de calibração ausente');
 assert(app.includes('conversationButton(e.phone'), 'ação de conversa ausente');

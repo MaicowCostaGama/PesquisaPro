@@ -39,5 +39,6 @@ for(const token of [
   'commit;'
 ])assert(migration.includes(token),`migration sem ${token}`);
 assert(!/drop table|drop column|truncate|delete from/i.test(migration),'migration contém operação destrutiva');
-assert(html.includes('app.js?v=20261022160000'),'cache não atualizado');
+const version=html.match(/name="pesquisapro-app-version" content="([^"]+)"/)?.[1];
+assert(version&&html.includes(`app.js?v=${version}`),'cache não acompanha a versão declarada');
 console.log('Audit recording duration smoke test: PASS — duração, status, recusa e player privado verificados.');

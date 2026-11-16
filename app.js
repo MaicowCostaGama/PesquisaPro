@@ -5385,7 +5385,7 @@ function collectList(){
     <tbody>${rows}</tbody></table>
   </div>`;
 }
-function collectOpen(i,returnPage='collect'){COLLECT_RETURN_PAGE=returnPage==='surveys-done'?'surveys-done':'collect';COLLECT_IDX=i;COLLECT_ARMED=true;AUDIT_INTERNAL_VIEW='flagged';AUDIT_FLAGGED_COUNT=0;COLLECT_ORIENTATION_COUNTS={};COLLECT_ORIENTATION_COUNTS_STATUS='loading';COLLECT_ORIENTATION_COUNTS_LOADING=false;COLLECT_INAPP_ORIENTATION_COUNTS={};COLLECT_INAPP_ORIENTATION_STATUS='idle';COLLECT_INAPP_ORIENTATION_LOADING=false;COLLECT_TEAM_INVITES=[];COLLECT_TEAM_INVITES_LOADED=false;COLLECT_TEAM_INVITES_LOADING=false;COLLECT_TEAM_INVITES_LOAD_ERROR=false;COLLECT_FUNNEL_TAB='available';COLLECT_FUNNEL_SEARCH={available:'',invited:'',accepted:'',team:''};COLLECT_EVOLUTION_MODE='day';disposeCollectEvolutionChart();_collectMapFilters={researcher:'all',researcherQuery:'',status:'all',latest:false};_collectMapFocusId=null;_collectMapOnlyEventId=null;_collectMapSingleEventRestore=null;_collectMapDidFit=false;go('collect');}
+function collectOpen(i,returnPage='collect'){COLLECT_RETURN_PAGE=returnPage==='surveys-done'?'surveys-done':'collect';COLLECT_IDX=i;COLLECT_ARMED=true;AUDIT_INTERNAL_VIEW='all';AUDIT_PAGE=0;COLLECT_ORIENTATION_COUNTS={};COLLECT_ORIENTATION_COUNTS_STATUS='loading';COLLECT_ORIENTATION_COUNTS_LOADING=false;COLLECT_INAPP_ORIENTATION_COUNTS={};COLLECT_INAPP_ORIENTATION_STATUS='idle';COLLECT_INAPP_ORIENTATION_LOADING=false;COLLECT_TEAM_INVITES=[];COLLECT_TEAM_INVITES_LOADED=false;COLLECT_TEAM_INVITES_LOADING=false;COLLECT_TEAM_INVITES_LOAD_ERROR=false;COLLECT_FUNNEL_TAB='available';COLLECT_FUNNEL_SEARCH={available:'',invited:'',accepted:'',team:''};COLLECT_EVOLUTION_MODE='day';disposeCollectEvolutionChart();_collectMapFilters={researcher:'all',researcherQuery:'',status:'all',latest:false};_collectMapFocusId=null;_collectMapOnlyEventId=null;_collectMapSingleEventRestore=null;_collectMapDidFit=false;go('collect');}
 function collectBack(){const returnPage=COLLECT_RETURN_PAGE;COLLECT_RETURN_PAGE='collect';COLLECT_IDX=null;COLLECT_ORIENTATION_COUNTS={};COLLECT_ORIENTATION_COUNTS_STATUS='idle';COLLECT_ORIENTATION_COUNTS_LOADING=false;COLLECT_INAPP_ORIENTATION_COUNTS={};COLLECT_INAPP_ORIENTATION_STATUS='idle';COLLECT_INAPP_ORIENTATION_LOADING=false;COLLECT_TEAM_INVITES=[];COLLECT_TEAM_INVITES_LOADED=false;COLLECT_TEAM_INVITES_LOADING=false;COLLECT_TEAM_INVITES_LOAD_ERROR=false;disposeCollectEvolutionChart();_collectMapFocusId=null;_collectMapOnlyEventId=null;_collectMapSingleEventRestore=null;go(returnPage);}
 let COLLECT_ARMED=false;
 function collectDetail(idx){
@@ -5471,20 +5471,16 @@ function collectDetail(idx){
   <div id="collectTabAuditoria" style="display:none">
     ${auditMinimumDurationMarkup(s)}
     ${auditInternalNavigationMarkup(idx)}
-    <section id="auditFlaggedWrap" class="card mb audit-focus-panel" data-audit-focus-panel="flagged" ${auditInternalCounts(idx).total?'':'hidden'}>
-      <div class="card-t">Reprovações e calibrações desta pesquisa</div>
-      <div class="card-d">Coletas marcadas na auditoria abaixo. Desfaça a qualquer momento — a coleta volta a valer normalmente.</div>
-      <div id="auditFlagged"></div>
-    </section>
-    <section class="card audit-focus-panel" data-audit-focus-panel="all" ${AUDIT_INTERNAL_VIEW==='all'||!auditInternalCounts(idx).total?'':'hidden'}>
-      <div class="card-t">Auditoria da coleta</div>
-      <div class="card-d">Todas as entrevistas desta pesquisa: pesquisador, cota, coordenadas (com a distância até a coleta anterior do mesmo pesquisador), horário, intervalo desde a entrevista anterior, confirmação final e alertas de qualidade. Aproximadamente 20% podem ser selecionadas para uma confirmação curta em áudio, sempre com autorização do entrevistado. Reprove uma coleta com fraude/erro (não entra no pagamento do pesquisador) ou marque como calibração (fica fora do cálculo dos resultados, mas continua contando para o pagamento). As duas ações podem ser desfeitas a qualquer momento, aqui ou no painel acima.</div>
+    <section class="card audit-focus-panel" id="auditMainWrap">
+      <div class="card-t" id="auditCurrentViewTitle">Auditoria completa</div>
+      <div class="card-d" id="auditCurrentViewDescription">Todas as entrevistas oficiais desta pesquisa, incluindo reprovações e calibrações.</div>
       <div id="auditRecordingSummary" class="recording-summary"></div>
       <div class="audit-table-scroll-hint" role="note"><span aria-hidden="true">✓</span><span><b>Visão completa:</b> todas as informações e ações estão organizadas na tela, sem rolagem horizontal.</span></div>
       <div class="audit-table-scroll" tabindex="0" aria-label="Tabela de auditoria com todas as informações e ações visíveis.">
       <table class="audit-data-table"><thead><tr><th>Pesquisador</th><th>Cota</th><th>Data/hora</th><th title="Tempo desde a entrevista anterior do mesmo pesquisador">Intervalo</th><th>Coordenadas</th><th>Precisão</th><th>Status</th><th>Duração</th><th>Confirmação</th><th>Alertas</th><th class="audit-actions-header">Ações</th></tr></thead>
       <tbody id="auditBody"></tbody></table>
       </div>
+      <div id="auditPagination" class="audit-pagination" aria-label="Navegação das coletas da auditoria"></div>
     </section>
     ${window.PP_COLLECTION_WITHDRAWALS?.historyMarkup('staff',s.id)||''}
   </div>
@@ -5631,6 +5627,8 @@ const COLLECT_EVENT_SELECT_BASE='id,survey_id,researcher_id,quota_label,lat,lng,
 const COLLECT_EVENT_SELECT_DURATION=COLLECT_EVENT_SELECT_BASE+',duration_seconds';
 const COLLECT_EVENT_SELECT=COLLECT_EVENT_SELECT_DURATION+',recording_reservation_id,recording_required,recording_consent,recording_status,recording_error,recording_created_at';
 const COLLECT_EVENT_SELECT_RECORDING_NO_DURATION=COLLECT_EVENT_SELECT_BASE+',recording_reservation_id,recording_required,recording_consent,recording_status,recording_error,recording_created_at';
+const COLLECTION_ADMIN_REJECTION_REASON_PREFIX='[PP-ADMIN-REJECTED] ';
+function collectionVisibleRejectReason(reason){const text=String(reason||'');return text.startsWith(COLLECTION_ADMIN_REJECTION_REASON_PREFIX)?text.slice(COLLECTION_ADMIN_REJECTION_REASON_PREFIX.length):text;}
 let COLLECT_RECORDING_COLUMNS_AVAILABLE=true;
 let COLLECT_DURATION_COLUMN_AVAILABLE=true;
 let COLLECT_GEO_COLUMNS_AVAILABLE=true;
@@ -5754,6 +5752,7 @@ let _collectMap=null,_collectMarkerLayer=null;
 function collectionEventRowToEntry(row){
   const u=USERS.find(x=>x.id===row.researcher_id);
   const isTestCollection=isCollectionTestEvent(row);
+  const rawRejectReason=String(row.reject_reason||''),isAdminRejected=rawRejectReason.startsWith(COLLECTION_ADMIN_REJECTION_REASON_PREFIX);
   return{
     id:row.id,
     surveyId:row.survey_id,
@@ -5766,7 +5765,8 @@ function collectionEventRowToEntry(row){
     synced:row.synced!==false,
     flags:row.flags||[],
     status:row.status||'valid',
-    rejectReason:row.reject_reason||null,
+    rejectReason:rawRejectReason?collectionVisibleRejectReason(rawRejectReason):null,
+    rejectionSource:isAdminRejected?'admin':null,
     rejectedAt:row.rejected_at?new Date(row.rejected_at).getTime():null,
     isTestCollection,
     calibration:!!row.is_calibration||isTestCollection,
@@ -6034,39 +6034,108 @@ function buildMapPopup(e,isLatest){
     <div class="map-popup-actions">${conversationButton(e.phone,'Olá '+e.name+'! Podemos conversar sobre a coleta '+(e.cota||'')+'?')}<button class="btn-ghost map-popup-action" onclick="goToAuditFromMap('${e.id}')">🔎 Ver na auditoria</button></div>
   </div>`;
 }
-let AUDIT_HIGHLIGHT_ID=null,AUDIT_INTERNAL_VIEW='flagged',AUDIT_FLAGGED_COUNT=0;
+const AUDIT_PAGE_SIZE=50;
+let AUDIT_HIGHLIGHT_ID=null,AUDIT_INTERNAL_VIEW='all',AUDIT_PAGE=0;
+const AUDIT_VIEWS={
+  all:{title:'Auditoria completa',description:'Todas as coletas oficiais desta pesquisa, incluindo reprovações e calibrações.',icon:'▤'},
+  systemRejected:{title:'Reprovadas pelo sistema',description:'Coletas rejeitadas automaticamente pelas regras de qualidade, como tempo mínimo ou distância.',icon:'⚙'},
+  exceptSystemRejected:{title:'Completa — exceto reprovadas pelo sistema',description:'Todas as coletas, menos as rejeitadas automaticamente. Inclui pendentes, reprovadas pela gestão, aprovadas e calibrações.',icon:'↘'},
+  adminRejected:{title:'Reprovadas pelo administrador',description:'Coletas reprovadas manualmente pela administração. Essa ação pode ser desfeita na linha da coleta.',icon:'✕'},
+  approved:{title:'Aprovadas',description:'Coletas com status válido. Calibrações e coletas pendentes não entram nesta etapa.',icon:'✓'}
+};
+function auditIsSystemRejected(event){
+  if(event?.status!=='rejected')return false;
+  if(event.rejectionSource==='admin')return false;
+  const flags=(event.flags||[]).map(value=>String(value).trim());
+  const automaticFlags=new Set([
+    'Tempo abaixo do mínimo da pesquisa',
+    'Duração não informada',
+    'Coleta reprovada por distância mínima da pesquisa'
+  ]);
+  if(flags.some(flag=>automaticFlags.has(flag)))return true;
+  const reason=String(event.rejectReason||'').trim().toLocaleLowerCase('pt-BR').normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  return reason==='tempo de coleta nao corresponde ao tempo minimo necessario a uma coleta real'||
+    reason==='duracao da coleta nao foi informada; nao e possivel validar o tempo minimo da pesquisa'||
+    reason==='coleta a menos da distancia minima configurada de outra coleta valida desta pesquisa';
+}
+function auditEventsForView(events,view=AUDIT_INTERNAL_VIEW){
+  switch(view){
+    case 'systemRejected':return events.filter(e=>auditIsSystemRejected(e));
+    case 'exceptSystemRejected':return events.filter(e=>!auditIsSystemRejected(e));
+    case 'adminRejected':return events.filter(e=>e.status==='rejected'&&!auditIsSystemRejected(e));
+    case 'approved':return events.filter(e=>e.status==='valid'&&!e.calibration);
+    default:return events;
+  }
+}
 function auditInternalCounts(idx){
-  const flagged=collectResearcherFilterEvents(eventsForSurveyIdx(idx)).filter(e=>e.status==='rejected'||e.calibration);
-  const rejected=flagged.filter(e=>e.status==='rejected').length;
-  const calibration=flagged.filter(e=>e.calibration).length;
-  return {total:flagged.length,rejected,calibration};
+  const all=eventsForSurveyIdx(idx);
+  return {
+    all:all.length,
+    systemRejected:auditEventsForView(all,'systemRejected').length,
+    exceptSystemRejected:auditEventsForView(all,'exceptSystemRejected').length,
+    adminRejected:auditEventsForView(all,'adminRejected').length,
+    approved:auditEventsForView(all,'approved').length
+  };
 }
 function auditApplyInternalView(){
-  const tabs=document.querySelectorAll('[data-audit-focus-tab]');
-  tabs.forEach(tab=>{
+  document.querySelectorAll('[data-audit-focus-tab]').forEach(tab=>{
     const active=tab.dataset.auditFocusTab===AUDIT_INTERNAL_VIEW;
     tab.classList.toggle('is-active',active);tab.setAttribute('aria-selected',active?'true':'false');
+    tab.setAttribute('tabindex',active?'0':'-1');
   });
-  document.querySelectorAll('[data-audit-focus-panel]').forEach(panel=>{
-    panel.hidden=panel.dataset.auditFocusPanel!==AUDIT_INTERNAL_VIEW;
-  });
+  const definition=AUDIT_VIEWS[AUDIT_INTERNAL_VIEW]||AUDIT_VIEWS.all;
+  const title=document.getElementById('auditCurrentViewTitle'),description=document.getElementById('auditCurrentViewDescription');
+  if(title)title.textContent=definition.title;
+  if(description)description.textContent=definition.description;
 }
 function auditSetInternalView(view){
-  if(!['flagged','all'].includes(view))return;
-  if(view==='flagged'&&AUDIT_FLAGGED_COUNT===0){AUDIT_INTERNAL_VIEW='all';}
-  else AUDIT_INTERNAL_VIEW=view;
+  if(!Object.prototype.hasOwnProperty.call(AUDIT_VIEWS,view))return;
+  AUDIT_INTERNAL_VIEW=view;AUDIT_PAGE=0;
   auditApplyInternalView();
+  if(COLLECT_IDX!=null)renderAudit(COLLECT_IDX);
+}
+function auditPageSet(page){
+  AUDIT_PAGE=Number.isInteger(Number(page))?Math.max(0,Number(page)):0;
+  if(COLLECT_IDX!=null)renderAudit(COLLECT_IDX);
+}
+function auditPageItems(items,page=AUDIT_PAGE,pageSize=AUDIT_PAGE_SIZE){
+  const size=Math.max(1,Number(pageSize)||AUDIT_PAGE_SIZE);
+  const start=Math.max(0,Number(page)||0)*size;
+  return items.slice(start,start+size);
+}
+function auditRenderPagination(total){
+  const el=document.getElementById('auditPagination');if(!el)return;
+  const pages=Math.max(1,Math.ceil(total/AUDIT_PAGE_SIZE));
+  AUDIT_PAGE=Math.max(0,Math.min(AUDIT_PAGE,pages-1));
+  if(total<=AUDIT_PAGE_SIZE){el.innerHTML=total?`<span>Exibindo ${total.toLocaleString('pt-BR')} coleta${total===1?'':'s'} nesta etapa.</span>`:'';return;}
+  const start=AUDIT_PAGE*AUDIT_PAGE_SIZE+1,end=Math.min(total,start+AUDIT_PAGE_SIZE-1);
+  el.innerHTML=`<span>Exibindo ${start.toLocaleString('pt-BR')}–${end.toLocaleString('pt-BR')} de ${total.toLocaleString('pt-BR')} coletas</span><div class="audit-pagination-controls"><button type="button" class="btn btn-out" onclick="auditPageSet(${AUDIT_PAGE-1})" ${AUDIT_PAGE===0?'disabled':''} aria-label="Página anterior">← Anterior</button><span>Página ${AUDIT_PAGE+1} de ${pages.toLocaleString('pt-BR')}</span><button type="button" class="btn btn-out" onclick="auditPageSet(${AUDIT_PAGE+1})" ${AUDIT_PAGE>=pages-1?'disabled':''} aria-label="Próxima página">Próxima →</button></div>`;
+}
+function auditTabKeydown(event,tab){
+  const tabs=[...document.querySelectorAll('[data-audit-focus-tab]')];
+  const index=tabs.indexOf(tab);if(index<0)return;
+  let next=index;
+  if(event.key==='ArrowRight'||event.key==='ArrowDown')next=(index+1)%tabs.length;
+  else if(event.key==='ArrowLeft'||event.key==='ArrowUp')next=(index-1+tabs.length)%tabs.length;
+  else if(event.key==='Home')next=0;
+  else if(event.key==='End')next=tabs.length-1;
+  else return;
+  event.preventDefault();tabs[next].focus();auditSetInternalView(tabs[next].dataset.auditFocusTab);
 }
 function auditInternalNavigationMarkup(idx){
-  const counts=auditInternalCounts(idx);AUDIT_FLAGGED_COUNT=counts.total;
-  const flaggedLabel=counts.total?`Reprovações e calibrações <strong id="auditFlaggedCount">${counts.total}</strong>`:'Reprovações e calibrações <strong id="auditFlaggedCount">0</strong>';
-  const flaggedDetail=counts.total?`${counts.rejected} reprovada${counts.rejected===1?'':'s'} · ${counts.calibration} calibraç${counts.calibration===1?'ão':'ões'}`:'Nenhuma pendência nesta pesquisa';
-  const allCount=eventsForSurveyIdx(idx).length;
-  return `<nav class="audit-focus-nav" aria-label="Atalhos da auditoria" role="tablist"><button type="button" class="audit-focus-tab ${AUDIT_INTERNAL_VIEW==='flagged'&&counts.total?'is-active':''}" data-audit-focus-tab="flagged" role="tab" aria-selected="${AUDIT_INTERNAL_VIEW==='flagged'&&counts.total?'true':'false'}" onclick="auditSetInternalView('flagged')"><span class="audit-focus-tab-icon">!</span><span><b>${flaggedLabel}</b><small>${flaggedDetail}</small></span><span class="audit-focus-tab-arrow">→</span></button><button type="button" class="audit-focus-tab ${AUDIT_INTERNAL_VIEW==='all'||!counts.total?'is-active':''}" data-audit-focus-tab="all" role="tab" aria-selected="${AUDIT_INTERNAL_VIEW==='all'||!counts.total?'true':'false'}" onclick="auditSetInternalView('all')"><span class="audit-focus-tab-icon">✓</span><span><b>Auditoria completa <strong id="auditAllCount">${allCount}</strong></b><small>Todas as coletas, evidências e ações</small></span><span class="audit-focus-tab-arrow">→</span></button></nav>`;
+  const counts=auditInternalCounts(idx);
+  const tabs=[
+    ['all','Auditoria completa','Todas as coletas oficiais',counts.all],
+    ['systemRejected','Reprovadas pelo sistema','Regras automáticas de qualidade',counts.systemRejected],
+    ['exceptSystemRejected','Completa — exceto reprovadas pelo sistema','Todas, menos rejeições automáticas',counts.exceptSystemRejected],
+    ['adminRejected','Reprovadas pelo administrador','Rejeições manuais da gestão',counts.adminRejected],
+    ['approved','Aprovadas','Status válido; sem calibrações',counts.approved]
+  ];
+  return `<nav class="audit-focus-nav" aria-label="Etapas da auditoria" role="tablist">${tabs.map(([key,label,detail,count])=>`<button type="button" class="audit-focus-tab ${AUDIT_INTERNAL_VIEW===key?'is-active':''} audit-focus-tab-${key}" data-audit-focus-tab="${key}" role="tab" aria-controls="auditMainWrap" aria-selected="${AUDIT_INTERNAL_VIEW===key?'true':'false'}" tabindex="${AUDIT_INTERNAL_VIEW===key?'0':'-1'}" onkeydown="auditTabKeydown(event,this)" onclick="auditSetInternalView('${key}')"><span class="audit-focus-tab-icon" aria-hidden="true">${AUDIT_VIEWS[key].icon}</span><span><b>${label}</b><small>${detail}</small></span><strong class="audit-focus-count" id="auditCount-${key}">${count}</strong></button>`).join('')}</nav>`;
 }
 function goToAuditFromMap(id){
   const e=COLLECT_EVENTS.find(x=>x.id===id);if(!e)return;
-  AUDIT_HIGHLIGHT_ID=id;
+  AUDIT_INTERNAL_VIEW='all';AUDIT_PAGE=0;AUDIT_HIGHLIGHT_ID=id;
   const auditBtn=document.getElementById('collectTabAuditoriaBtn')||document.querySelectorAll('#collectTabSeg button')[2];
   if(auditBtn)collectTab(auditBtn,'auditoria');
 }
@@ -6294,11 +6363,10 @@ function renderAudit(idx){
   const gapOf=e=>{const prev=previousOf(e);return prev?e.ts-prev.ts:null;};
   const distOf=e=>{const prev=previousOf(e);return prev?distMeters(e.lat,e.lng,prev.lat,prev.lng):null;};
   const filteredAll=collectResearcherFilterEvents(all);
-  let events=filteredAll.slice(0,80);
-  if(AUDIT_HIGHLIGHT_ID!=null&&!events.some(x=>x.id===AUDIT_HIGHLIGHT_ID)){
-    const found=filteredAll.find(x=>x.id===AUDIT_HIGHLIGHT_ID);
-    if(found)events=[found,...events.slice(0,79)];
-  }
+  const viewEvents=auditEventsForView(filteredAll);
+  if(AUDIT_HIGHLIGHT_ID!=null){const highlightIndex=viewEvents.findIndex(x=>x.id===AUDIT_HIGHLIGHT_ID);if(highlightIndex>=0)AUDIT_PAGE=Math.floor(highlightIndex/AUDIT_PAGE_SIZE);}
+  const events=auditPageItems(viewEvents);
+  auditRenderPagination(viewEvents.length);
   el.innerHTML=events.map(e=>{
     const gapMs=gapOf(e);
     const gapMin=gapMs==null?null:gapMs/60000;
@@ -6311,15 +6379,16 @@ function renderAudit(idx){
     const distSuspect=distM!=null&&distM<AUDIT_DIST_SUSPECT_M;
     const distWarn=distM!=null&&!distSuspect&&distM<AUDIT_DIST_WARN_M;
     const distNote=distM==null?'':`<div style="margin-top:3px"><span class="pill ${distSuspect?'pill-red':distWarn?'pill-amber':'pill-gray'}" style="font-size:10.5px">≈${fmtDist(distM)} da anterior</span></div>`;
-    const flags=(e.flags||[]).map(String).slice();
+    const flags=(e.flags||[]).map(String);
     if(suspect)flags.push('Intervalo muito curto p/ outra entrevista');
     if(distSuspect)flags.push('Georreferenciamento muito próximo da coleta anterior');
     const rejected=e.status==='rejected';
+    const rejectionSource=rejected?(auditIsSystemRejected(e)?'Reprovada pelo sistema':'Reprovada pelo administrador'):'';
     const pendingAudio=e.status==='pending_recording';
     const statusCell=`${e.synced?'<span class="pill pill-green">Sincronizado</span>':'<span class="pill pill-amber">Pendente</span>'}`+
       (pendingAudio?'<div style="margin-top:5px"><span class="pill pill-amber">Áudio pendente · não contabilizada</span></div>':'')+
       (collectionNightAudioIssue(e)?'<div style="margin-top:5px"><span class="pill pill-red">Válida sem áudio · revisar financeiro</span></div>':'')+
-      (rejected?`<div style="margin-top:5px"><span class="pill pill-red" title="${esc(e.rejectReason||'')}">✕ Reprovada</span><div style="font-size:10.5px;color:var(--ink3);margin-top:2px;max-width:170px">${esc(e.rejectReason||'')}</div></div>`:'')+
+      (rejected?`<div style="margin-top:5px"><span class="pill pill-red" title="${esc(e.rejectReason||'')}">✕ ${rejectionSource}</span><div style="font-size:10.5px;color:var(--ink3);margin-top:2px;max-width:170px">${esc(e.rejectReason||'')}</div></div>`:'')+
       (e.calibration?'<div style="margin-top:5px"><span class="pill pill-blue">◎ Calibração</span></div>':'');
     const recordingCell=collectionRecordingCell(e);
     const durationCell=`<span class="audit-duration-value">${e.durationSeconds!=null?fmtInterviewDuration(e.durationSeconds):'<span class="audit-duration-missing">Não registrado</span>'}</span>`;
@@ -6347,7 +6416,7 @@ function renderAudit(idx){
       <td>${flags.length?flags.map(f=>'<span class="pill pill-red" style="margin-right:4px;white-space:nowrap">'+esc(f)+'</span>').join(''):'<span style="color:var(--ink3)">—</span>'}</td>
       <td class="audit-actions-cell">${actionsCell}</td>
     </tr>`;
-  }).join('')||'<tr><td colspan="11" class="empty">Nenhuma coleta registrada ainda.</td></tr>';
+  }).join('')||`<tr><td colspan="11" class="empty">${all.length?'Nenhuma coleta corresponde a esta etapa da auditoria.':'Nenhuma coleta registrada ainda.'}</td></tr>`;
   if(AUDIT_HIGHLIGHT_ID!=null){
     const row=el.querySelector(`tr[data-eid="${AUDIT_HIGHLIGHT_ID}"]`);
     if(row){
@@ -6357,38 +6426,9 @@ function renderAudit(idx){
     }
     AUDIT_HIGHLIGHT_ID=null;
   }
-  renderAuditFlagged(idx);
-}
-/* painel de atalho: lista só as coletas reprovadas/calibração desta pesquisa, com botão de desfazer —
-   evita ter que procurar a linha na tabela grande para desfazer uma ação */
-function renderAuditFlagged(idx){
-  const wrap=document.getElementById('auditFlaggedWrap');
-  const el=document.getElementById('auditFlagged');
-  if(!wrap||!el)return;
-  const flagged=collectResearcherFilterEvents(eventsForSurveyIdx(idx)).filter(e=>e.status==='rejected'||e.calibration)
-    .sort((a,b)=>(b.rejectedAt||b.ts)-(a.rejectedAt||a.ts));
-  const counts=auditInternalCounts(idx);AUDIT_FLAGGED_COUNT=counts.total;
-  const countEl=document.getElementById('auditFlaggedCount');if(countEl)countEl.textContent=String(counts.total);
-  const allCountEl=document.getElementById('auditAllCount');if(allCountEl)allCountEl.textContent=String(eventsForSurveyIdx(idx).length);
-  if(!flagged.length){wrap.hidden=true;el.innerHTML='';if(AUDIT_INTERNAL_VIEW==='flagged')AUDIT_INTERNAL_VIEW='all';auditApplyInternalView();return;}
   auditApplyInternalView();
-  wrap.hidden=AUDIT_INTERNAL_VIEW!=='flagged';
-  el.innerHTML=flagged.map(e=>{
-    const badges=(e.status==='rejected'?'<span class="pill pill-red" style="margin-right:4px">✕ Reprovada</span>':'')+
-      (e.calibration?'<span class="pill pill-blue">◎ Calibração</span>':'');
-    const reasonTxt=e.status==='rejected'?`<div style="font-size:11.5px;color:var(--ink3);margin-top:2px">Motivo: ${esc(e.rejectReason||'—')}</div>`:'';
-    const btns=conversationButton(e.phone,'Olá '+e.name+'! Podemos conversar sobre a coleta '+(e.cota||'')+'?')+
-      (e.status==='rejected'?`<button class="btn-ghost" style="font-size:11.5px;padding:4px 9px" onclick="auditReject('${e.id}')">↺ Desfazer reprovação</button>`:'')+
-      (e.calibration?`<button class="btn-ghost" style="font-size:11.5px;padding:4px 9px" onclick="auditToggleCalibration('${e.id}')">↺ Remover calibração</button>`:'');
-    return `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--line);flex-wrap:wrap">
-      <div>
-        <b style="font-size:13px">${esc(e.name)}</b> <span style="color:var(--ink3);font-size:12px">· ${esc(e.cota)} · ${new Date(e.ts).toLocaleString('pt-BR')}</span>
-        <div style="margin-top:3px">${badges}</div>
-        ${reasonTxt}
-      </div>
-      <div style="display:flex;gap:6px;flex-shrink:0">${btns}</div>
-    </div>`;
-  }).join('');
+  const viewCounts=auditInternalCounts(idx);
+  Object.entries(viewCounts).forEach(([key,value])=>{const count=document.getElementById('auditCount-'+key);if(count)count.textContent=String(value);});
 }
 /* ---- ações de auditoria: reprovar coleta (não conta p/ pagamento) e marcar
    como calibração (fora do cálculo de resultados, mas conta p/ pagamento) ----
@@ -6404,7 +6444,7 @@ async function auditReject(id){
       const {error}=await sb.from('collection_events').update({status:'valid',reject_reason:null,rejected_at:null}).eq('id',id);
       if(error)throw new Error(error.message);
     }catch(ex){alert('Não foi possível desfazer a reprovação: '+ex.message);return;}
-    e.status='valid';e.rejectReason=null;e.rejectedAt=null;
+    e.status='valid';e.rejectReason=null;e.rejectionSource=null;e.rejectedAt=null;
   }else{
     const motivo=prompt('Motivo da reprovação desta coleta (o pesquisador vai ver este motivo no perfil dele):','');
     if(motivo==null)return;
@@ -6412,10 +6452,10 @@ async function auditReject(id){
     if(!trimmed){alert('Informe o motivo da reprovação.');return;}
     const rejectedAtIso=new Date().toISOString();
     try{
-      const {error}=await sb.from('collection_events').update({status:'rejected',reject_reason:trimmed,rejected_at:rejectedAtIso}).eq('id',id);
+      const {error}=await sb.from('collection_events').update({status:'rejected',reject_reason:COLLECTION_ADMIN_REJECTION_REASON_PREFIX+trimmed,rejected_at:rejectedAtIso}).eq('id',id);
       if(error)throw new Error(error.message);
     }catch(ex){alert('Não foi possível reprovar: '+ex.message);return;}
-    e.status='rejected';e.rejectReason=trimmed;e.rejectedAt=new Date(rejectedAtIso).getTime();
+    e.status='rejected';e.rejectReason=trimmed;e.rejectionSource='admin';e.rejectedAt=new Date(rejectedAtIso).getTime();
   }
   window.PP_RESEARCHER_DASHBOARD?.invalidate('payments');
   PAYMENTS_LOADED=false; // financeiro recalculado no banco — recarrega na próxima visita
@@ -7559,7 +7599,7 @@ async function acollectUploadRecording(eventId,checkFinalStatus=false){
   }
   if(checkFinalStatus){
     const {data:event,error:statusError}=await sb.from('collection_events').select('status,reject_reason').eq('id',eventId).maybeSingle();
-    if(!statusError&&event?.status==='rejected')return{ok:true,rejectedReason:String(event.reject_reason||'Coleta reprovada automaticamente por integridade de distância; registro e gravação preservados para auditoria.')};
+    if(!statusError&&event?.status==='rejected')return{ok:true,rejectedReason:collectionVisibleRejectReason(event.reject_reason)||'Coleta reprovada automaticamente por integridade de distância; registro e gravação preservados para auditoria.'};
   }
   return{ok:true};
 }

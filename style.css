@@ -2822,12 +2822,12 @@ body.system-message-gate-open{overflow:hidden}
 /* Auditoria: funil em cinco etapas com contagens de cada categoria. */
 .audit-focus-nav{grid-template-columns:repeat(5,minmax(0,1fr));align-items:stretch}
 .audit-focus-tab{position:relative;align-items:flex-start;gap:8px;padding:10px 9px}
-.audit-focus-tab>span:nth-child(2){gap:4px}
+.audit-focus-tab>span:nth-child(2){flex:1 1 auto;min-width:0;gap:4px}
 .audit-focus-tab b{font-size:11px}
 .audit-focus-tab small{font-size:9.5px}
 .audit-focus-tab-icon{flex:0 0 27px;width:27px;height:27px;border-radius:9px;font-size:12px}
-.audit-focus-tab .audit-focus-count{display:grid;place-items:center;flex:0 0 25px;min-width:25px;height:23px;padding:0 5px;border-radius:999px;background:#eef2f7;color:#45627c;font-size:10px;font-variant-numeric:tabular-nums}
-.audit-focus-tab.is-active .audit-focus-count{background:#2563eb;color:#fff}
+.audit-focus-tab .audit-focus-count{display:grid;place-items:center;flex:0 0 auto;width:max-content;min-width:32px;box-sizing:border-box;height:24px;padding:0 8px;white-space:nowrap;line-height:1;border-radius:999px;background:#eef2f7;color:#45627c;font-size:10.5px;font-variant-numeric:tabular-nums}
+.audit-focus-tab.is-active .audit-focus-count{background:#174ea6;color:#fff;outline:2px solid #dbeafe;outline-offset:1px}
 .audit-focus-tab-all .audit-focus-tab-icon{background:#eaf3ff;color:#2563eb}
 .audit-focus-tab-systemRejected .audit-focus-tab-icon,.audit-focus-tab-adminRejected .audit-focus-tab-icon{background:#fff1f2;color:#be123c}
 .audit-focus-tab-exceptSystemRejected .audit-focus-tab-icon{background:#fff7ed;color:#c2410c}

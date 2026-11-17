@@ -20,6 +20,8 @@ const checks=[
   ['payload lista cruzamentos',app.includes('crossings}}')&&app.includes('questionIds:reportsCrossingQuestionIds')],
   ['reidratação completa',app.includes('reportsNormalizeCrossings')&&app.includes('reportsFillDraft')&&app.includes('reportsLoadDraft')&&app.includes('data-crossing-question')],
   ['geração local PDF',app.includes('loadLocalAsset(\'jspdf\')')&&app.includes('reportsCreatePdfBlob')],
+  ['compressão do PDF final',app.includes("new jsPDF({unit:'mm',format:'a4',compress:true,putOnlyUsedFonts:true})")],
+  ['tratamento do limite de tamanho do Storage',app.includes('function reportsPdfUploadError')&&app.includes('file_size_limit')&&app.includes('result.blob')],
   ['capa dedicada e legível',app.includes('function reportsPdfCover')&&app.includes('reportsPdfCover(doc,payload,survey,client,logoData);doc.addPage();')&&app.includes('reportsLoadCoverLogo')],
   ['logo oficial na capa',fs.existsSync(officialLogo)&&fs.statSync(officialLogo).size>1000&&app.includes("fetch('assets/logo-wide.png'")&&app.includes("doc.addImage(logoData,'PNG'")],
   ['PDF percorre todos os cruzamentos',app.includes('reportsCreateMultiCrossPdfBlob')&&app.includes('reportsPdfWriteCrossing')&&app.includes('payload.sections.crossings')],

@@ -12,12 +12,15 @@ function fixture(){
 }
 function environment(rows,options={}){
   const calls=[];
+  let abortsLeft=options.abortCount==null?(options.abortFirstPage?1:0):options.abortCount;
+  const controlledSetTimeout=(fn,ms)=>{if(abortsLeft>0){abortsLeft--;fn();return null;}return setTimeout(fn,ms);};
   const sb={rpc(name,args,config){
     const call={name,args,config,order:[],from:null,to:null};calls.push(call);
     return {order(column,direction){call.order.push([column,direction]);return this;},range(from,to){call.from=from;call.to=to;return this;},abortSignal(signal){call.signal=signal;return this;},then(resolve,reject){
       try{
         const answer=options.reply?options.reply(call,calls):null;
         if(answer)return Promise.resolve(answer).then(resolve,reject);
+        if(call.signal?.aborted){const error=new Error('signal is aborted without reason');error.name='AbortError';return Promise.reject(error).then(resolve,reject);}
         let data=rows.slice(call.from,Math.min(call.to+1,call.from+(options.serverCap||500)));
         if(options.transform)data=options.transform(data,call,calls);
         return Promise.resolve({data,error:null,count:options.noCount?null:rows.length}).then(resolve,reject);
@@ -25,7 +28,7 @@ function environment(rows,options={}){
     }};
   }};
   const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
-  const context={sb,AbortController,setTimeout,clearTimeout,esc,COLLECT_EVENTS_LOADED:true,COLLECT_EVENTS:Array.from({length:677},()=>({surveyId:'survey-A',status:'valid',calibration:false})),reportsCurrentSurvey:()=>({id:'survey-A'}),Q_TYPES:{single:'Escolha única'}};
+  const context={sb,AbortController,setTimeout:controlledSetTimeout,clearTimeout,esc,COLLECT_EVENTS_LOADED:true,COLLECT_EVENTS:Array.from({length:677},()=>({surveyId:'survey-A',status:'valid',calibration:false})),reportsCurrentSurvey:()=>({id:'survey-A'}),questionTypeLabel:()=> 'Escolha única',Q_TYPES:{single:'Escolha única'}};
   context.CURRENT_PROFILE={id:'gestao-teste',role:'admin'};
   context.document={getElementById:()=>null,removeEventListener(){}};
   context.jsArg=value=>esc(JSON.stringify(value));
@@ -59,6 +62,12 @@ function environment(rows,options={}){
   const exact=environment(rows.slice(0,1000));
   assert.equal((await exact.context.reportsFetchOverview('survey-A')).data.length,1000);
   assert.equal(exact.calls.length,2);
+  const transientAbort=environment(rows,{abortFirstPage:true});
+  assert.equal((await transientAbort.context.reportsFetchOverview('survey-A')).data.length,rows.length);
+  assert.deepEqual(transientAbort.calls.map(c=>c.from),[0,0,500,1000],'uma página interrompida deve ser repetida antes de prosseguir');
+  const persistentAbort=environment(rows,{abortCount:10});
+  await assert.rejects(persistentAbort.context.reportsFetchOverview('survey-A'),error=>error.code==='REPORT_PAGE_TIMEOUT'&&/nenhum resultado parcial/i.test(error.message)&&!/signal is aborted without reason/i.test(error.message));
+  assert.deepEqual(persistentAbort.calls.map(c=>c.from),[0,0],'interrupção persistente não pode devolver dados parciais');
   const empty=environment([]);
   assert.equal((await empty.context.reportsFetchOverview('survey-A')).data.length,0);
 
@@ -93,5 +102,5 @@ function environment(rows,options={}){
   assert(app.includes("reportsReadAllPages(()=>reportsCrossOrder(sb.rpc('survey_report_cross_tab'"));
   const pdf=app.slice(app.indexOf('async function reportsEnsurePdfData('),app.indexOf('function reportsPdfWriteCrossing('));
   assert(pdf.includes('reportsFetchStaffGroupedOverview(survey.id,payload.sections.openAnswerGrouping)')&&pdf.includes('reportsFetchTreatedCross(survey.id,ids,payload.sections.openAnswerGrouping)'),'PDF deve usar carregamento completo');
-  console.log('reports-pagination-smoke-test: PASS — corte de 1.000 reproduzido, 22 perguntas restauradas, limites menores, erros, snapshot, fallback, cliente e PDF validados.');
+  console.log('reports-pagination-smoke-test: PASS — corte de 1.000 reproduzido, 22 perguntas restauradas, limites menores, retries de timeout/AbortError, erros, snapshot, fallback, cliente e PDF validados.');
 })().catch(error=>{console.error(error);process.exit(1);});

@@ -32,7 +32,7 @@ const checks=[
   ['RLS de gestão',baseSql.includes('public.is_staff()')&&baseSql.includes('staff manages report documents')],
   ['RLS compartilhada do cliente',sql.includes('client sees published report documents')&&sql.includes('_client_reports_v178_can_access_survey(survey_id)')&&!sql.includes('rd.client_id = auth.uid()')],
   ['cliente recebe apenas publicados',sql.includes("rd.status = 'published'")&&sql.includes('client_published_reports')],
-  ['cache atualizado',html.includes('20261020191000')],
+  ['cache versionado do app',(()=>{const version=html.match(/name="pesquisapro-app-version" content="([^"]+)"/)?.[1];return !!version&&html.includes('app.js?v='+version);})()],
   ['estilos responsivos',css.includes('.reports-document-editor')&&css.includes('.reports-crossing-card')&&css.includes('.reports-cross-matrix')&&css.includes('@media(max-width:760px)')],
   ['jsPDF local',fs.existsSync(jspdf)&&fs.statSync(jspdf).size>100000],
 ];

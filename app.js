@@ -7843,17 +7843,37 @@ let RP_REPORT_DUPLICATE_DIAGNOSTIC_CACHE={key:'',matches:[],checked:false};
 let RP_REPORT_SURVEY_MANUALLY_SELECTED=false;
 // A API limita linhas por requisição; categorias de respostas abertas também contam.
 async function reportsReadAllPages(makeQuery){
-  const pageSize=500,maxPages=200;
-  const deadline=Date.now()+120000;
+  const pageSize=500,maxPages=200,pageTimeoutMs=45000,maxPageRetries=1;
+  const deadline=Date.now()+300000;
   for(let attempt=0;attempt<2;attempt++){
     const rows=[];let offset=0,total=null,base=null,changed=false;
     for(let page=0;page<maxPages;page++){
-      if(Date.now()>=deadline)throw new Error('O carregamento completo do relatório excedeu o tempo disponível. Tente novamente.');
-      const controller=new AbortController();
-      const timeout=setTimeout(()=>controller.abort(),Math.min(20000,deadline-Date.now()));
-      let result;
-      try{result=await makeQuery().range(offset,offset+pageSize-1).abortSignal(controller.signal);}finally{clearTimeout(timeout);}
-      if(result.error)throw result.error;
+      if(Date.now()>=deadline)throw new Error('O carregamento completo do relatório excedeu o limite de cinco minutos. Nenhum resultado parcial foi exibido; aguarde um pouco e tente novamente.');
+      let result,pageRetry=0;
+      while(true){
+        const remaining=deadline-Date.now();
+        if(remaining<=0)throw new Error('O carregamento completo do relatório excedeu o limite de cinco minutos. Nenhum resultado parcial foi exibido; aguarde um pouco e tente novamente.');
+        const controller=new AbortController();let timedOut=false;
+        const timeout=setTimeout(()=>{timedOut=true;controller.abort();},Math.min(pageTimeoutMs,remaining));
+        try{result=await makeQuery().range(offset,offset+pageSize-1).abortSignal(controller.signal);}
+        catch(error){
+          const aborted=timedOut||error?.name==='AbortError'||error?.code==='ABORT_ERR';
+          if(!aborted)throw error;
+          if(pageRetry++<maxPageRetries&&Date.now()<deadline)continue;
+          const reason=timedOut?'excedeu o prazo':'foi interrompida';
+          const timeoutError=new Error('A consulta da página '+(page+1)+' do relatório '+reason+' mesmo após uma nova tentativa. Nenhum resultado parcial foi exibido; verifique a conexão e tente novamente em alguns minutos.');
+          timeoutError.name='ReportPageTimeoutError';timeoutError.code='REPORT_PAGE_TIMEOUT';throw timeoutError;
+        }finally{clearTimeout(timeout);}
+        if(result?.error){
+          const aborted=timedOut||result.error?.name==='AbortError'||result.error?.code==='ABORT_ERR';
+          if(!aborted)throw result.error;
+          if(pageRetry++<maxPageRetries&&Date.now()<deadline)continue;
+          const reason=timedOut?'excedeu o prazo':'foi interrompida';
+          const timeoutError=new Error('A consulta da página '+(page+1)+' do relatório '+reason+' mesmo após uma nova tentativa. Nenhum resultado parcial foi exibido; verifique a conexão e tente novamente em alguns minutos.');
+          timeoutError.name='ReportPageTimeoutError';timeoutError.code='REPORT_PAGE_TIMEOUT';throw timeoutError;
+        }
+        break;
+      }
       if(!Array.isArray(result.data))throw new Error('Formato inválido no resultado agregado do relatório.');
       const data=result.data;
       const count=result.count==null?null:Number(result.count);
